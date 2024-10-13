@@ -59,36 +59,27 @@ void StatsWeightCalculator::Reset()
 float StatsWeightCalculator::CalculateItem(uint32 itemId)
 {
     ItemTemplate const* proto = &sObjectMgr->GetItemTemplateStore()->at(itemId);
-
     if (!proto)
         return 0.0f;
 
-    Reset();
+    Reset();  // Reset the stat weights
 
+    // Collect static stats from the item
     collector_->CollectItemStats(proto);
 
-    if (enable_overflow_penalty_)
-        ApplyOverflowPenalty(player_);
+    // Calculate proc effects from the item's spells (if any)
+    CalculateProcFromItem(itemId);
 
+    // Now calculate the final stat weight
     GenerateWeights(player_);
     for (uint32 i = 0; i < STATS_TYPE_MAX; i++)
     {
         weight_ += stats_weights_[i] * collector_->stats[i];
     }
 
-    CalculateItemTypePenalty(proto);
-
-    if (enable_item_set_bonus_)
-        CalculateItemSetBonus(player_, proto);
-
-    CalculateSocketBonus(player_, proto);
-
-    if (enable_quality_blend_)
-        // Blend with item quality and level
-        weight_ *= PlayerbotFactory::CalcMixedGearScore(proto->ItemLevel, proto->Quality);
-
-    return weight_;
+    return weight_;  // Return the final calculated item weight
 }
+
 
 float StatsWeightCalculator::CalculateEnchant(uint32 enchantId)
 {
@@ -639,4 +630,84 @@ void StatsWeightCalculator::ApplyWeightFinetune(Player* player)
                 stats_weights_[STATS_TYPE_ARMOR_PENETRATION] *= 1.2f;
         }
     }
+}
+// Function to fetch and calculate the proc data from item spells
+void StatsWeightCalculator::CalculateProcFromItem(uint32 itemId)
+{
+    // Get the item template
+    ItemTemplate const* proto = &sObjectMgr->GetItemTemplateStore()->at(itemId);
+    if (!proto)
+        return;
+
+    // Iterate through all possible spells on the item
+    for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        if (proto->Spells[i].SpellId > 0)
+        {
+            // Lookup the spell entry associated with the item
+            SpellEntry const* spell = sSpellStore.LookupEntry(proto->Spells[i].SpellId);
+            if (!spell)
+                continue;
+
+            // Extract proc data
+            float procChance = spell->ProcChance;  // Proc rate percentage
+            float cooldown = spell->CategoryRecoveryTime / 1000.0f;  // Cooldown in seconds
+            float duration = GetSpellDuration(spell);  // Proc effect duration
+            float procValue = GetProcValue(spell);  // Custom function to get the stat boost (AP, haste, etc.)
+
+            // Calculate the average effect value of the proc
+            float averageProcValue = (procValue * duration) / cooldown;
+
+            // Apply the average proc value to the appropriate stat
+            ApplyProcEffectToStats(spell, averageProcValue);
+        }
+    }
+}
+
+// Helper function to calculate the spell duration
+float GetSpellDuration(SpellEntry const* spell)
+{
+    if (!spell || !spell->DurationIndex)
+        return 0.0f;
+
+    SpellDurationEntry const* durationEntry = sSpellDurationStore.LookupEntry(spell->DurationIndex);
+    if (!durationEntry)
+        return 0.0f;
+
+    return durationEntry->Duration[0] / 1000.0f;  // Convert to seconds
+}
+
+// Helper function to get the proc's stat value (for attack power, haste, etc.)
+float GetProcValue(SpellEntry const* spell)
+{
+    // Example: Fetching the value from the first spell effect
+    if (spell->Effects[0].Effect == SPELL_EFFECT_APPLY_AURA)
+    {
+        if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_ATTACK_POWER)
+        {
+            return spell->Effects[0].BasePoints;  // Return the attack power proc value
+        }
+        else if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_HASTE)
+        {
+            return spell->Effects[0].BasePoints;  // Return the haste proc value
+        }
+        // Add more cases for other types of procs (crit, agility, etc.)
+    }
+
+    return 0.0f;
+}
+
+// Helper function to apply the calculated proc value to the stats
+void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, float procValue)
+{
+    // Example: If the proc is for attack power, apply it to the AP stat
+    if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_ATTACK_POWER)
+    {
+        stats_weights_[STATS_TYPE_ATTACK_POWER] += procValue;
+    }
+    else if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_HASTE)
+    {
+        stats_weights_[STATS_TYPE_HASTE_RATING] += procValue;
+    }
+    // You can add more conditions here to handle other types of procs.
 }
