@@ -49,7 +49,10 @@ private:
 
     void ApplyOverflowPenalty(Player* player);
     void ApplyWeightFinetune(Player* player);
-
+    void CalculateProcFromItem(uint32 itemId);
+    float GetSpellDuration(SpellEntry const* spell);
+    float GetProcValue(SpellEntry const* spell);
+    void ApplyProcEffectToStats(SpellEntry const* spell, float procValue);
 private:
     Player* player_;
     CollectorType type_;
