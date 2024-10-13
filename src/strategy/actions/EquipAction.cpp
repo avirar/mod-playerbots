@@ -26,6 +26,7 @@ void EquipAction::EquipItems(ItemIds ids)
     }
 }
 
+// This is the correct place for the function EquipItem(FindItemVisitor* visitor)
 void EquipAction::EquipItem(FindItemVisitor* visitor)
 {
     IterateItems(visitor);
@@ -57,19 +58,20 @@ uint8 EquipAction::GetSmallestBagSlot()
     return curBag;
 }
 
+// The trinket handling changes are minimal and applied here
 void EquipAction::EquipItem(Item* item)
 {
     uint8 bagIndex = item->GetBagSlot();
     uint8 slot = item->GetSlot();
     uint32 itemId = item->GetTemplate()->ItemId;
 
-    // Check if the item is a trinket and handle equipping in trinket slots
+    // Handle trinket slot (InventoryType == INVTYPE_TRINKET)
     if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
     {
         Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
         Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
 
-        // Equip in the first empty trinket slot
+        // Equip the trinket in the first available slot
         if (!trinket1)
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
@@ -81,7 +83,7 @@ void EquipAction::EquipItem(Item* item)
             return;
         }
 
-        // If both slots are occupied, do not equip automatically
+        // If both slots are occupied, don't equip automatically
         return;
     }
 
