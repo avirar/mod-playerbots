@@ -16,6 +16,8 @@
 #include "SharedDefines.h"
 #include "StatsCollector.h"
 #include "Unit.h"
+#include "SpellAuraDefines.h"
+#include "SpellMgr.h"
 
 StatsWeightCalculator::StatsWeightCalculator(Player* player) : player_(player)
 {
@@ -664,50 +666,55 @@ void StatsWeightCalculator::CalculateProcFromItem(uint32 itemId)
     }
 }
 
-// Helper function to calculate the spell duration
-float GetSpellDuration(SpellEntry const* spell)
+float StatsWeightCalculator::GetSpellDuration(SpellEntry const* spell)
 {
     if (!spell || !spell->DurationIndex)
         return 0.0f;
 
+    // Fetch the duration from the spell entry
     SpellDurationEntry const* durationEntry = sSpellDurationStore.LookupEntry(spell->DurationIndex);
     if (!durationEntry)
         return 0.0f;
 
-    return durationEntry->Duration[0] / 1000.0f;  // Convert to seconds
+    // Return the base duration in seconds
+    return durationEntry->Duration[0] / 1000.0f;
 }
 
-// Helper function to get the proc's stat value (for attack power, haste, etc.)
-float GetProcValue(SpellEntry const* spell)
+float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
 {
-    // Example: Fetching the value from the first spell effect
-    if (spell->Effects[0].Effect == SPELL_EFFECT_APPLY_AURA)
+    if (spell->Effect[0] == SPELL_EFFECT_APPLY_AURA)
     {
-        if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_ATTACK_POWER)
+        if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER)
         {
-            return spell->Effects[0].BasePoints;  // Return the attack power proc value
+            return spell->EffectBasePoints[0];  // Attack power proc value
         }
-        else if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_HASTE)
+        else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_HASTE || 
+                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_HASTE || 
+                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_AMMO_HASTE || 
+                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_RANGED_HASTE ||
+                 spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_SPELLS ||
+                 spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_RANGED)
         {
-            return spell->Effects[0].BasePoints;  // Return the haste proc value
+            return spell->EffectBasePoints[0];  // Haste proc value
         }
-        // Add more cases for other types of procs (crit, agility, etc.)
     }
 
-    return 0.0f;
+    return 0.0f;  // Default return value if no matching proc effect is found
 }
+
+
 
 // Helper function to apply the calculated proc value to the stats
 void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, float procValue)
 {
     // Example: If the proc is for attack power, apply it to the AP stat
-    if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_ATTACK_POWER)
+    if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER)
     {
         stats_weights_[STATS_TYPE_ATTACK_POWER] += procValue;
     }
-    else if (spell->Effects[0].MiscValue == SPELL_AURA_MOD_HASTE)
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_HASTE || spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_SPELLS)
     {
-        stats_weights_[STATS_TYPE_HASTE_RATING] += procValue;
+        stats_weights_[STATS_TYPE_HASTE] += procValue;  // Adjusted to the correct stat type
     }
-    // You can add more conditions here to handle other types of procs.
+    // Add more conditions here to handle other types of procs (like crit, agility, etc.)
 }
