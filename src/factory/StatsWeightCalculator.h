@@ -35,6 +35,10 @@ public:
     void SetItemSetBonus(bool apply) { enable_item_set_bonus_ = apply; }
     void SetQualityBlend(bool apply) { enable_quality_blend_ = apply; }
 
+    float GetSpellDuration(SpellEntry const* spell);
+    float GetProcValue(SpellEntry const* spell);
+    void ApplyProcEffectToStats(SpellEntry const* spell, float procValue);
+
 private:
     void GenerateWeights(Player* player);
     void GenerateBasicWeights(Player* player);
@@ -50,9 +54,7 @@ private:
     void ApplyOverflowPenalty(Player* player);
     void ApplyWeightFinetune(Player* player);
     void CalculateProcFromItem(uint32 itemId);
-    float GetSpellDuration(SpellEntry const* spell);
-    float GetProcValue(SpellEntry const* spell);
-    void ApplyProcEffectToStats(SpellEntry const* spell, float procValue);
+
 private:
     Player* player_;
     CollectorType type_;
