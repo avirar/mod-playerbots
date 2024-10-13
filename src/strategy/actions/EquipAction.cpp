@@ -34,7 +34,7 @@ void EquipAction::EquipItem(FindItemVisitor* visitor)
         EquipItem(*items.begin());
 }
 
-// Return bagslot with the smallest bag.
+// Return bagslot with smallest bag.
 uint8 EquipAction::GetSmallestBagSlot()
 {
     int8 curBag = 0;
@@ -117,4 +117,37 @@ void EquipAction::EquipItem(Item* item)
     std::ostringstream out;
     out << "equipping " << chat->FormatItem(item->GetTemplate());
     botAI->TellMaster(out);
+}
+
+bool EquipUpgradesAction::Execute(Event event)
+{
+    if (!sPlayerbotAIConfig->autoEquipUpgradeLoot && !sRandomPlayerbotMgr->IsRandomBot(bot))
+        return false;
+
+    if (event.GetSource() == "trade status")
+    {
+        WorldPacket p(event.getPacket());
+        p.rpos(0);
+        uint32 status;
+        p >> status;
+
+        if (status != TRADE_STATUS_TRADE_ACCEPT)
+            return false;
+    }
+
+    ListItemsVisitor visitor;
+    IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+
+    ItemIds items;
+    for (std::map<uint32, uint32>::iterator i = visitor.items.begin(); i != visitor.items.end(); ++i)
+    {
+        ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", i->first);
+        if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
+        {
+            items.insert(i->first);
+        }
+    }
+
+    EquipItems(items);
+    return true;
 }
