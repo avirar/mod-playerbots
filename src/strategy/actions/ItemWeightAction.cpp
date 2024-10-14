@@ -10,10 +10,24 @@
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
 
+uint32 ExtractItemIdFromLink(const std::string& itemLink)
+{
+    size_t startPos = itemLink.find("Hitem:") + 6;
+    if (startPos == std::string::npos)
+        return 0;
+
+    size_t endPos = itemLink.find(":", startPos);
+    if (endPos == std::string::npos)
+        return 0;
+
+    std::string itemIdStr = itemLink.substr(startPos, endPos - startPos);
+    return atoi(itemIdStr.c_str());
+}
+
 bool ItemWeightAction::Execute(Event event)
 {
     std::string itemLink = event.getParam();  // Get the item link from the player's chat input
-    uint32 itemId = botAI->GetChatHelper()->ExtractItemIdFromLink(itemLink);  // Extract itemId from item link
+    uint32 itemId = ExtractItemIdFromLink(itemLink);  // Manually extract itemId from item link
 
     if (!itemId)
     {
