@@ -744,23 +744,23 @@ float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
 
             // Strength Related
             case SPELL_AURA_MOD_STAT:
-                {
-                switch (spell->GetMiscValue())
-                {
-                case STAT_STRENGTH:
-                    return spell->EffectBasePoints[0];  // Strength proc value
-                case STAT_AGILITY:
-                    return spell->EffectBasePoints[0];  // Agility proc value
-                case STAT_STAMINA:
-                    return spell->EffectBasePoints[0];  // Stamina proc value
-                case STAT_INTELLECT:
-                    return spell->EffectBasePoints[0];  // Intellect proc value
-                case STAT_SPIRIT:
-                    return spell->EffectBasePoints[0];  // Spirit proc value
-                default:
-                    return 0.1f;  // Default return value for unknown stat
-                }
-            }
+{
+    switch (spell->EffectMiscValue[0])
+    {
+        case STAT_STRENGTH:
+            return spell->EffectBasePoints[0];  // Strength proc value
+        case STAT_AGILITY:
+            return spell->EffectBasePoints[0];  // Agility proc value
+        case STAT_STAMINA:
+            return spell->EffectBasePoints[0];  // Stamina proc value
+        case STAT_INTELLECT:
+            return spell->EffectBasePoints[0];  // Intellect proc value
+        case STAT_SPIRIT:
+            return spell->EffectBasePoints[0];  // Spirit proc value
+        default:
+            return 0.1f;  // Default return value for unknown stat
+    }
+}
 
                 
 
@@ -838,15 +838,19 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
     {
         stats_weights_[STATS_TYPE_PARRY] += procValue;
     }
-    // Block Related
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_BLOCK_PERCENT ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SHIELD_BLOCKVALUE ||
+    // Block Percent Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_BLOCK_PERCENT)
+    {
+        stats_weights_[STATS_TYPE_BLOCK_RATING] += procValue;
+    }
+    // Block Value Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SHIELD_BLOCKVALUE ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SHIELD_BLOCKVALUE_PCT)
     {
-        stats_weights_[STATS_TYPE_BLOCK] += procValue;
+        stats_weights_[STATS_TYPE_BLOCK_VALUE] += procValue;
     }
     // Armor Penetration Related
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_RATING)
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_PCT)
     {
         stats_weights_[STATS_TYPE_ARMOR_PENETRATION] += procValue;
     }
@@ -859,8 +863,8 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
     }
     // Strength Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_STAT)
-    {
-    switch (spell->GetMiscValue())
+{
+    switch (spell->EffectMiscValue[0])
     {
         case STAT_STRENGTH:
             stats_weights_[STATS_TYPE_STRENGTH] += procValue;
@@ -880,7 +884,7 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
         default:
             break;
     }
-    }
+}
     // Expertise Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_EXPERTISE)
     {
@@ -892,23 +896,18 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
     {
         stats_weights_[STATS_TYPE_SPELL_POWER] += procValue;
     }
-    // Critical Strike Damage Bonus
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_CRIT_DAMAGE_BONUS)
-    {
-        stats_weights_[STATS_TYPE_CRIT_DAMAGE_BONUS] += procValue;
-    }
     // Healing Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING_DONE ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING_DONE_PERCENT)
     {
-        stats_weights_[STATS_TYPE_HEALING] += procValue;
+        stats_weights_[STATS_TYPE_HEAL_POWER] += procValue;
     }
     // Mana Regeneration Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_REGEN ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_POWER_REGEN ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_POWER_REGEN_PERCENT)
     {
-        stats_weights_[STATS_TYPE_MANA_REGEN] += procValue;
+        stats_weights_[STATS_TYPE_MANA_REGENERATION] += procValue;
     }
 }
