@@ -70,48 +70,41 @@ void EquipAction::EquipItem(Item* item)
         Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
         Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
 
-        // If either trinket slot is empty, equip the new trinket there
+        // Check if trinket slots are empty and equip if so
         if (!trinket1)
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
-            std::ostringstream message;
-            message << "Equipping new trinket in slot 1: " << chat->FormatItem(item->GetTemplate());
-            botAI->TellMaster(message.str());  // No need to pass master explicitly
+            botAI->TellMaster("Equipping new trinket in slot 1: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
         else if (!trinket2)
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
-            std::ostringstream message;
-            message << "Equipping new trinket in slot 2: " << chat->FormatItem(item->GetTemplate());
-            botAI->TellMaster(message.str());  // No need to pass master explicitly
+            botAI->TellMaster("Equipping new trinket in slot 2: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
 
-        // Both trinket slots are occupied, now compare and replace the weaker trinket
+        // Debug message to indicate both slots are occupied
+        botAI->TellMaster("Both trinket slots are occupied.");
+
+        // Compare and replace the weaker trinket in slot 1 or 2
         if (IsBetterTrinket(item, trinket1))
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
-            std::ostringstream message;
-            message << "Replacing trinket 1: " << chat->FormatItem(trinket1->GetTemplate()) 
-                    << " with new trinket: " << chat->FormatItem(item->GetTemplate());
-            botAI->TellMaster(message.str());  // No need to pass master explicitly
+            botAI->TellMaster("Replacing trinket 1: " + chat->FormatItem(trinket1->GetTemplate()) + 
+                              " with new trinket: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
         else if (IsBetterTrinket(item, trinket2))
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
-            std::ostringstream message;
-            message << "Replacing trinket 2: " << chat->FormatItem(trinket2->GetTemplate()) 
-                    << " with new trinket: " << chat->FormatItem(item->GetTemplate());
-            botAI->TellMaster(message.str());  // No need to pass master explicitly
+            botAI->TellMaster("Replacing trinket 2: " + chat->FormatItem(trinket2->GetTemplate()) + 
+                              " with new trinket: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
 
-        // If the new trinket is not an upgrade, do nothing
-        std::ostringstream message;
-        message << "New trinket is not better than the currently equipped trinkets.";
-        botAI->TellMaster(message.str());  // No need to pass master explicitly
+        // No upgrade found for either slot
+        botAI->TellMaster("New trinket is not better than the currently equipped trinkets.");
         return;
     }
 
@@ -147,8 +140,9 @@ void EquipAction::EquipItem(Item* item)
     // Whisper master when equipping an item
     std::ostringstream out;
     out << "Equipping " << chat->FormatItem(item->GetTemplate());
-    botAI->TellMaster(out.str());  // No need to pass master explicitly
+    botAI->TellMaster(out.str());
 }
+
 
 // Helper function to compare trinkets
 bool EquipAction::IsBetterTrinket(Item* newItem, Item* currentItem)
