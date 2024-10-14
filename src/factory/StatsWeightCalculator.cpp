@@ -710,19 +710,12 @@ float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
             // Critical Strike Related
             case SPELL_AURA_MOD_WEAPON_CRIT_PERCENT:
             case SPELL_AURA_MOD_SPELL_CRIT_CHANCE:
-            case SPELL_AURA_MOD_CRIT_PERCENT:
-            case SPELL_AURA_MOD_ATTACKER_SPELL_CRIT_CHANCE:
-            case SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE:
-            case SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE:
                 return spell->EffectBasePoints[0];  // Critical Strike proc value
 
             // Hit Related
             case SPELL_AURA_MOD_HIT_CHANCE:
             case SPELL_AURA_MOD_SPELL_HIT_CHANCE:
             case SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT:
-            case SPELL_AURA_MOD_ATTACKER_MELEE_HIT_CHANCE:
-            case SPELL_AURA_MOD_ATTACKER_RANGED_HIT_CHANCE:
-            case SPELL_AURA_MOD_ATTACKER_SPELL_HIT_CHANCE:
                 return spell->EffectBasePoints[0];  // Hit proc value
 
             // Dodge Related
@@ -740,7 +733,6 @@ float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
                 return spell->EffectBasePoints[0];  // Block proc value
 
             // Armor Penetration Related
-            case SPELL_AURA_MOD_ARMOR_PENETRATION_RATING:
             case SPELL_AURA_MOD_ARMOR_PENETRATION_PCT:
                 return spell->EffectBasePoints[0];  // Armor Penetration proc value
 
@@ -750,13 +742,27 @@ float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
             case SPELL_AURA_MOD_INCREASE_HEALTH_2:
                 return spell->EffectBasePoints[0];  // Stamina proc value
 
-            // Agility Related
-            case SPELL_AURA_MOD_AGILITY:
-                return spell->EffectBasePoints[0];  // Agility proc value
-
             // Strength Related
             case SPELL_AURA_MOD_STAT:
-                return spell->EffectBasePoints[0];  // Strength proc value
+                {
+                switch (spell->GetMiscValue())
+                {
+                case STAT_STRENGTH:
+                    return spell->EffectBasePoints[0];  // Strength proc value
+                case STAT_AGILITY:
+                    return spell->EffectBasePoints[0];  // Agility proc value
+                case STAT_STAMINA:
+                    return spell->EffectBasePoints[0];  // Stamina proc value
+                case STAT_INTELLECT:
+                    return spell->EffectBasePoints[0];  // Intellect proc value
+                case STAT_SPIRIT:
+                    return spell->EffectBasePoints[0];  // Spirit proc value
+                default:
+                    return 0.1f;  // Default return value for unknown stat
+                }
+            }
+
+                
 
             // Expertise Related
             case SPELL_AURA_MOD_EXPERTISE:
@@ -811,21 +817,14 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
     }
     // Critical Strike Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_WEAPON_CRIT_PERCENT ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_CRIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_CRIT_PERCENT ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_SPELL_CRIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE)
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_CRIT_CHANCE)
     {
         stats_weights_[STATS_TYPE_CRIT] += procValue;
     }
     // Hit Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HIT_CHANCE ||
              spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_HIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_MELEE_HIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_RANGED_HIT_CHANCE ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_SPELL_HIT_CHANCE)
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT)
     {
         stats_weights_[STATS_TYPE_HIT] += procValue;
     }
@@ -847,8 +846,7 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
         stats_weights_[STATS_TYPE_BLOCK] += procValue;
     }
     // Armor Penetration Related
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_RATING ||
-             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_PCT)
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_RATING)
     {
         stats_weights_[STATS_TYPE_ARMOR_PENETRATION] += procValue;
     }
@@ -859,15 +857,29 @@ void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, floa
     {
         stats_weights_[STATS_TYPE_STAMINA] += procValue;
     }
-    // Agility Related
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_AGILITY)
-    {
-        stats_weights_[STATS_TYPE_AGILITY] += procValue;
-    }
     // Strength Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_STAT)
     {
-        stats_weights_[STATS_TYPE_STRENGTH] += procValue;
+    switch (spell->GetMiscValue())
+    {
+        case STAT_STRENGTH:
+            stats_weights_[STATS_TYPE_STRENGTH] += procValue;
+            break;
+        case STAT_AGILITY:
+            stats_weights_[STATS_TYPE_AGILITY] += procValue;
+            break;
+        case STAT_STAMINA:
+            stats_weights_[STATS_TYPE_STAMINA] += procValue;
+            break;
+        case STAT_INTELLECT:
+            stats_weights_[STATS_TYPE_INTELLECT] += procValue;
+            break;
+        case STAT_SPIRIT:
+            stats_weights_[STATS_TYPE_SPIRIT] += procValue;
+            break;
+        default:
+            break;
+    }
     }
     // Expertise Related
     else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_EXPERTISE)
