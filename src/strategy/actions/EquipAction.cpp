@@ -74,11 +74,17 @@ void EquipAction::EquipItem(Item* item)
         if (!trinket1)
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
+            std::ostringstream message;
+            message << "Equipping new trinket in slot 1: " << chat->FormatItem(item->GetTemplate());
+            botAI->TellMaster(message.str());  // No need to pass master explicitly
             return;
         }
         else if (!trinket2)
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
+            std::ostringstream message;
+            message << "Equipping new trinket in slot 2: " << chat->FormatItem(item->GetTemplate());
+            botAI->TellMaster(message.str());  // No need to pass master explicitly
             return;
         }
 
@@ -86,15 +92,26 @@ void EquipAction::EquipItem(Item* item)
         if (IsBetterTrinket(item, trinket1))
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
+            std::ostringstream message;
+            message << "Replacing trinket 1: " << chat->FormatItem(trinket1->GetTemplate()) 
+                    << " with new trinket: " << chat->FormatItem(item->GetTemplate());
+            botAI->TellMaster(message.str());  // No need to pass master explicitly
             return;
         }
         else if (IsBetterTrinket(item, trinket2))
         {
             bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
+            std::ostringstream message;
+            message << "Replacing trinket 2: " << chat->FormatItem(trinket2->GetTemplate()) 
+                    << " with new trinket: " << chat->FormatItem(item->GetTemplate());
+            botAI->TellMaster(message.str());  // No need to pass master explicitly
             return;
         }
 
         // If the new trinket is not an upgrade, do nothing
+        std::ostringstream message;
+        message << "New trinket is not better than the currently equipped trinkets.";
+        botAI->TellMaster(message.str());  // No need to pass master explicitly
         return;
     }
 
@@ -127,9 +144,10 @@ void EquipAction::EquipItem(Item* item)
         }
     }
 
+    // Whisper master when equipping an item
     std::ostringstream out;
-    out << "equipping " << chat->FormatItem(item->GetTemplate());
-    botAI->TellMaster(out);
+    out << "Equipping " << chat->FormatItem(item->GetTemplate());
+    botAI->TellMaster(out.str());  // No need to pass master explicitly
 }
 
 // Helper function to compare trinkets
