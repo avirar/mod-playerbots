@@ -74,12 +74,14 @@
 #include "WhoAction.h"
 #include "WtsAction.h"
 #include "OpenItemAction.h"
+#include "ItemWeight.h"
 
 class ChatActionContext : public NamedObjectContext<Action>
 {
 public:
     ChatActionContext()
     {
+        creators["weight"] = &ChatActionContext::weight;
         creators["open items"] = &ChatActionContext::open_items;
         creators["range"] = &ChatActionContext::range;
         creators["stats"] = &ChatActionContext::stats;
@@ -180,6 +182,7 @@ public:
     }
 
 private:
+    static Action* weight(PlayerbotAI* botAI) { return new ItemWeightAction(botAI); }
     static Action* open_items(PlayerbotAI* botAI) { return new OpenItemAction(botAI); }
     static Action* range(PlayerbotAI* botAI) { return new RangeAction(botAI); }
     static Action* flag(PlayerbotAI* botAI) { return new FlagAction(botAI); }
