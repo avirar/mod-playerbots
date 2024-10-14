@@ -690,37 +690,213 @@ float StatsWeightCalculator::GetProcValue(SpellEntry const* spell)
 {
     if (spell->Effect[0] == SPELL_EFFECT_APPLY_AURA)
     {
-        if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER)
+        switch (spell->EffectApplyAuraName[0])
         {
-            return spell->EffectBasePoints[0];  // Attack power proc value
-        }
-        else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_HASTE || 
-                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_HASTE || 
-                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_AMMO_HASTE || 
-                 spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_RANGED_HASTE ||
-                 spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_SPELLS ||
-                 spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_RANGED)
-        {
-            return spell->EffectBasePoints[0];  // Haste proc value
+            // Attack Power Related
+            case SPELL_AURA_MOD_ATTACK_POWER:
+            case SPELL_AURA_MOD_ATTACK_POWER_PCT:
+            case SPELL_AURA_MOD_MELEE_ATTACK_POWER_VERSUS:
+                return spell->EffectBasePoints[0];  // Attack Power proc value
+
+            // Haste Related
+            case SPELL_AURA_MOD_MELEE_HASTE:
+            case SPELL_AURA_MOD_RANGED_HASTE:
+            case SPELL_AURA_MOD_RANGED_AMMO_HASTE:
+            case SPELL_AURA_MOD_MELEE_RANGED_HASTE:
+            case SPELL_AURA_HASTE_SPELLS:
+            case SPELL_AURA_HASTE_RANGED:
+                return spell->EffectBasePoints[0];  // Haste proc value
+
+            // Critical Strike Related
+            case SPELL_AURA_MOD_WEAPON_CRIT_PERCENT:
+            case SPELL_AURA_MOD_SPELL_CRIT_CHANCE:
+            case SPELL_AURA_MOD_CRIT_PERCENT:
+            case SPELL_AURA_MOD_ATTACKER_SPELL_CRIT_CHANCE:
+            case SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE:
+            case SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE:
+                return spell->EffectBasePoints[0];  // Critical Strike proc value
+
+            // Hit Related
+            case SPELL_AURA_MOD_HIT_CHANCE:
+            case SPELL_AURA_MOD_SPELL_HIT_CHANCE:
+            case SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT:
+            case SPELL_AURA_MOD_ATTACKER_MELEE_HIT_CHANCE:
+            case SPELL_AURA_MOD_ATTACKER_RANGED_HIT_CHANCE:
+            case SPELL_AURA_MOD_ATTACKER_SPELL_HIT_CHANCE:
+                return spell->EffectBasePoints[0];  // Hit proc value
+
+            // Dodge Related
+            case SPELL_AURA_MOD_DODGE_PERCENT:
+                return spell->EffectBasePoints[0];  // Dodge proc value
+
+            // Parry Related
+            case SPELL_AURA_MOD_PARRY_PERCENT:
+                return spell->EffectBasePoints[0];  // Parry proc value
+
+            // Block Related
+            case SPELL_AURA_MOD_BLOCK_PERCENT:
+            case SPELL_AURA_MOD_SHIELD_BLOCKVALUE:
+            case SPELL_AURA_MOD_SHIELD_BLOCKVALUE_PCT:
+                return spell->EffectBasePoints[0];  // Block proc value
+
+            // Armor Penetration Related
+            case SPELL_AURA_MOD_ARMOR_PENETRATION_RATING:
+            case SPELL_AURA_MOD_ARMOR_PENETRATION_PCT:
+                return spell->EffectBasePoints[0];  // Armor Penetration proc value
+
+            // Stamina Related
+            case SPELL_AURA_MOD_INCREASE_HEALTH:
+            case SPELL_AURA_MOD_INCREASE_HEALTH_PERCENT:
+            case SPELL_AURA_MOD_INCREASE_HEALTH_2:
+                return spell->EffectBasePoints[0];  // Stamina proc value
+
+            // Agility Related
+            case SPELL_AURA_MOD_AGILITY:
+                return spell->EffectBasePoints[0];  // Agility proc value
+
+            // Strength Related
+            case SPELL_AURA_MOD_STAT:
+                return spell->EffectBasePoints[0];  // Strength proc value
+
+            // Expertise Related
+            case SPELL_AURA_MOD_EXPERTISE:
+                return spell->EffectBasePoints[0];  // Expertise proc value
+
+            // Spell Power Related
+            case SPELL_AURA_MOD_SPELL_DAMAGE_OF_STAT_PERCENT:
+            case SPELL_AURA_MOD_SPELL_DAMAGE_OF_ATTACK_POWER:
+                return spell->EffectBasePoints[0];  // Spell Power proc value
+
+            // Critical Strike Damage Bonus
+            case SPELL_AURA_MOD_CRIT_DAMAGE_BONUS:
+                return spell->EffectBasePoints[0];  // Critical Strike Damage Bonus proc value
+
+            // Healing Related
+            case SPELL_AURA_MOD_HEALING:
+            case SPELL_AURA_MOD_HEALING_DONE:
+            case SPELL_AURA_MOD_HEALING_DONE_PERCENT:
+                return spell->EffectBasePoints[0];  // Healing proc value
+
+            // Mana Regeneration Related
+            case SPELL_AURA_MOD_REGEN:
+            case SPELL_AURA_MOD_POWER_REGEN:
+            case SPELL_AURA_MOD_POWER_REGEN_PERCENT:
+                return spell->EffectBasePoints[0];  // Mana Regeneration proc value
+
+            default:
+                return 0.1f;  // Default return value if no matching proc effect is found
         }
     }
-
-    return 0.1f;  // Default return value if no matching proc effect is found
+    return 0.0f;  // Default return value
 }
 
-
-
-// Helper function to apply the calculated proc value to the stats
 void StatsWeightCalculator::ApplyProcEffectToStats(SpellEntry const* spell, float procValue)
 {
-    // Example: If the proc is for attack power, apply it to the AP stat
-    if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER)
+    // Attack Power Related
+    if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER ||
+        spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACK_POWER_PCT ||
+        spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_ATTACK_POWER_VERSUS)
     {
         stats_weights_[STATS_TYPE_ATTACK_POWER] += procValue;
     }
-    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_HASTE || spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_SPELLS)
+    // Haste Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_HASTE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_HASTE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_RANGED_AMMO_HASTE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_MELEE_RANGED_HASTE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_SPELLS ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_HASTE_RANGED)
     {
-        stats_weights_[STATS_TYPE_HASTE] += procValue;  // Adjusted to the correct stat type
+        stats_weights_[STATS_TYPE_HASTE] += procValue;
     }
-    // Add more conditions here to handle other types of procs (like crit, agility, etc.)
+    // Critical Strike Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_WEAPON_CRIT_PERCENT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_CRIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_CRIT_PERCENT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_SPELL_CRIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_MELEE_CRIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_RANGED_CRIT_CHANCE)
+    {
+        stats_weights_[STATS_TYPE_CRIT] += procValue;
+    }
+    // Hit Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_HIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASES_SPELL_PCT_TO_HIT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_MELEE_HIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_RANGED_HIT_CHANCE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ATTACKER_SPELL_HIT_CHANCE)
+    {
+        stats_weights_[STATS_TYPE_HIT] += procValue;
+    }
+    // Dodge Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_DODGE_PERCENT)
+    {
+        stats_weights_[STATS_TYPE_DODGE] += procValue;
+    }
+    // Parry Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_PARRY_PERCENT)
+    {
+        stats_weights_[STATS_TYPE_PARRY] += procValue;
+    }
+    // Block Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_BLOCK_PERCENT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SHIELD_BLOCKVALUE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SHIELD_BLOCKVALUE_PCT)
+    {
+        stats_weights_[STATS_TYPE_BLOCK] += procValue;
+    }
+    // Armor Penetration Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_RATING ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_ARMOR_PENETRATION_PCT)
+    {
+        stats_weights_[STATS_TYPE_ARMOR_PENETRATION] += procValue;
+    }
+    // Stamina Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASE_HEALTH ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASE_HEALTH_PERCENT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_INCREASE_HEALTH_2)
+    {
+        stats_weights_[STATS_TYPE_STAMINA] += procValue;
+    }
+    // Agility Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_AGILITY)
+    {
+        stats_weights_[STATS_TYPE_AGILITY] += procValue;
+    }
+    // Strength Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_STAT)
+    {
+        stats_weights_[STATS_TYPE_STRENGTH] += procValue;
+    }
+    // Expertise Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_EXPERTISE)
+    {
+        stats_weights_[STATS_TYPE_EXPERTISE] += procValue;
+    }
+    // Spell Power Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_DAMAGE_OF_STAT_PERCENT ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_SPELL_DAMAGE_OF_ATTACK_POWER)
+    {
+        stats_weights_[STATS_TYPE_SPELL_POWER] += procValue;
+    }
+    // Critical Strike Damage Bonus
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_CRIT_DAMAGE_BONUS)
+    {
+        stats_weights_[STATS_TYPE_CRIT_DAMAGE_BONUS] += procValue;
+    }
+    // Healing Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING_DONE ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_HEALING_DONE_PERCENT)
+    {
+        stats_weights_[STATS_TYPE_HEALING] += procValue;
+    }
+    // Mana Regeneration Related
+    else if (spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_REGEN ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_POWER_REGEN ||
+             spell->EffectApplyAuraName[0] == SPELL_AURA_MOD_POWER_REGEN_PERCENT)
+    {
+        stats_weights_[STATS_TYPE_MANA_REGEN] += procValue;
+    }
 }
