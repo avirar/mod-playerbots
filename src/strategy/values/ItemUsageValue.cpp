@@ -180,8 +180,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
         if (itemProto->SubClass != ITEM_SUBCLASS_CONTAINER)
-            return ITEM_USAGE_NONE;  // Todo add logic for non-bag containers. We want to look at professions/class and
-                                     // only replace if non-bag is larger than bag.
+            return ITEM_USAGE_NONE;
 
         if (GetSmallestBagSize() >= itemProto->ContainerSlots)
             return ITEM_USAGE_NONE;
@@ -190,11 +189,10 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     }
 
     bool shouldEquip = false;
-    // uint32 statWeight = sRandomItemMgr->GetLiveStatWeight(bot, itemProto->ItemId);
     StatsWeightCalculator calculator(bot);
     calculator.SetItemSetBonus(false);
     calculator.SetOverflowPenalty(false);
-    
+
     float itemScore = calculator.CalculateItem(itemProto->ItemId);
     if (itemScore)
         shouldEquip = true;
@@ -205,13 +203,61 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
         !sRandomItemMgr->CanEquipArmor(bot->getClass(), bot->GetLevel(), itemProto))
         shouldEquip = false;
 
+    // Check for trinkets
+    if (itemProto->InventoryType == INVTYPE_TRINKET)
+    {
+        // Check both trinket slots
+        Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
+        Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
+
+        // Compare with trinket1
+        if (!trinket1 || (calculator.CalculateItem(trinket1->GetTemplate()->ItemId) < itemScore))
+        {
+            if (Player* master = botAI->GetMaster())
+            {
+                char message[256];
+                snprintf(message, sizeof(message), "Good item: [%s] (%f) is better than [%s] (%f).",
+                         itemProto->Name1.c_str(), itemScore,
+                         trinket1 ? trinket1->GetTemplate()->Name1.c_str() : "nothing",
+                         trinket1 ? calculator.CalculateItem(trinket1->GetTemplate()->ItemId) : 0);
+                botAI->TellMaster(message);
+            }
+            return ITEM_USAGE_EQUIP;
+        }
+
+        // Compare with trinket2
+        if (!trinket2 || (calculator.CalculateItem(trinket2->GetTemplate()->ItemId) < itemScore))
+        {
+            if (Player* master = botAI->GetMaster())
+            {
+                char message[256];
+                snprintf(message, sizeof(message), "Good item: [%s] (%f) is better than [%s] (%f).",
+                         itemProto->Name1.c_str(), itemScore,
+                         trinket2 ? trinket2->GetTemplate()->Name1.c_str() : "nothing",
+                         trinket2 ? calculator.CalculateItem(trinket2->GetTemplate()->ItemId) : 0);
+                botAI->TellMaster(message);
+            }
+            return ITEM_USAGE_EQUIP;
+        }
+
+        return ITEM_USAGE_NONE;
+    }
+
     Item* oldItem = bot->GetItemByPos(dest);
 
-    // No item equiped
+    // No item equipped
     if (!oldItem)
     {
         if (shouldEquip)
+        {
+            if (Player* master = botAI->GetMaster())
+            {
+                char message[256];
+                snprintf(message, sizeof(message), "Good item: [%s] (%f) is better than nothing.", itemProto->Name1.c_str(), itemScore);
+                botAI->TellMaster(message);
+            }
             return ITEM_USAGE_EQUIP;
+        }
         else
         {
             return ITEM_USAGE_BAD_EQUIP;
@@ -222,7 +268,6 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     float oldScore = calculator.CalculateItem(oldItemProto->ItemId);
     if (oldItem)
     {
-        // uint32 oldStatWeight = sRandomItemMgr->GetLiveStatWeight(bot, oldItemProto->ItemId);
         if (itemScore || oldScore)
         {
             shouldEquip = itemScore > oldScore * sPlayerbotAIConfig->equipUpgradeThreshold;
@@ -250,18 +295,9 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
         !sRandomItemMgr->CanEquipArmor(bot->getClass(), bot->GetLevel(), oldItemProto))
         existingShouldEquip = false;
 
-    // uint32 oldItemPower = sRandomItemMgr->GetLiveStatWeight(bot, oldItemProto->ItemId);
-    // uint32 newItemPower = sRandomItemMgr->GetLiveStatWeight(bot, itemProto->ItemId);
-
-    // Compare items based on item level, quality or itemId.
     bool isBetter = false;
     if (itemScore > oldScore)
         isBetter = true;
-    // else if (newItemPower == oldScore && itemProto->Quality > oldItemProto->Quality)
-    //     isBetter = true;
-    // else if (newItemPower == oldScore && itemProto->Quality == oldItemProto->Quality && itemProto->ItemId >
-    // oldItemProto->ItemId)
-    //     isBetter = true;
 
     Item* item = CurrentItem(itemProto);
     bool itemIsBroken =
@@ -279,7 +315,17 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                     if (itemIsBroken && !oldItemIsBroken)
                         return ITEM_USAGE_BROKEN_EQUIP;
                     else if (shouldEquip)
+                    {
+                        if (Player* master = botAI->GetMaster())
+                        {
+                            char message[256];
+                            snprintf(message, sizeof(message), "Good item: [%s] (%f) is better than [%s] (%f).", 
+                            itemProto->Name1.c_str(), itemScore, 
+                            oldItemProto->Name1.c_str(), oldScore);
+                            botAI->TellMaster(message);
+                        }
                         return ITEM_USAGE_REPLACE;
+                    }
                     else
                         return ITEM_USAGE_BAD_EQUIP;
 
@@ -290,19 +336,31 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                 if (itemIsBroken && !oldItemIsBroken)
                     return ITEM_USAGE_BROKEN_EQUIP;
                 else if (shouldEquip)
+                {
+                    if (Player* master = botAI->GetMaster())
+                    {
+                            char message[256];
+                            snprintf(message, sizeof(message), "Good item: [%s] (%f) is better than [%s] (%f).", 
+                            itemProto->Name1.c_str(), itemScore, 
+                            oldItemProto->Name1.c_str(), oldScore);
+                            botAI->TellMaster(message);
+                    }
                     return ITEM_USAGE_EQUIP;
+                }
                 else
                     return ITEM_USAGE_BAD_EQUIP;
             }
         }
     }
 
-    // Item is not better but current item is broken and new one is not.
+    // Item is not better, but current item is broken and new one is not.
     if (oldItemIsBroken && !itemIsBroken)
         return ITEM_USAGE_EQUIP;
 
     return ITEM_USAGE_NONE;
 }
+
+
 
 // Return smaltest bag size equipped
 uint32 ItemUsageValue::GetSmallestBagSize()
