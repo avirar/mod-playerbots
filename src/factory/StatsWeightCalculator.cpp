@@ -657,7 +657,7 @@ void StatsWeightCalculator::CalculateProcFromItem(uint32 itemId)
             float duration = GetSpellDuration(spell);  // Proc effect duration
             float procValue = GetProcValue(spell);  // Custom function to get the stat boost (AP, haste, etc.)
 
-            // Calculate the average effect value of the proc
+            // Safeguard to avoid division by zero
             if (cooldown > 0)
             {
                 float averageProcValue = (procValue * duration) / cooldown;
@@ -665,16 +665,12 @@ void StatsWeightCalculator::CalculateProcFromItem(uint32 itemId)
             }
             else
             {
-            // Safeguard: avoid division by zero
-            ApplyProcEffectToStats(spell, procValue);  // Apply full proc value if cooldown is invalid
+                ApplyProcEffectToStats(spell, procValue);  // Apply base proc value if cooldown is invalid
             }
-
-
-            // Apply the average proc value to the appropriate stat
-            ApplyProcEffectToStats(spell, averageProcValue);
         }
     }
 }
+
 
 float StatsWeightCalculator::GetSpellDuration(SpellEntry const* spell)
 {
