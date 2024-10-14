@@ -20,11 +20,11 @@ public:
 
     bool Execute(Event event) override;
     void EquipItems(ItemIds ids);
+    void EquipItem(Item* item);
+    void EquipItem(FindItemVisitor* visitor);
 
 private:
-    void EquipItem(FindItemVisitor* visitor);
     uint8 GetSmallestBagSlot();
-    void EquipItem(Item* item);
     bool IsBetterTrinket(Item* newItem, Item* currentItem);
 };
 
