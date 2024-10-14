@@ -74,7 +74,7 @@
 #include "WhoAction.h"
 #include "WtsAction.h"
 #include "OpenItemAction.h"
-#include "ItemWeight.h"
+#include "ItemWeightAction.h"
 
 class ChatActionContext : public NamedObjectContext<Action>
 {
