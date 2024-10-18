@@ -64,6 +64,7 @@ void EquipAction::EquipItem(Item* item)
     uint8 slot = item->GetSlot();
     uint32 itemId = item->GetTemplate()->ItemId;
 
+    // Handle ammo
     if (item->GetTemplate()->InventoryType == INVTYPE_AMMO)
     {
         bot->SetAmmo(itemId);
@@ -81,7 +82,7 @@ void EquipAction::EquipItem(Item* item)
             {
                 uint16 src = ((bagIndex << 8) | slot);
                 uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
-                bot->SwapItem(src, dst);
+                bot->SwapItem(src, dst); // Keeping SwapItem for bags
                 equipedBag = true;
             }
         }
@@ -90,55 +91,63 @@ void EquipAction::EquipItem(Item* item)
         {
             uint16 equipSlot = 0;
 
-            // Use AI_VALUE2 to determine if the item is marked for equipping
+            // Use AI_VALUE2 to determine item usage
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", itemId);
-            if (usage == ITEM_USAGE_EQUIP)
+
+            // Handle trinkets
+            if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
             {
-                // Handle trinkets
-                if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
-                {
-                    if (AI_VALUE2(ItemUsage, "item usage", itemId) == ITEM_USAGE_EQUIP)
-                        equipSlot = EQUIPMENT_SLOT_TRINKET1;
-                    else if (AI_VALUE2(ItemUsage, "item usage", itemId) == ITEM_USAGE_EQUIP)
-                        equipSlot = EQUIPMENT_SLOT_TRINKET2;
-                }
+                // Equip or replace in the first available trinket slot
+                Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
+                Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
 
-                // Handle rings
-                else if (item->GetTemplate()->InventoryType == INVTYPE_FINGER)
+                if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
                 {
-                    if (AI_VALUE2(ItemUsage, "item usage", itemId) == ITEM_USAGE_EQUIP)
-                        equipSlot = EQUIPMENT_SLOT_FINGER1;
-                    else if (AI_VALUE2(ItemUsage, "item usage", itemId) == ITEM_USAGE_EQUIP)
-                        equipSlot = EQUIPMENT_SLOT_FINGER2;
+                    equipSlot = EQUIPMENT_SLOT_TRINKET1;
                 }
+                else if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
+                {
+                    equipSlot = EQUIPMENT_SLOT_TRINKET2;
+                }
+            }
 
+            // Handle rings
+            else if (item->GetTemplate()->InventoryType == INVTYPE_FINGER)
+            {
+                Item* ring1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_FINGER1);
+                Item* ring2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_FINGER2);
 
-                // If we have determined the correct slot, manually equip it
-                if (equipSlot != 0)
+                if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
                 {
-                    uint16 src = ((bagIndex << 8) | slot);
-                    uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | equipSlot);
-                    bot->SwapItem(src, dst);
+                    equipSlot = EQUIPMENT_SLOT_FINGER1;
                 }
-                else
+                else if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
                 {
-                    // Default to CMSG_AUTOEQUIP_ITEM for other items
-                    WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
-                    packet << bagIndex << slot;
-                    bot->GetSession()->HandleAutoEquipItemOpcode(packet);
+                    equipSlot = EQUIPMENT_SLOT_FINGER2;
                 }
+            }
+
+            // If we have determined the correct slot, manually equip it
+            if (equipSlot != 0)
+            {
+                uint16 src = ((bagIndex << 8) | slot);
+                bot->EquipItem(equipSlot, item, true);  // Use EquipItem to handle equipping
+            }
+            else
+            {
+                // Default to CMSG_AUTOEQUIP_ITEM for other items
+                WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
+                packet << bagIndex << slot;
+                bot->GetSession()->HandleAutoEquipItemOpcode(packet);
             }
         }
     }
 
+    // Notify the master that the bot is equipping the item
     std::ostringstream out;
     out << "equipping " << chat->FormatItem(item->GetTemplate());
     botAI->TellMaster(out);
 }
-
-
-
-
 
 bool EquipUpgradesAction::Execute(Event event)
 {
