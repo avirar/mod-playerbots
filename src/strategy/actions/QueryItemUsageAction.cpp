@@ -17,15 +17,18 @@ bool QueryItemUsageAction::Execute(Event event)
 
 uint32 QueryItemUsageAction::GetCount(ItemTemplate const* item)
 {
-    uint32 total = 0;
+    if (!item)  // Check if item template is valid
+        return 0;
 
+    uint32 total = 0;
     std::vector<Item*> items = InventoryAction::parseItems(item->Name1);
-    if (!items.empty())
+
+    if (items.empty())  // Check if parseItems returned a valid result
+        return 0;
+
+    for (std::vector<Item*>::iterator i = items.begin(); i != items.end(); ++i)
     {
-        for (std::vector<Item*>::iterator i = items.begin(); i != items.end(); ++i)
-        {
-            total += (*i)->GetCount();
-        }
+        total += (*i)->GetCount();
     }
 
     return total;
@@ -33,6 +36,10 @@ uint32 QueryItemUsageAction::GetCount(ItemTemplate const* item)
 
 std::string const QueryItemUsageAction::QueryItem(ItemTemplate const* item, uint32 count, uint32 total)
 {
+    if (!item)  // Ensure item template is valid
+    {
+        return "Invalid item";
+    }
     std::ostringstream out;
     std::string usage = QueryItemUsage(item);
     std::string const quest = QueryQuestItem(item->ItemId);
@@ -52,6 +59,10 @@ std::string const QueryItemUsageAction::QueryItem(ItemTemplate const* item, uint
 
 std::string const QueryItemUsageAction::QueryItemUsage(ItemTemplate const* item)
 {
+    if (!item)  // Ensure item template is valid
+    {
+        return "Invalid item";
+    }
     std::ostringstream out;
     out << item->ItemId;
     ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
