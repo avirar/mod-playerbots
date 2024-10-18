@@ -12,8 +12,45 @@
 
 bool QueryItemUsageAction::Execute(Event event)
 {
-    return true;
+    // Extract the parameter passed with the event (the text, which includes the item or quest link)
+    std::string text = event.getParam();
+
+    // Parse item IDs from the text
+    ItemIds itemIds = chat->parseItems(text);
+
+    // Check if any item IDs were found
+    if (!itemIds.empty())
+    {
+        // Use the first item ID found (if multiple are found)
+        uint32 itemId = *itemIds.begin();
+
+        // Get the item template from the item ID
+        ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(itemId);
+        if (!itemTemplate)  // Handle cases where the item is not found
+        {
+            botAI->TellMaster("Item not found.");
+            return false;
+        }
+
+        // Get the count of items the bot has
+        uint32 count = GetCount(itemTemplate);
+        uint32 total = bot->GetItemCount(itemId);
+
+        // Call QueryItem to get the item usage and related information
+        std::string output = QueryItem(itemTemplate, count, total);
+        
+        // Send the formatted output back to the master
+        botAI->TellMaster(output);
+
+        return true;  // Return true to indicate success
+    }
+
+    // If no valid item link is found in the input, notify the master
+    botAI->TellMaster("No valid item link found.");
+    return false;
 }
+
+
 
 uint32 QueryItemUsageAction::GetCount(ItemTemplate const* item)
 {
