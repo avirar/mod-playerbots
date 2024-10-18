@@ -45,8 +45,7 @@ bool QueryItemUsageAction::Execute(Event event)
         return true;  // Return true to indicate success
     }
 
-    // If no valid item link is found in the input, notify the master
-    botAI->TellMaster("No valid item link found.");
+    // If no valid item link is found in the input
     return false;
 }
 
