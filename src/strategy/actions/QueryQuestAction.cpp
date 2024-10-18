@@ -31,14 +31,16 @@ bool QueryQuestAction::Execute(Event event)
 
     PlayerbotChatHandler ch(bot);
     uint32 questId = ch.extractQuestId(text);
+
+    // If no questId is extracted, try to match the quest title in the quest log
     if (!questId)
     {
         for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
         {
             uint32 logQuest = bot->GetQuestSlotQuestId(slot);
-
             Quest const* quest = sObjectMgr->GetQuestTemplate(logQuest);
-            if (!quest)
+
+            if (!quest)  // Ensure that the quest is valid
                 continue;
 
             if (text.find(quest->GetTitle()) != std::string::npos)
@@ -49,13 +51,28 @@ bool QueryQuestAction::Execute(Event event)
         }
     }
 
+    // Check if a valid questId was found
+    if (!questId)
+    {
+        botAI->TellMaster("Quest not found.");
+        return false;
+    }
+
+    // Check if the quest template exists for the extracted questId
+    Quest const* questTemplate = sObjectMgr->GetQuestTemplate(questId);
+    if (!questTemplate)  // Ensure the quest is valid before proceeding
+    {
+        botAI->TellMaster("Invalid quest template.");
+        return false;
+    }
+
     for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         if (questId != bot->GetQuestSlotQuestId(slot))
             continue;
 
         std::ostringstream out;
-        out << "--- " << chat->FormatQuest(sObjectMgr->GetQuestTemplate(questId)) << " ";
+        out << "--- " << chat->FormatQuest(questTemplate) << " ";  // Safe to call FormatQuest now
 
         if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
         {
@@ -72,24 +89,21 @@ bool QueryQuestAction::Execute(Event event)
         if (travel)
         {
             uint32 limit = 0;
-            std::vector<TravelDestination*> allDestinations =
-                sTravelMgr->getQuestTravelDestinations(bot, questId, true, true, -1);
+            std::vector<TravelDestination*> allDestinations = sTravelMgr->getQuestTravelDestinations(bot, questId, true, true, -1);
 
-            std::sort(allDestinations.begin(), allDestinations.end(), [ptr_botpos](TravelDestination* i, TravelDestination* j) {return i->distanceTo(ptr_botpos) < j->distanceTo(ptr_botpos); });
+            std::sort(allDestinations.begin(), allDestinations.end(),
+                      [ptr_botpos](TravelDestination* i, TravelDestination* j) { return i->distanceTo(ptr_botpos) < j->distanceTo(ptr_botpos); });
+
             for (auto dest : allDestinations)
             {
                 if (limit > 50)
                     continue;
 
                 std::ostringstream out;
-
                 uint32 tpoints = dest->getPoints(true).size();
                 uint32 apoints = dest->getPoints().size();
 
-                out << round(dest->distanceTo(&botPos));
-                out << " to " << dest->getTitle();
-                out << " " << apoints;
-
+                out << round(dest->distanceTo(&botPos)) << " to " << dest->getTitle() << " " << apoints;
                 if (apoints < tpoints)
                     out << "/" << tpoints;
 
@@ -99,7 +113,6 @@ bool QueryQuestAction::Execute(Event event)
                     out << " not active";
 
                 botAI->TellMaster(out);
-
                 limit++;
             }
         }
@@ -109,6 +122,7 @@ bool QueryQuestAction::Execute(Event event)
 
     return false;
 }
+
 
 void QueryQuestAction::TellObjectives(uint32 questId)
 {
