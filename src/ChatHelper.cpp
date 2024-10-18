@@ -304,6 +304,12 @@ ItemIds ChatHelper::parseItems(std::string const text)
 
 std::string const ChatHelper::FormatQuest(Quest const* quest)
 {
+    // Check if the quest is null before trying to access its properties
+    if (!quest)
+    {
+        return "Invalid quest";  // Handle the case where the quest is null
+    }
+    
     std::ostringstream out;
     out << "|cFFFFFF00|Hquest:" << quest->GetQuestId() << ':' << quest->GetQuestLevel() << "|h[" << quest->GetTitle()
         << "]|h|r";
