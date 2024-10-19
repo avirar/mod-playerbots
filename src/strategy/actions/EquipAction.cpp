@@ -9,6 +9,7 @@
 #include "ItemCountValue.h"
 #include "ItemUsageValue.h"
 #include "Playerbots.h"
+#include "StatsWeightCalculator.h"
 
 bool EquipAction::Execute(Event event)
 {
@@ -97,40 +98,37 @@ void EquipAction::EquipItem(Item* item)
             // Handle trinkets
             if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
             {
-                // Equip or replace in the first available trinket slot
+                // Get currently equipped trinkets
                 Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
                 Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
 
-                if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
+                // Calculate the item score for the new trinket
+                StatsWeightCalculator calculator(bot);
+                float newItemScore = calculator.CalculateItem(item->GetTemplate()->ItemId);
+
+                // Calculate the item scores for the equipped trinkets
+                float trinket1Score = trinket1 ? calculator.CalculateItem(trinket1->GetTemplate()->ItemId) : 0;
+                float trinket2Score = trinket2 ? calculator.CalculateItem(trinket2->GetTemplate()->ItemId) : 0;
+
+                // Compare scores to determine which trinket to replace (if any)
+                if (newItemScore > trinket1Score || newItemScore > trinket2Score)
+                {
+                    // Replace the weaker of the two trinkets
+                    equipSlot = (trinket1Score < trinket2Score) ? EQUIPMENT_SLOT_TRINKET1 : EQUIPMENT_SLOT_TRINKET2;
+                }
+                else if (newItemScore > trinket1Score)
                 {
                     equipSlot = EQUIPMENT_SLOT_TRINKET1;
                 }
-                else if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
+                else if (newItemScore > trinket2Score)
                 {
                     equipSlot = EQUIPMENT_SLOT_TRINKET2;
                 }
             }
 
-            // Handle rings
-            else if (item->GetTemplate()->InventoryType == INVTYPE_FINGER)
-            {
-                Item* ring1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_FINGER1);
-                Item* ring2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_FINGER2);
-
-                if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
-                {
-                    equipSlot = EQUIPMENT_SLOT_FINGER1;
-                }
-                else if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE)
-                {
-                    equipSlot = EQUIPMENT_SLOT_FINGER2;
-                }
-            }
-
-            // If we have determined the correct slot, manually equip it
+            // If we have determined the correct slot, manually equip the new trinket
             if (equipSlot != 0)
             {
-                uint16 src = ((bagIndex << 8) | slot);
                 bot->EquipItem(equipSlot, item, true);  // Use EquipItem to handle equipping
             }
             else
@@ -143,11 +141,12 @@ void EquipAction::EquipItem(Item* item)
         }
     }
 
-    // Notify the master that the bot is equipping the item
+    // Notify the master about the equipped item
     std::ostringstream out;
     out << "equipping " << chat->FormatItem(item->GetTemplate());
     botAI->TellMaster(out);
 }
+
 
 bool EquipUpgradesAction::Execute(Event event)
 {
