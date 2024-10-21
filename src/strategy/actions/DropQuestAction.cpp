@@ -69,7 +69,7 @@ bool CleanQuestLogAction::Execute(Event event)
     }
 
     // Only output this message if "debug rpg" strategy is enabled
-    if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+    if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
     {
         botAI->TellMaster("Clean Quest Log command received, removing grey/trivial quests...");
     }
@@ -102,10 +102,10 @@ bool CleanQuestLogAction::Execute(Event event)
         }
 
         // Check if the quest is trivial (grey) for the bot
-        if ((botLevel - questLevel) >= 5)
+        if ((botLevel - questLevel) >= 6)
         {
             // Output only if "debug rpg" strategy is enabled
-            if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] will be removed because it is trivial (grey).");
             }
@@ -118,14 +118,14 @@ bool CleanQuestLogAction::Execute(Event event)
 
             numQuest--;
 
-            if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
                 const std::string text_quest = ChatHelper::FormatQuest(quest);
                 LOG_INFO("playerbots", "{} => Quest [ {} ] removed", bot->GetName(), quest->GetTitle());
                 bot->Say("Quest [ " + text_quest + " ] removed", LANG_UNIVERSAL);
             }
 
-            if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] has been removed.");
             }
@@ -133,7 +133,7 @@ bool CleanQuestLogAction::Execute(Event event)
         else
         {
             // Only output if "debug rpg" strategy is enabled
-            if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] is not trivial and will be kept.");
             }
