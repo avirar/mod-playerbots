@@ -140,7 +140,7 @@ ItemUsage ItemUsageValue::Calculate()
     // Need to add something like free bagspace or item value.
     if (proto->SellPrice > 0)
     {
-        if (proto->Quality > ITEM_QUALITY_NORMAL)
+        if (proto->Bonding != BIND_WHEN_PICKED_UP && proto->Quality > ITEM_QUALITY_NORMAL)
         {
             return ITEM_USAGE_AH;
         }
