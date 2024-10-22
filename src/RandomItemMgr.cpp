@@ -722,6 +722,14 @@ bool RandomItemMgr::CanEquipArmor(uint8 clazz, uint32 level, ItemTemplate const*
 {
     if (proto->InventoryType == INVTYPE_TABARD)
         return true;
+    
+    // Allow trinkets to always be equipped
+    if (proto->InventoryType == INVTYPE_TRINKET)
+        return true;
+
+    // Allow rings to always be equipped
+    if (proto->InventoryType == INVTYPE_FINGER)
+        return true;
 
     if ((clazz == CLASS_WARRIOR || clazz == CLASS_PALADIN || clazz == CLASS_SHAMAN) &&
         proto->SubClass == ITEM_SUBCLASS_ARMOR_SHIELD)
