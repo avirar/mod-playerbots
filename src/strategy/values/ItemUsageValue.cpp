@@ -398,7 +398,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
         {
             if (debugRpgEnabled)
             {
-                botAI->TellMaster("Bad Equip: " + std::to_string(itemProto->ItemId));
+                botAI->TellMaster("1 Bad Equip: " + std::to_string(itemProto->ItemId));
             }
             return ITEM_USAGE_BAD_EQUIP;
         }
@@ -481,7 +481,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                     else
                         if (debugRpgEnabled)
                         {
-                            botAI->TellMaster("Bad equip: " + std::to_string(itemProto->ItemId));
+                            botAI->TellMaster("2 Bad equip: " + std::to_string(itemProto->ItemId));
                         }
                         return ITEM_USAGE_BAD_EQUIP;
 
@@ -508,7 +508,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                 else
                     if (debugRpgEnabled)
                     {
-                        botAI->TellMaster("Bad equip: " + std::to_string(itemProto->ItemId));
+                        botAI->TellMaster("3 Bad equip: " + std::to_string(itemProto->ItemId));
                     }
                     return ITEM_USAGE_BAD_EQUIP;
             }
