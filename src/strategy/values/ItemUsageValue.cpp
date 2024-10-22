@@ -513,7 +513,16 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             }
             return ITEM_USAGE_EQUIP;
         }
-
+        // No item equiped
+    if (!oldItem)
+    {
+        if (shouldEquip)
+            return ITEM_USAGE_EQUIP;
+        else
+        {
+            return ITEM_USAGE_BAD_EQUIP;
+        }
+    }
     ItemTemplate const* oldItemProto = oldItem->GetTemplate();
     float oldScore = calculator.CalculateItem(oldItemProto->ItemId);
     if (oldItem)
