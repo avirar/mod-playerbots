@@ -147,7 +147,7 @@ ItemUsage ItemUsageValue::Calculate()
     {
         if (debugRpgEnabled)
         {
-            botAI->TellMaster("I will equip the item: " + std::to_string(proto->ItemId));
+            botAI->TellMaster("Calc: Item has some use: " + std::to_string(proto->ItemId));
         }
         return equip;
     }
@@ -373,35 +373,79 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     
     float itemScore = calculator.CalculateItem(itemProto->ItemId);
     if (itemScore)
+        if (debugRpgEnabled)  // Ensure debug mode is enabled to avoid unnecessary messages
+        {
+            botAI->TellMaster("The item score of " + std::to_string(itemProto->ItemId) + " is " + std::to_string(itemScore));
+            botAI->TellMaster("shouldEquip = true");
+        }
         shouldEquip = true;
 
-    if (itemProto->Class == ITEM_CLASS_WEAPON && !sRandomItemMgr->CanEquipWeapon(bot->getClass(), itemProto))
-        shouldEquip = false;
-    if (itemProto->Class == ITEM_CLASS_ARMOR &&
-        !sRandomItemMgr->CanEquipArmor(bot->getClass(), bot->GetLevel(), itemProto))
-        shouldEquip = false;
+    if (itemProto->Class == ITEM_CLASS_WEAPON)
+    {
+        bool canEquipWeapon = sRandomItemMgr->CanEquipWeapon(bot->getClass(), itemProto);
+        if (!canEquipWeapon)
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Cannot equip weapon: " + std::to_string(itemProto->ItemId));
+            }
+            shouldEquip = false;
+        }
+        else
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Can equip weapon: " + std::to_string(itemProto->ItemId));
+            }
+        }
+    }
+
+    if (itemProto->Class == ITEM_CLASS_ARMOR)
+    {
+        bool canEquipArmor = sRandomItemMgr->CanEquipArmor(bot->getClass(), bot->GetLevel(), itemProto);
+        if (!canEquipArmor)
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Cannot equip armor: " + std::to_string(itemProto->ItemId));
+            }
+            shouldEquip = false;
+        }
+        else
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Can equip armor: " + std::to_string(itemProto->ItemId));
+            }
+        }
+    }
+
 
     Item* oldItem = bot->GetItemByPos(dest);
 
     // No item equiped
     if (!oldItem)
     {
-        if (shouldEquip)
+        if (debugRpgEnabled)
         {
-            if (debugRpgEnabled)
-            {
-                botAI->TellMaster("Equip: " + std::to_string(itemProto->ItemId));
-            }
-            return ITEM_USAGE_EQUIP;
+            botAI->TellMaster("No item equipped in slot: " + std::to_string(dest));
         }
-        else
-        {
-            if (debugRpgEnabled)
+            if (shouldEquip)
             {
-                botAI->TellMaster("1 Bad Equip: " + std::to_string(itemProto->ItemId));
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Equip: " + std::to_string(itemProto->ItemId));
+                }
+                return ITEM_USAGE_EQUIP;
             }
-            return ITEM_USAGE_BAD_EQUIP;
-        }
+            else
+            {
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("1 Bad Equip: " + std::to_string(itemProto->ItemId));
+                }
+                return ITEM_USAGE_BAD_EQUIP;
+            }
     }
 
     ItemTemplate const* oldItemProto = oldItem->GetTemplate();
