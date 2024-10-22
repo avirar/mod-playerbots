@@ -252,11 +252,18 @@ ItemUsage ItemUsageValue::Calculate()
 ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 {
     bool debugRpgEnabled = botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT);
-    if (bot->CanUseItem(itemProto) != EQUIP_ERR_OK)
+    
+    // Capture the result of CanUseItem
+    InventoryResult canUseResult = bot->CanUseItem(itemProto);
+    
+    // Check if the result is not EQUIP_ERR_OK
+    if (canUseResult != EQUIP_ERR_OK)
     {
         if (debugRpgEnabled)
         {
-            botAI->TellMaster("No EQUIP_ERR_OK: " + std::to_string(itemProto->ItemId));
+            // Notify the master of the specific error
+            botAI->TellMaster("1 Cannot equip item (ID: " + std::to_string(itemProto->ItemId) + 
+                              ") due to error: " + std::to_string(canUseResult));
         }
         return ITEM_USAGE_NONE;
     }
@@ -289,7 +296,8 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     {
         if (debugRpgEnabled)
         {
-            botAI->TellMaster("No EQUIP_ERR_OK: " + std::to_string(itemProto->ItemId));
+            botAI->TellMaster("2 Cannot equip item (ID: " + std::to_string(itemProto->ItemId) + 
+                  ") due to error: " + std::to_string(result));
         }        
         return ITEM_USAGE_NONE;
     }
