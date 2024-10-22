@@ -423,12 +423,12 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
     Item* oldItem = bot->GetItemByPos(dest);
 
-    // No item equiped
-    if (!oldItem)
+    // No item equiped and destination slot is not 0
+    if (!oldItem && dest != 0)
     {
         if (debugRpgEnabled)
         {
-            botAI->TellMaster("No item equipped in slot: " + std::to_string(dest));
+            botAI->TellMaster("No item equipped in slot already" + std::to_string(dest));
         }
             if (shouldEquip)
             {
@@ -447,6 +447,72 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                 return ITEM_USAGE_BAD_EQUIP;
             }
     }
+    //No item equipped and destination slot is 0
+    //This occurs because CanEquipItem fails for unique items that are already in the bots bags but not equipped
+    //oldItem can't be trusted in this state since the value of dest has been 0
+    //We will check for trinkets manually, compare them, set dest to the slot of the weakest trinket, and reevaluate oldItem
+    if (!oldItem && dest == 0)
+        // Check if the item is a trinket
+        if (itemProto->InventoryType == INVTYPE_TRINKET)
+        {
+            uint16 dest = NULL_SLOT;
+    
+            // Check if the first trinket slot is available or has a worse item
+            Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
+            Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
+
+            if (!trinket1)  // First trinket slot is empty
+            {
+                dest = EQUIPMENT_SLOT_TRINKET1;
+            }
+            else if (!trinket2)  // Second trinket slot is empty
+            {
+                dest = EQUIPMENT_SLOT_TRINKET2;
+            }
+            else  // Both slots are occupied, compare the trinkets
+            {
+                // Compare the existing trinkets and select the weaker one to replace
+                ItemTemplate const* oldTrinket1Proto = trinket1->GetTemplate();
+                ItemTemplate const* oldTrinket2Proto = trinket2->GetTemplate();
+
+                // Use your item scoring system or comparison logic to determine which trinket to replace
+                StatsWeightCalculator calculator(bot);
+                float oldTrinket1Score = calculator.CalculateItem(oldTrinket1Proto->ItemId);
+                float oldTrinket2Score = calculator.CalculateItem(oldTrinket2Proto->ItemId);
+                float newTrinketScore = calculator.CalculateItem(itemProto->ItemId);
+
+                if (newTrinketScore > oldTrinket1Score)
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("New trinket is better than first trinket slot");
+                    }
+                    dest = EQUIPMENT_SLOT_TRINKET1;  // Replace first trinket
+                }
+                else if (newTrinketScore > oldTrinket2Score)
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("New trinket is better than second trinket slot");
+                    }
+                    dest = EQUIPMENT_SLOT_TRINKET2;  // Replace second trinket
+                }
+                else
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("New trinket is not better");
+                    }
+                    return ITEM_USAGE_NONE;  // The new trinket is not better than either equipped trinket
+                }
+            }
+            // Successfully equip the trinket
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Should replace trinket in slot: " + std::to_string(dest) + ", with new item " + std::to_string(itemProto->ItemId));
+            }
+            return ITEM_USAGE_EQUIP;
+        }
 
     ItemTemplate const* oldItemProto = oldItem->GetTemplate();
     float oldScore = calculator.CalculateItem(oldItemProto->ItemId);
