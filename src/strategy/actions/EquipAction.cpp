@@ -9,6 +9,7 @@
 #include "ItemCountValue.h"
 #include "ItemUsageValue.h"
 #include "Playerbots.h"
+#include "StatsWeightCalculator.h"
 
 bool EquipAction::Execute(Event event)
 {
@@ -64,13 +65,58 @@ void EquipAction::EquipItem(Item* item)
     uint8 slot = item->GetSlot();
     uint32 itemId = item->GetTemplate()->ItemId;
 
+    // Check if the item is a trinket
+    if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
+    {
+        Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
+        Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
+
+        // Check if trinket slots are empty and equip if so
+        if (!trinket1)
+        {
+            bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
+            botAI->TellMaster("Equipping new trinket in slot 1: " + chat->FormatItem(item->GetTemplate()));
+            return;
+        }
+        else if (!trinket2)
+        {
+            bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
+            botAI->TellMaster("Equipping new trinket in slot 2: " + chat->FormatItem(item->GetTemplate()));
+            return;
+        }
+
+        // Debug message to indicate both slots are occupied
+        botAI->TellMaster("Both trinket slots are occupied.");
+
+        // Compare and replace the weaker trinket in slot 1 or 2
+        if (IsBetterTrinket(item, trinket1))
+        {
+            bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
+            botAI->TellMaster("Replacing trinket 1: " + chat->FormatItem(trinket1->GetTemplate()) + 
+                              " with new trinket: " + chat->FormatItem(item->GetTemplate()));
+            return;
+        }
+        else if (IsBetterTrinket(item, trinket2))
+        {
+            bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
+            botAI->TellMaster("Replacing trinket 2: " + chat->FormatItem(trinket2->GetTemplate()) + 
+                              " with new trinket: " + chat->FormatItem(item->GetTemplate()));
+            return;
+        }
+
+        // No upgrade found for either slot
+        botAI->TellMaster("New trinket is not better than the currently equipped trinkets.");
+        return;
+    }
+
+    // Handle other item types (existing logic)
     if (item->GetTemplate()->InventoryType == INVTYPE_AMMO)
     {
         bot->SetAmmo(itemId);
     }
     else
     {
-        bool equipedBag = false;
+        bool equippedBag = false;
         if (item->GetTemplate()->Class == ITEM_CLASS_CONTAINER)
         {
             Bag* pBag = (Bag*)&item;
@@ -80,11 +126,11 @@ void EquipAction::EquipItem(Item* item)
                 uint16 src = ((bagIndex << 8) | slot);
                 uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
                 bot->SwapItem(src, dst);
-                equipedBag = true;
+                equippedBag = true;
             }
         }
 
-        if (!equipedBag)
+        if (!equippedBag)
         {
             WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
             packet << bagIndex << slot;
@@ -92,9 +138,25 @@ void EquipAction::EquipItem(Item* item)
         }
     }
 
+    // Whisper master when equipping an item
     std::ostringstream out;
-    out << "equipping " << chat->FormatItem(item->GetTemplate());
-    botAI->TellMaster(out);
+    out << "Equipping " << chat->FormatItem(item->GetTemplate());
+    botAI->TellMaster(out.str());
+}
+
+
+// Helper function to compare trinkets
+bool EquipAction::IsBetterTrinket(Item* newItem, Item* currentItem)
+{
+    if (!currentItem)
+        return true;  // No trinket equipped, so the new one is better
+
+    // Use the StatsWeightCalculator to compare item scores
+    StatsWeightCalculator calculator(bot);
+    float newItemScore = calculator.CalculateItem(newItem->GetTemplate()->ItemId);
+    float currentItemScore = calculator.CalculateItem(currentItem->GetTemplate()->ItemId);
+
+    return newItemScore > currentItemScore;
 }
 
 bool EquipUpgradesAction::Execute(Event event)
