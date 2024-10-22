@@ -294,13 +294,45 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
     if (result != EQUIP_ERR_OK)
     {
-        if (debugRpgEnabled)
+        // Check if the error is EQUIP_ERR_CANT_CARRY_MORE_OF_THIS
+        if (result == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS)
         {
-            botAI->TellMaster("2 Cannot equip item (ID: " + std::to_string(itemProto->ItemId) + 
-                  ") due to error: " + std::to_string(result));
-        }        
-        return ITEM_USAGE_NONE;
+            // Count the number of the item the bot already has (in bags or equipped)
+            uint32 itemCount = bot->GetItemCount(itemProto->ItemId, true);  // true counts both equipped and in bags
+        
+            // Allow the bot to equip the unique item if it has 1 or fewer
+            if (itemCount <= 1)
+            {
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Continue evaluation of item (ID: " + std::to_string(itemProto->ItemId) +
+                                  ") despite EQUIP_ERR_CANT_CARRY_MORE_OF_THIS because itemCount is " +
+                                  std::to_string(itemCount));
+                }
+            }
+            else
+            {
+                // Notify the master that the bot can't equip more of this item
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Cannot equip more of this item (ID: " + std::to_string(itemProto->ItemId) +
+                                  ") because itemCount is " + std::to_string(itemCount));
+                }
+                return ITEM_USAGE_NONE;  // Item is not used in this case
+            }
+        }
+        else
+        {
+            // For other errors, log the error and return
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Error equipping item (ID: " + std::to_string(itemProto->ItemId) +
+                              ") due to error: " + std::to_string(result));
+            }
+            return ITEM_USAGE_NONE;  // Item is not used in case of other errors
+        }
     }
+
 
     if (itemProto->Class == ITEM_CLASS_QUIVER)
         if (bot->getClass() != CLASS_HUNTER)
