@@ -14,21 +14,40 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 #include "StatsWeightCalculator.h"
+#include "Item.h"
 
 ItemUsage ItemUsageValue::Calculate()
 {
+    bool debugRpgEnabled = botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT);
     uint32 itemId = atoi(qualifier.c_str());
     if (!itemId)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("Invalid item ID detected: " + qualifier);
+        }
         return ITEM_USAGE_NONE;
+    }
 
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
     if (!proto)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("Item template not found for item ID: " + std::to_string(itemId));
+        }
         return ITEM_USAGE_NONE;
-
+    }
     if (botAI->HasActivePlayerMaster())
     {
         if (IsItemUsefulForSkill(proto) || IsItemNeededForSkill(proto))
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Item is useful or needed for skill: " + std::to_string(itemId));
+            }
             return ITEM_USAGE_SKILL;
+        }
     }
     else
     {
@@ -56,14 +75,32 @@ ItemUsage ItemUsageValue::Calculate()
         {
             float stacks = CurrentStacks(proto);
             if (stacks < 1)
+            {
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("I don't have enough of item: " + std::to_string(proto->ItemId) + ", will try to acquire more.");
+                }
                 return ITEM_USAGE_SKILL;  // Buy more.
+            }
             if (stacks < 2)
+            {
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("I have less than 2 stacks of item: " + std::to_string(proto->ItemId) + ", keeping current amount.");
+                }
                 return ITEM_USAGE_KEEP;  // Keep current amount.
+            }
         }
     }
 
     if (proto->Class == ITEM_CLASS_KEY)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("I found a key item: " + std::to_string(proto->ItemId) + " and will use it.");
+        }
         return ITEM_USAGE_USE;
+    }
 
     if (proto->Class == ITEM_CLASS_CONSUMABLE)
     {
@@ -77,30 +114,66 @@ ItemUsage ItemUsageValue::Calculate()
                 stacks += CurrentStacks(proto);
 
                 if (stacks < 2)
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("I don't have enough of item: " + std::to_string(proto->ItemId) + ", will try to acquire more.");
+                    }
                     return ITEM_USAGE_USE;  // Buy some to get to 2 stacks
+                }
                 else if (stacks < 3)        // Keep the item if less than 3 stacks
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("I have less than 2 stacks of item: " + std::to_string(proto->ItemId) + ", keeping current amount.");
+                    }
                     return ITEM_USAGE_KEEP;
+                }
             }
         }
     }
 
     if (bot->GetGuildId() && sGuildTaskMgr->IsGuildTaskItem(itemId, bot->GetGuildId()))
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("I found an item required for a guild task: " + std::to_string(itemId));
+        }
         return ITEM_USAGE_GUILD_TASK;
+    }
 
     ItemUsage equip = QueryItemUsageForEquip(proto);
     if (equip != ITEM_USAGE_NONE)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("I will equip the item: " + std::to_string(proto->ItemId));
+        }
         return equip;
+    }
 
     if ((proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
         proto->Bonding != BIND_WHEN_PICKED_UP && botAI->HasSkill(SKILL_ENCHANTING) &&
         proto->Quality >= ITEM_QUALITY_UNCOMMON)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("I will disenchant the item: " + std::to_string(proto->ItemId));
+        }
         return ITEM_USAGE_DISENCHANT;
+    }
 
     // While sync is on, do not loot quest items that are also Useful for master. Master
     if (!botAI->GetMaster() || !sPlayerbotAIConfig->syncQuestWithPlayer ||
         !IsItemUsefulForQuest(botAI->GetMaster(), proto))
         if (IsItemUsefulForQuest(bot, proto))
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("I will keep the item for a quest: " + std::to_string(proto->ItemId));
+            }
             return ITEM_USAGE_QUEST;
+        }
 
     if (proto->Class == ITEM_CLASS_PROJECTILE && bot->CanUseItem(proto) == EQUIP_ERR_OK)
         if (bot->getClass() == CLASS_HUNTER || bot->getClass() == CLASS_ROGUE || bot->getClass() == CLASS_WARRIOR)
@@ -129,9 +202,21 @@ ItemUsage ItemUsageValue::Calculate()
                         ammo += CurrentStacks(proto);
 
                         if (ammo < needAmmo)  // Buy ammo to get to the proper supply
+                        {
+                            if (debugRpgEnabled)
+                            {
+                                botAI->TellMaster("I need more ammo for item: " + std::to_string(proto->ItemId));
+                            }
                             return ITEM_USAGE_AMMO;
+                        }
                         else if (ammo < needAmmo + 1)
+                        {
+                            if (debugRpgEnabled)
+                            {
+                                botAI->TellMaster("I will keep the ammo for item: " + std::to_string(proto->ItemId));
+                            }
                             return ITEM_USAGE_KEEP;  // Keep the ammo until we have too much.
+                        }
                     }
                 }
             }
@@ -142,28 +227,58 @@ ItemUsage ItemUsageValue::Calculate()
     {
         if (proto->Bonding != BIND_WHEN_PICKED_UP && proto->Quality > ITEM_QUALITY_NORMAL)
         {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("I will sell the item at the Auction House: " + std::to_string(proto->ItemId));
+            }
             return ITEM_USAGE_AH;
         }
         else
         {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("I will sell the item to a vendor: " + std::to_string(proto->ItemId));
+            }
             return ITEM_USAGE_VENDOR;
         }
     }
-
+    if (debugRpgEnabled)
+    {
+        botAI->TellMaster("No usage found for item: " + std::to_string(proto->ItemId));
+    }
     return ITEM_USAGE_NONE;
 }
 
 ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 {
+    bool debugRpgEnabled = botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT);
     if (bot->CanUseItem(itemProto) != EQUIP_ERR_OK)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("No EQUIP_ERR_OK: " + std::to_string(itemProto->ItemId));
+        }
         return ITEM_USAGE_NONE;
+    }
 
     if (itemProto->InventoryType == INVTYPE_NON_EQUIP)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("Not Equippable: " + std::to_string(itemProto->ItemId));
+        }
         return ITEM_USAGE_NONE;
+    }
 
     Item* pItem = Item::CreateItem(itemProto->ItemId, 1, bot, false, 0, true);
     if (!pItem)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("Unable to create: " + std::to_string(itemProto->ItemId));
+        }        
         return ITEM_USAGE_NONE;
+    }
 
     uint16 dest;
     InventoryResult result = botAI->CanEquipItem(NULL_SLOT, dest, pItem, true, true);
@@ -171,11 +286,23 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     delete pItem;
 
     if (result != EQUIP_ERR_OK)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("No EQUIP_ERR_OK: " + std::to_string(itemProto->ItemId));
+        }        
         return ITEM_USAGE_NONE;
+    }
 
     if (itemProto->Class == ITEM_CLASS_QUIVER)
         if (bot->getClass() != CLASS_HUNTER)
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Item is quiver and bot is not a hunter: " + std::to_string(itemProto->ItemId));
+            }
             return ITEM_USAGE_NONE;
+        }
 
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
@@ -184,8 +311,17 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                                      // only replace if non-bag is larger than bag.
 
         if (GetSmallestBagSize() >= itemProto->ContainerSlots)
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("New bag is smaller than current smallest bag: " + std::to_string(itemProto->ItemId));
+            }
             return ITEM_USAGE_NONE;
-
+        }
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("New bag is larger than current smallest bag: " + std::to_string(itemProto->ItemId));
+        }
         return ITEM_USAGE_EQUIP;
     }
 
@@ -211,9 +347,19 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     if (!oldItem)
     {
         if (shouldEquip)
+        {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Equip: " + std::to_string(itemProto->ItemId));
+            }
             return ITEM_USAGE_EQUIP;
+        }
         else
         {
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Bad Equip: " + std::to_string(itemProto->ItemId));
+            }
             return ITEM_USAGE_BAD_EQUIP;
         }
     }
@@ -277,10 +423,26 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                 if (oldItemProto->SubClass <= itemProto->SubClass)
                 {
                     if (itemIsBroken && !oldItemIsBroken)
+                    {
+                        if (debugRpgEnabled)
+                        {
+                            botAI->TellMaster("Old item is broken, will equip: " + std::to_string(itemProto->ItemId));
+                        }
                         return ITEM_USAGE_BROKEN_EQUIP;
+                    }
                     else if (shouldEquip)
+                    {
+                        if (debugRpgEnabled)
+                        {
+                            botAI->TellMaster("Old item is weaker, will equip: " + std::to_string(itemProto->ItemId));
+                        }
                         return ITEM_USAGE_REPLACE;
+                    }
                     else
+                        if (debugRpgEnabled)
+                        {
+                            botAI->TellMaster("Bad equip: " + std::to_string(itemProto->ItemId));
+                        }
                         return ITEM_USAGE_BAD_EQUIP;
 
                     break;
@@ -288,10 +450,26 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             default:
             {
                 if (itemIsBroken && !oldItemIsBroken)
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Old item is broken, new item is broken too: " + std::to_string(itemProto->ItemId));
+                    }
                     return ITEM_USAGE_BROKEN_EQUIP;
+                }
                 else if (shouldEquip)
+                {
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Equip: " + std::to_string(itemProto->ItemId));
+                    }
                     return ITEM_USAGE_EQUIP;
+                }
                 else
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Bad equip: " + std::to_string(itemProto->ItemId));
+                    }
                     return ITEM_USAGE_BAD_EQUIP;
             }
         }
@@ -299,8 +477,17 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
     // Item is not better but current item is broken and new one is not.
     if (oldItemIsBroken && !itemIsBroken)
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("Old item is broken, new item is not and will be equipped: " + std::to_string(itemProto->ItemId));
+        }
         return ITEM_USAGE_EQUIP;
-
+    }
+    if (debugRpgEnabled)
+    {
+        botAI->TellMaster("No usage found: " + std::to_string(itemProto->ItemId));
+    }
     return ITEM_USAGE_NONE;
 }
 
