@@ -68,19 +68,24 @@ void EquipAction::EquipItem(Item* item)
     // Check if the item is a trinket
     if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
     {
+        // Retrieve current trinkets in the two trinket slots
         Item* trinket1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET1);
         Item* trinket2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_TRINKET2);
 
-        // Check if trinket slots are empty and equip if so
-        if (!trinket1)
+        // Check if trinket slots are empty and auto-equip the new trinket if so
+        if (!trinket1)  // First trinket slot is empty
         {
-            bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
+            WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
+            packet << bagIndex << slot;
+            bot->GetSession()->HandleAutoEquipItemOpcode(packet);
             botAI->TellMaster("Equipping new trinket in slot 1: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
-        else if (!trinket2)
+        else if (!trinket2)  // Second trinket slot is empty
         {
-            bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
+            WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
+            packet << bagIndex << slot;
+            bot->GetSession()->HandleAutoEquipItemOpcode(packet);
             botAI->TellMaster("Equipping new trinket in slot 2: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
@@ -88,18 +93,22 @@ void EquipAction::EquipItem(Item* item)
         // Debug message to indicate both slots are occupied
         botAI->TellMaster("Both trinket slots are occupied.");
 
-        // Compare and replace the weaker trinket in slot 1 or 2
-        if (IsBetterTrinket(item, trinket1))
+        // Compare and replace the weaker trinket in slot 1 or 2 using SwapItem
+        if (IsBetterTrinket(item, trinket1))  // Replace first trinket if the new one is better
         {
-            bot->EquipItem(EQUIPMENT_SLOT_TRINKET1, item, true);
-            botAI->TellMaster("Replacing trinket 1: " + chat->FormatItem(trinket1->GetTemplate()) + 
+            uint16 src = ((bagIndex << 8) | slot);  // Source is from the current bag/slot
+            uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | EQUIPMENT_SLOT_TRINKET1);  // Destination is trinket slot 1
+            bot->SwapItem(src, dst);
+            botAI->TellMaster("Replacing trinket 1: " + chat->FormatItem(trinket1->GetTemplate()) +
                               " with new trinket: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
-        else if (IsBetterTrinket(item, trinket2))
+        else if (IsBetterTrinket(item, trinket2))  // Replace second trinket if the new one is better
         {
-            bot->EquipItem(EQUIPMENT_SLOT_TRINKET2, item, true);
-            botAI->TellMaster("Replacing trinket 2: " + chat->FormatItem(trinket2->GetTemplate()) + 
+            uint16 src = ((bagIndex << 8) | slot);  // Source is from the current bag/slot
+            uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | EQUIPMENT_SLOT_TRINKET2);  // Destination is trinket slot 2
+            bot->SwapItem(src, dst);
+            botAI->TellMaster("Replacing trinket 2: " + chat->FormatItem(trinket2->GetTemplate()) +
                               " with new trinket: " + chat->FormatItem(item->GetTemplate()));
             return;
         }
@@ -119,7 +128,7 @@ void EquipAction::EquipItem(Item* item)
         bool equippedBag = false;
         if (item->GetTemplate()->Class == ITEM_CLASS_CONTAINER)
         {
-            Bag* pBag = (Bag*)&item;
+            Bag* pBag = (Bag*)item;
             uint8 newBagSlot = GetSmallestBagSlot();
             if (newBagSlot > 0)
             {
@@ -143,6 +152,7 @@ void EquipAction::EquipItem(Item* item)
     out << "Equipping " << chat->FormatItem(item->GetTemplate());
     botAI->TellMaster(out.str());
 }
+
 
 
 // Helper function to compare trinkets
