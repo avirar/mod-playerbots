@@ -93,6 +93,14 @@ void EquipAction::EquipItem(Item* item)
         // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
         if (!bot->CanDualWield() || !bot->CanTitanGrip())
         {
+            if (!bot->CanDualWield())
+            {
+                botAI->TellMaster("Bot cannot dual wield.");
+            }
+            else
+            {
+                botAI->TellMaster("Bot can dual wield.");
+            }
             // If bot cannot dual wield or Titan's Grip, only use the main-hand slot
             slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
         }
