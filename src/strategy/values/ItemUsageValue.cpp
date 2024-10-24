@@ -616,7 +616,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
                 if (debugRpgEnabled)
                 {
-                    botAI->TellMaster("2H Staff cannot be dual-wielded, Titan's Grip does not apply.");
+                    botAI->TellMaster("2H Staff cannot be dual-wielded, even with Titan's Grip. Off-hand usage does not apply. shouldEquip = false");
                 }
 
                 // Compare only the main-hand score
@@ -699,7 +699,12 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             isBetter = true;
             if (debugRpgEnabled)
             {
-                botAI->TellMaster("New weapon is better. isBetter = true");
+                std::ostringstream out;
+                out << "New weapon is better. isBetter = true. "
+                    << "ItemScore: " << itemScore 
+                    << ", OldScore (Main-hand): " << oldScore
+                    << ", OldScore2 (Off-hand): " << oldScore2;
+                botAI->TellMaster(out.str());
             }
         }
         else  // For non-ring, non-weapon items, just compare with the primary slot
