@@ -752,7 +752,32 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             }
         }
     }
-
+    else  // Fallback for all other item types that are not rings or weapons
+    {
+        if (itemScore > oldScore)
+        {
+            isBetter = true;
+            if (debugRpgEnabled)
+            {
+                std::ostringstream out;
+                out << "New item is better. isBetter = true. "
+                    << "ItemScore: " << itemScore 
+                    << ", OldScore: " << oldScore;
+                botAI->TellMaster(out.str());
+            }
+        }
+        else
+        {
+            if (debugRpgEnabled)
+            {
+                std::ostringstream out;
+                out << "New item is not better. isBetter = false. "
+                    << "ItemScore: " << itemScore 
+                    << ", OldScore: " << oldScore;
+                botAI->TellMaster(out.str());
+            }
+        }
+    }
     // else if (newItemPower == oldScore && itemProto->Quality > oldItemProto->Quality)
     //     isBetter = true;
     // else if (newItemPower == oldScore && itemProto->Quality == oldItemProto->Quality && itemProto->ItemId >
