@@ -552,84 +552,100 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     else if (itemProto->InventoryType == INVTYPE_WEAPON || 
          itemProto->InventoryType == INVTYPE_2HWEAPON || 
          itemProto->InventoryType == INVTYPE_WEAPONMAINHAND || 
-         itemProto->InventoryType == INVTYPE_WEAPONOFFHAND)
+         itemProto->InventoryType == INVTYPE_WEAPONOFFHAND ||
+         itemProto->InventoryType == INVTYPE_SHIELD)  // Add handling for shields
     {
-        bool hasTitanGrip = bot->HasSpell(46917);  // Titan's Grip spell ID, only relevant for Fury Warriors
+        bool hasTitanGrip = bot->CanTitanGrip();   // Use CanTitanGrip() to check for Titan's Grip ability
+        bool canDualWield = bot->CanDualWield();   // Check if the bot can dual-wield (Rogues, Warriors, etc.)
         bool isTwoHanded = itemProto->InventoryType == INVTYPE_2HWEAPON;
+        bool isShield = itemProto->InventoryType == INVTYPE_SHIELD;  // Check if the item is a shield
 
-        // Try to get the second weapon (off-hand) slot's item if applicable
-        Item* oldItem2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+            // Try to get the second weapon (off-hand) slot's item
+            Item* oldItem2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
 
-        // If the bot can equip two-handed weapons in both hands (Titan's Grip)
-        if (hasTitanGrip && isTwoHanded)
-        {
-            if (oldItem2)
+            // If the item is a shield, handle it separately
+            if (isShield)
             {
-                ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
-                oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+                if (oldItem2)
+                {
+                    ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+                    oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Off-hand shield score: " + std::to_string(oldScore2));
+                    }
+                }
 
                 if (debugRpgEnabled)
                 {
-                    botAI->TellMaster("Off-hand 2H weapon score: " + std::to_string(oldScore2));
+                    botAI->TellMaster("Main-hand weapon score: " + std::to_string(oldScore));
+                }
+
+                // Shields are in off-hand, so comparison between weapons and shields should be handled separately
+                if (itemScore > oldScore2)
+                {
+                    shouldEquip = true;
+                    botAI->TellMaster("New shield is better, shouldEquip = true.");
                 }
             }
+            else if (hasTitanGrip && isTwoHanded)  // Handle Titan's Grip with 2H weapons
+            {
+                if (oldItem2)
+                {
+                    ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+                    oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
 
-            if (debugRpgEnabled)
-            {
-                botAI->TellMaster("Main-hand 2H weapon score: " + std::to_string(oldScore));
-            }
-        }
-        else if (!isTwoHanded || (isTwoHanded && !hasTitanGrip))  // Handle normal weapon dual-wielding (1H weapons)
-        {
-            if (oldItem2)
-            {
-                ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
-                oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Off-hand 2H weapon score: " + std::to_string(oldScore2));
+                    }
+                }
 
                 if (debugRpgEnabled)
                 {
-                    botAI->TellMaster("Off-hand weapon score: " + std::to_string(oldScore2));
+                    botAI->TellMaster("Main-hand 2H weapon score: " + std::to_string(oldScore));
+                }
+
+                if (itemScore > oldScore || itemScore > oldScore2)
+                {
+                    shouldEquip = true;
+                    botAI->TellMaster("New 2H weapon is better, shouldEquip = true.");
                 }
             }
-
-            if (debugRpgEnabled)
+            else if (!isTwoHanded || (isTwoHanded && !hasTitanGrip))  // Handle normal weapon dual-wielding (1H weapons)
             {
-            botAI->TellMaster("Main-hand weapon score: " + std::to_string(oldScore));
-            }
+                if (oldItem2)
+                {
+                    ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+                    oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+        
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("Off-hand weapon score: " + std::to_string(oldScore2));
+                    }
+                }
 
-            // Special case for 2H weapon replacing both hands when Titan's Grip is not active
-            if (isTwoHanded && !hasTitanGrip)
-            {
-                oldScore2 = 0.0f;  // 2H weapon occupies both slots, so we can disregard off-hand score
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Main-hand weapon score: " + std::to_string(oldScore));
+                }
+        
+                // Special case for 2H weapon replacing both hands when Titan's Grip is not active
+                if (isTwoHanded && !hasTitanGrip)
+                {
+                    oldScore2 = 0.0f;  // 2H weapon occupies both slots, so we disregard off-hand score
+                }
+        
+                // Now compare scores for dual-wielded or one-handed weapons
+                if (itemScore > oldScore || itemScore > oldScore2)
+                {
+                    shouldEquip = true;
+                    botAI->TellMaster("New weapon is better, shouldEquip = true.");
+                }
             }
-        }
     }
 
-    // Now you can use oldScore and oldScore2 in your comparison logic.
-
-
-    if (oldItem)  // Ensure there is an old item equipped
-    {
-        if (debugRpgEnabled)
-        {
-            botAI->TellMaster("New item score: " + std::to_string(itemScore));
-        }
-
-        if (itemScore || oldScore || oldScore2)  // Check if any of the scores are valid
-        {
-            // Determine whether the new item should be equipped based on the comparison of scores
-            shouldEquip = (itemScore > oldScore * sPlayerbotAIConfig->equipUpgradeThreshold) ||
-                      (itemScore > oldScore2 * sPlayerbotAIConfig->equipUpgradeThreshold);
-                      
-            if (debugRpgEnabled)
-            {
-                if (shouldEquip)
-                    botAI->TellMaster("New item is better. shouldEquip = true.");
-                else
-                    botAI->TellMaster("Current items are better. Keeping current items.");
-            }
-        }
-    }
 
     // Bigger quiver
     if (itemProto->Class == ITEM_CLASS_QUIVER)
