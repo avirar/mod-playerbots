@@ -693,35 +693,61 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
          itemProto->InventoryType == INVTYPE_WEAPONMAINHAND || 
          itemProto->InventoryType == INVTYPE_WEAPONOFFHAND)  // Check if the item is a weapon
     {
-        // Compare with both main-hand and off-hand slots if dual-wielding or Titan's Grip
-        if (itemScore > oldScore || itemScore > oldScore2)  
+        bool isTwoHanded = itemProto->InventoryType == INVTYPE_2HWEAPON;
+        bool isStaff = (itemProto->SubClass == ITEM_SUBCLASS_WEAPON_STAFF);
+        // If it's a staff or a two-handed weapon and the bot does not have Titan's Grip, compare only with the main-hand
+        if (isTwoHanded && (!bot->CanTitanGrip() || isStaff))
         {
-            isBetter = true;
-            if (debugRpgEnabled)
-            {
-                std::ostringstream out;
-                out << "New weapon is better. isBetter = true. "
-                    << "ItemScore: " << itemScore 
-                    << ", OldScore (Main-hand): " << oldScore
-                    << ", OldScore2 (Off-hand): " << oldScore2;
-                botAI->TellMaster(out.str());
-            }
-        }
-        else  // For non-ring, non-weapon items, just compare with the primary slot
-        {
+            // Compare only with the main-hand, ignore off-hand
             if (itemScore > oldScore)
             {
                 isBetter = true;
                 if (debugRpgEnabled)
                 {
-                    botAI->TellMaster("New item is better. isBetter = true");
+                    std::ostringstream out;
+                    out << "New two-handed weapon or staff is better. isBetter = true. "
+                        << "ItemScore: " << itemScore 
+                        << ", OldScore (Main-hand): " << oldScore;
+                    botAI->TellMaster(out.str());
                 }
             }
             else
             {
                 if (debugRpgEnabled)
                 {
-                    botAI->TellMaster("New item is not better. isBetter = false");
+                    std::ostringstream out;
+                    out << "New two-handed weapon or staff is not better. isBetter = false. "
+                        << "ItemScore: " << itemScore 
+                        << ", OldScore (Main-hand): " << oldScore;
+                    botAI->TellMaster(out.str());
+                }
+            }
+        }
+        else  // For dual-wield or Titan's Grip with valid weapons, compare both main-hand and off-hand
+        {
+            if (itemScore > oldScore || (oldScore2 > 0 && itemScore > oldScore2))  
+            {
+                isBetter = true;
+                if (debugRpgEnabled)
+                {
+                    std::ostringstream out;
+                    out << "New weapon is better. isBetter = true. "
+                        << "ItemScore: " << itemScore 
+                        << ", OldScore (Main-hand): " << oldScore
+                        << ", OldScore2 (Off-hand): " << oldScore2;
+                    botAI->TellMaster(out.str());
+                }
+            }
+            else
+            {
+                if (debugRpgEnabled)
+                {
+                    std::ostringstream out;
+                    out << "New weapon is not better. isBetter = false. "
+                        << "ItemScore: " << itemScore 
+                        << ", OldScore (Main-hand): " << oldScore
+                        << ", OldScore2 (Off-hand): " << oldScore2;
+                    botAI->TellMaster(out.str());
                 }
             }
         }
