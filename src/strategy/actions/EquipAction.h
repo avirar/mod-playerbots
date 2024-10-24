@@ -25,7 +25,7 @@ private:
     void EquipItem(FindItemVisitor* visitor);
     uint8 GetSmallestBagSlot();
     void EquipItem(Item* item);
-    bool IsBetterTrinket(Item* newItem, Item* currentItem);
+    bool IsBetterItem(Item* newItem, Item* currentItem);
 };
 
 class EquipUpgradesAction : public EquipAction
