@@ -65,7 +65,7 @@ void EquipAction::EquipItem(Item* item)
     uint8 slot = item->GetSlot();
     uint32 itemId = item->GetTemplate()->ItemId;
 
-    // Define variables for the slot types based on the item type (ring or trinket)
+    // Define variables for the slot types based on the item type (ring, trinket, or weapon)
     uint8 slot1, slot2;
     std::string itemType;
     
@@ -80,6 +80,22 @@ void EquipAction::EquipItem(Item* item)
         slot1 = EQUIPMENT_SLOT_FINGER1;
         slot2 = EQUIPMENT_SLOT_FINGER2;
         itemType = "ring";
+    }
+    else if (item->GetTemplate()->InventoryType == INVTYPE_WEAPON ||
+             item->GetTemplate()->InventoryType == INVTYPE_WEAPONMAINHAND ||
+             item->GetTemplate()->InventoryType == INVTYPE_WEAPONOFFHAND ||
+             item->GetTemplate()->InventoryType == INVTYPE_2HWEAPON)
+    {
+        slot1 = EQUIPMENT_SLOT_MAINHAND;
+        slot2 = EQUIPMENT_SLOT_OFFHAND;
+        itemType = "weapon";
+
+        // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
+        if (!bot->CanDualWield() || !bot->CanTitanGrip())
+        {
+            // If bot cannot dual wield or Titan's Grip, only use the main-hand slot
+            slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
+        }
     }
     else
     {
@@ -119,7 +135,7 @@ void EquipAction::EquipItem(Item* item)
         return;
     }
 
-    // Retrieve the current items in the two slots
+    // Retrieve the current items in the two slots (ring, trinket, or weapon)
     Item* item1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot1);
     Item* item2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot2);
 
@@ -132,7 +148,7 @@ void EquipAction::EquipItem(Item* item)
         botAI->TellMaster("Equipping new " + itemType + " in slot 1: " + chat->FormatItem(item->GetTemplate()));
         return;
     }
-    else if (!item2)
+    else if (!item2 && slot1 != slot2)  // Handle off-hand for dual wield/trinket
     {
         WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
         packet << bagIndex << slot;
@@ -151,7 +167,7 @@ void EquipAction::EquipItem(Item* item)
                           " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
         return;
     }
-    else if (IsBetterItem(item, item2))  // Replace the second slot if the new one is better
+    else if (IsBetterItem(item, item2) && slot1 != slot2)  // Replace the second slot if the new one is better
     {
         uint16 src = ((bagIndex << 8) | slot);  // Source is from the current bag/slot
         uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot2);  // Destination is slot 2
@@ -164,6 +180,8 @@ void EquipAction::EquipItem(Item* item)
     // No upgrade found for either slot
     botAI->TellMaster("New " + itemType + " is not better than the currently equipped " + itemType + "s.");
 }
+
+
 
 // Helper function to compare items (trinkets, rings, or any equippable item)
 bool EquipAction::IsBetterItem(Item* newItem, Item* currentItem)
