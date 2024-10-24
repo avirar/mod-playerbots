@@ -91,37 +91,35 @@ void EquipAction::EquipItem(Item* item)
         itemType = "weapon";
 
         // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
-        // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
-        if (!bot->CanDualWield() || !bot->CanTitanGrip())
+        if (!bot->CanDualWield())  // Bot cannot dual wield at all
         {
-            // If bot cannot dual wield or Titan's Grip, only use the main-hand slot
+            // If bot cannot dual wield, only use the main-hand slot
             slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
 
-            // Output the bot's capabilities regarding dual wielding and Titan's Grip
-            if (!bot->CanDualWield())
+            botAI->TellMaster("Bot cannot dual wield. Off-hand slot will not be used for this weapon.");
+        }
+        else if (bot->CanDualWield() && !bot->CanTitanGrip())  // Bot can dual wield but not Titan's Grip
+        {
+            // Bot can dual wield, but can't equip two-handed weapons in off-hand
+            if (item->GetTemplate()->InventoryType == INVTYPE_2HWEAPON)
             {
-                botAI->TellMaster("Bot cannot dual wield.");
+                slot2 = slot1;  // Prevent off-hand use for two-handed weapons if Titan's Grip is not available
+                botAI->TellMaster("Bot can dual wield but not use Titan's Grip. Off-hand slot will not be used for this two-handed weapon.");
             }
             else
             {
-                botAI->TellMaster("Bot can dual wield.");
+                botAI->TellMaster("Bot can dual wield, off-hand slot will be used for one-handed weapons.");
             }
-
-            if (!bot->CanTitanGrip())
-            {
-                botAI->TellMaster("Bot cannot use Titan's Grip.");
-            }
-            else
-            {
-                botAI->TellMaster("Bot can use Titan's Grip.");
-            }
-
-            botAI->TellMaster("Off-hand slot will not be used for this weapon.");
+        }
+        else if (bot->CanDualWield() && bot->CanTitanGrip())  // Bot can dual wield and use Titan's Grip
+        {
+            botAI->TellMaster("Bot can dual wield and use Titan's Grip. Off-hand slot will be used for two-handed or one-handed weapons.");
         }
         else
         {
-            botAI->TellMaster("Bot can dual wield or use Titan's Grip. Off-hand slot will be considered.");
+            botAI->TellMaster("Off-hand slot will not be used.");
         }
+
     }
     else
     {
