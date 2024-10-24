@@ -513,7 +513,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             }
             return ITEM_USAGE_EQUIP;
         }
-        // No item equiped
+    // No item equiped
     if (!oldItem)
     {
         if (shouldEquip)
@@ -523,14 +523,53 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             return ITEM_USAGE_BAD_EQUIP;
         }
     }
-    ItemTemplate const* oldItemProto = oldItem->GetTemplate();
-    float oldScore = calculator.CalculateItem(oldItemProto->ItemId);
-    if (oldItem)
+    ItemTemplate const* oldItemProto = oldItem->GetTemplate();  // Get the template for the currently equipped item
+    float oldScore = calculator.CalculateItem(oldItemProto->ItemId);  // Calculate the score for the currently equipped item
+    float oldScore2 = 0.0f;  // Initialize oldScore2
+
+    if (itemProto->InventoryType == INVTYPE_FINGER)  // Check if the new item is a ring
     {
-        // uint32 oldStatWeight = sRandomItemMgr->GetLiveStatWeight(bot, oldItemProto->ItemId);
-        if (itemScore || oldScore)
+        // Try to get the second ring slot's item
+        Item* oldItem2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_FINGER2);
+
+        // If there's an item in the second finger slot, calculate its score
+        if (oldItem2)
         {
-            shouldEquip = itemScore > oldScore * sPlayerbotAIConfig->equipUpgradeThreshold;
+            ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+            oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Second ring score: " + std::to_string(oldScore2));
+            }
+        }
+
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("First ring score: " + std::to_string(oldScore));
+        }
+    }
+
+    if (oldItem)  // Ensure there is an old item equipped
+    {
+        if (debugRpgEnabled)
+        {
+            botAI->TellMaster("New item score: " + std::to_string(itemScore));
+        }
+
+        if (itemScore || oldScore || oldScore2)  // Check if any of the scores are valid
+        {
+            // Determine whether the new item should be equipped based on the comparison of scores
+            shouldEquip = (itemScore > oldScore * sPlayerbotAIConfig->equipUpgradeThreshold) ||
+                      (itemScore > oldScore2 * sPlayerbotAIConfig->equipUpgradeThreshold);
+                      
+            if (debugRpgEnabled)
+            {
+                if (shouldEquip)
+                    botAI->TellMaster("New item is better. Will equip.");
+                else
+                    botAI->TellMaster("Current items are better. Keeping current items.");
+            }
         }
     }
 
