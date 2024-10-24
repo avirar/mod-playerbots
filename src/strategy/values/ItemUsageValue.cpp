@@ -624,7 +624,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             if (debugRpgEnabled)
             {
                 if (shouldEquip)
-                    botAI->TellMaster("New item is better. Will equip.");
+                    botAI->TellMaster("New item is better. shouldEquip = true.");
                 else
                     botAI->TellMaster("Current items are better. Keeping current items.");
             }
@@ -660,16 +660,43 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
     if (itemProto->InventoryType == INVTYPE_FINGER)  // Check if the item is a ring
     {
-        if (itemScore > oldScore || itemScore > oldScore2)  // Compare with both finger slots
+        // Compare with both finger slots
+        if (itemScore > oldScore || itemScore > oldScore2)  
         {
             isBetter = true;
         }
     }
-    else  // For non-ring items, just compare with the primary slot
+    else if (itemProto->InventoryType == INVTYPE_WEAPON || 
+         itemProto->InventoryType == INVTYPE_2HWEAPON || 
+         itemProto->InventoryType == INVTYPE_WEAPONMAINHAND || 
+         itemProto->InventoryType == INVTYPE_WEAPONOFFHAND)  // Check if the item is a weapon
     {
-        if (itemScore > oldScore)
+        // Compare with both main-hand and off-hand slots if dual-wielding or Titan's Grip
+        if (itemScore > oldScore || itemScore > oldScore2)  
         {
             isBetter = true;
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("New weapon is better. isBetter = true");
+            }
+        }
+        else  // For non-ring, non-weapon items, just compare with the primary slot
+        {
+            if (itemScore > oldScore)
+            {
+                isBetter = true;
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("New item is better. isBetter = true");
+                }
+            }
+            else
+            {
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("New item is not better. isBetter = false");
+                }
+            }
         }
     }
 
