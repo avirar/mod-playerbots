@@ -91,8 +91,13 @@ void EquipAction::EquipItem(Item* item)
         itemType = "weapon";
 
         // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
+        // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
         if (!bot->CanDualWield() || !bot->CanTitanGrip())
         {
+            // If bot cannot dual wield or Titan's Grip, only use the main-hand slot
+            slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
+
+            // Output the bot's capabilities regarding dual wielding and Titan's Grip
             if (!bot->CanDualWield())
             {
                 botAI->TellMaster("Bot cannot dual wield.");
@@ -101,8 +106,21 @@ void EquipAction::EquipItem(Item* item)
             {
                 botAI->TellMaster("Bot can dual wield.");
             }
-            // If bot cannot dual wield or Titan's Grip, only use the main-hand slot
-            slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
+
+            if (!bot->CanTitanGrip())
+            {
+                botAI->TellMaster("Bot cannot use Titan's Grip.");
+            }
+            else
+            {
+                botAI->TellMaster("Bot can use Titan's Grip.");
+            }
+
+            botAI->TellMaster("Off-hand slot will not be used for this weapon.");
+        }
+        else
+        {
+            botAI->TellMaster("Bot can dual wield or use Titan's Grip. Off-hand slot will be considered.");
         }
     }
     else
@@ -186,7 +204,11 @@ void EquipAction::EquipItem(Item* item)
     }
 
     // No upgrade found for either slot
-    botAI->TellMaster("New " + itemType + " is not better than the currently equipped " + itemType + "s.");
+    botAI->TellMaster("New " + itemType + " (" + chat->FormatItem(item->GetTemplate()) + 
+        ") is not better than the currently equipped " + itemType + 
+        "s: Slot 1 (" + chat->FormatItem(item1->GetTemplate()) + 
+        "), Slot 2 (" + chat->FormatItem(item2->GetTemplate()) + ").");
+
 }
 
 
