@@ -373,12 +373,14 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
     
     float itemScore = calculator.CalculateItem(itemProto->ItemId);
     if (itemScore)
+    {
         if (debugRpgEnabled)  // Ensure debug mode is enabled to avoid unnecessary messages
         {
-            botAI->TellMaster("The item score of " + std::to_string(itemProto->ItemId) + " is " + std::to_string(itemScore));
+            botAI->TellMaster("The has a score of " + std::to_string(itemProto->ItemId) + " is " + std::to_string(itemScore));
             botAI->TellMaster("shouldEquip = true");
         }
         shouldEquip = true;
+    }
 
     if (itemProto->Class == ITEM_CLASS_WEAPON)
     {
@@ -623,16 +625,22 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
                 if (itemScore > oldScore)
                 {
                     shouldEquip = true;
-                    botAI->TellMaster("New Staff weapon is better, shouldEquip = true.");
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("New Staff weapon is better, shouldEquip = true.");
+                    }
                 }
             }
-            else  // For normal dual-wielding or Titan's Grip without 2H Staffs
+            else if (canDualWield)  // Handle dual-wielding for 1H weapons or Titan's Grip
             {
                 // Compare scores for dual-wielded weapons (main-hand and off-hand)
                 if (itemScore > oldScore || itemScore > oldScore2)
                 {
                     shouldEquip = true;
-                    botAI->TellMaster("New one-handed weapon is better, shouldEquip = true.");
+                    if (debugRpgEnabled)
+                    {
+                        botAI->TellMaster("New one-handed weapon is better, shouldEquip = true.");
+                    }
                 }
             }
         }
@@ -648,7 +656,10 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             if (itemScore > oldScore)
             {
                 shouldEquip = true;
-                botAI->TellMaster("New two-handed weapon is better, shouldEquip = true.");
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("New two-handed weapon is better, shouldEquip = true.");
+                }
             }
         }
     }
