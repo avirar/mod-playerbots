@@ -599,8 +599,22 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
 
     // Compare items based on item level, quality or itemId.
     bool isBetter = false;
-    if (itemScore > oldScore)
-        isBetter = true;
+
+    if (itemProto->InventoryType == INVTYPE_FINGER)  // Check if the item is a ring
+    {
+        if (itemScore > oldScore || itemScore > oldScore2)  // Compare with both finger slots
+        {
+            isBetter = true;
+        }
+    }
+    else  // For non-ring items, just compare with the primary slot
+    {
+        if (itemScore > oldScore)
+        {
+            isBetter = true;
+        }
+    }
+
     // else if (newItemPower == oldScore && itemProto->Quality > oldItemProto->Quality)
     //     isBetter = true;
     // else if (newItemPower == oldScore && itemProto->Quality == oldItemProto->Quality && itemProto->ItemId >
