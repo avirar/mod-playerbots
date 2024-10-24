@@ -549,6 +549,64 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto)
             botAI->TellMaster("First ring score: " + std::to_string(oldScore));
         }
     }
+    else if (itemProto->InventoryType == INVTYPE_WEAPON || 
+         itemProto->InventoryType == INVTYPE_2HWEAPON || 
+         itemProto->InventoryType == INVTYPE_WEAPONMAINHAND || 
+         itemProto->InventoryType == INVTYPE_WEAPONOFFHAND)
+    {
+        bool hasTitanGrip = bot->HasSpell(46917);  // Titan's Grip spell ID, only relevant for Fury Warriors
+        bool isTwoHanded = itemProto->InventoryType == INVTYPE_2HWEAPON;
+
+        // Try to get the second weapon (off-hand) slot's item if applicable
+        Item* oldItem2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+
+        // If the bot can equip two-handed weapons in both hands (Titan's Grip)
+        if (hasTitanGrip && isTwoHanded)
+        {
+            if (oldItem2)
+            {
+                ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+                oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Off-hand 2H weapon score: " + std::to_string(oldScore2));
+                }
+            }
+
+            if (debugRpgEnabled)
+            {
+                botAI->TellMaster("Main-hand 2H weapon score: " + std::to_string(oldScore));
+            }
+        }
+        else if (!isTwoHanded || (isTwoHanded && !hasTitanGrip))  // Handle normal weapon dual-wielding (1H weapons)
+        {
+            if (oldItem2)
+            {
+                ItemTemplate const* oldItemProto2 = oldItem2->GetTemplate();
+                oldScore2 = calculator.CalculateItem(oldItemProto2->ItemId);
+
+                if (debugRpgEnabled)
+                {
+                    botAI->TellMaster("Off-hand weapon score: " + std::to_string(oldScore2));
+                }
+            }
+
+            if (debugRpgEnabled)
+            {
+            botAI->TellMaster("Main-hand weapon score: " + std::to_string(oldScore));
+            }
+
+            // Special case for 2H weapon replacing both hands when Titan's Grip is not active
+            if (isTwoHanded && !hasTitanGrip)
+            {
+                oldScore2 = 0.0f;  // 2H weapon occupies both slots, so we can disregard off-hand score
+            }
+        }
+    }
+
+    // Now you can use oldScore and oldScore2 in your comparison logic.
+
 
     if (oldItem)  // Ensure there is an old item equipped
     {
