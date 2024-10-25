@@ -66,9 +66,9 @@ void EquipAction::EquipItem(Item* item)
     uint32 itemId = item->GetTemplate()->ItemId;
 
     // Define variables for the slot types based on the item type (ring, trinket, or weapon)
-    uint8 slot1, slot2;
+    uint8 slot1 = 0, slot2 = 0;
     std::string itemType;
-    
+
     if (item->GetTemplate()->InventoryType == INVTYPE_TRINKET)
     {
         slot1 = EQUIPMENT_SLOT_TRINKET1;
@@ -86,40 +86,46 @@ void EquipAction::EquipItem(Item* item)
              item->GetTemplate()->InventoryType == INVTYPE_WEAPONOFFHAND ||
              item->GetTemplate()->InventoryType == INVTYPE_2HWEAPON)
     {
-        slot1 = EQUIPMENT_SLOT_MAINHAND;
-        slot2 = EQUIPMENT_SLOT_OFFHAND;
         itemType = "weapon";
+        bool isTwoHanded = item->GetTemplate()->InventoryType == INVTYPE_2HWEAPON;
+        bool isMainhand = item->GetTemplate()->InventoryType == INVTYPE_WEAPONMAINHAND;
+        bool isOffhand = item->GetTemplate()->InventoryType == INVTYPE_WEAPONOFFHAND;
 
-        // Check if the bot can dual wield or use Titan's Grip before considering the off-hand slot
-        if (!bot->CanDualWield())  // Bot cannot dual wield at all
+        // Assign the correct slot based on the type of weapon
+        if (isMainhand)
         {
-            // If bot cannot dual wield, only use the main-hand slot
-            slot2 = slot1;  // Prevent off-hand consideration by making both slots the same
-
-            botAI->TellMaster("Bot cannot dual wield. Off-hand slot will not be used for this weapon.");
+            slot1 = EQUIPMENT_SLOT_MAINHAND;
+            slot2 = 0;  // Main-hand only weapon, no off-hand use
+            botAI->TellMaster("Equipping main-hand only weapon in main-hand slot.");
         }
-        else if (bot->CanDualWield() && !bot->CanTitanGrip())  // Bot can dual wield but not Titan's Grip
+        else if (isOffhand)
         {
-            // Bot can dual wield, but can't equip two-handed weapons in off-hand
-            if (item->GetTemplate()->InventoryType == INVTYPE_2HWEAPON)
-            {
-                slot2 = slot1;  // Prevent off-hand use for two-handed weapons if Titan's Grip is not available
-                botAI->TellMaster("Bot can dual wield but not use Titan's Grip. Off-hand slot will not be used for this two-handed weapon.");
-            }
-            else
-            {
-                botAI->TellMaster("Bot can dual wield, off-hand slot will be used for one-handed weapons.");
-            }
-        }
-        else if (bot->CanDualWield() && bot->CanTitanGrip())  // Bot can dual wield and use Titan's Grip
-        {
-            botAI->TellMaster("Bot can dual wield and use Titan's Grip. Off-hand slot will be used for two-handed or one-handed weapons.");
+            slot1 = EQUIPMENT_SLOT_OFFHAND;
+            slot2 = 0;  // Off-hand only weapon, no main-hand use
+            botAI->TellMaster("Equipping off-hand only weapon in off-hand slot.");
         }
         else
         {
-            botAI->TellMaster("Off-hand slot will not be used.");
-        }
+            slot1 = EQUIPMENT_SLOT_MAINHAND;
+            slot2 = EQUIPMENT_SLOT_OFFHAND;  // Consider off-hand slot for dual wielders
 
+            // If the bot cannot dual wield, we don't assign an off-hand slot
+            if (!bot->CanDualWield())
+            {
+                slot2 = 0;  // Prevent off-hand use if the bot cannot dual wield
+                botAI->TellMaster("Bot cannot dual wield. Only main-hand will be used.");
+            }
+            else if (isTwoHanded && !bot->CanTitanGrip())
+            {
+                // If it's a two-handed weapon and the bot doesn't have Titan's Grip, only use main-hand
+                slot2 = 0;
+                botAI->TellMaster("Bot cannot use two-handed weapons in off-hand. Only main-hand will be used.");
+            }
+            else if (bot->CanDualWield())
+            {
+                botAI->TellMaster("Bot can dual wield. Main-hand and off-hand slots will be used if applicable.");
+            }
+        }
     }
     else
     {
@@ -152,7 +158,6 @@ void EquipAction::EquipItem(Item* item)
             }
         }
 
-        // Whisper master when equipping an item
         std::ostringstream out;
         out << "Equipping " << chat->FormatItem(item->GetTemplate());
         botAI->TellMaster(out.str());
@@ -161,7 +166,7 @@ void EquipAction::EquipItem(Item* item)
 
     // Retrieve the current items in the two slots (ring, trinket, or weapon)
     Item* item1 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot1);
-    Item* item2 = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot2);
+    Item* item2 = slot2 ? bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot2) : nullptr;
 
     // Check if the first slot is empty and auto-equip the new item if so
     if (!item1)
@@ -172,7 +177,7 @@ void EquipAction::EquipItem(Item* item)
         botAI->TellMaster("Equipping new " + itemType + " in slot 1: " + chat->FormatItem(item->GetTemplate()));
         return;
     }
-    else if (!item2 && slot1 != slot2)  // Handle off-hand for dual wield/trinket
+    else if (!item2 && slot2)  // Handle off-hand for dual wield/trinket
     {
         WorldPacket packet(CMSG_AUTOEQUIP_ITEM, 2);
         packet << bagIndex << slot;
@@ -184,32 +189,30 @@ void EquipAction::EquipItem(Item* item)
     // Compare and replace the weaker item in slot 1 or 2 using SwapItem
     if (IsBetterItem(item, item1))  // Replace the first slot if the new one is better
     {
-        uint16 src = ((bagIndex << 8) | slot);  // Source is from the current bag/slot
-        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot1);  // Destination is slot 1
+        uint16 src = ((bagIndex << 8) | slot);
+        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot1);
         bot->SwapItem(src, dst);
-        botAI->TellMaster("Replacing " + itemType + " 1: " + chat->FormatItem(item1->GetTemplate()) +
+        botAI->TellMaster("Replacing " + itemType + " in slot 1: " + chat->FormatItem(item1->GetTemplate()) +
                           " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
         return;
     }
-    else if (IsBetterItem(item, item2) && slot1 != slot2)  // Replace the second slot if the new one is better
+    else if (IsBetterItem(item, item2) && slot2)  // Replace the second slot if the new one is better
     {
-        uint16 src = ((bagIndex << 8) | slot);  // Source is from the current bag/slot
-        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot2);  // Destination is slot 2
+        uint16 src = ((bagIndex << 8) | slot);
+        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot2);
         bot->SwapItem(src, dst);
-        botAI->TellMaster("Replacing " + itemType + " 2: " + chat->FormatItem(item2->GetTemplate()) +
+        botAI->TellMaster("Replacing " + itemType + " in slot 2: " + chat->FormatItem(item2->GetTemplate()) +
                           " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
         return;
     }
 
     // No upgrade found for either slot
     botAI->TellMaster("New " + itemType + " (" + chat->FormatItem(item->GetTemplate()) + 
-        ") is not better than the currently equipped " + itemType + 
-        "s: Slot 1 (" + chat->FormatItem(item1->GetTemplate()) + 
-        "), Slot 2 (" + chat->FormatItem(item2->GetTemplate()) + ").");
+            ") is not better than the currently equipped " + itemType + 
+            "s: Slot 1 (" + chat->FormatItem(item1->GetTemplate()) + 
+            "), Slot 2 (" + (item2 ? chat->FormatItem(item2->GetTemplate()) : "none") + ").");
 
 }
-
-
 
 // Helper function to compare items (trinkets, rings, or any equippable item)
 bool EquipAction::IsBetterItem(Item* newItem, Item* currentItem)
