@@ -186,24 +186,38 @@ void EquipAction::EquipItem(Item* item)
         return;
     }
 
-    // Compare and replace the weaker item in slot 1 or 2 using SwapItem
-    if (IsBetterItem(item, item1))  // Replace the first slot if the new one is better
+    // Compare and replace the weaker item in slot 1 or slot 2
+    StatsWeightCalculator calculator(bot);
+    float item1Score = item1 ? calculator.CalculateItem(item1->GetTemplate()->ItemId) : 0.0f;
+    float item2Score = item2 ? calculator.CalculateItem(item2->GetTemplate()->ItemId) : 0.0f;
+    float newItemScore = calculator.CalculateItem(item->GetTemplate()->ItemId);
+
+    botAI->TellMaster("New item score: " + std::to_string(newItemScore) +
+                      ", Slot 1 score: " + std::to_string(item1Score) +
+                      ", Slot 2 score: " + std::to_string(item2Score));
+
+    // Determine the weaker slot (either slot1 or slot2) based on score
+    uint8 weakestSlot = (item1Score < item2Score || !slot2) ? slot1 : slot2;
+    Item* weakestItem = (weakestSlot == slot1) ? item1 : item2;
+    float weakestScore = (weakestSlot == slot1) ? item1Score : item2Score;
+
+    if (newItemScore > weakestScore)  // If the new item is better than the weakest equipped item
     {
-        uint16 src = ((bagIndex << 8) | slot);
-        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot1);
+        uint16 src = ((bagIndex << 8) | slot);  // Source is the new item's bag and slot
+        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | weakestSlot);  // Destination is the weakest slot
+
         bot->SwapItem(src, dst);
-        botAI->TellMaster("Replacing " + itemType + " in slot 1: " + chat->FormatItem(item1->GetTemplate()) +
-                          " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
+        botAI->TellMaster("Replacing " + itemType + " in " + (weakestSlot == slot1 ? "slot 1" : "slot 2") +
+                      ": " + chat->FormatItem(weakestItem->GetTemplate()) +
+                      " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
         return;
     }
-    else if (IsBetterItem(item, item2) && slot2)  // Replace the second slot if the new one is better
+    else
     {
-        uint16 src = ((bagIndex << 8) | slot);
-        uint16 dst = ((INVENTORY_SLOT_BAG_0 << 8) | slot2);
-        bot->SwapItem(src, dst);
-        botAI->TellMaster("Replacing " + itemType + " in slot 2: " + chat->FormatItem(item2->GetTemplate()) +
-                          " with new " + itemType + ": " + chat->FormatItem(item->GetTemplate()));
-        return;
+        botAI->TellMaster("New " + itemType + " (" + chat->FormatItem(item->GetTemplate()) +
+                      ") is not better than the currently equipped " + itemType +
+                      "s: Slot 1 (" + chat->FormatItem(item1->GetTemplate()) +
+                      "), Slot 2 (" + (item2 ? chat->FormatItem(item2->GetTemplate()) : "none") + ").");
     }
 
     // No upgrade found for either slot
