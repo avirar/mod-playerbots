@@ -1140,12 +1140,31 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
         return false;
     }
 
-    // leave group if leader is rndbot
+    // leave group if leader is rndbot that is too far away
     Group* group = player->GetGroup();
+    bool nearbyMember = false;
     if (group && !group->isLFGGroup() && IsRandomBot(group->GetLeader()))
     {
-        player->RemoveFromGroup();
-        LOG_INFO("playerbots", "Bot {} remove from group since leader is random bot.", player->GetName().c_str());
+        // Check if there are nearby group members within the configured RPG distance
+        // float range = sPlayerbotAIConfig->rpgDistance;
+        // Using large static value for testing
+        float range = 10000.0f;
+        for (GroupReference* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member != player && player->IsWithinDistInMap(member, range))
+            {
+                nearbyMember = true;
+                break;
+            }
+        }
+    
+        // Leave group if leader is a random bot and nearby grouping is disabled with no nearby members
+        if (IsRandomBot(group->GetLeader()) && !sPlayerbotAIConfig->randomBotGroupNearby && !nearbyMember)
+        {
+            player->RemoveFromGroup();
+            LOG_INFO("playerbots", "Bot {} removed from group since leader is a random bot and no nearby members within RPG distance.", player->GetName().c_str());
+        }
     }
 
 
@@ -1212,7 +1231,7 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
         // }
 
         uint32 teleport = GetEventValue(bot, "teleport");
-        if (!teleport)
+        if (!teleport && !nearbyMember)
         {
             LOG_INFO("playerbots", "Bot #{} <{}>: teleport for level and refresh", bot, player->GetName());
             Refresh(player);
