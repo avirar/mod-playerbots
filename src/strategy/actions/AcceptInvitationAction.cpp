@@ -27,13 +27,34 @@ bool AcceptInvitationAction::Execute(Event event)
     if (!inviter)
         return false;
 
-    if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
+    // Check if the inviter is a bot
+    PlayerbotAI* inviterBotAI = GET_PLAYERBOT_AI(inviter);
+    
+    if (inviterBotAI)  // Inviter is a bot
     {
-        WorldPacket data(SMSG_GROUP_DECLINE, 10);
-        data << bot->GetName();
-        inviter->SendDirectMessage(&data);
-        bot->UninviteFromGroup();
-        return false;
+        // Check the configuration setting for bot grouping
+        if (!sPlayerbotAIConfig->randomBotGroupNearby)
+        {
+            // Decline the invitation as bot grouping is not allowed
+            WorldPacket data(SMSG_GROUP_DECLINE, 10);
+            data << bot->GetName();
+            inviter->SendDirectMessage(&data);
+            bot->UninviteFromGroup();
+            return false;
+        }
+    }
+    else  // Inviter is a real player
+    {
+        // Proceed with security level check for real players
+        if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
+        {
+            // Decline the invitation due to insufficient security level
+            WorldPacket data(SMSG_GROUP_DECLINE, 10);
+            data << bot->GetName();
+            inviter->SendDirectMessage(&data);
+            bot->UninviteFromGroup();
+            return false;
+        }
     }
 
     WorldPacket p;
