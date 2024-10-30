@@ -8,6 +8,7 @@
 #include "Event.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "PlayerbotAI.h"
 
 bool LeaveGroupAction::Execute(Event event)
 {
@@ -116,18 +117,39 @@ bool LeaveFarAwayAction::Execute(Event event)
 
 bool LeaveFarAwayAction::isUseful()
 {
-    // Prevent leaving if the bot is in any LFG activity, battleground, or battleground queue
-    if (bot->isUsingLfg() || bot->inRandomLfgDungeon() || bot->InBattleground() || bot->InBattlegroundQueue())
+    // Check if the bot is in any LFG activity, battleground, or battleground queue
+    if (bot->isUsingLfg())
     {
-        LOG_INFO("playerbots", "Bot {} stays in group because it is participating in LFG, a battleground, or a battleground queue.", bot->GetName().c_str());
+        Group* group = bot->GetGroup();
+        if (group && group->isLFGGroup() && GroupHasRealPlayer(group))
+        {
+            return false;
+        }
+    }
+    
+    if (bot->inRandomLfgDungeon())
+    {
+        Group* group = bot->GetGroup();
+        if (group && group->isLFGGroup() && GroupHasRealPlayer(group))
+        {
+            return false;
+        }
+    }
+    
+    if (bot->InBattleground())
+    {
         return false;
     }
-
-    // Check if the bot's group is an LFG group; if so, prevent leaving
-    Group* group = bot->GetGroup();
-    if (group && group->isLFGGroup())
+    
+    if (bot->InBattlegroundQueue())
     {
-        LOG_INFO("playerbots", "Bot {} stays in group because it is in an LFG group.", bot->GetName().c_str());
+        return false;
+    }
+    
+    // Check if the bot's group is an LFG group and has a real player; if so, prevent leaving
+    Group* group = bot->GetGroup();
+    if (group && group->isLFGGroup() && GroupHasRealPlayer(group))
+    {
         return false;
     }
 
@@ -189,4 +211,19 @@ bool LeaveFarAwayAction::isUseful()
     return false;
 }
 
+// Helper function to check for a real player in the group without a new method
+bool LeaveGroupAction::GroupHasRealPlayer(Group* group)
+{
+    if (!group)
+        return false;
 
+    for (GroupReference const* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
+    {
+        Player* player = ref->GetSource();
+        if (player && player->IsVisible() && !GET_PLAYERBOT_AI(player)) // No PlayerbotAI means a real player
+        {
+            return true; // Found a real player in the group
+        }
+    }
+    return false; // No real players in the group
+}
