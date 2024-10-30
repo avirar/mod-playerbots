@@ -130,7 +130,6 @@ bool LeaveFarAwayAction::isUseful()
 
     if (!bot->GetGroup())
     {
-        LOG_INFO("playerbots", "Bot {} not in a group.", bot->GetName().c_str());
         return false;
     }
 
