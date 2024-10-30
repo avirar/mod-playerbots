@@ -11,6 +11,7 @@
 #include "Event.h"
 #include "GroupMgr.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
 #include "UpdateTime.h"
@@ -744,6 +745,7 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
     PositionInfo pos = botAI->GetAiObjectContext()->GetValue<PositionMap&>("position")->Get()["bg objective"];
     pos.Reset();
     posMap["bg objective"] = pos;
+    botAI->GetAiObjectContext()->GetValue<uint32>("death count")->Set(0); // Reset death count after leaving battleground
     return true;
 }
 
