@@ -392,19 +392,35 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     }
 
     if (!bot->InBattleground() && !bot->inRandomLfgDungeon() && bot->GetGroup())
-	{
-		Player* leader = bot->GetGroup()->GetLeader();
-		if (leader && leader != bot) // Checks if the leader is valid and is not the bot itself
-		{
-			PlayerbotAI* leaderAI = GET_PLAYERBOT_AI(leader);
-			if (leaderAI && !leaderAI->IsRealPlayer())
-			{
-				bot->RemoveFromGroup();
-				ResetStrategies();
-			}
-		}
-	}
-
+    {
+        Player* leader = bot->GetGroup()->GetLeader();
+        if (leader && leader != bot) // Checks if the leader is valid and is not the bot itself
+        {
+            PlayerbotAI* leaderAI = GET_PLAYERBOT_AI(leader);
+    
+            // Check if the leader is a bot and if bot grouping is enabled
+            if (leaderAI && !leaderAI->IsRealPlayer())
+            {
+                // Check if bot grouping is allowed by config
+                if (!sPlayerbotAIConfig->randomBotGroupNearby)
+                {
+                    LOG_INFO("playerbots", "Bot {} leaves group because bot grouping is disabled by config.", bot->GetName().c_str());
+                    bot->RemoveFromGroup();
+                    ResetStrategies();
+                }
+                else
+                {
+                    // Check the leader's GrouperType
+                    if (leaderAI->GetGrouperType() == GrouperType::SOLO || leaderAI->GetGrouperType() == GrouperType::MEMBER)
+                    {
+                        LOG_INFO("playerbots", "Bot {} leaves group due to leader {} having an unsuitable GrouperType (SOLO or MEMBER) for group leading.", bot->GetName().c_str(), leader->GetName().c_str());
+                        bot->RemoveFromGroup();
+                        ResetStrategies();
+                    }
+                }
+            }
+        }
+    }
     bool min = minimal;
     UpdateAIInternal(elapsed, min);
     YieldThread(GetReactDelay());
