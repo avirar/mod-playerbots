@@ -17,21 +17,39 @@ bool AcceptInvitationAction::Execute(Event event)
     Group* grp = bot->GetGroupInvite();
     if (!grp)
         return false;
+
     WorldPacket packet = event.getPacket();
     uint8 flag;
     std::string name;
     packet >> flag >> name;
 
-    // Player* inviter = ObjectAccessor::FindPlayer(grp->GetLeaderGUID());
     Player* inviter = ObjectAccessor::FindPlayerByName(name, true);
     if (!inviter)
         return false;
 
     // Check if the inviter is a bot
     PlayerbotAI* inviterBotAI = GET_PLAYERBOT_AI(inviter);
-    
+
     if (inviterBotAI)  // Inviter is a bot
     {
+        // Check if the bot is already in a group with a bot leader
+        Group* currentGroup = bot->GetGroup();
+        if (currentGroup)
+        {
+            Player* currentLeader = ObjectAccessor::FindPlayer(currentGroup->GetLeaderGUID());
+            if (currentLeader && GET_PLAYERBOT_AI(currentLeader))
+            {
+                LOG_INFO("playerbots", "Bot {} declined invite from {} because it is already in a group led by a bot.", bot->GetName().c_str(), inviter->GetName().c_str());
+
+                // Decline the invitation
+                WorldPacket data(SMSG_GROUP_DECLINE, 10);
+                data << bot->GetName();
+                inviter->SendDirectMessage(&data);
+                bot->UninviteFromGroup();
+                return false;
+            }
+        }
+
         // Check the configuration setting for bot grouping
         if (!sPlayerbotAIConfig->randomBotGroupNearby)
         {
@@ -45,7 +63,6 @@ bool AcceptInvitationAction::Execute(Event event)
     }
     else  // Inviter is a real player
     {
-        // Proceed with security level check for real players
         if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
         {
             // Decline the invitation due to insufficient security level
@@ -64,8 +81,6 @@ bool AcceptInvitationAction::Execute(Event event)
 
     if (sRandomPlayerbotMgr->IsRandomBot(bot))
         botAI->SetMaster(inviter);
-    // else
-    // sPlayerbotDbStore->Save(botAI);
 
     botAI->ResetStrategies();
     botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
