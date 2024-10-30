@@ -116,19 +116,22 @@ bool LeaveFarAwayAction::Execute(Event event)
 
 bool LeaveFarAwayAction::isUseful()
 {
-    if (bot->InBattleground())
+    // Prevent leaving if the bot is in any LFG activity, battleground, or battleground queue
+    if (bot->isUsingLfg() || bot->inRandomLfgDungeon() || bot->InBattleground() || bot->InBattlegroundQueue())
     {
-        LOG_INFO("playerbots", "Bot {} stays in group because it's in a battleground.", bot->GetName().c_str());
+        LOG_INFO("playerbots", "Bot {} stays in group because it is participating in LFG, a battleground, or a battleground queue.", bot->GetName().c_str());
         return false;
     }
 
-    if (bot->InBattlegroundQueue())
+    // Check if the bot's group is an LFG group; if so, prevent leaving
+    Group* group = bot->GetGroup();
+    if (group && group->isLFGGroup())
     {
-        LOG_INFO("playerbots", "Bot {} stays in group because it's in a battleground queue.", bot->GetName().c_str());
+        LOG_INFO("playerbots", "Bot {} stays in group because it is in an LFG group.", bot->GetName().c_str());
         return false;
     }
 
-    if (!bot->GetGroup())
+    if (!group)
     {
         return false;
     }
@@ -185,4 +188,5 @@ bool LeaveFarAwayAction::isUseful()
 
     return false;
 }
+
 
