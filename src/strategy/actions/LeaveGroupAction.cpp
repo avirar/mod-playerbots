@@ -72,18 +72,22 @@ bool UninviteAction::Execute(Event event)
 
 bool LeaveGroupAction::Leave(Player* player)
 {
-    if (player && !GET_PLAYERBOT_AI(player) &&
-        !botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, player))
+    if (player && !GET_PLAYERBOT_AI(player) && !botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, player))
+    {
+        LOG_INFO("playerbots", "Bot {} does not leave group due to insufficient security level from inviter.", bot->GetName().c_str());
         return false;
+    }
 
     bool aiMaster = GET_PLAYERBOT_AI(botAI->GetMaster()) != nullptr;
-
     botAI->TellMaster("Goodbye!", PLAYERBOT_SECURITY_TALK);
 
     bool randomBot = sRandomPlayerbotMgr->IsRandomBot(bot);
     bool shouldStay = randomBot && bot->GetGroup() && player == bot;
+
     if (!shouldStay)
     {
+        LOG_INFO("playerbots", "Bot {} leaves group because it's either not a random bot or lacks group conditions to stay.", bot->GetName().c_str());
+
         WorldPacket p;
         p << uint32(PARTY_OP_LEAVE) << bot->GetName() << uint32(0);
         bot->GetSession()->HandleGroupDisbandOpcode(p);
@@ -91,6 +95,7 @@ bool LeaveGroupAction::Leave(Player* player)
 
     if (randomBot)
     {
+        LOG_INFO("playerbots", "Bot {} removes master assignment due to random bot status.", bot->GetName().c_str());
         GET_PLAYERBOT_AI(bot)->SetMaster(nullptr);
     }
 
@@ -102,6 +107,7 @@ bool LeaveGroupAction::Leave(Player* player)
     return true;
 }
 
+
 bool LeaveFarAwayAction::Execute(Event event)
 {
     // allow bot to leave party when they want
@@ -111,61 +117,73 @@ bool LeaveFarAwayAction::Execute(Event event)
 bool LeaveFarAwayAction::isUseful()
 {
     if (bot->InBattleground())
+    {
+        LOG_INFO("playerbots", "Bot {} stays in group because it's in a battleground.", bot->GetName().c_str());
         return false;
+    }
 
     if (bot->InBattlegroundQueue())
+    {
+        LOG_INFO("playerbots", "Bot {} stays in group because it's in a battleground queue.", bot->GetName().c_str());
         return false;
+    }
 
     if (!bot->GetGroup())
+    {
+        LOG_INFO("playerbots", "Bot {} not in a group.", bot->GetName().c_str());
         return false;
+    }
 
     Player* master = botAI->GetGroupMaster();
     Player* trueMaster = botAI->GetMaster();
-    if (!master || (bot == master && !botAI->IsRealPlayer()))
-        return false;
 
-    PlayerbotAI* masterBotAI = nullptr;
-    if (master)
-        masterBotAI = GET_PLAYERBOT_AI(master);
-    if (master && !masterBotAI)
+    if (!master || (bot == master && (botAI->GetGrouperType() == GrouperType::SOLO || botAI->GetGrouperType() == GrouperType::MEMBER) && !botAI->IsRealPlayer()))
+    {
+        LOG_INFO("playerbots", "Bot {} leaves group because there is no group master, or it is the master with an unsuitable GrouperType (SOLO or MEMBER).", bot->GetName().c_str());
         return false;
-
-    if (trueMaster && !GET_PLAYERBOT_AI(trueMaster))
-        return false;
-
-    if (botAI->IsAlt() &&
-        (!masterBotAI || masterBotAI->IsRealPlayer()))  // Don't leave group when alt grouped with player master.
-        return false;
+    }
 
     if (botAI->GetGrouperType() == GrouperType::SOLO)
+    {
+        LOG_INFO("playerbots", "Bot {} leaves group because it has GrouperType SOLO.", bot->GetName().c_str());
         return true;
+    }
 
     uint32 dCount = AI_VALUE(uint32, "death count");
-
     if (dCount > 9)
-        return true;
-
-    if (dCount > 4 && !botAI->HasRealPlayerMaster())
-        return true;
-
-    if (bot->GetGuildId() == master->GetGuildId())
     {
-        if (bot->GetLevel() > master->GetLevel() + 5)
+        LOG_INFO("playerbots", "Bot {} leaves group due to high death count ({} > 9).", bot->GetName().c_str(), dCount);
+        return true;
+    }
+    if (dCount > 4 && !botAI->HasRealPlayerMaster())
+    {
+        LOG_INFO("playerbots", "Bot {} leaves group due to moderate death count ({} > 4) without a real player master.", bot->GetName().c_str(), dCount);
+        return true;
+    }
+
+    if (bot->GetGuildId() == master->GetGuildId() && bot->GetLevel() > master->GetLevel() + 5)
+    {
+        if (AI_VALUE(bool, "should get money"))
         {
-            if (AI_VALUE(bool, "should get money"))
-                return false;
+            LOG_INFO("playerbots", "Bot {} stays in group due to guild and money-sharing condition.", bot->GetName().c_str());
+            return false;
         }
     }
 
     if (abs(int32(master->GetLevel() - bot->GetLevel())) > 4)
+    {
+        LOG_INFO("playerbots", "Bot {} leaves group because of large level difference with master ({} levels).", bot->GetName().c_str(), abs(int32(master->GetLevel() - bot->GetLevel())));
         return true;
+    }
 
     if (bot->GetMapId() != master->GetMapId() || bot->GetDistance2d(master) >= 2 * sPlayerbotAIConfig->rpgDistance)
     {
+        LOG_INFO("playerbots", "Bot {} leaves group due to distance: map mismatch or distance exceeds {} units.", bot->GetName().c_str(), 2 * sPlayerbotAIConfig->rpgDistance);
         return true;
     }
-	
-	botAI->Reset();
+
+    botAI->Reset();
 
     return false;
 }
+
