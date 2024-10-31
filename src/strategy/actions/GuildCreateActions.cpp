@@ -235,6 +235,8 @@ bool PetitionTurnInAction::Execute(Event event)
 
         bot->GetSession()->HandleTurnInPetitionOpcode(data);
 
+        bot->UpdateObjectVisibility();
+
         if (bot->GetGuildId())
         {
             Guild* guild = sGuildMgr->GetGuildById(bot->GetGuildId());
