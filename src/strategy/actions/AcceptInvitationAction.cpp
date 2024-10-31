@@ -2,6 +2,7 @@
 
 #include "Chat.h"
 #include "Event.h"
+#include "GroupMgr.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotSecurity.h"
@@ -36,11 +37,33 @@ bool AcceptInvitationAction::Execute(Event event)
 
         bot->GetSession()->HandleGroupDisbandOpcode(leavePacket);
 
-        // Log the action instead of messaging the inviter
-        LOG_INFO("playerbots", "Bot {} left its current group on invitation from {}. Request inviter to re-invite.",
-                 bot->GetName().c_str(), inviter->GetName().c_str());
+        // Wait for a short delay if needed before re-checking the inviter's group
+        inviter->UpdateObjectVisibility();
 
-        return false; // Do not proceed with accepting invite immediately
+        Group* inviterGroup = inviter->GetGroup();
+        if (!inviterGroup) {
+            // If inviter is not in a group, create a new one and add both players
+            inviterGroup = new Group();
+            if (inviterGroup->Create(inviter)) {
+                inviterGroup->AddMember(bot);
+                sGroupMgr->AddGroup(inviterGroup);
+                LOG_INFO("playerbots", "Bot {} joined a new group with inviter {}.", bot->GetName().c_str(), inviter->GetName().c_str());
+            } else {
+                LOG_ERROR("playerbots", "Failed to create group for bot {} and inviter {}.", bot->GetName().c_str(), inviter->GetName().c_str());
+                delete inviterGroup;
+                return false;
+            }
+        } else if (!inviterGroup->IsFull()) {
+            // If inviter already has a group, add the bot to it
+            inviterGroup->AddMember(bot);
+            inviterGroup->BroadcastGroupUpdate();
+            LOG_INFO("playerbots", "Bot {} joined inviter {}'s existing group.", bot->GetName().c_str(), inviter->GetName().c_str());
+        } else {
+            LOG_INFO("playerbots", "Bot {} could not join inviter {}'s group because it is full.", bot->GetName().c_str(), inviter->GetName().c_str());
+            return false;
+        }
+        
+        return true;
     }
 
     // Check inviter security level (if not in a group)
