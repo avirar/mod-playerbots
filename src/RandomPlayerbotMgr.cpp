@@ -28,6 +28,7 @@
 #include "GuildTaskMgr.h"
 #include "LFGMgr.h"
 #include "MapMgr.h"
+#include "ObjectAccessor.h"
 #include "PerformanceMonitor.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
@@ -1122,6 +1123,7 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
 
     // leave group if leader is rndbot that is too far away
     Group* group = player->GetGroup();
+    bool isLeader = group && group->GetLeaderGUID() == player->GetGUID();  // Declare isLeader here
     bool nearbyMember = false;
     if (group && !group->isLFGGroup() && IsRandomBot(group->GetLeader()))
     {
@@ -1145,6 +1147,40 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
             player->RemoveFromGroup();
             LOG_INFO("playerbots", "Bot {} removed from group since leader is a random bot and no nearby members within RPG distance.", player->GetName().c_str());
         }
+    }
+    
+    // Allow group leader bots to teleport with 50% chance each group member will follow
+    uint32 teleport = GetEventValue(bot, "teleport");
+
+    if (isLeader && !teleport)
+    {
+        LOG_INFO("playerbots", "Group leader Bot #{} <{}>: initiating teleport.", bot, player->GetName());
+        Refresh(player);
+        RandomTeleportForLevel(player);
+
+        for (GroupReference* ref = group->GetFirstMember(); ref != nullptr; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            if (member && member != player && urand(0, 1) == 0)  // 50% chance to teleport
+            {
+                LOG_INFO("playerbots", "Group member Bot #{} <{}>: teleporting with leader.", 
+                         member->GetGUID().GetCounter(), member->GetName().c_str());
+                Refresh(member);
+                member->TeleportTo(player->GetMapId(), player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(), player->GetOrientation());
+            }
+            else if (member && member != player)
+            {
+                LOG_INFO("playerbots", "Group member Bot #{} <{}>: not teleporting, leaving group.", 
+                         member->GetGUID().GetCounter(), member->GetName().c_str());
+                member->RemoveFromGroup();
+            }
+        }
+
+        uint32 time = urand(
+            sPlayerbotAIConfig->minRandomBotTeleportInterval, 
+            sPlayerbotAIConfig->maxRandomBotTeleportInterval);
+        ScheduleTeleport(bot, time);
+        return true;
     }
 
 
@@ -1210,7 +1246,6 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
         //     return true;
         // }
 
-        uint32 teleport = GetEventValue(bot, "teleport");
         if (!teleport && !nearbyMember)
         {
             LOG_INFO("playerbots", "Bot #{} <{}>: teleport for level and refresh", bot, player->GetName());
