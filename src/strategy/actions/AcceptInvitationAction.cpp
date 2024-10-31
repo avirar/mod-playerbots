@@ -30,7 +30,11 @@ bool AcceptInvitationAction::Execute(Event event)
     // Check if the bot is already in a group based on the flag and inviter's security level
     if (flag == 0 && botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
     {
-        bot->UninviteFromGroup(); // Bot leaves its current group
+        // Build a packet to leave the group
+        WorldPacket leavePacket;
+        leavePacket << uint32(PARTY_OP_LEAVE) << bot->GetName() << uint32(0); // operation, bot name, and a filler value
+
+        bot->GetSession()->HandleGroupDisbandOpcode(leavePacket);
 
         // Log the action instead of messaging the inviter
         LOG_INFO("playerbots", "Bot {} left its current group on invitation from {}. Request inviter to re-invite.",
