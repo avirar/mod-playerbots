@@ -1,105 +1,72 @@
 #include "AcceptInvitationAction.h"
+
+#include "Chat.h"
 #include "Event.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotSecurity.h"
 #include "Playerbots.h"
 #include "WorldPacket.h"
-#include "Guild.h"
 
 bool AcceptInvitationAction::Execute(Event event)
 {
-    Group* inviteGroup = bot->GetGroupInvite();
-    if (!inviteGroup)
+    Group* grp = bot->GetGroupInvite();
+    if (!grp && !bot->GetGroup())
         return false;
-
     WorldPacket packet = event.getPacket();
     uint8 flag;
     std::string name;
     packet >> flag >> name;
 
+    LOG_INFO("playerbots", "Bot {} received an invitation with flag: {}, from inviter: {}.", bot->GetName().c_str(), flag, name.c_str());
+
+    // Player* inviter = ObjectAccessor::FindPlayer(grp->GetLeaderGUID());
     Player* inviter = ObjectAccessor::FindPlayerByName(name, true);
     if (!inviter)
         return false;
 
-    Group* currentGroup = bot->GetGroup();
-    PlayerbotAI* inviterBotAI = GET_PLAYERBOT_AI(inviter);
-
-    // Handle ERR_ALREADY_IN_GROUP_S if bot is grouped
-    if (currentGroup)
+    LOG_INFO("playerbots", "Bot {} found inviter: {} with GUID: {}.", bot->GetName().c_str(), inviter->GetName().c_str(), inviter->GetGUID().ToString().c_str());
+    
+    // Check if the bot is already in a group based on the flag and inviter's security level
+    if (flag == 0 && botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
     {
-        // Check if the current group leader is a bot
-        Player* currentLeader = ObjectAccessor::FindPlayer(currentGroup->GetLeaderGUID());
-        if (currentLeader && GET_PLAYERBOT_AI(currentLeader) && inviterBotAI)
-        {
-            LOG_INFO("playerbots", "Bot {} declined invite from {} because it is already in a group led by a bot.", bot->GetName().c_str(), inviter->GetName().c_str());
-            WorldPacket data(SMSG_GROUP_DECLINE, 10);
-            data << bot->GetName();
-            inviter->SendDirectMessage(&data);
-            return false;
-        }
+        bot->UninviteFromGroup(); // Bot leaves its current group
 
-        // If inviter is a high-ranking guild member, leave current group and join them
-        if (Guild* botGuild = bot->GetGuild())
-        {
-            Guild::Member const* inviterGuildMember = botGuild->GetMember(inviter->GetGUID());
-            if (inviterGuildMember && inviterGuildMember->GetRankId() <= 1) 
-            {
-                bot->Whisper("I am currently in a group but will leave to join you.", LANG_UNIVERSAL, inviter);
-                botAI->DoSpecificAction("leave group", Event(), true);
-            }
-        }
+        // Log the action instead of messaging the inviter
+        LOG_INFO("playerbots", "Bot {} left its current group on invitation from {}. Request inviter to re-invite.",
+                 bot->GetName().c_str(), inviter->GetName().c_str());
+
+        return false; // Do not proceed with accepting invite immediately
     }
 
-    Group* inviterGroup = inviter->GetGroup();
-
-    // Case: Inviter is ungrouped - accept the invite and create a new group
-    if (!inviterGroup)
+    // Check inviter security level (if not in a group)
+    if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter))
     {
-        WorldPacket p;
-        uint32 roles_mask = 0;
-        p << roles_mask;
-        bot->GetSession()->HandleGroupAcceptOpcode(p);  // This will create a new group with inviter as the leader
-
-        if (sRandomPlayerbotMgr->IsRandomBot(bot))
-            botAI->SetMaster(inviter);
-
-        botAI->ResetStrategies();
-        botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
-        botAI->TellMaster("Hello");
-
-        if (sPlayerbotAIConfig->summonWhenGroup && bot->GetDistance(inviter) > sPlayerbotAIConfig->sightDistance)
-        {
-            Teleport(inviter, bot);
-        }
-        return true;
-    }
-
-    // Case: Inviter is in a group
-    if (inviterGroup && !inviterGroup->IsFull())
-    {
-        inviterGroup->AddMember(bot);
-        inviterGroup->BroadcastGroupUpdate();
-
-        botAI->SetMaster(inviter);
-        botAI->TellMaster("I have joined your group as requested.");
-
-        botAI->ResetStrategies();
-        botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
-        botAI->Reset();
-
-        if (sPlayerbotAIConfig->summonWhenGroup && bot->GetDistance(inviter) > sPlayerbotAIConfig->sightDistance)
-        {
-            Teleport(inviter, bot);
-        }
-        return true;
-    }
-    else if (inviterGroup && inviterGroup->IsFull())
-    {
-        bot->Whisper("I could not join your group as it is full.", LANG_UNIVERSAL, inviter);
+        WorldPacket data(SMSG_GROUP_DECLINE, 10);
+        data << bot->GetName();
+        inviter->SendDirectMessage(&data);
+        bot->UninviteFromGroup();
         return false;
     }
 
-    return false;
-}
+    // Accept the invitation
+    WorldPacket p;
+    uint32 roles_mask = 0;
+    p << roles_mask;
+    bot->GetSession()->HandleGroupAcceptOpcode(p);
 
+    if (sRandomPlayerbotMgr->IsRandomBot(bot))
+        botAI->SetMaster(inviter);
+
+    botAI->ResetStrategies();
+    botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
+    botAI->Reset();
+
+    botAI->TellMaster("Hello");
+
+    if (sPlayerbotAIConfig->summonWhenGroup && bot->GetDistance(inviter) > sPlayerbotAIConfig->sightDistance)
+    {
+        Teleport(inviter, bot);
+    }
+    return true;
+}
