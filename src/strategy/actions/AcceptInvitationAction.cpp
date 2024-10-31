@@ -48,17 +48,48 @@ bool AcceptInvitationAction::Execute(Event event)
                 inviterGroup->AddMember(bot);
                 sGroupMgr->AddGroup(inviterGroup);
                 LOG_INFO("playerbots", "Bot {} joined a new group with inviter {}.", bot->GetName().c_str(), inviter->GetName().c_str());
-            } else {
+                if (sRandomPlayerbotMgr->IsRandomBot(bot))
+                    botAI->SetMaster(inviter);
+            
+                botAI->ResetStrategies();
+                botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
+                botAI->Reset();
+            
+                botAI->TellMaster("Hello");
+            
+                if (sPlayerbotAIConfig->summonWhenGroup && bot->GetDistance(inviter) > sPlayerbotAIConfig->sightDistance)
+                {
+                    Teleport(inviter, bot);
+                }
+            } 
+            else
+            {
                 LOG_ERROR("playerbots", "Failed to create group for bot {} and inviter {}.", bot->GetName().c_str(), inviter->GetName().c_str());
                 delete inviterGroup;
                 return false;
             }
-        } else if (!inviterGroup->IsFull()) {
+        } else if (!inviterGroup->IsFull()) 
+        {
             // If inviter already has a group, add the bot to it
             inviterGroup->AddMember(bot);
             inviterGroup->BroadcastGroupUpdate();
             LOG_INFO("playerbots", "Bot {} joined inviter {}'s existing group.", bot->GetName().c_str(), inviter->GetName().c_str());
-        } else {
+            if (sRandomPlayerbotMgr->IsRandomBot(bot))
+                botAI->SetMaster(inviter);
+        
+            botAI->ResetStrategies();
+            botAI->ChangeStrategy("+follow,-lfg,-bg", BOT_STATE_NON_COMBAT);
+            botAI->Reset();
+        
+            botAI->TellMaster("Hello");
+        
+            if (sPlayerbotAIConfig->summonWhenGroup && bot->GetDistance(inviter) > sPlayerbotAIConfig->sightDistance)
+            {
+                Teleport(inviter, bot);
+            }
+        } 
+        else 
+        {
             LOG_INFO("playerbots", "Bot {} could not join inviter {}'s group because it is full.", bot->GetName().c_str(), inviter->GetName().c_str());
             return false;
         }
