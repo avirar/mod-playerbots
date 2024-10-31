@@ -86,6 +86,7 @@ bool GuildInviteAction::isUseful()
 
 void GuildInviteAction::SendPacket(WorldPacket packet)
 {
+    LOG_INFO("playerbots", "Bot {} is sending a guild invitation.", bot->GetName().c_str());
     WorldPackets::Guild::GuildInviteByName data = WorldPacket(packet);
     bot->GetSession()->HandleGuildInviteOpcode(data);
 }
@@ -148,6 +149,122 @@ bool GuildManageNearbyAction::Execute(Event event)
     Guild::Member* botMember = guild->GetMember(bot->GetGUID());
 
     GuidVector nearGuids = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest friendly players")->Get();
+    // Officer appointment check (only the guild leader can appoint officers)
+
+    uint8 botRankId = botMember->GetRankId();
+    if (botRankId == 0) // Ensure only the leader can perform this action
+    {
+        // Parse the emblem info from HandleQuery's response
+        WorldSession* botSession = bot->GetSession();
+        WorldPackets::Guild::QueryGuildInfoResponse response;
+        
+        if (botSession)
+        {
+            guild->HandleQuery(botSession); // Send the query to populate response data
+        }
+        
+        // Retrieve current emblem data
+        EmblemInfo currentEmblem(response.Info.EmblemStyle, response.Info.EmblemColor, 
+                                 response.Info.BorderStyle, response.Info.BorderColor, 
+                                 response.Info.BackgroundColor);
+        
+        // Check if the emblem is unset (all values are zero)
+        if (currentEmblem.GetStyle() == 0 && currentEmblem.GetColor() == 0 && 
+            currentEmblem.GetBorderStyle() == 0 && currentEmblem.GetBorderColor() == 0 && 
+            currentEmblem.GetBackgroundColor() == 0)
+        {
+            // Generate random values for the new emblem
+            uint32 st = urand(0, 180), cl = urand(0, 17), br = urand(0, 7), bc = urand(0, 17), bg = urand(0, 51);
+            EmblemInfo desiredEmblem(st, cl, br, bc, bg);
+
+            LOG_INFO("playerbots", "Guild {} emblem not set, updating to new values.", guild->GetName().c_str());
+            guild->HandleSetEmblem(desiredEmblem);  // Apply the new emblem
+            
+            // Re-query to verify if the emblem was set correctly
+            guild->HandleQuery(botSession);
+            EmblemInfo updatedEmblem(response.Info.EmblemStyle, response.Info.EmblemColor,
+                                     response.Info.BorderStyle, response.Info.BorderColor,
+                                     response.Info.BackgroundColor);
+
+            // Check if the new emblem matches the intended values
+            if (updatedEmblem.GetStyle() != desiredEmblem.GetStyle() ||
+                updatedEmblem.GetColor() != desiredEmblem.GetColor() ||
+                updatedEmblem.GetBorderStyle() != desiredEmblem.GetBorderStyle() ||
+                updatedEmblem.GetBorderColor() != desiredEmblem.GetBorderColor() ||
+                updatedEmblem.GetBackgroundColor() != desiredEmblem.GetBackgroundColor())
+            {
+                LOG_ERROR("playerbots", "Failed to update emblem for guild {}", guild->GetName().c_str());
+            }
+        }
+
+        // Rank check and set for "Veteran" rank (ID 2)
+        uint32 veteranRights = GR_RIGHT_GCHATLISTEN | GR_RIGHT_GCHATSPEAK | GR_RIGHT_INVITE;
+        uint32 moneyPerDay = 1000;
+
+        // Assuming `response` is a `QueryGuildInfoResponse` packet object we parsed earlier
+        if (response.Info.RankCount > 2 && response.Info.Ranks[2] == "Veteran")
+        {
+            uint32 currentRights = veteranRights; // Use default rights as placeholders for comparison
+            uint32 currentBankMoneyPerDay = moneyPerDay; // Placeholder for comparison
+        
+            // Verify rights by comparing against defaults, then update if needed
+            if (currentRights != veteranRights || currentBankMoneyPerDay != moneyPerDay)
+            {
+                LOG_INFO("playerbots", "Guild {} 'Veteran' rank not set correctly, updating...", guild->GetName().c_str());
+        
+                // Set the rank info directly without accessing private members
+                guild->HandleSetRankInfo(2, veteranRights, "Veteran", moneyPerDay);
+        
+                // Re-query the guild information to verify
+                guild->HandleQuery(botSession);
+            }
+        }
+        else
+        {
+            LOG_ERROR("playerbots", "Rank 'Veteran' not found in guild {}. Rank check and update skipped.", guild->GetName().c_str());
+        }
+
+
+        uint32 officerCount = 0;
+        uint32 totalMembers = guild->GetMemberSize();  // Total number of members in the guild
+        
+        for (uint32 guidCounter = 0; guidCounter < totalMembers; ++guidCounter)
+        {
+            // Retrieve the member using the GUID counter
+            if (auto* member = guild->GetMember(ObjectGuid::Create<HighGuid::Player>(guidCounter)))
+            {
+                if (member->GetRankId() == 1)  // Check if the member is an officer
+                    officerCount++;
+            }
+        }
+    
+        if (officerCount < 2)  // If less than two officers, promote candidates
+        {
+            for (const auto& guid : nearGuids)
+            {
+                Player* player = ObjectAccessor::FindPlayer(guid);
+                if (!player || bot == player)
+                    continue;
+        
+                if (player->GetGuildId() == bot->GetGuildId())
+                {
+                    PlayerbotAI* playerBotAI = GET_PLAYERBOT_AI(player);
+                    if (playerBotAI && (playerBotAI->GetGrouperType() == GrouperType::SOLO || playerBotAI->GetGrouperType() == GrouperType::MEMBER))
+                    {
+                        // Promote to officer rank
+                        guild->HandleSetRankInfo(1, GR_RIGHT_GCHATLISTEN | GR_RIGHT_GCHATSPEAK | GR_RIGHT_INVITE, "Veteran", 1000);
+                        BroadcastHelper::BroadcastGuildMemberPromotion(botAI, bot, player);
+                        botAI->DoSpecificAction("guild promote", Event("guild management", guid), true);
+        
+                        officerCount++;
+                        if (officerCount >= 2)
+                            break;
+                    }
+                }
+            }
+        }
+
+    }
     for (auto& guid : nearGuids)
     {
         Player* player = ObjectAccessor::FindPlayer(guid);
@@ -159,29 +276,21 @@ bool GuildManageNearbyAction::Execute(Event event)
             continue;
 
         // Promote or demote nearby members based on chance.
-        if (player->GetGuildId() && player->GetGuildId() == bot->GetGuildId())
-        {
-            Guild::Member* member = guild->GetMember(player->GetGUID());
-            uint32 dCount = AI_VALUE(uint32, "death count");
+        // if (player->GetGuildId() && player->GetGuildId() == bot->GetGuildId())
+        // {
+        //    Guild::Member* member = guild->GetMember(player->GetGUID());
+        //    uint32 dCount = AI_VALUE(uint32, "death count");
 
-            if (!urand(0, 30) && dCount < 2 && guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_PROMOTE)
-            {
-                BroadcastHelper::BroadcastGuildMemberPromotion(botAI, bot, player);
+        //    if (!urand(0, 30) && dCount > 2 && guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_DEMOTE)
+        //    {
+        //        BroadcastHelper::BroadcastGuildMemberDemotion(botAI, bot, player);
 
-                botAI->DoSpecificAction("guild promote", Event("guild management", guid), true);
-                continue;
-            }
+        //        botAI->DoSpecificAction("guild demote", Event("guild management", guid), true);
+        //        continue;
+        //    }
 
-            if (!urand(0, 30) && dCount > 2 && guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_DEMOTE)
-            {
-                BroadcastHelper::BroadcastGuildMemberDemotion(botAI, bot, player);
-
-                botAI->DoSpecificAction("guild demote", Event("guild management", guid), true);
-                continue;
-            }
-
-            continue;
-        }
+        //    continue;
+        // }
 
         if (!sPlayerbotAIConfig->randomBotGuildNearby)
             return false;
@@ -200,9 +309,9 @@ bool GuildManageNearbyAction::Execute(Event event)
         if (!sPlayerbotAIConfig->randomBotInvitePlayer && botAi && botAi->IsRealPlayer())
             continue;
 
-        if (botAi)
+        if (botAi && !botAi->IsRealPlayer())
         {
-            if (botAi->GetGuilderType() == GuilderType::SOLO && !botAi->HasRealPlayerMaster()) //Do not invite solo players.
+            if (botAi->GetGuilderType() == GuilderType::SOLO) //Do not invite solo bots.
                 continue;
 
             if (botAi->HasActivePlayerMaster() && !sRandomPlayerbotMgr->IsRandomBot(player)) //Do not invite alts of active players. 
