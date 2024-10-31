@@ -5,6 +5,7 @@
 
 #include "LeaveGroupAction.h"
 
+#include "Chat.h"
 #include "Event.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -16,23 +17,68 @@ bool LeaveGroupAction::Execute(Event event)
     return Leave(master);
 }
 
+#include "Chat.h"  // Make sure to include Chat.h for ChatHandler
+
 bool PartyCommandAction::Execute(Event event)
 {
     WorldPacket& p = event.getPacket();
     p.rpos(0);
-    uint32 operation;
+    uint32 operation, result;
     std::string member;
 
-    p >> operation >> member;
+    p >> operation >> member >> result;
 
-    if (operation != PARTY_OP_LEAVE)
-        return false;
+    // Log the packet details
+    LOG_INFO("playerbots", "Bot {} received packet with operation: {}, member: {}, result: {}",
+             bot->GetName().c_str(), operation, member.c_str(), result);
 
-    Player* master = GetMaster();
-    if (master && member == master->GetName())
-        return Leave(bot);
-	
-	botAI->Reset();
+
+    // Handle already in group case
+    if (result == ERR_ALREADY_IN_GROUP_S)
+    {
+        Player* inviter = ObjectAccessor::FindPlayerByName(member);  // Locate the inviter by name
+    
+        // Check if inviter exists
+        if (!inviter)
+        {
+            // Log if inviter could not be found
+            LOG_INFO("playerbots", "Bot {} received an invite from '{}', but no player with that name was found in the world.",
+                     bot->GetName().c_str(), member.c_str());
+        }
+        else
+        {
+            // Log inviter's details if found
+            LOG_INFO("playerbots", "Bot {} found inviter: {} with GUID: {}.", bot->GetName().c_str(), inviter->GetName().c_str(), inviter->GetGUID().ToString().c_str());
+    
+            // Check if inviter has an active session
+            if (!inviter->GetSession())
+            {
+                // Log if inviter exists but has no active session
+                LOG_INFO("playerbots", "Bot {} received an invite from '{}', but the inviter has no active session.", bot->GetName().c_str(), inviter->GetName().c_str());
+            }
+            else
+            {
+                // Log if inviter exists and has an active session but bot is already in a group
+                LOG_INFO("playerbots", "Bot {} is already in a group. Invite by {} (GUID: {}).",
+                         bot->GetName().c_str(), inviter->GetName().c_str(), inviter->GetGUID().ToString().c_str());
+                return true;
+            }
+        }
+    }
+    else
+    {
+        LOG_INFO("playerbots", "Bot {} received invite packet that was not ERR_ALREADY_IN_GROUP_S", bot->GetName().c_str());
+    }
+
+    // Original leave group functionality
+    if (operation == PARTY_OP_LEAVE)
+    {
+        Player* master = GetMaster();
+        if (master && member == master->GetName())
+            return Leave(bot);
+        
+        botAI->Reset();
+    }
 
     return false;
 }
