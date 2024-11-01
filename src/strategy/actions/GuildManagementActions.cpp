@@ -154,55 +154,6 @@ bool GuildManageNearbyAction::Execute(Event event)
     // Ensure only the guild leader can perform this action
     if (botRankId == 0) 
     {
-        WorldSession* botSession = bot->GetSession();
-        WorldPackets::Guild::QueryGuildInfoResponse response;
-        
-        if (botSession)
-        {
-            guild->HandleQuery(botSession); // Send the query to populate response data
-        }
-        
-        // Retrieve current emblem data
-        EmblemInfo currentEmblem(response.Info.EmblemStyle, response.Info.EmblemColor, 
-                                 response.Info.BorderStyle, response.Info.BorderColor, 
-                                 response.Info.BackgroundColor);
-        
-        LOG_INFO("playerbots", "Parsed emblem data for guild {} - Style: {}, Color: {}, BorderStyle: {}, BorderColor: {}, BackgroundColor: {}",
-                 guild->GetName().c_str(), currentEmblem.GetStyle(), currentEmblem.GetColor(), 
-                 currentEmblem.GetBorderStyle(), currentEmblem.GetBorderColor(), currentEmblem.GetBackgroundColor());
-
-        // Rank check and set for "Veteran" rank (ID 2)
-        uint32 veteranRights = GR_RIGHT_GCHATLISTEN | GR_RIGHT_GCHATSPEAK | GR_RIGHT_INVITE;
-        uint32 moneyPerDay = 1000;
-
-        // Log parsed rank information for verification
-        LOG_INFO("playerbots", "Parsed rank data for guild {} - RankCount: {}, VeteranRank (ID 2) Rights: {}, Money Per Day: {}",
-            guild->GetName().c_str(), response.Info.RankCount, veteranRights, moneyPerDay);
-
-        // Assuming `response` is a `QueryGuildInfoResponse` packet object we parsed earlier
-        if (response.Info.RankCount > 2 && response.Info.Ranks[2] == "Veteran")
-        {
-            uint32 currentRights = veteranRights; // Use default rights as placeholders for comparison
-            uint32 currentBankMoneyPerDay = moneyPerDay; // Placeholder for comparison
-        
-            // Verify rights by comparing against defaults, then update if needed
-            if (currentRights != veteranRights || currentBankMoneyPerDay != moneyPerDay)
-            {
-                LOG_INFO("playerbots", "Guild {} 'Veteran' rank not set correctly, updating...", guild->GetName().c_str());
-        
-                // Set the rank info directly without accessing private members
-                guild->HandleSetRankInfo(2, veteranRights, "Veteran", moneyPerDay);
-        
-                // Re-query the guild information to verify
-                guild->HandleQuery(botSession);
-            }
-        }
-        else
-        {
-            LOG_ERROR("playerbots", "Rank 'Veteran' not found in guild {}. Rank check and update skipped.", guild->GetName().c_str());
-        }
-
-
         uint32 officerCount = 0;
         uint32 totalMembers = guild->GetMemberSize();  // Total number of members in the guild
         
@@ -241,17 +192,23 @@ bool GuildManageNearbyAction::Execute(Event event)
         
                 if (player->GetGuildId() == bot->GetGuildId())
                 {
-                    LOG_INFO("playerbots", "Nearby player '{}' is a guild member of '{}'", player->GetName().c_str(), guild->GetName().c_str());
+                    LOG_INFO("playerbots", "Nearby player '{}' is also a guild member of '{}'", player->GetName().c_str(), guild->GetName().c_str());
         
                     PlayerbotAI* playerBotAI = GET_PLAYERBOT_AI(player);
                     if (playerBotAI && (playerBotAI->GetGrouperType() == GrouperType::SOLO || playerBotAI->GetGrouperType() == GrouperType::MEMBER))
                     {
-                        // Promote to officer rank
-                        LOG_INFO("playerbots", "Promoting player '{}' to officer rank in guild '{}'", player->GetName().c_str(), guild->GetName().c_str());
-        
                         if (auto* member = guild->GetMember(player->GetGUID()))
                         {
-                            member->ChangeRank(1);  // Use ChangeRank to set rank to officer (RankId: 1)
+                            // Check if the player is already an officer
+                            if (member->GetRankId() == 1)  // Rank ID 1 is for Officer
+                            {
+                                LOG_INFO("playerbots", "Player '{}' is already an officer in guild '{}'. No promotion needed.", player->GetName().c_str(), guild->GetName().c_str());
+                                continue;  // Skip to the next player
+                            }
+                            // Promote to officer rank
+                            LOG_INFO("playerbots", "Promoting player '{}' to officer rank in guild '{}'", player->GetName().c_str(), guild->GetName().c_str());
+                                member->ChangeRank(1);  // Use ChangeRank to set rank to officer (RankId: 1)
+
                             officerCount++;
                             LOG_INFO("playerbots", "New officer count after promotion: {}", officerCount);
                         }
