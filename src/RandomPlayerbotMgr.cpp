@@ -1152,7 +1152,7 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
     // Allow group leader bots to teleport with 50% chance each group member will follow
     uint32 teleport = GetEventValue(bot, "teleport");
 
-    if (isLeader && !teleport)
+    if (isLeader && teleport)
     {
         LOG_INFO("playerbots", "Group leader Bot #{} <{}>: initiating teleport.", bot, player->GetName());
         Refresh(player);
