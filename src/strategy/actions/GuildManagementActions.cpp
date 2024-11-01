@@ -184,9 +184,14 @@ bool GuildManageNearbyAction::Execute(Event event)
 
     // Check if the bot is an officer (rank 1) or higher (rank 0). Needs to be replaced to invite permission check.
     uint8 botRankId = botMember->GetRankId();
-    if (botRankId > 1)
+    uint32 botRankRights = guild->GetRankRights(botRankId);
+
+    // Log the rank and associated rights
+    LOG_INFO("playerbots", "Bot '{}' has rank ID {} with rights: {} (Binary: {:032b})", 
+        bot->GetName().c_str(), botRankId, botRankRights, botRankRights);
+    if ((botRankRights & GR_RIGHT_INVITE) != GR_RIGHT_INVITE) // Corrected condition
     {
-        LOG_INFO("playerbots", "Bot '{}' is not an officer or higher. Skipping guild management actions.", bot->GetName().c_str());
+        LOG_INFO("playerbots", "Bot '{}' lacks invite permissions based on current rank rights. Aborting guild management actions.", bot->GetName().c_str());
         return false;
     }
 
