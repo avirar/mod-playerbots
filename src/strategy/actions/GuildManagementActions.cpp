@@ -60,17 +60,42 @@ Player* GuidManageAction::GetPlayer(Event event)
 
 bool GuidManageAction::Execute(Event event)
 {
+    // Attempt to retrieve the player based on the event
     Player* player = GetPlayer(event);
 
-    if (!player || !PlayerIsValid(player) || player == bot)
+    // Log the result of player retrieval
+    if (!player)
+    {
+        LOG_DEBUG("playerbots", "GuidManageAction::Execute - No player found for the given event.");
         return false;
+    }
 
+    // Check if the player is valid for the action and not the bot itself
+    if (!PlayerIsValid(player))
+    {
+        LOG_DEBUG("playerbots", "GuidManageAction::Execute - Player '{}' is not valid for this action.", player->GetName().c_str());
+        return false;
+    }
+    if (player == bot)
+    {
+        LOG_DEBUG("playerbots", "GuidManageAction::Execute - Skipping action for bot '{}'.", bot->GetName().c_str());
+        return false;
+    }
+
+    // Log that the player passed validation checks and the packet is being prepared
+    LOG_INFO("playerbots", "Executing action on player '{}'", player->GetName().c_str());
+
+    // Prepare and send the packet with the player's name
     WorldPacket data(opcode);
     data << player->GetName();
     SendPacket(data);
 
+    // Confirm the packet was sent successfully
+    LOG_INFO("playerbots", "Packet sent successfully to player '{}'", player->GetName().c_str());
+
     return true;
 }
+
 
 bool GuidManageAction::PlayerIsValid(Player* member) { return !member->GetGuildId(); }
 
@@ -323,8 +348,9 @@ bool GuildManageNearbyAction::Execute(Event event)
         // Attempt guild invite if all conditions are met
         if (botAI->DoSpecificAction("guild invite", Event("guild management", guid), true))
         {
-            
-            return true;  // Stop if inviteChat is enabled
+            if (sPlayerbotAIConfig->inviteChat)
+                return true;
+            found++;
         }
     }
 
