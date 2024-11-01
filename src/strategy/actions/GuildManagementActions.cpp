@@ -182,8 +182,15 @@ bool GuildManageNearbyAction::Execute(Event event)
     Guild* guild = sGuildMgr->GetGuildById(bot->GetGuildId());
     Guild::Member* botMember = guild->GetMember(bot->GetGUID());
 
-    GuidVector nearGuids = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest friendly players")->Get();
+    // Check if the bot is an officer (rank 1) or higher (rank 0). Needs to be replaced to invite permission check.
     uint8 botRankId = botMember->GetRankId();
+    if (botRankId > 1)
+    {
+        LOG_INFO("playerbots", "Bot '{}' is not an officer or higher. Skipping guild management actions.", bot->GetName().c_str());
+        return false;
+    }
+
+    GuidVector nearGuids = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest friendly players")->Get();
 
     // Ensure only the guild leader can perform this action
     if (botRankId == 0) 
