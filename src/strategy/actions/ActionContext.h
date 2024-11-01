@@ -188,6 +188,7 @@ public:
         creators["guild manage nearby"] = &ActionContext::guild_manage_nearby;
         creators["clean quest log"] = &ActionContext::clean_quest_log;
         creators["guild invite"] = &ActionContext::guild_invite;
+        creators["guild accept"] = &ActionContext::guild_accept;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
@@ -417,6 +418,7 @@ private:
     static Action* toggle_pet_spell(PlayerbotAI* ai) { return new TogglePetSpellAutoCastAction(ai); }
     static Action* pet_attack(PlayerbotAI* ai) { return new PetAttackAction(ai); }
     static Action* guild_invite(PlayerbotAI* botAI) { return new GuildInviteAction(botAI); }
+    static Action* guild_accept(PlayerbotAI* botAI) { return new GuildAcceptAction(botAI); }
 };
 
 #endif
