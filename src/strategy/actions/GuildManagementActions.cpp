@@ -281,6 +281,12 @@ bool GuildManageNearbyAction::Execute(Event event)
             LOG_DEBUG("playerbots", "Player '{}' already has a pending guild invitation.", player->GetName().c_str());
             continue;
         }
+
+        if (player->GetGuildId())
+        {
+            LOG_DEBUG("playerbots", "Player '{}' already has a guild.", player->GetName().c_str());
+            continue;
+        }
     
         // Check for specific bot invite conditions
         PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);
