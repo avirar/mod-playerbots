@@ -60,25 +60,26 @@ Player* GuidManageAction::GetPlayer(Event event)
 
 bool GuidManageAction::Execute(Event event)
 {
+    LOG_INFO("playerbots", "GuidManageAction::Execute called with event for action '{}'", name);
     // Attempt to retrieve the player based on the event
     Player* player = GetPlayer(event);
 
     // Log the result of player retrieval
     if (!player)
     {
-        LOG_DEBUG("playerbots", "GuidManageAction::Execute - No player found for the given event.");
+        LOG_INFO("playerbots", "GuidManageAction::Execute - No player found for the given event.");
         return false;
     }
 
     // Check if the player is valid for the action and not the bot itself
     if (!PlayerIsValid(player))
     {
-        LOG_DEBUG("playerbots", "GuidManageAction::Execute - Player '{}' is not valid for this action.", player->GetName().c_str());
+        LOG_INFO("playerbots", "GuidManageAction::Execute - Player '{}' is not valid for this action.", player->GetName().c_str());
         return false;
     }
     if (player == bot)
     {
-        LOG_DEBUG("playerbots", "GuidManageAction::Execute - Skipping action for bot '{}'.", bot->GetName().c_str());
+        LOG_INFO("playerbots", "GuidManageAction::Execute - Skipping action for bot '{}'.", bot->GetName().c_str());
         return false;
     }
 
@@ -106,14 +107,22 @@ uint8 GuidManageAction::GetRankId(Player* member)
 
 bool GuildInviteAction::isUseful()
 {
-    return bot->GetGuildId() && sGuildMgr->GetGuildById(bot->GetGuildId())->HasRankRight(bot, GR_RIGHT_INVITE);
+    bool canInvite = bot->GetGuildId() && sGuildMgr->GetGuildById(bot->GetGuildId())->HasRankRight(bot, GR_RIGHT_INVITE);
+    LOG_INFO("playerbots", "GuildInviteAction::isUseful - Bot '{}' invite permissions: {}", bot->GetName().c_str(), canInvite);
+    return canInvite;
 }
 
-void GuildInviteAction::SendPacket(WorldPacket packet)
+void GuildInviteAction::SendPacket(WorldPacket data)
 {
-    LOG_INFO("playerbots", "Bot {} is sending a guild invitation.", bot->GetName().c_str());
-    WorldPackets::Guild::GuildInviteByName data = WorldPacket(packet);
-    bot->GetSession()->HandleGuildInviteOpcode(data);
+    std::string playerName;
+    data.rpos(0);  // Reset read position to the start if needed
+    data >> playerName;  // Extract player name from the packet
+
+    LOG_INFO("playerbots", "GuildInviteAction::SendPacket - Bot '{}' is sending a guild invitation to player '{}'", 
+             bot->GetName().c_str(), playerName.c_str());
+
+    WorldPackets::Guild::GuildInviteByName invitePacket = WorldPacket(data);
+    bot->GetSession()->HandleGuildInviteOpcode(invitePacket);
 }
 
 bool GuildInviteAction::PlayerIsValid(Player* member) { return !member->GetGuildId(); }
@@ -209,9 +218,9 @@ bool GuildManageNearbyAction::Execute(Event event)
                 if (!player || bot == player)
                 {
                     if (!player)
-                        LOG_DEBUG("playerbots", "Player with GUID '{}' is not found or not online.", guid.GetRawValue());
+                        LOG_INFO("playerbots", "Player with GUID '{}' is not found or not online.", guid.GetRawValue());
                     if (bot == player)
-                        LOG_DEBUG("playerbots", "Skipping self-promotion for bot '{}'", bot->GetName().c_str());
+                        LOG_INFO("playerbots", "Skipping self-promotion for bot '{}'", bot->GetName().c_str());
                     continue;
                 }
         
@@ -246,12 +255,12 @@ bool GuildManageNearbyAction::Execute(Event event)
                     }
                     else
                     {
-                        LOG_DEBUG("playerbots", "Player '{}' does not meet promotion criteria or is already grouped.", player->GetName().c_str());
+                        LOG_INFO("playerbots", "Player '{}' does not meet promotion criteria or is already grouped.", player->GetName().c_str());
                     }
                 }
                 else
                 {
-                    LOG_DEBUG("playerbots", "Nearby player '{}' is not a member of the bot's guild '{}'. Skipping.", player->GetName().c_str(), guild->GetName().c_str());
+                    LOG_INFO("playerbots", "Nearby player '{}' is not a member of the bot's guild '{}'. Skipping.", player->GetName().c_str(), guild->GetName().c_str());
                 }
             }
         }
@@ -269,47 +278,47 @@ bool GuildManageNearbyAction::Execute(Event event)
         // Skip if player not found or is the bot itself
         if (!player || bot == player)
         {
-            LOG_DEBUG("playerbots", "Skipping self or non-existent player (GUID: {}).", guid.GetRawValue());
+            LOG_INFO("playerbots", "Skipping self or non-existent player (GUID: {}).", guid.GetRawValue());
             continue;
         }
     
         // Skip if player is in Do Not Disturb (DND) mode
         if (player->isDND())
         {
-            LOG_DEBUG("playerbots", "Skipping player '{}' - DND mode active.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Skipping player '{}' - DND mode active.", player->GetName().c_str());
             continue;
         }
     
         // Config and guild size checks
         if (!sPlayerbotAIConfig->randomBotGuildNearby)
         {
-            LOG_DEBUG("playerbots", "Skipping nearby guild invite - 'randomBotGuildNearby' disabled in config.");
+            LOG_INFO("playerbots", "Skipping nearby guild invite - 'randomBotGuildNearby' disabled in config.");
             return false;
         }
     
         if (guild->GetMemberSize() > 1000)
         {
-            LOG_DEBUG("playerbots", "Guild '{}' has over 1000 members; skipping invite checks.", guild->GetName().c_str());
+            LOG_INFO("playerbots", "Guild '{}' has over 1000 members; skipping invite checks.", guild->GetName().c_str());
             return false;
         }
     
         // Check for invite permissions
         if ((guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_INVITE) == 0)
         {
-            LOG_DEBUG("playerbots", "Bot lacks invite permissions; skipping player '{}'.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Bot lacks invite permissions; skipping player '{}'.", player->GetName().c_str());
             continue;
         }
     
         // Skip players with pending invitations
         if (player->GetGuildIdInvited())
         {
-            LOG_DEBUG("playerbots", "Player '{}' already has a pending guild invitation.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Player '{}' already has a pending guild invitation.", player->GetName().c_str());
             continue;
         }
 
         if (player->GetGuildId())
         {
-            LOG_DEBUG("playerbots", "Player '{}' already has a guild.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Player '{}' already has a guild.", player->GetName().c_str());
             continue;
         }
     
@@ -317,7 +326,7 @@ bool GuildManageNearbyAction::Execute(Event event)
         PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);
         if (!sPlayerbotAIConfig->randomBotInvitePlayer && botAi && botAi->IsRealPlayer())
         {
-            LOG_DEBUG("playerbots", "Skipping player '{}' - Real player invites disabled in config.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Skipping player '{}' - Real player invites disabled in config.", player->GetName().c_str());
             continue;
         }
     
@@ -325,13 +334,13 @@ bool GuildManageNearbyAction::Execute(Event event)
         {
             if (botAi->GetGuilderType() == GuilderType::SOLO)
             {
-                LOG_DEBUG("playerbots", "Skipping bot '{}' - Solo bots are not eligible for guilds.", player->GetName().c_str());
+                LOG_INFO("playerbots", "Skipping bot '{}' - Solo bots are not eligible for guilds.", player->GetName().c_str());
                 continue;
             }
     
             if (botAi->HasActivePlayerMaster() && !sRandomPlayerbotMgr->IsRandomBot(player))
             {
-                LOG_DEBUG("playerbots", "Skipping bot '{}' - Controlled by active player.", player->GetName().c_str());
+                LOG_INFO("playerbots", "Skipping bot '{}' - Controlled by active player.", player->GetName().c_str());
                 continue;
             }
         }
@@ -340,7 +349,7 @@ bool GuildManageNearbyAction::Execute(Event event)
         bool sameGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetGUID());
         if (!sameGroup && sServerFacade->GetDistance2d(bot, player) > sPlayerbotAIConfig->spellDistance)
         {
-            LOG_DEBUG("playerbots", "Player '{}' is out of invite range.", player->GetName().c_str());
+            LOG_INFO("playerbots", "Player '{}' is out of invite range.", player->GetName().c_str());
             continue;
         }
 
