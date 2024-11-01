@@ -1655,51 +1655,73 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
 
 bool PlayerbotAI::DoSpecificAction(std::string const name, Event event, bool silent, std::string const qualifier)
 {
+    LOG_INFO("playerbots", "DoSpecificAction called for action '{}'", name);
     std::ostringstream out;
 
     for (uint8 i = 0; i < BOT_STATE_MAX; i++)
     {
+        LOG_DEBUG("playerbots", "DoSpecificAction - Trying to execute action '{}' using engine[{}]", name, i);
+        
+        // Attempt to execute the action within the current engine
         ActionResult res = engines[i]->ExecuteAction(name, event, qualifier);
+
+        // Log the result of ExecuteAction for debugging purposes
         switch (res)
         {
             case ACTION_RESULT_UNKNOWN:
-                continue;
+                LOG_DEBUG("playerbots", "DoSpecificAction - Engine[{}] does not recognize action '{}'", i, name);
+                continue;  // Move to the next engine
+
             case ACTION_RESULT_OK:
+                LOG_INFO("playerbots", "DoSpecificAction - Action '{}' executed successfully by engine[{}]", name, i);
                 if (!silent)
                 {
                     PlaySound(TEXT_EMOTE_NOD);
+                    LOG_DEBUG("playerbots", "DoSpecificAction - Played nod sound for successful action '{}'", name);
                 }
                 return true;
+
             case ACTION_RESULT_IMPOSSIBLE:
                 out << name << ": impossible";
+                LOG_WARN("playerbots", "DoSpecificAction - Action '{}' is impossible according to engine[{}]", name, i);
                 if (!silent)
                 {
                     TellError(out.str());
                     PlaySound(TEXT_EMOTE_NO);
+                    LOG_DEBUG("playerbots", "DoSpecificAction - Played no sound and informed user of impossible action '{}'", name);
                 }
                 return false;
+
             case ACTION_RESULT_USELESS:
                 out << name << ": useless";
+                LOG_WARN("playerbots", "DoSpecificAction - Action '{}' is deemed useless by engine[{}]", name, i);
                 if (!silent)
                 {
                     TellError(out.str());
                     PlaySound(TEXT_EMOTE_NO);
+                    LOG_DEBUG("playerbots", "DoSpecificAction - Played no sound and informed user of useless action '{}'", name);
                 }
                 return false;
+
             case ACTION_RESULT_FAILED:
+                out << name << ": failed";
+                LOG_ERROR("playerbots", "DoSpecificAction - Action '{}' failed in engine[{}]", name, i);
                 if (!silent)
                 {
-                    out << name << ": failed";
                     TellError(out.str());
+                    LOG_DEBUG("playerbots", "DoSpecificAction - Informed user of failed action '{}'", name);
                 }
                 return false;
         }
     }
 
+    // If no engine could execute the action, log that it was unrecognized
+    LOG_WARN("playerbots", "DoSpecificAction - None of the engines recognized action '{}'", name);
     if (!silent)
     {
         out << name << ": unknown action";
         TellError(out.str());
+        LOG_DEBUG("playerbots", "DoSpecificAction - Informed user of unknown action '{}'", name);
     }
 
     return false;
