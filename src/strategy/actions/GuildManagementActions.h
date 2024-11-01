@@ -8,6 +8,7 @@
 
 #include "Action.h"
 #include "Opcodes.h"
+#include "PlayerbotAI.h"
 
 class Player;
 class PlayerbotAI;
@@ -19,6 +20,7 @@ public:
     GuidManageAction(PlayerbotAI* botAI, std::string const name = "guild manage", uint16 opcode = CMSG_GUILD_INVITE)
         : Action(botAI, name), opcode(opcode)
     {
+        LOG_INFO("playerbots", "GuildInviteAction instantiated for bot '{}'", botAI->GetBot()->GetName().c_str());
     }
 
     bool Execute(Event event) override;
