@@ -240,136 +240,85 @@ bool GuildManageNearbyAction::Execute(Event event)
     for (auto& guid : nearGuids)
     {
         Player* player = ObjectAccessor::FindPlayer(guid);
-
+    
+        // Skip if player not found or is the bot itself
         if (!player || bot == player)
+        {
+            LOG_DEBUG("playerbots", "Skipping self or non-existent player (GUID: {}).", guid.GetRawValue());
             continue;
-
+        }
+    
+        // Skip if player is in Do Not Disturb (DND) mode
         if (player->isDND())
+        {
+            LOG_DEBUG("playerbots", "Skipping player '{}' - DND mode active.", player->GetName().c_str());
             continue;
-
-        // Promote or demote nearby members based on chance.
-        // if (player->GetGuildId() && player->GetGuildId() == bot->GetGuildId())
-        // {
-        //    Guild::Member* member = guild->GetMember(player->GetGUID());
-        //    uint32 dCount = AI_VALUE(uint32, "death count");
-
-        //    if (!urand(0, 30) && dCount > 2 && guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_DEMOTE)
-        //    {
-        //        BroadcastHelper::BroadcastGuildMemberDemotion(botAI, bot, player);
-
-        //        botAI->DoSpecificAction("guild demote", Event("guild management", guid), true);
-        //        continue;
-        //    }
-
-        //    continue;
-        // }
-
+        }
+    
+        // Config and guild size checks
         if (!sPlayerbotAIConfig->randomBotGuildNearby)
+        {
+            LOG_DEBUG("playerbots", "Skipping nearby guild invite - 'randomBotGuildNearby' disabled in config.");
             return false;
-
+        }
+    
         if (guild->GetMemberSize() > 1000)
+        {
+            LOG_DEBUG("playerbots", "Guild '{}' has over 1000 members; skipping invite checks.", guild->GetName().c_str());
             return false;
-
-        if ( (guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_INVITE) == 0)
+        }
+    
+        // Check for invite permissions
+        if ((guild->GetRankRights(botMember->GetRankId()) & GR_RIGHT_INVITE) == 0)
+        {
+            LOG_DEBUG("playerbots", "Bot lacks invite permissions; skipping player '{}'.", player->GetName().c_str());
             continue;
-
+        }
+    
+        // Skip players with pending invitations
         if (player->GetGuildIdInvited())
+        {
+            LOG_DEBUG("playerbots", "Player '{}' already has a pending guild invitation.", player->GetName().c_str());
             continue;
-
+        }
+    
+        // Check for specific bot invite conditions
         PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);
-
         if (!sPlayerbotAIConfig->randomBotInvitePlayer && botAi && botAi->IsRealPlayer())
+        {
+            LOG_DEBUG("playerbots", "Skipping player '{}' - Real player invites disabled in config.", player->GetName().c_str());
             continue;
-
+        }
+    
         if (botAi && !botAi->IsRealPlayer())
         {
-            if (botAi->GetGuilderType() == GuilderType::SOLO) //Do not invite solo bots.
-                continue;
-
-            if (botAi->HasActivePlayerMaster() && !sRandomPlayerbotMgr->IsRandomBot(player)) //Do not invite alts of active players. 
-                continue;
-        }
-
-        bool sameGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetGUID());
-
-        if (!sameGroup && sServerFacade->GetDistance2d(bot, player) > sPlayerbotAIConfig->spellDistance)
-            continue;
-
-        if (sPlayerbotAIConfig->inviteChat && (sRandomPlayerbotMgr->IsRandomBot(bot) || !botAI->HasActivePlayerMaster()))
-        {
-            /* std::map<std::string, std::string> placeholders;
-            placeholders["%name"] = player->GetName();
-            placeholders["%members"] = std::to_string(guild->GetMemberSize());
-            placeholders["%guildname"] = guild->GetName();
-            AreaTableEntry const* current_area = botAI->GetCurrentArea();
-            AreaTableEntry const* current_zone = botAI->GetCurrentZone();
-            placeholders["%area_name"] = current_area ? current_area->area_name[BroadcastHelper::GetLocale()] : BOT_TEXT1("string_unknown_area");
-            placeholders["%zone_name"] = current_zone ? current_zone->area_name[BroadcastHelper::GetLocale()] : BOT_TEXT1("string_unknown_area");
-
-            std::vector<std::string> lines;
-
-            //TODO - Move these hardcoded texts to sql!
-            switch ((urand(0, 10) * urand(0, 10)) / 10)
+            if (botAi->GetGuilderType() == GuilderType::SOLO)
             {
-            case 0:
-                lines.push_back(BOT_TEXT2("Hey %name do you want to join my guild?", placeholders));
-                break;
-            case 1:
-                lines.push_back(BOT_TEXT2("Hey man you wanna join my guild %name?", placeholders));
-                break;
-            case 2:
-                lines.push_back(BOT_TEXT2("I think you would be a good contribution to %guildname. Would you like to join %name?", placeholders));
-                break;
-            case 3:
-                lines.push_back(BOT_TEXT2("My guild %guildname has %members quality members. Would you like to make it 1 more %name?", placeholders));
-                break;
-            case 4:
-                lines.push_back(BOT_TEXT2("Hey %name do you want to join %guildname? We have %members members and looking to become number 1 of the server.", placeholders));
-                break;
-            case 5:
-                lines.push_back(BOT_TEXT2("I'm not really good at smalltalk. Do you wanna join my guild %name/r?", placeholders));
-                break;
-            case 6:
-                lines.push_back(BOT_TEXT2("Welcome to %zone_name.... do you want to join my guild %name?", placeholders));
-                break;
-            case 7:
-                lines.push_back(BOT_TEXT2("%name, you should join my guild!", placeholders));
-                break;
-            case 8:
-                lines.push_back(BOT_TEXT2("%name, I got this guild....", placeholders));
-                break;
-            case 9:
-                lines.push_back(BOT_TEXT2("You are actually going to join my guild %name?", placeholders));
-                lines.push_back(BOT_TEXT2("Haha.. you are the man! We are going to raid Molten...", placeholders));
-                break;
-            case 10:
-                lines.push_back(BOT_TEXT2("Hey Hey! do you guys wanna join my gild????", placeholders));
-                lines.push_back(BOT_TEXT2("We've got a bunch of high levels and we are really super friendly..", placeholders));
-                lines.push_back(BOT_TEXT2("..and watch your dog and do your homework...", placeholders));
-                lines.push_back(BOT_TEXT2("..and we raid once a week and are working on MC raids...", placeholders));
-                lines.push_back(BOT_TEXT2("..and we have more members than just me...", placeholders));
-                lines.push_back(BOT_TEXT2("..and please stop I'm lonenly and we can get a ride the whole time...", placeholders));
-                lines.push_back(BOT_TEXT2("..and it's really beautifull and I feel like crying...", placeholders));
-                lines.push_back(BOT_TEXT2("So what do you guys say are you going to join are you going to join?", placeholders));
-                break;
+                LOG_DEBUG("playerbots", "Skipping bot '{}' - Solo bots are not eligible for guilds.", player->GetName().c_str());
+                continue;
             }
-
-            for (auto line : lines)
-                if (sameGroup)
-                {
-                    WorldPacket data;
-                    ChatHandler::BuildChatPacket(data, bot->GetGroup()->isRaidGroup() ? CHAT_MSG_RAID : CHAT_MSG_PARTY, line.c_str(), LANG_UNIVERSAL, CHAT_TAG_NONE, bot->GetGUID(), bot->GetName());
-                    bot->GetGroup()->BroadcastPacket(&data, true);
-                }
-                else
-                    bot->Say(line, (bot->GetTeamId() == TEAM_ALLIANCE ? LANG_COMMON : LANG_ORCISH));*/
+    
+            if (botAi->HasActivePlayerMaster() && !sRandomPlayerbotMgr->IsRandomBot(player))
+            {
+                LOG_DEBUG("playerbots", "Skipping bot '{}' - Controlled by active player.", player->GetName().c_str());
+                continue;
+            }
+        }
+    
+        // Distance check
+        bool sameGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetGUID());
+        if (!sameGroup && sServerFacade->GetDistance2d(bot, player) > sPlayerbotAIConfig->spellDistance)
+        {
+            LOG_DEBUG("playerbots", "Player '{}' is out of invite range.", player->GetName().c_str());
+            continue;
         }
 
+        LOG_INFO("playerbots", "Inviting player '{}' to guild '{}'.", player->GetName().c_str(), guild->GetName().c_str());
+        // Attempt guild invite if all conditions are met
         if (botAI->DoSpecificAction("guild invite", Event("guild management", guid), true))
         {
-            if (sPlayerbotAIConfig->inviteChat)
-                return true;
-            found++;
+            
+            return true;  // Stop if inviteChat is enabled
         }
     }
 
