@@ -149,12 +149,11 @@ bool GuildManageNearbyAction::Execute(Event event)
     Guild::Member* botMember = guild->GetMember(bot->GetGUID());
 
     GuidVector nearGuids = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest friendly players")->Get();
-    // Officer appointment check (only the guild leader can appoint officers)
-
     uint8 botRankId = botMember->GetRankId();
-    if (botRankId == 0) // Ensure only the leader can perform this action
+
+    // Ensure only the guild leader can perform this action
+    if (botRankId == 0) 
     {
-        // Parse the emblem info from HandleQuery's response
         WorldSession* botSession = bot->GetSession();
         WorldPackets::Guild::QueryGuildInfoResponse response;
         
@@ -168,38 +167,17 @@ bool GuildManageNearbyAction::Execute(Event event)
                                  response.Info.BorderStyle, response.Info.BorderColor, 
                                  response.Info.BackgroundColor);
         
-        // Check if the emblem is unset (all values are zero)
-        if (currentEmblem.GetStyle() == 0 && currentEmblem.GetColor() == 0 && 
-            currentEmblem.GetBorderStyle() == 0 && currentEmblem.GetBorderColor() == 0 && 
-            currentEmblem.GetBackgroundColor() == 0)
-        {
-            // Generate random values for the new emblem
-            uint32 st = urand(0, 180), cl = urand(0, 17), br = urand(0, 7), bc = urand(0, 17), bg = urand(0, 51);
-            EmblemInfo desiredEmblem(st, cl, br, bc, bg);
-
-            LOG_INFO("playerbots", "Guild {} emblem not set, updating to new values.", guild->GetName().c_str());
-            guild->HandleSetEmblem(desiredEmblem);  // Apply the new emblem
-            
-            // Re-query to verify if the emblem was set correctly
-            guild->HandleQuery(botSession);
-            EmblemInfo updatedEmblem(response.Info.EmblemStyle, response.Info.EmblemColor,
-                                     response.Info.BorderStyle, response.Info.BorderColor,
-                                     response.Info.BackgroundColor);
-
-            // Check if the new emblem matches the intended values
-            if (updatedEmblem.GetStyle() != desiredEmblem.GetStyle() ||
-                updatedEmblem.GetColor() != desiredEmblem.GetColor() ||
-                updatedEmblem.GetBorderStyle() != desiredEmblem.GetBorderStyle() ||
-                updatedEmblem.GetBorderColor() != desiredEmblem.GetBorderColor() ||
-                updatedEmblem.GetBackgroundColor() != desiredEmblem.GetBackgroundColor())
-            {
-                LOG_ERROR("playerbots", "Failed to update emblem for guild {}", guild->GetName().c_str());
-            }
-        }
+        LOG_INFO("playerbots", "Parsed emblem data for guild {} - Style: {}, Color: {}, BorderStyle: {}, BorderColor: {}, BackgroundColor: {}",
+                 guild->GetName().c_str(), currentEmblem.GetStyle(), currentEmblem.GetColor(), 
+                 currentEmblem.GetBorderStyle(), currentEmblem.GetBorderColor(), currentEmblem.GetBackgroundColor());
 
         // Rank check and set for "Veteran" rank (ID 2)
         uint32 veteranRights = GR_RIGHT_GCHATLISTEN | GR_RIGHT_GCHATSPEAK | GR_RIGHT_INVITE;
         uint32 moneyPerDay = 1000;
+
+        // Log parsed rank information for verification
+        LOG_INFO("playerbots", "Parsed rank data for guild {} - RankCount: {}, VeteranRank (ID 2) Rights: {}, Money Per Day: {}",
+            guild->GetName().c_str(), response.Info.RankCount, veteranRights, moneyPerDay);
 
         // Assuming `response` is a `QueryGuildInfoResponse` packet object we parsed earlier
         if (response.Info.RankCount > 2 && response.Info.Ranks[2] == "Veteran")
@@ -228,41 +206,78 @@ bool GuildManageNearbyAction::Execute(Event event)
         uint32 officerCount = 0;
         uint32 totalMembers = guild->GetMemberSize();  // Total number of members in the guild
         
+        LOG_INFO("playerbots", "Checking current officer count for guild '{}'. Total members: {}", guild->GetName().c_str(), totalMembers);
+        
         for (uint32 guidCounter = 0; guidCounter < totalMembers; ++guidCounter)
         {
             // Retrieve the member using the GUID counter
             if (auto* member = guild->GetMember(ObjectGuid::Create<HighGuid::Player>(guidCounter)))
             {
                 if (member->GetRankId() == 1)  // Check if the member is an officer
+                {
                     officerCount++;
+                    LOG_INFO("playerbots", "Member '{}' is an officer (RankId: 1). Current officer count: {}", member->GetName().c_str(), officerCount);
+                }
             }
         }
-    
+        
+        LOG_INFO("playerbots", "Total officer count in guild '{}' is {}. Minimum required officers: 2", guild->GetName().c_str(), officerCount);
+        
         if (officerCount < 2)  // If less than two officers, promote candidates
         {
+            LOG_INFO("playerbots", "Less than two officers found in guild '{}'. Attempting to promote nearby candidates.", guild->GetName().c_str());
+        
             for (const auto& guid : nearGuids)
             {
                 Player* player = ObjectAccessor::FindPlayer(guid);
                 if (!player || bot == player)
+                {
+                    if (!player)
+                        LOG_DEBUG("playerbots", "Player with GUID '{}' is not found or not online.", guid.GetRawValue());
+                    if (bot == player)
+                        LOG_DEBUG("playerbots", "Skipping self-promotion for bot '{}'", bot->GetName().c_str());
                     continue;
+                }
         
                 if (player->GetGuildId() == bot->GetGuildId())
                 {
+                    LOG_INFO("playerbots", "Nearby player '{}' is a guild member of '{}'", player->GetName().c_str(), guild->GetName().c_str());
+        
                     PlayerbotAI* playerBotAI = GET_PLAYERBOT_AI(player);
                     if (playerBotAI && (playerBotAI->GetGrouperType() == GrouperType::SOLO || playerBotAI->GetGrouperType() == GrouperType::MEMBER))
                     {
                         // Promote to officer rank
-                        guild->HandleSetRankInfo(1, GR_RIGHT_GCHATLISTEN | GR_RIGHT_GCHATSPEAK | GR_RIGHT_INVITE, "Veteran", 1000);
-                        BroadcastHelper::BroadcastGuildMemberPromotion(botAI, bot, player);
-                        botAI->DoSpecificAction("guild promote", Event("guild management", guid), true);
+                        LOG_INFO("playerbots", "Promoting player '{}' to officer rank in guild '{}'", player->GetName().c_str(), guild->GetName().c_str());
         
-                        officerCount++;
+                        if (auto* member = guild->GetMember(player->GetGUID()))
+                        {
+                            member->ChangeRank(1);  // Use ChangeRank to set rank to officer (RankId: 1)
+                            officerCount++;
+                            LOG_INFO("playerbots", "New officer count after promotion: {}", officerCount);
+                        }
+        
                         if (officerCount >= 2)
+                        {
+                            LOG_INFO("playerbots", "Minimum required officer count reached for guild '{}'. Promotion process completed.", guild->GetName().c_str());
                             break;
+                        }
                     }
+                    else
+                    {
+                        LOG_DEBUG("playerbots", "Player '{}' does not meet promotion criteria or is already grouped.", player->GetName().c_str());
+                    }
+                }
+                else
+                {
+                    LOG_DEBUG("playerbots", "Nearby player '{}' is not a member of the bot's guild '{}'. Skipping.", player->GetName().c_str(), guild->GetName().c_str());
                 }
             }
         }
+        else
+        {
+            LOG_INFO("playerbots", "Guild '{}' already has the required number of officers ({}). No promotion needed.", guild->GetName().c_str(), officerCount);
+        }
+
 
     }
     for (auto& guid : nearGuids)
