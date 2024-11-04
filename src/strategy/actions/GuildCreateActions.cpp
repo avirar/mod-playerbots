@@ -45,6 +45,7 @@ static void DestroyGuildPetition(Player* bot)
 
 bool BuyPetitionAction::Execute(Event event)
 {
+    LOG_INFO("playerbots", "BuyPetitionAction::Execute");
     GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     bool vendored = false, result = false;
     for (GuidVector::iterator i = vendors.begin(); i != vendors.end(); ++i)
@@ -96,10 +97,15 @@ bool BuyPetitionAction::isUseful() { return canBuyPetition(bot); };
 bool BuyPetitionAction::canBuyPetition(Player* bot)
 {
     // Check if bot-created guild count has reached or exceeded the configured limit
-    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    uint32 botGuildCount = sGuildMgr->GetBotCreatedGuildCount();
+    LOG_INFO("playerbots", "Bot guilds created: {}/{}", botGuildCount, sPlayerbotAIConfig->randomBotGuildCount);
+    if (botGuildCount >= sPlayerbotAIConfig->randomBotGuildCount)
     {
+        LOG_INFO("playerbots", "Bot guild creation limit reached: {} out of maximum {} guilds created.", 
+                 botGuildCount, sPlayerbotAIConfig->randomBotGuildCount);
         return false;
     }
+    
     if (bot->GetGuildId())
         return false;
 
@@ -125,7 +131,7 @@ bool BuyPetitionAction::canBuyPetition(Player* bot)
 
     if (AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::guild)) < cost)
         return false;
-
+    LOG_INFO("playerbots", "canBuyPetition true");
     return true;
 }
 
