@@ -1442,7 +1442,7 @@ void PlayerbotAI::DoNextAction(bool min)
             }
         }
 
-        if (!newMaster && playerMaster)
+        if (!newMaster && playerMaster && !sPlayerbotAIConfig->randomBotGroupNearby)
             newMaster = playerMaster;
 
         if (newMaster && (!master || master != newMaster) && bot != newMaster)
