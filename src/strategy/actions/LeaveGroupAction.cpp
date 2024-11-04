@@ -207,10 +207,15 @@ bool LeaveFarAwayAction::isUseful()
     Player* master = botAI->GetGroupMaster();
     Player* trueMaster = botAI->GetMaster();
 
+    if (!GET_PLAYERBOT_AI(master))
+    {
+        return false;
+    }
+
     if (!master || (bot == master && (botAI->GetGrouperType() == GrouperType::SOLO || botAI->GetGrouperType() == GrouperType::MEMBER) && !botAI->IsRealPlayer()))
     {
         LOG_INFO("playerbots", "Bot {} leaves group because there is no group master, or it is the master with an unsuitable GrouperType (SOLO or MEMBER).", bot->GetName().c_str());
-        return false;
+        return true;
     }
 
     if (botAI->GetGrouperType() == GrouperType::SOLO)
