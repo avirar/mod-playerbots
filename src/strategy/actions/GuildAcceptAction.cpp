@@ -48,7 +48,7 @@ bool GuildAcceptAction::Execute(Event event)
         botAI->TellError("Sorry, I am in a guild already");
         accept = false;
     }
-    else if (!botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter, true))
+    else if (!GET_PLAYERBOT_AI(inviter) && !botAI->GetSecurity()->CheckLevelFor(PLAYERBOT_SECURITY_INVITE, false, inviter, true))
     {
         LOG_INFO("playerbots", "Bot '{}' does not have the required security level to join inviter '{}' guild.", bot->GetName().c_str(), inviter->GetName().c_str());
         botAI->TellError("Sorry, I don't want to join your guild :(");
