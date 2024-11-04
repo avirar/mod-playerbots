@@ -58,44 +58,48 @@ Player* GuidManageAction::GetPlayer(Event event)
     return nullptr;
 }
 
+
+
+
 bool GuidManageAction::Execute(Event event)
 {
     LOG_INFO("playerbots", "GuidManageAction::Execute called with event for action '{}'", name);
-    // Attempt to retrieve the player based on the event
-    Player* player = GetPlayer(event);
 
-    // Log the result of player retrieval
+    Player* player = GetPlayer(event);
     if (!player)
     {
         LOG_INFO("playerbots", "GuidManageAction::Execute - No player found for the given event.");
         return false;
     }
 
-    // Check if the player is valid for the action and not the bot itself
-    if (!PlayerIsValid(player))
+    if (!PlayerIsValid(player) || player == bot)
     {
-        LOG_INFO("playerbots", "GuidManageAction::Execute - Player '{}' is not valid for this action.", player->GetName().c_str());
-        return false;
-    }
-    if (player == bot)
-    {
-        LOG_INFO("playerbots", "GuidManageAction::Execute - Skipping action for bot '{}'.", bot->GetName().c_str());
+        LOG_INFO("playerbots", "GuidManageAction::Execute - Invalid target or target is bot itself.");
         return false;
     }
 
-    // Log that the player passed validation checks and the packet is being prepared
     LOG_INFO("playerbots", "Executing action on player '{}'", player->GetName().c_str());
 
-    // Prepare and send the packet with the player's name
-    WorldPacket data(opcode);
+    // Prepare the WorldPacket and add the player's name
+    WorldPacket data(CMSG_GUILD_INVITE);
     data << player->GetName();
-    SendPacket(data);
 
-    // Confirm the packet was sent successfully
+    // Initialize the invite packet with WorldPacket data
+    WorldPackets::Guild::GuildInviteByName invitePacket(std::move(data));
+    invitePacket.Read();  // Parse the data to populate internal fields
+
+    // Verify Name parsing
+    LOG_DEBUG("playerbots", "GuildInviteAction::SendPacket - Parsed Name from GuildInviteByName: '{}'", invitePacket.Name.c_str());
+
+    // Send the parsed invite packet
+    bot->GetSession()->HandleGuildInviteOpcode(invitePacket);
+
     LOG_INFO("playerbots", "Packet sent successfully to player '{}'", player->GetName().c_str());
 
     return true;
 }
+
+
 
 
 bool GuidManageAction::PlayerIsValid(Player* member) { return !member->GetGuildId(); }
@@ -121,9 +125,22 @@ void GuildInviteAction::SendPacket(WorldPacket data)
     LOG_INFO("playerbots", "GuildInviteAction::SendPacket - Bot '{}' is sending a guild invitation to player '{}'", 
              bot->GetName().c_str(), playerName.c_str());
 
-    WorldPackets::Guild::GuildInviteByName invitePacket = WorldPacket(data);
+    // Output the binary contents of the packet as a hex string
+    std::string binaryOutput;
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        binaryOutput += fmt::format("{:02x} ", static_cast<uint8_t>(data[i]));  // Format each byte as hex
+    }
+    LOG_DEBUG("playerbots", "GuildInviteAction::SendPacket - Raw packet data (binary): {}", binaryOutput);
+
+    // Create and send the invite packet
+    WorldPackets::Guild::GuildInviteByName invitePacket(std::move(data));
+    invitePacket.Read();  // Parses the data but does not alter the underlying _worldPacket
+    LOG_DEBUG("playerbots", "GuildInviteAction::SendPacket - Parsed Name from GuildInviteByName: '{}'", invitePacket.Name);
     bot->GetSession()->HandleGuildInviteOpcode(invitePacket);
 }
+
+
 
 bool GuildInviteAction::PlayerIsValid(Player* member) { return !member->GetGuildId(); }
 
