@@ -9,9 +9,39 @@
 #include "BudgetValues.h"
 #include "Event.h"
 #include "GuildMgr.h"
+#include "InventoryAction.h"
 #include "Playerbots.h"
 #include "RandomPlayerbotFactory.h"
 #include "ServerFacade.h"
+
+#include "ItemVisitors.h"  // Include necessary for FindItemByIdVisitor
+
+#include "Player.h"
+#include "Item.h"
+#include "ObjectMgr.h"
+
+static void DestroyGuildPetition(Player* bot)
+{
+    const uint32 petitionItemId = 5863;  // GUILD_CHARTER item ID
+
+    // Iterate through each inventory slot to find and destroy petition items
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+    {
+        Bag* bagItem = bot->GetBagByPos(bag);
+        if (!bagItem) continue;
+
+        for (uint8 slot = 0; slot < bagItem->GetBagSize(); ++slot)
+        {
+            Item* item = bagItem->GetItemByPos(slot);
+            if (item && item->GetTemplate()->ItemId == petitionItemId)
+            {
+                bot->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+                return;  // Exit after the first petition is destroyed, as we only expect one
+            }
+        }
+    }
+}
+
 
 bool BuyPetitionAction::Execute(Event event)
 {
@@ -65,6 +95,11 @@ bool BuyPetitionAction::isUseful() { return canBuyPetition(bot); };
 
 bool BuyPetitionAction::canBuyPetition(Player* bot)
 {
+    // Check if bot-created guild count has reached or exceeded the configured limit
+    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    {
+        return false;
+    }
     if (bot->GetGuildId())
         return false;
 
@@ -96,6 +131,13 @@ bool BuyPetitionAction::canBuyPetition(Player* bot)
 
 bool PetitionOfferAction::Execute(Event event)
 {
+    // Check if bot-created guild count has reached or exceeded the configured limit
+    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    {
+        LOG_INFO("playerbots", "Bot '{}' has reached the guild limit; destroying guild petition.", bot->GetName().c_str());
+        DestroyGuildPetition(bot);
+        return false;
+    }
     uint32 petitionEntry = 5863;  // GUILD_CHARTER
     std::vector<Item*> petitions = AI_VALUE2(std::vector<Item*>, "inventory items", chat->FormatQItem(5863));
 
@@ -204,12 +246,29 @@ bool PetitionOfferNearbyAction::Execute(Event event)
 
 bool PetitionOfferNearbyAction::isUseful()
 {
-    return !bot->GetGuildId() && AI_VALUE2(uint32, "item count", chat->FormatQItem(5863)) &&
+    // Check if bot-created guild count has reached or exceeded the configured limit
+    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    {
+        LOG_INFO("playerbots", "Bot '{}' has reached the guild limit; destroying guild petition.", bot->GetName().c_str());
+        DestroyGuildPetition(bot);
+        return false;
+    }
+
+    return !bot->GetGuildId() && 
+           AI_VALUE2(uint32, "item count", chat->FormatQItem(5863)) &&
            AI_VALUE(uint8, "petition signs") < sWorld->getIntConfig(CONFIG_MIN_PETITION_SIGNS);
 }
 
+
 bool PetitionTurnInAction::Execute(Event event)
 {
+    // Check if bot-created guild count has reached or exceeded the configured limit
+    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    {
+        LOG_INFO("playerbots", "Bot '{}' has reached the guild limit; destroying guild petition.", bot->GetName().c_str());
+        DestroyGuildPetition(bot);
+        return false;
+    }
     GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     bool vendored = false, result = false;
     std::vector<Item*> petitions = AI_VALUE2(std::vector<Item*>, "inventory items", chat->FormatQItem(5863));
@@ -277,6 +336,13 @@ bool PetitionTurnInAction::Execute(Event event)
 
 bool PetitionTurnInAction::isUseful()
 {
+    // Check if bot-created guild count has reached or exceeded the configured limit
+    if (sGuildMgr->GetBotCreatedGuildCount() >= sPlayerbotAIConfig->randomBotGuildCount)
+    {
+        LOG_INFO("playerbots", "Bot '{}' has reached the guild limit; destroying guild petition.", bot->GetName().c_str());
+        DestroyGuildPetition(bot);
+        return false;
+    }
     bool inCity = false;
     if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
     {
