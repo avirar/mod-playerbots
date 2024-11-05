@@ -7,8 +7,10 @@
 
 #include "GuildMgr.h"
 #include "GuildPackets.h"
+#include "GuildTaskMgr.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
+#include "Transaction.h"
 #include "BroadcastHelper.h"
 
 Player* GuidManageAction::GetPlayer(Event event)
@@ -218,25 +220,55 @@ bool GuildManageNearbyAction::Execute(Event event)
     if (botRankId == 0) 
     {
         uint32 officerCount = 0;
-        uint32 totalMembers = guild->GetMemberSize();  // Total number of members in the guild
+        uint32 guildId = guild->GetId();  // Assuming this exists
         
-        LOG_INFO("playerbots", "Checking current officer count for guild '{}'. Total members: {}", guild->GetName().c_str(), totalMembers);
+        // Log the start of the operation
+        LOG_INFO("playerbots", "Checking current officer count for guild '{}'", guild->GetName().c_str());
         
-        for (uint32 guidCounter = 0; guidCounter < totalMembers; ++guidCounter)
+        // Query the database for all members of the guild with their GUIDs and ranks
+        QueryResult result = CharacterDatabase.Query("SELECT guid, `rank` FROM guild_member WHERE guildid = {}", guildId);
+        
+        if (result)
         {
-            // Retrieve the member using the GUID counter
-            if (auto* member = guild->GetMember(ObjectGuid::Create<HighGuid::Player>(guidCounter)))
+            do
             {
-                if (member->GetRankId() == 1)  // Check if the member is an officer
+                Field* fields = result->Fetch();
+                ObjectGuid memberGuid = ObjectGuid::Create<HighGuid::Player>(fields[0].Get<uint64>());
+                uint32 rankId = fields[1].Get<uint32>();
+        
+                // Check if the member is an officer
+                if (rankId == 1)  // Assuming rank 1 corresponds to officer
                 {
                     officerCount++;
-                    LOG_INFO("playerbots", "Member '{}' is an officer (RankId: 1). Current officer count: {}", member->GetName().c_str(), officerCount);
+                    LOG_INFO("playerbots", "Member with GUID {} is an officer. Current officer count: {}", memberGuid.ToString().c_str(), officerCount);
                 }
-            }
+                else 
+                {
+                    LOG_INFO("playerbots", "Member with GUID {} is not an officer", memberGuid.ToString().c_str());
+                }
+        
+                // Retrieve the Player instance if the member is online
+                Player* guildMember = ObjectAccessor::FindPlayer(memberGuid);
+                if (guildMember && guildMember != bot)
+                {
+                    LOG_INFO("playerbots", "Updating guild task for online member '{}'", guildMember->GetName().c_str());
+                    sGuildTaskMgr->Update(guildMember, bot);
+                }
+                else if (!guildMember)
+                {
+                    LOG_INFO("playerbots", "Guild member with GUID {} is offline or unavailable", memberGuid.ToString().c_str());
+                }
+        
+            } while (result->NextRow());
         }
-        
+        else
+        {
+            LOG_INFO("playerbots", "No members available in guild '{}'", guild->GetName().c_str());
+        }
+
+        // Log the final officer count
         LOG_INFO("playerbots", "Total officer count in guild '{}' is {}. Minimum required officers: 2", guild->GetName().c_str(), officerCount);
-        
+
         if (officerCount < 2)  // If less than two officers, promote candidates
         {
             LOG_INFO("playerbots", "Less than two officers found in guild '{}'. Attempting to promote nearby candidates.", guild->GetName().c_str());
