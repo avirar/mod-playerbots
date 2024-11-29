@@ -1543,18 +1543,15 @@ void Shuffle(std::vector<uint32>& items)
 //     }
 // }
 
-#include <algorithm> // For std::max and std::shuffle
-#include <random>    // For std::default_random_engine and std::shuffle
-
 void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
 {
     std::unordered_map<uint8, std::vector<uint32>> items;
+    // int tab = AiFactory::GetPlayerSpecTab(bot);
+
     uint32 blevel = bot->GetLevel();
     int32 delta = 2;
-    
-    // Determine delta based on bot level
     if (blevel < 15)
-        delta = std::min(static_cast<uint32>(blevel), 15u);
+        delta = std::min(blevel, 15u);
     else if (blevel < 40)
         delta = 10;
     else if (blevel < 60)
@@ -1572,14 +1569,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
             continue;
 
-        // Level-based slot skipping
-        if (blevel < 40 && (slot == EQUIPMENT_SLOT_TRINKET1 || slot == EQUIPMENT_SLOT_TRINKET2))
+        if (level < 40 && (slot == EQUIPMENT_SLOT_TRINKET1 || slot == EQUIPMENT_SLOT_TRINKET2))
             continue;
-        if (blevel < 30 && slot == EQUIPMENT_SLOT_NECK)
+
+        if (level < 30 && slot == EQUIPMENT_SLOT_NECK)
             continue;
-        if (blevel < 25 && slot == EQUIPMENT_SLOT_HEAD)
+
+        if (level < 25 && slot == EQUIPMENT_SLOT_HEAD)
             continue;
-        if (blevel < 20 && (slot == EQUIPMENT_SLOT_FINGER1 || slot == EQUIPMENT_SLOT_FINGER2))
+
+        if (level < 20 && (slot == EQUIPMENT_SLOT_FINGER1 || slot == EQUIPMENT_SLOT_FINGER2))
             continue;
 
         Item* oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
@@ -1592,21 +1591,22 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
 
         uint32 desiredQuality = itemQuality;
-        // Initial Quality Lowering
-        if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_POOR)
+        if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
         {
-            // Decide whether to lower by 1 or 2 quality levels based on randomGearLoweringChance
+            // Decide whether to lower by 1 or 2 quality levels
             uint32 levelsToDecrease = 1;
-            if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_POOR)
+            // Chance to decrease by an additional level
+            if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
             {
                 levelsToDecrease = 2;
             }
-            desiredQuality = std::max(desiredQuality - levelsToDecrease, static_cast<uint32>(ITEM_QUALITY_POOR));
+            desiredQuality = std::max(desiredQuality - levelsToDecrease, static_cast<uint32>(ITEM_QUALITY_NORMAL));
         }
-
+        
         do
         {
-            for (uint32 requiredLevel = blevel; requiredLevel > static_cast<int32>(blevel) - delta && requiredLevel > 0; requiredLevel--)
+            for (uint32 requiredLevel = bot->GetLevel(); requiredLevel > std::max((int32)bot->GetLevel() - delta, 0);
+                 requiredLevel--)
             {
                 for (InventoryType inventoryType : GetPossibleInventoryTypeListBySlot((EquipmentSlots)slot))
                 {
@@ -1614,35 +1614,37 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                     {
                         // Existing item filtering logic...
                         if (itemId == 46978)  // shaman earth ring totem
+                        {
                             continue;
-
+                        }
                         uint32 skipProb = 25;
                         if (urand(1, 100) <= skipProb)
                             continue;
-
+        
                         // Disable next expansion gear
-                        if (sPlayerbotAIConfig->limitGearExpansion && blevel <= 60 && itemId >= 23728)
+                        if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 60 && itemId >= 23728)
                             continue;
-
-                        if (sPlayerbotAIConfig->limitGearExpansion && blevel <= 70 && itemId >= 35570 &&
+        
+                        if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 70 && itemId >= 35570 &&
                             itemId != 36737 && itemId != 37739 &&
                             itemId != 37740)  // Transition point from TBC -> WOTLK isn't as clear
                             continue;
-
+        
                         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
                         if (!proto)
                             continue;
-
+        
                         if (gearScoreLimit != 0 &&
                             CalcMixedGearScore(proto->ItemLevel, proto->Quality) > gearScoreLimit)
+                        {
                             continue;
-
+                        }
                         if (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)
                             continue;
-
+        
                         if (proto->Quality != desiredQuality)
                             continue;
-
+        
                         if (proto->Class == ITEM_CLASS_ARMOR &&
                             (slot == EQUIPMENT_SLOT_HEAD || slot == EQUIPMENT_SLOT_SHOULDERS ||
                              slot == EQUIPMENT_SLOT_CHEST || slot == EQUIPMENT_SLOT_WAIST ||
@@ -1650,29 +1652,22 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                              slot == EQUIPMENT_SLOT_WRISTS || slot == EQUIPMENT_SLOT_HANDS) &&
                             !CanEquipArmor(proto))
                             continue;
-
+        
                         if (proto->Class == ITEM_CLASS_WEAPON && !CanEquipWeapon(proto))
                             continue;
-
+        
                         if (slot == EQUIPMENT_SLOT_OFFHAND && bot->getClass() == CLASS_ROGUE &&
                             proto->Class != ITEM_CLASS_WEAPON)
                             continue;
-
-                        // No direct ItemLevel filtering
+        
                         items[slot].push_back(itemId);
                     }
                 }
                 if (items[slot].size() >= 25)
                     break;
             }
+        } while (items[slot].size() < 25 && desiredQuality-- > ITEM_QUALITY_NORMAL);
 
-            // Decrement desiredQuality if not enough items found, but not below Poor
-            if (items[slot].size() < 25 && desiredQuality > ITEM_QUALITY_POOR)
-            {
-                desiredQuality--;
-            }
-
-        } while (items[slot].size() < 25 && desiredQuality >= ITEM_QUALITY_POOR);
 
         std::vector<uint32>& ids = items[slot];
         if (ids.empty())
@@ -1680,23 +1675,18 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             continue;
         }
 
-        // Shuffle the items to introduce randomness in selection
-        std::shuffle(ids.begin(), ids.end(), std::default_random_engine(std::random_device{}()));
-
         float bestScoreForSlot = -1;
         uint32 bestItemForSlot = 0;
-        for (uint32 newItemId : ids)
+        for (int index = 0; index < ids.size(); index++)
         {
+            uint32 newItemId = ids[index];
+
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(newItemId);
+
             float cur_score = calculator.CalculateItem(newItemId);
-
-            // Introduce randomness in scoring to diversify item selection
-            float randomFactor = (urand(90, 110)) / 100.0f; // +/-10% variability
-            cur_score *= randomFactor;
-
             if (cur_score > bestScoreForSlot)
             {
-                // Delay heavy check to here
+                // delay heavy check to here
                 if (!CanEquipItem(proto))
                     continue;
                 uint16 dest;
@@ -1724,27 +1714,33 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                 continue;
         }
 
+        
         if (oldItem)
         {
             uint8 bagIndex = oldItem->GetBagSlot();
-            uint8 slotNum = oldItem->GetSlot();
+            uint8 slot = oldItem->GetSlot();
             uint8 dstBag = NULL_BAG;
 
             WorldPacket packet(CMSG_AUTOSTORE_BAG_ITEM, 3);
-            packet << bagIndex << slotNum << dstBag;
+            packet << bagIndex << slot << dstBag;
             bot->GetSession()->HandleAutoStoreBagItemOpcode(packet);
         }
 
         oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
-        // Fail to store in bag
+        // fail to store in bag
         if (oldItem)
             continue;
 
         Item* newItem = bot->EquipNewItem(dest, bestItemForSlot, true);
         bot->AutoUnequipOffhandIfNeed();
+        // if (newItem)
+        // {
+        //     newItem->AddToWorld();
+            // newItem->AddToUpdateQueueOf(bot);
+        // }
     }
-
     // Secondary init for better equips
+    /// @todo: clean up duplicate code
     if (second_chance)
     {
         for (uint8 slot = 0; slot < EQUIPMENT_SLOT_END; ++slot)
@@ -1752,16 +1748,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
                 continue;
 
-            if (blevel < 40 && (slot == EQUIPMENT_SLOT_TRINKET1 || slot == EQUIPMENT_SLOT_TRINKET2))
+            if (level < 40 && (slot == EQUIPMENT_SLOT_TRINKET1 || slot == EQUIPMENT_SLOT_TRINKET2))
                 continue;
 
-            if (blevel < 30 && slot == EQUIPMENT_SLOT_NECK)
+            if (level < 30 && slot == EQUIPMENT_SLOT_NECK)
                 continue;
 
-            if (blevel < 25 && slot == EQUIPMENT_SLOT_HEAD)
+            if (level < 25 && slot == EQUIPMENT_SLOT_HEAD)
                 continue;
 
-            if (blevel < 20 && (slot == EQUIPMENT_SLOT_FINGER1 || slot == EQUIPMENT_SLOT_FINGER2))
+            if (level < 20 && (slot == EQUIPMENT_SLOT_FINGER1 || slot == EQUIPMENT_SLOT_FINGER2))
                 continue;
 
             if (Item* oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
@@ -1773,13 +1769,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
 
             float bestScoreForSlot = -1;
             uint32 bestItemForSlot = 0;
-            for (uint32 newItemId : ids)
+            for (int index = 0; index < ids.size(); index++)
             {
+                uint32 newItemId = ids[index];
+
                 ItemTemplate const* proto = sObjectMgr->GetItemTemplate(newItemId);
+
                 float cur_score = calculator.CalculateItem(newItemId);
                 if (cur_score > bestScoreForSlot)
                 {
-                    // Delay heavy check to here
+                    // delay heavy check to here
                     if (!CanEquipItem(proto))
                         continue;
                     uint16 dest;
@@ -1801,10 +1800,14 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             }
             Item* newItem = bot->EquipNewItem(dest, bestItemForSlot, true);
             bot->AutoUnequipOffhandIfNeed();
+            // if (newItem)
+            // {
+            //     newItem->AddToWorld();
+            //     newItem->AddToUpdateQueueOf(bot);
+            // }
         }
     }
 }
-
 
 bool PlayerbotFactory::IsDesiredReplacement(Item* item)
 {
