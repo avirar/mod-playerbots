@@ -1684,6 +1684,11 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(newItemId);
 
             float cur_score = calculator.CalculateItem(newItemId);
+
+            // Introduce randomness in scoring to diversify item selection
+            float randomFactor = (urand(80, 120)) / 100.0f; // +/-10% variability
+            cur_score *= randomFactor;
+
             if (cur_score > bestScoreForSlot)
             {
                 // delay heavy check to here
