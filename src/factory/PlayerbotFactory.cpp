@@ -5,6 +5,7 @@
 
 #include "PlayerbotFactory.h"
 
+#include <algorithm>
 #include <random>
 #include <utility>
 
