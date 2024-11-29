@@ -1600,7 +1600,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             {
                 levelsToDecrease = 2;
             }
-            desiredQuality = std::max(desiredQuality - levelsToDecrease, ITEM_QUALITY_NORMAL);
+            desiredQuality = std::max(desiredQuality - levelsToDecrease, static_cast<uint32>(ITEM_QUALITY_NORMAL));
         }
         
         do
