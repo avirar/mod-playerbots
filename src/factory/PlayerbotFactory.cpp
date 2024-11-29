@@ -1592,8 +1592,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         uint32 desiredQuality = itemQuality;
         if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
         {
-            desiredQuality--;
+            // Decide whether to lower by 1 or 2 quality levels
+            uint32 levelsToDecrease = 1;
+            // Chance to decrease by an additional level
+            if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
+            {
+                levelsToDecrease = 2;
+            }
+            desiredQuality = std::max(desiredQuality - levelsToDecrease, ITEM_QUALITY_NORMAL);
         }
+        
         do
         {
             for (uint32 requiredLevel = bot->GetLevel(); requiredLevel > std::max((int32)bot->GetLevel() - delta, 0);
@@ -1603,6 +1611,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                 {
                     for (uint32 itemId : sRandomItemMgr->GetCachedEquipments(requiredLevel, inventoryType))
                     {
+                        // Existing item filtering logic...
                         if (itemId == 46978)  // shaman earth ring totem
                         {
                             continue;
@@ -1610,21 +1619,20 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                         uint32 skipProb = 25;
                         if (urand(1, 100) <= skipProb)
                             continue;
-
-                        // disable next expansion gear
+        
+                        // Disable next expansion gear
                         if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 60 && itemId >= 23728)
                             continue;
-
+        
                         if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 70 && itemId >= 35570 &&
                             itemId != 36737 && itemId != 37739 &&
-                            itemId != 37740)  // transition point from TBC -> WOTLK isn't as clear, and there are other
-                                              // wearable TBC items above 35570 but nothing of significance
+                            itemId != 37740)  // Transition point from TBC -> WOTLK isn't as clear
                             continue;
-
+        
                         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
                         if (!proto)
                             continue;
-
+        
                         if (gearScoreLimit != 0 &&
                             CalcMixedGearScore(proto->ItemLevel, proto->Quality) > gearScoreLimit)
                         {
@@ -1632,13 +1640,10 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                         }
                         if (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)
                             continue;
-
+        
                         if (proto->Quality != desiredQuality)
                             continue;
-                        // delay heavy check
-                        // if (!CanEquipItem(proto))
-                        //     continue;
-
+        
                         if (proto->Class == ITEM_CLASS_ARMOR &&
                             (slot == EQUIPMENT_SLOT_HEAD || slot == EQUIPMENT_SLOT_SHOULDERS ||
                              slot == EQUIPMENT_SLOT_CHEST || slot == EQUIPMENT_SLOT_WAIST ||
@@ -1646,16 +1651,14 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                              slot == EQUIPMENT_SLOT_WRISTS || slot == EQUIPMENT_SLOT_HANDS) &&
                             !CanEquipArmor(proto))
                             continue;
-
+        
                         if (proto->Class == ITEM_CLASS_WEAPON && !CanEquipWeapon(proto))
                             continue;
-
+        
                         if (slot == EQUIPMENT_SLOT_OFFHAND && bot->getClass() == CLASS_ROGUE &&
                             proto->Class != ITEM_CLASS_WEAPON)
                             continue;
-                        // delay heavy check
-                        // uint16 dest = 0;
-                        // if (CanEquipUnseenItem(slot, dest, itemId))
+        
                         items[slot].push_back(itemId);
                     }
                 }
@@ -1663,6 +1666,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                     break;
             }
         } while (items[slot].size() < 25 && desiredQuality-- > ITEM_QUALITY_NORMAL);
+
 
         std::vector<uint32>& ids = items[slot];
         if (ids.empty())
