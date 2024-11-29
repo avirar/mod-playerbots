@@ -1564,7 +1564,19 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         delta = 9;
 
     StatsWeightCalculator calculator(bot);
+    
+    // Step 1: Create a list of all equipment slots
+    std::vector<uint8> slotList;
     for (uint8 slot = 0; slot < EQUIPMENT_SLOT_END; ++slot)
+        slotList.push_back(slot);
+
+    // Step 2: Shuffle the list randomly
+    std::random_device rd;  // Seed for the random number engine
+    std::mt19937 g(rd());   // Mersenne Twister engine
+    std::shuffle(slotList.begin(), slotList.end(), g);
+
+    // Step 3: Iterate through the shuffled list
+    for (auto slot : slotList)
     {
         if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
             continue;
@@ -1686,7 +1698,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             float cur_score = calculator.CalculateItem(newItemId);
 
             // Introduce randomness in scoring to diversify item selection
-            float randomFactor = (urand(80, 120)) / 100.0f; // +/-10% variability
+            float randomFactor = (urand(66, 133)) / 100.0f; // +/-33% variability
             cur_score *= randomFactor;
 
             if (cur_score > bestScoreForSlot)
