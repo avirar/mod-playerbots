@@ -9,13 +9,13 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/strand.hpp>
-#include <boost/bind/bind.hpp>
 #include <boost/smart_ptr.hpp>
 #include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include "IoContext.h"
 #include "Playerbots.h"
@@ -23,7 +23,6 @@
 using boost::asio::ip::tcp;
 using boost::asio::io_context;
 namespace asio = boost::asio;
-using namespace boost::placeholders;
 
 // Alias for a shared pointer to a TCP socket
 using socket_ptr = std::shared_ptr<tcp::socket>;
@@ -148,8 +147,11 @@ private:
     void doAccept()
     {
         acceptor_.async_accept(
-            boost::asio::make_strand(io_context_),
-            boost::bind(&Server::handleAccept, this, asio::placeholders::error, asio::placeholders::socket));
+            asio::make_strand(io_context_),
+            [this](const boost::system::error_code& ec, tcp::socket socket)
+            {
+                handleAccept(ec, std::move(socket));
+            });
     }
 
     void handleAccept(const boost::system::error_code& ec, tcp::socket socket)
