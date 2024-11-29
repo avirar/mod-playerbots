@@ -1602,10 +1602,6 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                 levelsToDecrease = 2;
             }
             desiredQuality = std::max(desiredQuality - levelsToDecrease, static_cast<uint32>(ITEM_QUALITY_POOR));
-
-            // Logging the quality decrease
-            sLog->outDebug(LOG_FILTER_PLAYERBOT_AI, "Bot %s: Decreased desiredQuality by %u levels to %u",
-                bot->GetName().c_str(), levelsToDecrease, desiredQuality);
         }
 
         do
@@ -1674,11 +1670,9 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             if (items[slot].size() < 25 && desiredQuality > ITEM_QUALITY_POOR)
             {
                 desiredQuality--;
-                sLog->outDebug(LOG_FILTER_PLAYERBOT_AI, "Bot %s: Further decreased desiredQuality to %u",
-                    bot->GetName().c_str(), desiredQuality);
             }
 
-        } while (items[slot].size() < 25 && desiredQuality > ITEM_QUALITY_POOR);
+        } while (items[slot].size() < 25 && desiredQuality >= ITEM_QUALITY_POOR);
 
         std::vector<uint32>& ids = items[slot];
         if (ids.empty())
