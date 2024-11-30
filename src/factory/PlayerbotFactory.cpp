@@ -5,7 +5,6 @@
 
 #include "PlayerbotFactory.h"
 
-#include <algorithm>
 #include <random>
 #include <utility>
 
@@ -1564,19 +1563,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         delta = 9;
 
     StatsWeightCalculator calculator(bot);
-    
-    // Step 1: Create a list of all equipment slots
-    std::vector<uint8> slotList;
     for (uint8 slot = 0; slot < EQUIPMENT_SLOT_END; ++slot)
-        slotList.push_back(slot);
-
-    // Step 2: Shuffle the list randomly
-    std::random_device rd;  // Seed for the random number engine
-    std::mt19937 g(rd());   // Mersenne Twister engine
-    std::shuffle(slotList.begin(), slotList.end(), g);
-
-    // Step 3: Iterate through the shuffled list
-    for (auto slot : slotList)
     {
         if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
             continue;
@@ -1605,16 +1592,8 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         uint32 desiredQuality = itemQuality;
         if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
         {
-            // Decide whether to lower by 1 or 2 quality levels
-            uint32 levelsToDecrease = 1;
-            // Chance to decrease by an additional level
-            if (urand(0, 100) < 100 * sPlayerbotAIConfig->randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
-            {
-                levelsToDecrease = 2;
-            }
-            desiredQuality = std::max(desiredQuality - levelsToDecrease, static_cast<uint32>(ITEM_QUALITY_NORMAL));
+            desiredQuality--;
         }
-        
         do
         {
             for (uint32 requiredLevel = bot->GetLevel(); requiredLevel > std::max((int32)bot->GetLevel() - delta, 0);
@@ -1624,7 +1603,6 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                 {
                     for (uint32 itemId : sRandomItemMgr->GetCachedEquipments(requiredLevel, inventoryType))
                     {
-                        // Existing item filtering logic...
                         if (itemId == 46978)  // shaman earth ring totem
                         {
                             continue;
@@ -1632,20 +1610,21 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                         uint32 skipProb = 25;
                         if (urand(1, 100) <= skipProb)
                             continue;
-        
-                        // Disable next expansion gear
+
+                        // disable next expansion gear
                         if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 60 && itemId >= 23728)
                             continue;
-        
+
                         if (sPlayerbotAIConfig->limitGearExpansion && bot->GetLevel() <= 70 && itemId >= 35570 &&
                             itemId != 36737 && itemId != 37739 &&
-                            itemId != 37740)  // Transition point from TBC -> WOTLK isn't as clear
+                            itemId != 37740)  // transition point from TBC -> WOTLK isn't as clear, and there are other
+                                              // wearable TBC items above 35570 but nothing of significance
                             continue;
-        
+
                         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
                         if (!proto)
                             continue;
-        
+
                         if (gearScoreLimit != 0 &&
                             CalcMixedGearScore(proto->ItemLevel, proto->Quality) > gearScoreLimit)
                         {
@@ -1653,10 +1632,13 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                         }
                         if (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_ARMOR)
                             continue;
-        
+
                         if (proto->Quality != desiredQuality)
                             continue;
-        
+                        // delay heavy check
+                        // if (!CanEquipItem(proto))
+                        //     continue;
+
                         if (proto->Class == ITEM_CLASS_ARMOR &&
                             (slot == EQUIPMENT_SLOT_HEAD || slot == EQUIPMENT_SLOT_SHOULDERS ||
                              slot == EQUIPMENT_SLOT_CHEST || slot == EQUIPMENT_SLOT_WAIST ||
@@ -1664,14 +1646,16 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                              slot == EQUIPMENT_SLOT_WRISTS || slot == EQUIPMENT_SLOT_HANDS) &&
                             !CanEquipArmor(proto))
                             continue;
-        
+
                         if (proto->Class == ITEM_CLASS_WEAPON && !CanEquipWeapon(proto))
                             continue;
-        
+
                         if (slot == EQUIPMENT_SLOT_OFFHAND && bot->getClass() == CLASS_ROGUE &&
                             proto->Class != ITEM_CLASS_WEAPON)
                             continue;
-        
+                        // delay heavy check
+                        // uint16 dest = 0;
+                        // if (CanEquipUnseenItem(slot, dest, itemId))
                         items[slot].push_back(itemId);
                     }
                 }
@@ -1679,7 +1663,6 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                     break;
             }
         } while (items[slot].size() < 25 && desiredQuality-- > ITEM_QUALITY_NORMAL);
-
 
         std::vector<uint32>& ids = items[slot];
         if (ids.empty())
@@ -1696,11 +1679,6 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(newItemId);
 
             float cur_score = calculator.CalculateItem(newItemId);
-
-            // Introduce randomness in scoring to diversify item selection
-            float randomFactor = (urand(66, 133)) / 100.0f; // +/-33% variability
-            cur_score *= randomFactor;
-
             if (cur_score > bestScoreForSlot)
             {
                 // delay heavy check to here
