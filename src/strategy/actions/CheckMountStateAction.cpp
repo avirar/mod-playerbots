@@ -180,8 +180,6 @@ bool CheckMountStateAction::Mount()
     if (bot->isMoving())
     {
         bot->StopMoving();
-        // bot->GetMotionMaster()->Clear();
-        // bot->GetMotionMaster()->MoveIdle();
     }
 
     Player* master = GetMaster();
@@ -222,7 +220,6 @@ bool CheckMountStateAction::Mount()
 
     bool hasSwiftMount = false;
 
-    // std::map<int32, std::vector<uint32> > spells;
     std::map<uint32, std::map<int32, std::vector<uint32>>> allSpells;
     for (PlayerSpellMap::iterator itr = bot->GetSpellMap().begin(); itr != bot->GetSpellMap().end(); ++itr)
     {
@@ -235,17 +232,9 @@ bool CheckMountStateAction::Mount()
             continue;
 
         int32 effect = std::max(spellInfo->Effects[1].BasePoints, spellInfo->Effects[2].BasePoints);
-        // if (effect < masterSpeed)
-        // continue;
 
         uint32 index = (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
                         spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
-                        // Winged Steed of the Ebon Blade
-                        // This mount is meant to autoscale from a 150% flyer
-                        // up to a 280% as you train your flying skill up.
-                        // This incorrectly gets categorised as a ground mount, force this to flyer only.
-                        // TODO: Add other scaling mounts here if they have the same issue, or adjust above
-                        // checks so that they are all correctly detected.
                         spellInfo->Id == 54729)
                            ? 1      // Flying Mount
                            : 0;     // Ground Mount
@@ -262,7 +251,12 @@ bool CheckMountStateAction::Mount()
     }
 
     int32 masterMountType = 0;
-    if (masterSpell)
+    bool isFlyable = bot->GetMap()->IsFlyingAllowed() && IsAreaFlyable(bot); // Refined flyable check
+    if (isFlyable)
+    {
+        masterMountType = 1; // Prioritize flying mounts in flyable zones
+    }
+    else if (masterSpell)
     {
         masterMountType = (masterSpell->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
                            masterSpell->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED)
@@ -270,7 +264,7 @@ bool CheckMountStateAction::Mount()
                               : 0;
     }
 
-    // Check for preferred mounts table in db
+    // Check for preferred mounts in database
     QueryResult checkTable = PlayerbotsDatabase.Query(
         "SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = 'acore_playerbots' AND table_name = 'playerbots_preferred_mounts')");
     
@@ -279,67 +273,66 @@ bool CheckMountStateAction::Mount()
         uint32 tableExists = checkTable->Fetch()[0].Get<uint32>();
         if (tableExists == 1)
         {
-            // Check for preferred mount entry
             QueryResult result = PlayerbotsDatabase.Query(
-            "SELECT spellid FROM playerbots_preferred_mounts WHERE guid = {} AND type = {}",
-            bot->GetGUID().GetCounter(), masterMountType);
+                "SELECT spellid FROM playerbots_preferred_mounts WHERE guid = {} AND type = {}",
+                bot->GetGUID().GetCounter(), masterMountType);
 
             if (result)
             {
                 std::vector<uint32> mounts;
-                    do
-                    {
-                        Field* fields = result->Fetch();
-                        uint32 spellId = fields[0].Get<uint32>();
-                        mounts.push_back(spellId);
-                    } while (result->NextRow());
+                do
+                {
+                    Field* fields = result->Fetch();
+                    uint32 spellId = fields[0].Get<uint32>();
+                    mounts.push_back(spellId);
+                } while (result->NextRow());
                 
                 uint32 index = urand(0, mounts.size() - 1);
-                // Validate spell ID
                 if (index < mounts.size() && sSpellMgr->GetSpellInfo(mounts[index]))
                 {
-                    // TODO: May want to do checks for 'bot riding skill > skill required to ride the mount'
                     return botAI->CastSpell(mounts[index], bot);
                 }
             }
         }
     }
 
-    // No preferred mount found (or invalid), continue with random mount selection
+    // Primary mount selection
     std::map<int32, std::vector<uint32>>& spells = allSpells[masterMountType];
-    if (hasSwiftMount)
+    for (auto& [speed, spellIds] : spells)
     {
-        for (auto i : spells)
+        for (uint32 spellId : spellIds)
         {
-            std::vector<uint32> ids = i.second;
-            for (auto itr : ids)
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (!spellInfo)
+                continue;
+
+            if (masterMountType == 1 && isFlyable && bot->GetPureSkillValue(SKILL_RIDING) >= 225)
             {
-                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(itr);
-                if (!spellInfo)
-                    continue;
-
-                if (masterMountType == 0 && masterSpeed > 59 &&
-                    std::max(spellInfo->Effects[EFFECT_1].BasePoints, spellInfo->Effects[EFFECT_2].BasePoints) < 99)
-                    spells[59].clear();
-
-                if (masterMountType == 1 && masterSpeed > 149 &&
-                    std::max(spellInfo->Effects[EFFECT_1].BasePoints, spellInfo->Effects[EFFECT_2].BasePoints) < 279)
-                    spells[149].clear();
+                return botAI->CastSpell(spellId, bot);
+            }
+            else if (masterMountType == 0 && bot->GetPureSkillValue(SKILL_RIDING) >= 75)
+            {
+                return botAI->CastSpell(spellId, bot);
             }
         }
     }
 
-    for (std::map<int32, std::vector<uint32>>::iterator i = spells.begin(); i != spells.end(); ++i)
+    // Fallback to any available mount type
+    for (auto& [speed, spellIds] : allSpells)
     {
-        std::vector<uint32>& ids = i->second;
-        uint32 index = urand(0, ids.size() - 1);
-        if (index >= ids.size())
-            continue;
+        if (!spellIds.empty())
+        {
+            uint32 randomSpell = spellIds[urand(0, spellIds.size() - 1)];
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(randomSpell);
 
-        return botAI->CastSpell(ids[index], bot);
-        ;
+            if (masterMountType == 1 && isFlyable && bot->GetPureSkillValue(SKILL_RIDING) >= 225)
+                return botAI->CastSpell(randomSpell, bot);
+            else if (masterMountType == 0 && bot->GetPureSkillValue(SKILL_RIDING) >= 75)
+                return botAI->CastSpell(randomSpell, bot);
+        }
     }
 
+    // Attempt to use an inventory mount item
     std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", "mount");
     if (!items.empty())
         return UseItemAuto(*items.begin());
