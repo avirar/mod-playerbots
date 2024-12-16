@@ -121,11 +121,11 @@ public:
     WorldPosition& operator+=(WorldPosition const& p1);
     WorldPosition& operator-=(WorldPosition const& p1);
 
-    uint32 getMapId();
-    float getX();
-    float getY();
-    float getZ();
-    float getO();
+    uint32 getMapId() const;
+    float getX() const;
+    float getY() const;
+    float getZ() const;
+    float getO() const;
 
     G3D::Vector3 getVector3();
     std::string const print();
@@ -326,6 +326,9 @@ public:
 
     // GameObjects
     std::vector<GameObjectData const*> getGameObjectsNear(float radius = 0, uint32 entry = 0);
+
+    // New Arc Path Creation for Flying
+    std::vector<WorldPosition> createFlyingArc(WorldPosition const& start, WorldPosition const& end, float arcHeight, int numPoints = 10);
 
 private:
     uint32 visitors = 0;
