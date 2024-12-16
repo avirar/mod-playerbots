@@ -59,7 +59,8 @@ enum class TravelNodePathType : uint8
     portal = 2,
     transport = 3,
     flightPath = 4,
-    teleportSpell = 5
+    teleportSpell = 5,
+    flying = 6
 };
 
 // A connection between two nodes.
