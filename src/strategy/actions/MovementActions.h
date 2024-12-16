@@ -60,6 +60,7 @@ protected:
     Position BestPositionForRangedToFlee(Position pos, float radius);
     bool FleePosition(Position pos, float radius);
     bool CheckLastFlee(float curAngle, std::list<FleeInfo>& infoList);
+    float DetermineFlyingHeight(float x, float y, float z);
 
 protected:
     struct CheckAngle
