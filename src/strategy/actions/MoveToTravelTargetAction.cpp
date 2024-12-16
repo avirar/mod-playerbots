@@ -13,6 +13,7 @@
 bool MoveToTravelTargetAction::Execute(Event event)
 {
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+
     WorldPosition botLocation(bot);
     WorldLocation location = *target->getPosition();
 
@@ -22,7 +23,13 @@ bool MoveToTravelTargetAction::Execute(Event event)
         for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
         {
             Player* member = ref->GetSource();
-            if (member == bot || !member->IsAlive() || !member->isMoving())
+            if (member == bot)
+                continue;
+
+            if (!member->IsAlive())
+                continue;
+
+            if (!member->isMoving())
                 continue;
 
             PlayerbotAI* memberBotAI = GET_PLAYERBOT_AI(member);
@@ -30,55 +37,86 @@ bool MoveToTravelTargetAction::Execute(Event event)
                 continue;
 
             WorldPosition memberPos(member);
-            if (botLocation.distance(memberPos) > sPlayerbotAIConfig->reactDistance * 20)
+            WorldPosition targetPos = *target->getPosition();
+
+            float memberDistance = botLocation.distance(memberPos);
+
+            if (memberDistance < 50.0f)
                 continue;
+            if (memberDistance > sPlayerbotAIConfig->reactDistance * 20)
+                continue;
+
+            // float memberAngle = botLocation.getAngleBetween(targetPos, memberPos);
+
+            // if (botLocation.getMapId() == targetPos.getMapId() && botLocation.getMapId() == memberPos.getMapId() &&
+            // memberAngle < static_cast<float>(M_PI) / 2) //We are heading that direction anyway.
+            //     continue;
 
             if (!urand(0, 5))
             {
                 std::ostringstream out;
-                out << (botAI->GetMaster() && !bot->GetGroup()->IsMember(botAI->GetMaster()->GetGUID()) ? "Waiting a bit for " : "Please hurry up ") << member->GetName();
+                if (botAI->GetMaster() && !bot->GetGroup()->IsMember(botAI->GetMaster()->GetGUID()))
+                    out << "Waiting a bit for ";
+                else
+                    out << "Please hurry up ";
+
+                out << member->GetName();
+
                 botAI->TellMasterNoFacing(out);
             }
 
             target->setExpireIn(target->getTimeLeft() + sPlayerbotAIConfig->maxWaitForMove);
+
             botAI->SetNextCheckDelay(sPlayerbotAIConfig->maxWaitForMove);
+
             return true;
         }
     }
 
     float maxDistance = target->getDestination()->getRadiusMin();
+
+    // Evenly distribute around the target.
+    float angle = 2 * M_PI * urand(0, 100) / 100.0;
+
+    if (target->getMaxTravelTime() > target->getTimeLeft())  // The bot is late. Speed it up.
+    {
+        // distance = sPlayerbotAIConfig->fleeDistance;
+        // angle = bot->GetAngle(location.GetPositionX(), location.GetPositionY());
+        // location = botLocation.getLocation();
+    }
+
     float x = location.GetPositionX();
     float y = location.GetPositionY();
     float z = location.GetPositionZ();
     float mapId = location.GetMapId();
 
-    // Add flying arc logic if the bot is flying
-    bool isFlying = bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING);
     if (isFlying)
     {
+        // Direct flying movement logic
         WorldPosition start(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
         WorldPosition end(mapId, x, y, z);
 
-        float arcHeight = std::clamp(start.distance(end) * 0.1f, 10.0f, 50.0f); // 10% of the distance
-        auto arcPath = start.createFlyingArc(start, end, arcHeight, 10);        // 10 points for smooth flight
-
-        for (auto& point : arcPath)
+        // Move directly to the target in one step (no intermediate ground points)
+        if (!MoveTo(end.getMapId(), end.getX(), end.getY(), end.getZ(), false, false))
         {
-            if (!MoveTo(point.getMapId(), point.getX(), point.getY(), point.getZ(), false, false))
-            {
-                target->incRetry(true);
-                if (target->isMaxRetry(true))
-                    target->setStatus(TRAVEL_STATUS_COOLDOWN);
-                return false;
-            }
+            target->incRetry(true);
+            if (target->isMaxRetry(true))
+                target->setStatus(TRAVEL_STATUS_COOLDOWN);
+            return false;
         }
 
         target->setRetry(true);
         return true;
     }
 
-    // For non-flying logic, fallback to ground movement
+    // Move between 0.5 and 1.0 times the maxDistance.
+    float mod = frand(50.f, 100.f) / 100.0f;
+
+    x += cos(angle) * maxDistance * mod;
+    y += sin(angle) * maxDistance * mod;
+
     bool canMove = false;
+
     if (bot->IsWithinLOS(x, y, z))
         canMove = MoveNear(mapId, x, y, z, 0);
     else
@@ -87,6 +125,7 @@ bool MoveToTravelTargetAction::Execute(Event event)
     if (!canMove && !target->isForced())
     {
         target->incRetry(true);
+
         if (target->isMaxRetry(true))
             target->setStatus(TRAVEL_STATUS_COOLDOWN);
     }
