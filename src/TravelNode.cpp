@@ -92,6 +92,13 @@ void TravelNodePath::calculateCost(bool distanceOnly)
         lastPoint = point;
     }
 
+    // If flying, use straight-line distance
+    if (pathType == TravelNodePathType::flying)
+    {
+        distance = path.front().distance(path.back());
+        swimDistance = 0;  // No swimming involved in flying
+    }
+
     if (!distanceOnly)
         calculated = true;
 }
@@ -102,8 +109,9 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
     float modifier = 1.0f;  // Global modifier
     float timeCost = 0.1f;
     float runDistance = distance - swimDistance;
-    float speed = 8.0f;      // default run speed
-    float swimSpeed = 4.0f;  // default swim speed.
+    float speed = 8.0f;      // Default run speed
+    float swimSpeed = 4.0f;  // Default swim speed
+    float flySpeed = 13.0f;  // Default flying mount speed
 
     if (bot)
     {
@@ -134,8 +142,16 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
         speed = bot->GetSpeed(MOVE_RUN);
         swimSpeed = bot->GetSpeed(MOVE_SWIM);
 
-        if (bot->HasSpell(1066))
+        if (bot->HasSpell(1066))  // Aquatic Form
             swimSpeed *= 1.5;
+
+        // Handle flying speed
+        if (getPathType() == TravelNodePathType::flying)
+        {
+            flySpeed = bot->GetSpeed(MOVE_FLIGHT);
+            if (flySpeed < 1.0f)  // Default flying speed for calculation
+                flySpeed = 13.0f;
+        }
 
         uint32 level = bot->GetLevel();
         bool isAlliance = Unit::GetFactionReactionTo(bot->GetFactionTemplateEntry(),
@@ -160,7 +176,9 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
     else if (getPathType() == TravelNodePathType::flightPath)
         return -1;
 
-    if (getPathType() != TravelNodePathType::walk)
+    if (getPathType() == TravelNodePathType::flying)
+        timeCost = (distance / flySpeed) * modifier;  // Flying cost calculation
+    else if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
     else
         timeCost = (runDistance / speed + swimDistance / swimSpeed) * modifier;
@@ -189,10 +207,10 @@ TravelNodePath* TravelNode::buildPath(TravelNode* endNode, Unit* bot, bool postP
 
     TravelNodePath* returnNodePath;
 
-    if (!hasPathTo(endNode))  // Create path if it doesn't exists
+    if (!hasPathTo(endNode))  // Create path if it doesn't exist
         returnNodePath = setPathTo(endNode, TravelNodePath(), false);
     else
-        returnNodePath = getPathTo(endNode);  // Get the exsisting path.
+        returnNodePath = getPathTo(endNode);  // Get the existing path.
 
     if (returnNodePath->getComplete())  // Path is already complete. Return it.
         return returnNodePath;
@@ -204,36 +222,50 @@ TravelNodePath* TravelNode::buildPath(TravelNode* endNode, Unit* bot, bool postP
 
     WorldPosition* endPos = endNode->getPosition();  // Build the path to the end Node.
 
-    path = endPos->getPathFromPath(path, bot);  // Pathfind from the existing path to the end Node.
+    bool canPath = false;
 
-    bool canPath = endPos->isPathTo(path);  // Check if we reached our destination.
-
-    if (!canPath && endNode->hasLinkTo(this))  // Unable to find a path? See if the reverse is possible.
+    // Handle flying path logic
+    if (bot && bot->CanFly())
     {
-        TravelNodePath backNodePath = *endNode->getPathTo(this);
+        // Directly create a straight-line path for flying
+        path = {path.front(), *endPos};
+        canPath = true;
 
-        if (backNodePath.getPathType() == TravelNodePathType::walk)
+        returnNodePath->setPathType(TravelNodePathType::flying);  // Set flying path type
+    }
+    else
+    {
+        // Standard ground/water pathfinding logic
+        path = endPos->getPathFromPath(path, bot);  // Pathfind from the existing path to the end Node.
+        canPath = endPos->isPathTo(path);          // Check if we reached our destination.
+
+        if (!canPath && endNode->hasLinkTo(this))  // Unable to find a path? See if the reverse is possible.
         {
-            std::vector<WorldPosition> bPath = backNodePath.getPath();
+            TravelNodePath backNodePath = *endNode->getPathTo(this);
 
-            if (!backNodePath.getComplete())  // Build it if it's not already complete.
+            if (backNodePath.getPathType() == TravelNodePathType::walk)
             {
-                if (bPath.empty())
-                    bPath = {*endNode->getPosition()};  // Start the path from the end Node.
+                std::vector<WorldPosition> bPath = backNodePath.getPath();
 
-                WorldPosition* thisPos = getPosition();  // Build the path to this Node.
+                if (!backNodePath.getComplete())  // Build it if it's not already complete.
+                {
+                    if (bPath.empty())
+                        bPath = {*endNode->getPosition()};  // Start the path from the end Node.
 
-                bPath = thisPos->getPathFromPath(bPath, bot);  // Pathfind from the existing path to the this Node.
+                    WorldPosition* thisPos = getPosition();  // Build the path to this Node.
 
-                canPath = thisPos->isPathTo(bPath);  // Check if we reached our destination.
-            }
-            else
-                canPath = true;
+                    bPath = thisPos->getPathFromPath(bPath, bot);  // Pathfind from the existing path to this Node.
 
-            if (canPath)
-            {
-                std::reverse(bPath.begin(), bPath.end());
-                path = bPath;
+                    canPath = thisPos->isPathTo(bPath);  // Check if we reached our destination.
+                }
+                else
+                    canPath = true;
+
+                if (canPath)
+                {
+                    std::reverse(bPath.begin(), bPath.end());
+                    path = bPath;
+                }
             }
         }
     }
