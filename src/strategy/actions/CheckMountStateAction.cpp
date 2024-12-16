@@ -185,7 +185,8 @@ bool CheckMountStateAction::Mount()
     Player* master = GetMaster();
     botAI->RemoveShapeshift();
     botAI->RemoveAura("tree of life");
-    int32 masterSpeed = 59;
+
+    int32 masterSpeed = 59; // Default to 60% ground mount
     SpellInfo const* masterSpell = nullptr;
 
     if (master && !master->GetAuraEffectsByType(SPELL_AURA_MOUNTED).empty() && !bot->InBattleground())
@@ -195,7 +196,6 @@ bool CheckMountStateAction::Mount()
     }
     else
     {
-        masterSpeed = 59;
         for (PlayerSpellMap::iterator itr = bot->GetSpellMap().begin(); itr != bot->GetSpellMap().end(); ++itr)
         {
             uint32 spellId = itr->first;
@@ -213,13 +213,11 @@ bool CheckMountStateAction::Mount()
     }
 
     if (bot->GetPureSkillValue(SKILL_RIDING) <= 75 && bot->GetLevel() < secondmount)
-        masterSpeed = 59;
-
-    if (bot->InBattleground() && masterSpeed > 99)
-        masterSpeed = 99;
+        masterSpeed = 59; // Cap at 60% if riding skill is too low
 
     bool hasSwiftMount = false;
 
+    // Map of flying and ground mounts by their speed
     std::map<uint32, std::map<int32, std::vector<uint32>>> allSpells;
     for (PlayerSpellMap::iterator itr = bot->GetSpellMap().begin(); itr != bot->GetSpellMap().end(); ++itr)
     {
@@ -239,103 +237,65 @@ bool CheckMountStateAction::Mount()
                            ? 1      // Flying Mount
                            : 0;     // Ground Mount
 
-        if (index == 0 &&
-            std::max(spellInfo->Effects[EFFECT_1].BasePoints, spellInfo->Effects[EFFECT_2].BasePoints) > 59)
-            hasSwiftMount = true;
-
-        if (index == 1 &&
-            std::max(spellInfo->Effects[EFFECT_1].BasePoints, spellInfo->Effects[EFFECT_2].BasePoints) > 149)
-            hasSwiftMount = true;
-
         allSpells[index][effect].push_back(spellId);
     }
 
-    int32 masterMountType = 0;
-    bool isFlyable = bot->GetMap()->IsFlyingAllowed() && IsAreaFlyable(bot); // Refined flyable check
-    if (isFlyable)
-    {
-        masterMountType = 1; // Prioritize flying mounts in flyable zones
-    }
-    else if (masterSpell)
+    // Determine the type of mount to use
+    int32 masterMountType = 0; // Default to ground mounts
+    if (masterSpell)
     {
         masterMountType = (masterSpell->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
                            masterSpell->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED)
                               ? 1
                               : 0;
     }
-
-    // Check for preferred mounts in database
-    QueryResult checkTable = PlayerbotsDatabase.Query(
-        "SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = 'acore_playerbots' AND table_name = 'playerbots_preferred_mounts')");
-    
-    if (checkTable)
+    else if (bot->GetPureSkillValue(SKILL_RIDING) >= 225) // Check if flying is possible
     {
-        uint32 tableExists = checkTable->Fetch()[0].Get<uint32>();
-        if (tableExists == 1)
-        {
-            QueryResult result = PlayerbotsDatabase.Query(
-                "SELECT spellid FROM playerbots_preferred_mounts WHERE guid = {} AND type = {}",
-                bot->GetGUID().GetCounter(), masterMountType);
-
-            if (result)
-            {
-                std::vector<uint32> mounts;
-                do
-                {
-                    Field* fields = result->Fetch();
-                    uint32 spellId = fields[0].Get<uint32>();
-                    mounts.push_back(spellId);
-                } while (result->NextRow());
-                
-                uint32 index = urand(0, mounts.size() - 1);
-                if (index < mounts.size() && sSpellMgr->GetSpellInfo(mounts[index]))
-                {
-                    return botAI->CastSpell(mounts[index], bot);
-                }
-            }
-        }
+        masterMountType = 1; // Flying mount
     }
 
-    // Primary mount selection
+    // Primary mount selection: select the fastest valid mount
     std::map<int32, std::vector<uint32>>& spells = allSpells[masterMountType];
-    for (auto& [speed, spellIds] : spells)
+    for (auto it = spells.rbegin(); it != spells.rend(); ++it) // Iterate in reverse for highest speed first
     {
-        for (uint32 spellId : spellIds)
+        for (uint32 spellId : it->second)
         {
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
             if (!spellInfo)
                 continue;
 
-            if (masterMountType == 1 && isFlyable && bot->GetPureSkillValue(SKILL_RIDING) >= 225)
-            {
-                return botAI->CastSpell(spellId, bot);
-            }
-            else if (masterMountType == 0 && bot->GetPureSkillValue(SKILL_RIDING) >= 75)
+            // Validate if the mount can be used in the current location
+            if (spellInfo->CheckLocation(bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), bot) == SPELL_CAST_OK)
             {
                 return botAI->CastSpell(spellId, bot);
             }
         }
     }
 
-    // Fallback to any available mount type
-    for (auto& [speed, spellIds] : allSpells)
+    // Fallback to any available mount (ground or flying)
+    for (auto& pair : allSpells)
     {
-        if (!spellIds.empty())
+        for (auto it = pair.second.rbegin(); it != pair.second.rend(); ++it) // Highest speed first
         {
-            uint32 randomSpell = spellIds[urand(0, spellIds.size() - 1)];
-            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(randomSpell);
+            for (uint32 spellId : it->second)
+            {
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                if (!spellInfo)
+                    continue;
 
-            if (masterMountType == 1 && isFlyable && bot->GetPureSkillValue(SKILL_RIDING) >= 225)
-                return botAI->CastSpell(randomSpell, bot);
-            else if (masterMountType == 0 && bot->GetPureSkillValue(SKILL_RIDING) >= 75)
-                return botAI->CastSpell(randomSpell, bot);
+                if (spellInfo->CheckLocation(bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), bot) == SPELL_CAST_OK)
+                {
+                    return botAI->CastSpell(spellId, bot);
+                }
+            }
         }
     }
 
-    // Attempt to use an inventory mount item
+    // Attempt to use a mount item from inventory
     std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", "mount");
     if (!items.empty())
         return UseItemAuto(*items.begin());
 
     return false;
 }
+
