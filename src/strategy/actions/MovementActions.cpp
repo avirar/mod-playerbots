@@ -180,42 +180,43 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                             bool exact_waypoint, MovementPriority priority)
 {
     UpdateMovementState();
+
     if (!IsMovingAllowed(mapId, x, y, z))
-    {
         return false;
-    }
+
     if (IsDuplicateMove(mapId, x, y, z))
-    {
         return false;
-    }
+
     if (IsWaitingForLastMove(priority))
-    {
         return false;
-    }
-    bool generatePath = !bot->IsFlying() && !bot->isSwimming();
+
+    bool isFlying = bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING);
+    bool generatePath = !isFlying && !bot->isSwimming();
     bool disableMoveSplinePath = sPlayerbotAIConfig->disableMoveSplinePath >= 2 ||
                                  (sPlayerbotAIConfig->disableMoveSplinePath == 1 && bot->InBattleground());
+
+    // Vehicle movement handling
     if (Vehicle* vehicle = bot->GetVehicle())
     {
         VehicleSeatEntry const* seat = vehicle->GetSeatForPassenger(bot);
         Unit* vehicleBase = vehicle->GetBase();
         generatePath = vehicleBase->CanFly();
-        if (!vehicleBase || !seat || !seat->CanControl())  // is passenger and cant move anyway
+        if (!vehicleBase || !seat || !seat->CanControl())
             return false;
 
-        float distance = vehicleBase->GetExactDist(x, y, z);  // use vehicle distance, not bot
+        float distance = vehicleBase->GetExactDist(x, y, z);
         if (distance > 0.01f)
         {
-            MotionMaster& mm = *vehicleBase->GetMotionMaster();  // need to move vehicle, not bot
+            MotionMaster& mm = *vehicleBase->GetMotionMaster();
             mm.Clear();
             mm.MovePoint(0, x, y, z, generatePath);
             float delay = 1000.0f * (distance / vehicleBase->GetSpeed(MOVE_RUN));
-            delay = std::max(.0f, delay);
-            delay = std::min((float)sPlayerbotAIConfig->maxWaitForMove, delay);
+            delay = std::clamp(delay, 0.0f, (float)sPlayerbotAIConfig->maxWaitForMove);
             AI_VALUE(LastMovement&, "last movement").Set(mapId, x, y, z, bot->GetOrientation(), delay, priority);
             return true;
         }
     }
+    // Handle exact waypoints or forced pathing
     else if (exact_waypoint || disableMoveSplinePath || !generatePath)
     {
         float distance = bot->GetExactDist(x, y, z);
@@ -229,25 +230,34 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                 bot->CastStop();
                 botAI->InterruptSpell();
             }
+
             MotionMaster& mm = *bot->GetMotionMaster();
-            mm.Clear();
-            mm.MovePoint(0, x, y, z, generatePath);
+            if (isFlying && fabs(bot->GetPositionZ() - z) > 5.0f)
+            {
+                mm.Clear();
+                mm.MoveTakeoff(0, x, y, z);
+            }
+            else
+            {
+                mm.Clear();
+                mm.MovePoint(0, x, y, z, generatePath);
+            }
+
             float delay = 1000.0f * MoveDelay(distance);
-            delay = std::max(.0f, delay);
-            delay = std::min((float)sPlayerbotAIConfig->maxWaitForMove, delay);
+            delay = std::clamp(delay, 0.0f, (float)sPlayerbotAIConfig->maxWaitForMove);
             AI_VALUE(LastMovement&, "last movement").Set(mapId, x, y, z, bot->GetOrientation(), delay, priority);
             return true;
         }
     }
     else
     {
+        // Pathfinding logic with height adjustments
         float modifiedZ;
         Movement::PointsArray path =
             SearchForBestPath(x, y, z, modifiedZ, sPlayerbotAIConfig->maxMovementSearchTime, normal_only);
         if (modifiedZ == INVALID_HEIGHT)
-        {
             return false;
-        }
+
         float distance = bot->GetExactDist(x, y, modifiedZ);
         if (distance > 0.01f)
         {
@@ -259,19 +269,29 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                 bot->CastStop();
                 botAI->InterruptSpell();
             }
+
             MotionMaster& mm = *bot->GetMotionMaster();
             G3D::Vector3 endP = path.back();
-            mm.Clear();
-            mm.MovePoint(0, endP.x, endP.y, endP.z, generatePath);
+            if (isFlying && fabs(bot->GetPositionZ() - modifiedZ) > 5.0f)
+            {
+                mm.Clear();
+                mm.MoveTakeoff(0, endP.x, endP.y, modifiedZ);
+            }
+            else
+            {
+                mm.Clear();
+                mm.MovePoint(0, endP.x, endP.y, endP.z, generatePath);
+            }
+
             float delay = 1000.0f * MoveDelay(distance);
-            delay = std::max(.0f, delay);
-            delay = std::min((float)sPlayerbotAIConfig->maxWaitForMove, delay);
+            delay = std::clamp(delay, 0.0f, (float)sPlayerbotAIConfig->maxWaitForMove);
             AI_VALUE(LastMovement&, "last movement").Set(mapId, x, y, z, bot->GetOrientation(), delay, priority);
             return true;
         }
     }
 
     return false;
+
     //
     // // LOG_DEBUG("playerbots", "IsMovingAllowed {}", IsMovingAllowed());
     // bot->AddUnitMovementFlag()
@@ -944,28 +964,19 @@ bool MovementAction::Follow(Unit* target, float distance) { return Follow(target
 
 void MovementAction::UpdateMovementState()
 {
-    if (bot->Unit::IsUnderWater())
-    {
+    if (bot->IsUnderWater())
         bot->SetSwim(true);
-    }
-    else if (!bot->Unit::IsInWater())
-    {
+    else
         bot->SetSwim(false);
-    }
 
+    bool isFlyingMount = bot->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
     bool onGround = bot->GetPositionZ() <
-                    bot->GetMapWaterOrGroundLevel(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()) + 1.0f;
+                    bot->GetMap()->GetHeight(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), true) + 1.0f;
 
-    if (!bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) &&
-        bot->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED) && !onGround)
-    {
+    if (isFlyingMount && !onGround)
         bot->AddUnitMovementFlag(MOVEMENTFLAG_FLYING);
-    }
-    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) &&
-        (!bot->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED) || onGround))
-    {
+    else if (!isFlyingMount || onGround)
         bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FLYING);
-    }
 
     bot->SendMovementFlagUpdate();
     // Temporary speed increase in group
@@ -2674,4 +2685,14 @@ bool MoveFromGroupAction::Execute(Event event)
     if (!distance)
         distance = 20.0f; // flee distance from config is too small for this
     return MoveFromGroup(distance);
+}
+
+float MovementAction::DetermineFlyingHeight(float x, float y, float z)
+{
+    float groundHeight = bot->GetMap()->GetHeight(x, y, z, true); // Get ground height
+    if (groundHeight == INVALID_HEIGHT)
+        return z; // Use the provided height if ground height is invalid
+
+    float desiredHeight = std::max(groundHeight + 20.0f, z); // Stay at least 20 units above the ground
+    return desiredHeight;
 }
