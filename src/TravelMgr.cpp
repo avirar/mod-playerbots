@@ -696,27 +696,12 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(WorldPosition startPos
     // Load mmaps and vmaps between the two points.
     loadMapAndVMaps(startPos);
 
-    // If the bot is flying, create an arc path directly to the destination.
-    if (isFlying)
-    {
-        // Calculate distance using sqDistance and std::sqrt.
-        float distance = std::sqrt(sqDistance(startPos));
-
-        // Arc height based on horizontal distance, clamped for smoother flight.
-        float arcHeight = std::clamp(distance * 0.1f, 10.0f, 50.0f); // 10% of the distance, clamped.
-        int arcPoints = 10; // Number of points in the arc.
-
-        return createFlyingArc(startPos, *this, arcHeight, arcPoints);
-    }
-
-    // Standard ground pathfinding logic.
     PathGenerator path(bot);
     path.CalculatePath(startPos.getX(), startPos.getY(), startPos.getZ());
 
     Movement::PointsArray points = path.GetPath();
     PathType type = path.GetPathType();
 
-    // Logging for debugging pathfinding attempts.
     if (sPlayerbotAIConfig->hasLog("pathfind_attempt_point.csv"))
     {
         std::ostringstream out;
@@ -734,31 +719,11 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(WorldPosition startPos
         sPlayerbotAIConfig->log("pathfind_attempt.csv", out.str().c_str());
     }
 
-    // Return the calculated ground path if valid.
     if (type == PATHFIND_INCOMPLETE || type == PATHFIND_NORMAL)
         return fromPointsArray(points);
 
-    // No valid path found.
     return {};
 }
-
-// Helper function to create an arc path between two positions.
-std::vector<WorldPosition> WorldPosition::createFlyingArc(WorldPosition const& start, WorldPosition const& end, float arcHeight, int numPoints)
-{
-    std::vector<WorldPosition> arcPath;
-
-    for (int i = 0; i <= numPoints; ++i)
-    {
-        float t = static_cast<float>(i) / numPoints;
-        float x = start.getX() + t * (end.getX() - start.getX());
-        float y = start.getY() + t * (end.getY() - start.getY());
-        float z = start.getZ() + t * (end.getZ() - start.getZ()) + arcHeight * std::sin(M_PI * t); // Add arc.
-        arcPath.emplace_back(start.getMapId(), x, y, z);
-    }
-
-    return arcPath;
-}
-
 
 bool WorldPosition::cropPathTo(std::vector<WorldPosition>& path, float maxDistance)
 {
