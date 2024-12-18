@@ -50,4 +50,13 @@ public:
     bool isUseful() override;          // Determines if the action is needed
 };
 
+class IgnisMoveMoltenConstructToWaterAction : public MovementAction
+{
+public:
+    IgnisMoveMoltenConstructToWaterAction(PlayerbotAI* ai) : MovementAction(ai, "ignis move molten construct to water") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+};
+
+
 #endif
