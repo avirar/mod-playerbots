@@ -75,3 +75,35 @@ bool IgnisMoveConstructToScorchedGroundTrigger::IsActive()
     }
     return false;
 }
+
+bool IgnisMoveMoltenConstructToWaterTrigger::IsActive()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+
+    if (botAI->IsTank(bot) && !botAI->IsMainTank(bot))
+    {
+        GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
+        for (ObjectGuid guid : attackers)
+        {
+            Unit* target = botAI->GetUnit(guid);
+            if (target && target->GetEntry() == NPC_IRON_CONSTRUCT &&
+                target->GetVictim() == bot && target->HasAura(SPELL_MOLTEN)) // Target is molten
+            {
+                // Ensure water exists and bot is far from it
+                GuidVector nearbyWater = AI_VALUE(GuidVector, "nearest hostile npcs");
+                for (ObjectGuid waterGuid : nearbyWater)
+                {
+                    Unit* water = botAI->GetUnit(waterGuid);
+                    if (water && water->GetEntry() == NPC_WATER_TRIGGER &&
+                        bot->GetDistance(water->GetPosition()) > 2.0f)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
