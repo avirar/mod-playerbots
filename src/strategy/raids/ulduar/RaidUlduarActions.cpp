@@ -524,7 +524,7 @@ bool IgnisChooseTargetAction::Execute(Event event)
         if (unit->GetEntry() == NPC_IRON_CONSTRUCT)
         {
             // Add to brittle constructs list if it has the Brittle aura
-            if (unit->HasAura(SPELL_BRITTLE))
+            if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25))
             {
                 brittle_constructs.push_back(unit);
             }
