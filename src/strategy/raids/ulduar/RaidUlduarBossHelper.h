@@ -36,6 +36,11 @@ constexpr float WATER_CENTER_SOUTH_X = 527.77f;
 constexpr float WATER_CENTER_SOUTH_Y = 277.72f;
 constexpr float WATER_CENTER_SOUTH_Z = 359.87f;
 
+// Ignis arena centre
+constexpr float IGNIS_ARENA_CENTER_X = 587.10f;
+constexpr float IGNIS_ARENA_CENTER_Y = 277.72f;
+constexpr float IGNIS_ARENA_CENTER_Z = 360.80f;
+
 // template <class BossAiType>
 // class GenericBossHelper : public AiObject
 // {
