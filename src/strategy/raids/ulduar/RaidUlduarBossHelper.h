@@ -26,6 +26,15 @@ const uint32 ULDUAR_MAP_ID = 603;
 #define NPC_SCORCHED_GROUND             33123
 #define NPC_WATER_TRIGGER               22515
 
+// Ignis water pools for tank movement
+constexpr float WATER_CENTER_NORTH_X = 647.68f;
+constexpr float WATER_CENTER_NORTH_Y = 277.72f;
+constexpr float WATER_CENTER_NORTH_Z = 359.87f;
+
+constexpr float WATER_CENTER_SOUTH_X = 527.77f;
+constexpr float WATER_CENTER_SOUTH_Y = 277.72f;
+constexpr float WATER_CENTER_SOUTH_Z = 359.87f;
+
 // template <class BossAiType>
 // class GenericBossHelper : public AiObject
 // {
