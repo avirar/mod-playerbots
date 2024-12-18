@@ -42,6 +42,9 @@ protected:
     bool AllMainVehiclesOnUse();
 };
 
+//
+// Ignis
+//
 class IgnisMoveConstructToScorchedGroundAction : public MovementAction
 {
 public:
@@ -58,5 +61,12 @@ public:
     bool isUseful() override;
 };
 
+class IgnisChooseTargetAction : public AttackAction
+{
+public:
+    IgnisChooseTargetAction(PlayerbotAI* ai) : AttackAction(ai, "ignis choose target") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+};
 
 #endif
