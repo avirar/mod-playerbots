@@ -24,7 +24,6 @@ private:
     static Action* flame_leviathan_vehicle(PlayerbotAI* ai) { return new FlameLeviathanVehicleAction(ai); }
     static Action* flame_leviathan_enter_vehicle(PlayerbotAI* ai) { return new FlameLeviathanEnterVehicleAction(ai); }
     static Action* ignis_move_construct_to_scorched_ground(PlayerbotAI* ai) { return new IgnisMoveConstructToScorchedGroundAction(ai); }
-IgnisMoveConstructToScorchedGroundAction
 };
 
 #endif
