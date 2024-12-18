@@ -590,3 +590,53 @@ bool IgnisChooseTargetAction::isUseful()
     }
     return false;
 }
+
+bool IgnisPositionAction::Execute(Event event)
+{
+    // Determine if the bot is the main tank
+    if (botAI->IsMainTank(bot))
+    {
+        // Move the main tank inside the arena near the center
+        return MoveInside(bot->GetMapId(),
+                          IGNIS_ARENA_CENTER_X,
+                          IGNIS_ARENA_CENTER_Y,
+                          IGNIS_ARENA_CENTER_Z,
+                          15.0f,  // 10-yard radius
+                          MovementPriority::MOVEMENT_COMBAT);
+    }
+    else if (botAI->IsRanged(bot) && !botAI->IsTank(bot))
+    {
+        // Move ranged DPS 30 yards east of the arena center
+        return MoveInside(bot->GetMapId(),
+                          IGNIS_ARENA_CENTER_X,
+                          IGNIS_ARENA_CENTER_Y + 30f,
+                          IGNIS_ARENA_CENTER_Z,
+                          20.0f,  // 10-yard radius
+                          MovementPriority::MOVEMENT_COMBAT);
+    }
+
+    return false;
+}
+
+bool IgnisPositionAction::isUseful()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+    
+    // Main tank positioning
+    if (botAI->IsMainTank(bot))
+    {
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y);
+        return distance > 15.0f; // Positioning is useful if the tank is outside the 10-yard radius
+    }
+
+    // Ranged DPS positioning
+    if (botAI->IsRanged(bot))
+    {
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30f);
+        return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 10-yard radius
+    }
+
+    return false; // No positioning required for other roles
+}
