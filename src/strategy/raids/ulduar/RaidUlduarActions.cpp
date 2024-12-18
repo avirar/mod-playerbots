@@ -396,6 +396,13 @@ bool FlameLeviathanEnterVehicleAction::AllMainVehiclesOnUse()
 
 bool IgnisMoveConstructToScorchedGroundAction::Execute(Event event)
 {
+    // Ensure the bot doesn't avoid AoE while trying to hold the construct in fire
+    if (botAI->HasStrategy("avoid aoe", BOT_STATE_COMBAT))
+    {
+        botAI->ChangeStrategy("-avoid aoe", BOT_STATE_COMBAT); // Disable the "avoid aoe" strategy
+    }
+
+    // Find nearby scorched ground NPCs
     GuidVector nearbyGround = AI_VALUE(GuidVector, "nearest hostile npcs");
     for (ObjectGuid groundGuid : nearbyGround)
     {
@@ -407,7 +414,8 @@ bool IgnisMoveConstructToScorchedGroundAction::Execute(Event event)
                           scorchedGround->GetPositionZ(), false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
         }
     }
-    return false;
+
+    return false; // No valid scorched ground NPC found
 }
 
 bool IgnisMoveConstructToScorchedGroundAction::isUseful()
