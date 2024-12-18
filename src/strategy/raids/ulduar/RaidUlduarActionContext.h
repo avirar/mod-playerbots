@@ -20,7 +20,7 @@ public:
         creators["ignis move construct to scorched ground"] = &RaidUlduarActionContext::ignis_move_construct_to_scorched_ground;
         creators["ignis move molten construct to water"] = &RaidUlduarActionContext::ignis_move_molten_construct_to_water;
         creators["ignis choose target"] = &RaidUlduarActionContext::ignis_choose_target;
-
+        creators["ignis position"] = &RaidUlduarTriggerContext::ignis_position;
     }
 
 private:
@@ -29,7 +29,7 @@ private:
     static Action* ignis_move_construct_to_scorched_ground(PlayerbotAI* ai) { return new IgnisMoveConstructToScorchedGroundAction(ai); }
     static Action* ignis_move_molten_construct_to_water(PlayerbotAI* ai) { return new IgnisMoveMoltenConstructToWaterAction(ai); }
     static Action* ignis_choose_target(PlayerbotAI* ai) { return new IgnisChooseTargetAction(ai); }
-
+    static Action* ignis_position(PlayerbotAI* ai) { return new IgnisPositionAction(ai); }
 };
 
 #endif
