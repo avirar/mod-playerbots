@@ -36,4 +36,11 @@ public:
     bool IsActive() override;
 };
 
+class IgnisChooseTargetTrigger : public Trigger
+{
+public:
+    IgnisChooseTargetTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis choose target") {}
+    bool IsActive() override;
+};
+
 #endif
