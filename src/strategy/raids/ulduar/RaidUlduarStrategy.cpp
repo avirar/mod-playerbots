@@ -17,6 +17,10 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "ignis move construct to scorched ground",
         NextAction::array(0, new NextAction("ignis move construct to scorched ground", ACTION_RAID), nullptr)));
+
+    triggers.push_back(new TriggerNode(
+        "ignis move molten construct to water",
+        NextAction::array(0, new NextAction("ignis move molten construct to water", ACTION_RAID + 1), nullptr)));
     
 }
 
