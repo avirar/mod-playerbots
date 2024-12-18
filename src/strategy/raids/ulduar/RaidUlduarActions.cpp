@@ -452,19 +452,29 @@ bool IgnisMoveConstructToScorchedGroundAction::isUseful()
 
 bool IgnisMoveMoltenConstructToWaterAction::Execute(Event event)
 {
-    GuidVector nearbyWater = AI_VALUE(GuidVector, "nearest hostile npcs");
-    for (ObjectGuid waterGuid : nearbyWater)
+    // Calculate distances to the north and south water pools
+    float distToNorth = bot->GetDistance2d(WATER_CENTER_NORTH_X, WATER_CENTER_NORTH_Y);
+    float distToSouth = bot->GetDistance2d(WATER_CENTER_SOUTH_X, WATER_CENTER_SOUTH_Y);
+
+    // Choose the closest pool
+    float targetX, targetY, targetZ;
+    if (distToNorth < distToSouth)
     {
-        Unit* water = botAI->GetUnit(waterGuid);
-        if (water && water->GetEntry() == NPC_WATER_TRIGGER)
-        {
-            // Move bot to the water NPC
-            return MoveTo(bot->GetMapId(), water->GetPositionX(), water->GetPositionY(),
-                          water->GetPositionZ(), false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
-        }
+        targetX = WATER_CENTER_NORTH_X;
+        targetY = WATER_CENTER_NORTH_Y;
+        targetZ = WATER_CENTER_NORTH_Z;
     }
-    return false;
+    else
+    {
+        targetX = WATER_CENTER_SOUTH_X;
+        targetY = WATER_CENTER_SOUTH_Y;
+        targetZ = WATER_CENTER_SOUTH_Z;
+    }
+
+    // Move the bot inside the chosen water pool's radius
+    return MoveInside(bot->GetMapId(), targetX, targetY, targetZ, WATER_RADIUS, MovementPriority::MOVEMENT_COMBAT);
 }
+
 
 bool IgnisMoveMoltenConstructToWaterAction::isUseful()
 {
@@ -481,19 +491,18 @@ bool IgnisMoveMoltenConstructToWaterAction::isUseful()
             if (target && target->GetEntry() == NPC_IRON_CONSTRUCT &&
                 target->GetVictim() == bot && target->HasAura(SPELL_MOLTEN)) // Target is molten
             {
-                // Ensure water exists and bot is far from it
-                GuidVector nearbyWater = AI_VALUE(GuidVector, "nearest hostile npcs");
-                for (ObjectGuid waterGuid : nearbyWater)
+                // Check distance to water pools
+                float distToNorth = bot->GetDistance2d(WATER_CENTER_NORTH_X, WATER_CENTER_NORTH_Y);
+                float distToSouth = bot->GetDistance2d(WATER_CENTER_SOUTH_X, WATER_CENTER_SOUTH_Y);
+
+                // Action is useful if the bot is farther than the radius from the closest water pool
+                if (distToNorth > WATER_RADIUS && distToSouth > WATER_RADIUS)
                 {
-                    Unit* water = botAI->GetUnit(waterGuid);
-                    if (water && water->GetEntry() == NPC_WATER_TRIGGER &&
-                        bot->GetDistance(water->GetPosition()) > 2.0f)
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }
     }
     return false;
 }
+
