@@ -59,7 +59,7 @@ bool IgnisMoveConstructToScorchedGroundTrigger::IsActive()
                 GuidVector nearbyGround = AI_VALUE(GuidVector, "nearest hostile npcs");
                 for (ObjectGuid groundGuid : nearbyGround)
                 {
-                    GameObject* scorchedGround = botAI->GetUnit(groundGuid);
+                    Unit* scorchedGround = botAI->GetUnit(groundGuid);
                     if (scorchedGround && scorchedGround->GetEntry() == NPC_SCORCHED_GROUND &&
                         bot->GetDistance(scorchedGround->GetPosition()) > 2.0f)
                     {
