@@ -42,4 +42,12 @@ protected:
     bool AllMainVehiclesOnUse();
 };
 
+class IgnisMoveConstructToScorchedGroundAction : public MovementAction
+{
+public:
+    IgnisMoveConstructToScorchedGroundAction(PlayerbotAI* ai) : MovementAction(ai, "ignis move construct to scorched ground") {}
+    bool Execute(Event event) override; // Executes the movement action
+    bool isUseful() override;          // Determines if the action is needed
+};
+
 #endif
