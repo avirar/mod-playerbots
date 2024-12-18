@@ -69,4 +69,12 @@ public:
     bool isUseful() override;
 };
 
+class IgnisPositionAction : public MovementAction
+{
+public:
+    IgnisPositionAction(PlayerbotAI* ai) : MovementAction(ai, "ignis position") {}
+    bool Execute(Event event) override;
+    bool isUseful() override;
+};
+
 #endif
