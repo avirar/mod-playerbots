@@ -43,4 +43,11 @@ public:
     bool IsActive() override;
 };
 
+class IgnisPositionTrigger : public Trigger
+{
+public:
+    IgnisPositionTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis position") {}
+    bool IsActive() override;
+};
+
 #endif
