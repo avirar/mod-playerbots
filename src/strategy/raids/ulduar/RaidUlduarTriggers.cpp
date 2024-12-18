@@ -91,16 +91,14 @@ bool IgnisMoveMoltenConstructToWaterTrigger::IsActive()
             if (target && target->GetEntry() == NPC_IRON_CONSTRUCT &&
                 target->GetVictim() == bot && target->HasAura(SPELL_MOLTEN)) // Target is molten
             {
-                // Ensure water exists and bot is far from it
-                GuidVector nearbyWater = AI_VALUE(GuidVector, "nearest hostile npcs");
-                for (ObjectGuid waterGuid : nearbyWater)
+                // Check distance to water pools
+                float distToNorth = bot->GetDistance2d(WATER_CENTER_NORTH_X, WATER_CENTER_NORTH_Y);
+                float distToSouth = bot->GetDistance2d(WATER_CENTER_SOUTH_X, WATER_CENTER_SOUTH_Y);
+
+                // Action is useful if the bot is farther than the radius from the closest water pool
+                if (distToNorth > WATER_RADIUS && distToSouth > WATER_RADIUS)
                 {
-                    Unit* water = botAI->GetUnit(waterGuid);
-                    if (water && water->GetEntry() == NPC_WATER_TRIGGER &&
-                        bot->GetDistance(water->GetPosition()) > 2.0f)
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }
