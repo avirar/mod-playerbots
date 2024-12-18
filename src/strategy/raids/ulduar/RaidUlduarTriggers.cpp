@@ -105,3 +105,26 @@ bool IgnisMoveMoltenConstructToWaterTrigger::IsActive()
     }
     return false;
 }
+
+bool IgnisChooseTargetTrigger::IsActive()
+{
+    // Ensure there are valid targets to process
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+    
+    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
+    {
+        Unit* unit = botAI->GetUnit(*i);
+        if (!unit || !unit->IsAlive())
+            continue;
+
+        // Useful if there are constructs or the boss is present
+        if ((unit->GetEntry() == NPC_IRON_CONSTRUCT || boss))
+        {
+            return true;
+        }
+    }
+    return false;
+}
