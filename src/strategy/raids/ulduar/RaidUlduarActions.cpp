@@ -536,13 +536,13 @@ bool IgnisChooseTargetAction::Execute(Event event)
     }
 
     // Determine target based on role
-    if (botAI->IsMainTank(bot) || botAI->IsAssistTankOfIndex(bot, 0))
+    if (botAI->IsMainTank(bot) || botAI->IsAssistTankOfIndex(bot, 0) || (botAI->IsMelee(bot) && !botAI->IsTank(bot)))
     {
-        target = target_boss; // Tanks prioritize the boss
+        target = target_boss; // Main tank and melee prioritize the boss
     }
-    else
+    else if (botAI->IsRanged(bot))
     {
-        // DPS prioritizes brittle constructs
+        // Ranged DPS prioritizes brittle constructs
         for (Unit* construct : brittle_constructs)
         {
             if (!target || bot->GetDistance2d(construct) < bot->GetDistance2d(target))
