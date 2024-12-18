@@ -128,3 +128,27 @@ bool IgnisChooseTargetTrigger::IsActive()
     }
     return false;
 }
+
+
+bool IgnisPositionTrigger::IsActive()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+    
+    // Main tank positioning
+    if (botAI->IsMainTank(bot))
+    {
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y);
+        return distance > 15.0f; // Positioning is useful if the tank is outside the 10-yard radius
+    }
+
+    // Ranged DPS positioning
+    if (botAI->IsRanged(bot))
+    {
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30f);
+        return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 10-yard radius
+    }
+
+    return false; // No positioning required for other roles
+}
