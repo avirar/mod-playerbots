@@ -28,12 +28,12 @@ public:
     IgnisMoveConstructToScorchedGroundTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis move construct to scorched ground") {}
     bool IsActive() override;
 };
-/*
+
 class IgnisMoveMoltenConstructToWaterTrigger : public Trigger
 {
 public:
-    IgnisMoveMoltenConstructToWaterTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis move to scorched ground") {}
+    IgnisMoveMoltenConstructToWaterTrigger(PlayerbotAI* ai) : Trigger(ai, "ignis move molten construct to water") {}
     bool IsActive() override;
 };
-*/
+
 #endif
