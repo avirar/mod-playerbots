@@ -17,11 +17,14 @@ public:
     {
         creators["flame leviathan vehicle"] = &RaidUlduarActionContext::flame_leviathan_vehicle;
         creators["flame leviathan enter vehicle"] = &RaidUlduarActionContext::flame_leviathan_enter_vehicle;
+        creators["ignis move construct to scorched ground"] = &RaidUlduarActionContext::ignis_move_construct_to_scorched_ground;
     }
 
 private:
     static Action* flame_leviathan_vehicle(PlayerbotAI* ai) { return new FlameLeviathanVehicleAction(ai); }
     static Action* flame_leviathan_enter_vehicle(PlayerbotAI* ai) { return new FlameLeviathanEnterVehicleAction(ai); }
+    static Action* ignis_move_construct_to_scorched_ground(PlayerbotAI* ai) { return new IgnisMoveConstructToScorchedGroundAction(ai); }
+IgnisMoveConstructToScorchedGroundAction
 };
 
 #endif
