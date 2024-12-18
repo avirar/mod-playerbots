@@ -21,7 +21,11 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "ignis move molten construct to water",
         NextAction::array(0, new NextAction("ignis move molten construct to water", ACTION_RAID + 1), nullptr)));
-    
+
+    triggers.push_back(new TriggerNode(
+        "ignis choose target",
+        NextAction::array(0, new NextAction("choose ignis target", ACTION_RAID), nullptr)));
+
 }
 
 void RaidUlduarStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
