@@ -12,6 +12,11 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "flame leviathan on vehicle",
         NextAction::array(0, new NextAction("flame leviathan vehicle", ACTION_RAID + 1), nullptr)));
+
+    // Ignis the Furnace Master
+    triggers.push_back(new TriggerNode(
+        "ignis move construct to scorched ground",
+        NextAction::array(0, new NextAction("ignis move construct to scorched ground", ACTION_RAID), nullptr)));
     
 }
 
