@@ -506,3 +506,87 @@ bool IgnisMoveMoltenConstructToWaterAction::isUseful()
     return false;
 }
 
+bool IgnisChooseTargetAction::Execute(Event event)
+{
+    // Get a list of potential targets
+    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    Unit* target = nullptr;
+    Unit* target_boss = nullptr;
+    std::vector<Unit*> brittle_constructs;
+
+    for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
+    {
+        Unit* unit = botAI->GetUnit(*i);
+        if (!unit || !unit->IsAlive())
+            continue;
+
+        // Check if the target is an Iron Construct
+        if (unit->GetEntry() == NPC_IRON_CONSTRUCT)
+        {
+            // Add to brittle constructs list if it has the Brittle aura
+            if (unit->HasAura(SPELL_BRITTLE))
+            {
+                brittle_constructs.push_back(unit);
+            }
+        }
+        else if (botAI->EqualLowercaseName(unit->GetName(), "ignis the furnace master"))
+        {
+            target_boss = unit; // Assign Ignis as the boss target
+        }
+    }
+
+    // Determine target based on role
+    if (botAI->IsMainTank(bot) || botAI->IsAssistTankOfIndex(bot, 0))
+    {
+        target = target_boss; // Tanks prioritize the boss
+    }
+    else
+    {
+        // DPS prioritizes brittle constructs
+        for (Unit* construct : brittle_constructs)
+        {
+            if (!target || bot->GetDistance2d(construct) < bot->GetDistance2d(target))
+            {
+                target = construct;
+            }
+        }
+
+        // If no brittle constructs, fallback to the boss
+        if (!target)
+        {
+            target = target_boss;
+        }
+    }
+
+    // If target has not changed or no valid target, do nothing
+    if (!target || context->GetValue<Unit*>("current target")->Get() == target)
+    {
+        return false;
+    }
+
+    // Attack the chosen target
+    return Attack(target, true);
+}
+
+bool IgnisChooseTargetAction::isUseful()
+{
+    // Ensure there are valid targets to process
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss)
+        return false;
+    
+    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
+    {
+        Unit* unit = botAI->GetUnit(*i);
+        if (!unit || !unit->IsAlive())
+            continue;
+
+        // Useful if there are constructs or the boss is present
+        if ((unit->GetEntry() == NPC_IRON_CONSTRUCT || boss))
+        {
+            return true;
+        }
+    }
+    return false;
+}
