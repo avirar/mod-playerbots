@@ -48,7 +48,7 @@ bool IgnisMoveConstructToScorchedGroundTrigger::IsActive()
 {
     if (botAI->IsTank(bot) && !botAI->IsMainTank(bot))
     {
-        GuidVector attackers = context->GetValue<GuidVector>("attackers")->Get();
+        GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
         for (ObjectGuid guid : attackers)
         {
             Unit* target = botAI->GetUnit(guid);
@@ -56,10 +56,10 @@ bool IgnisMoveConstructToScorchedGroundTrigger::IsActive()
                 target->GetVictim() == bot && !target->HasAura(SPELL_MOLTEN))
             {
                 // Ensure scorched ground exists and bot is far from it
-                GuidVector nearbyGround = context->GetValue<GuidVector>("nearest gameobjects")->Get();
+                GuidVector nearbyGround = AI_VALUE(GuidVector, "nearest hostile npcs");
                 for (ObjectGuid groundGuid : nearbyGround)
                 {
-                    GameObject* scorchedGround = botAI->GetGameObject(groundGuid);
+                    GameObject* scorchedGround = botAI->GetUnit(groundGuid);
                     if (scorchedGround && scorchedGround->GetEntry() == NPC_SCORCHED_GROUND &&
                         bot->GetDistance(scorchedGround->GetPosition()) > 2.0f)
                     {
