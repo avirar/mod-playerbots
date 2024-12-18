@@ -16,6 +16,16 @@
 
 const uint32 ULDUAR_MAP_ID = 603;
 
+// Define spell IDs for Ignis encounter
+#define SPELL_MOLTEN                    62373
+#define SPELL_BRITTLE_10                62382
+#define SPELL_BRITTLE_25                67114
+
+// Define NPC IDs for Ignis encounter
+#define NPC_IRON_CONSTRUCT              33121
+#define NPC_SCORCHED_GROUND             33123
+#define NPC_WATER_TRIGGER               22515
+
 // template <class BossAiType>
 // class GenericBossHelper : public AiObject
 // {
