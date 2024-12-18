@@ -46,6 +46,10 @@ bool FlameLeviathanVehicleNearTrigger::IsActive()
 
 bool IgnisMoveConstructToScorchedGroundTrigger::IsActive()
 {
+    Unit* boss = AI_VALUE2(Unit*, "find target", "ignis the furnace master");
+    if (!boss) 
+        return false;
+
     if (botAI->IsTank(bot) && !botAI->IsMainTank(bot))
     {
         GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
