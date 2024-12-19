@@ -612,7 +612,8 @@ bool IgnisChooseTargetAction::Execute(Event event)
     }
 
     // If the target is unchanged or no valid target is found, do nothing
-    if (!target || context->GetValue<Unit*>("current target")->Get() == target)
+    // if (!target || context->GetValue<Unit*>("current target")->Get() == target)
+    if (!target)
     {
         return false;
     }
