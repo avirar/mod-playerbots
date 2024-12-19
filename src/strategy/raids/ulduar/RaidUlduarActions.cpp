@@ -518,8 +518,12 @@ bool IgnisChooseTargetAction::Execute(Event event)
     GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
     Unit* target = nullptr;
     Unit* target_boss = nullptr;
-    Unit* closest_construct = nullptr;
-    float closest_distance = std::numeric_limits<float>::max();
+
+    Unit* closest_brittle = nullptr;
+    float closest_brittle_distance = std::numeric_limits<float>::max();
+
+    Unit* closest_molten = nullptr;
+    float closest_molten_distance = std::numeric_limits<float>::max();
 
     for (ObjectGuid const& guid : attackers)
     {
@@ -537,14 +541,28 @@ bool IgnisChooseTargetAction::Execute(Event event)
         // Identify Iron Constructs
         if (unit->GetEntry() == NPC_IRON_CONSTRUCT)
         {
-            // Prioritize brittle or molten constructs
-            if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25) || unit->HasAura(SPELL_MOLTEN))
+            // Prioritize brittle constructs
+            if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25))
             {
                 float distance = bot->GetDistance2d(unit);
-                if (distance < closest_distance)
+                if (distance < closest_brittle_distance)
                 {
-                    closest_construct = unit;
-                    closest_distance = distance;
+                    closest_brittle = unit;
+                    closest_brittle_distance = distance;
+                }
+            }
+            // Prioritize molten constructs based on proximity to water pools
+            else if (unit->HasAura(SPELL_MOLTEN))
+            {
+                // Calculate the closer water pool
+                float distToNorth = unit->GetDistance2d(WATER_CENTER_NORTH_X, WATER_CENTER_NORTH_Y);
+                float distToSouth = unit->GetDistance2d(WATER_CENTER_SOUTH_X, WATER_CENTER_SOUTH_Y);
+                float minWaterDistance = std::min(distToNorth, distToSouth);
+
+                if (minWaterDistance < closest_molten_distance)
+                {
+                    closest_molten = unit;
+                    closest_molten_distance = minWaterDistance;
                 }
             }
         }
@@ -557,10 +575,14 @@ bool IgnisChooseTargetAction::Execute(Event event)
     }
     else if (botAI->IsRanged(bot))
     {
-        // Ranged prioritizes brittle/molten constructs if available
-        if (closest_construct)
+        // Ranged prioritizes brittle constructs, then molten constructs, then boss
+        if (closest_brittle)
         {
-            target = closest_construct;
+            target = closest_brittle;
+        }
+        else if (closest_molten)
+        {
+            target = closest_molten;
         }
         else
         {
@@ -577,6 +599,7 @@ bool IgnisChooseTargetAction::Execute(Event event)
     // Attack the chosen target
     return Attack(target, true);
 }
+
 
 
 bool IgnisChooseTargetAction::isUseful()
@@ -615,6 +638,7 @@ bool IgnisPositionAction::Execute(Event event)
                           10.0f,  // 15-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
+/*
     else if (botAI->IsRanged(bot))
     {
         // Move ranged DPS 35 yards west of the arena center, within a 14 yds area
@@ -625,7 +649,7 @@ bool IgnisPositionAction::Execute(Event event)
                           14.0f,  // 14-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
-
+*/
     return false;
 }
 
@@ -639,15 +663,15 @@ bool IgnisPositionAction::isUseful()
     if (botAI->IsMainTank(bot))
     {
         float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y);
-        return distance > 25.0f; // Positioning is useful if the tank is outside the 25-yard radius
+        return distance > 32.0f; // Positioning is useful if the tank is outside a 32-yard radius
     }
-
+/*
     // Ranged DPS positioning
     if (botAI->IsRanged(bot))
     {
         float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 35.0f);
         return distance > 28.0f; // Positioning is useful if ranged DPS are outside the 28-yard radius from behind the boss
     }
-
+*/
     return false; // No positioning required for other roles
 }
