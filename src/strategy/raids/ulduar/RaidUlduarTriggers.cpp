@@ -113,7 +113,7 @@ bool IgnisChooseTargetTrigger::IsActive()
     if (!boss)
         return false;
     
-    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
     for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
     {
         Unit* unit = botAI->GetUnit(*i);
