@@ -548,10 +548,10 @@ bool IgnisChooseTargetAction::Execute(Event event)
     }
     else if (botAI->IsRanged(bot))
     {
-        // Ranged DPS prioritizes brittle constructs
+        // Ranged DPS prioritizes brittle and molten constructs
         for (Unit* construct : brittle_constructs)
         {
-            if (target)
+            if (construct)
             {
                 target = construct;
             }
