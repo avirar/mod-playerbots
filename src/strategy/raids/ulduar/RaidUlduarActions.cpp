@@ -551,7 +551,7 @@ bool IgnisChooseTargetAction::Execute(Event event)
         // Ranged DPS prioritizes brittle constructs
         for (Unit* construct : brittle_constructs)
         {
-            if (!target || bot->GetDistance2d(construct) < bot->GetDistance2d(target))
+            if (target)
             {
                 target = construct;
             }
