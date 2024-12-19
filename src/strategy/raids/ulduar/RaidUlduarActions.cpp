@@ -515,7 +515,7 @@ bool IgnisMoveMoltenConstructToWaterAction::isUseful()
 bool IgnisChooseTargetAction::Execute(Event event)
 {
     // Get a list of potential targets
-    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
     Unit* target = nullptr;
     Unit* target_boss = nullptr;
     Unit* closest_construct = nullptr;
@@ -586,7 +586,7 @@ bool IgnisChooseTargetAction::isUseful()
     if (!boss)
         return false;
     
-    GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
+    GuidVector attackers = AI_VALUE(GuidVector, "nearest hostile npcs");
     for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
     {
         Unit* unit = botAI->GetUnit(*i);
