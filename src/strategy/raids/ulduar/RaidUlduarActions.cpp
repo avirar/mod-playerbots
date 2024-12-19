@@ -601,7 +601,7 @@ bool IgnisPositionAction::Execute(Event event)
                           IGNIS_ARENA_CENTER_X,
                           IGNIS_ARENA_CENTER_Y,
                           IGNIS_ARENA_CENTER_Z,
-                          15.0f,  // 10-yard radius
+                          15.0f,  // 15-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
     else if (botAI->IsRanged(bot) && !botAI->IsTank(bot))
@@ -611,7 +611,7 @@ bool IgnisPositionAction::Execute(Event event)
                           IGNIS_ARENA_CENTER_X,
                           IGNIS_ARENA_CENTER_Y + 30.0f,
                           IGNIS_ARENA_CENTER_Z,
-                          20.0f,  // 10-yard radius
+                          15.0f,  // 15-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
 
@@ -628,14 +628,14 @@ bool IgnisPositionAction::isUseful()
     if (botAI->IsMainTank(bot))
     {
         float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y);
-        return distance > 15.0f; // Positioning is useful if the tank is outside the 10-yard radius
+        return distance > 15.0f; // Positioning is useful if the tank is outside the 15-yard radius
     }
 
     // Ranged DPS positioning
     if (botAI->IsRanged(bot))
     {
         float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30.0f);
-        return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 10-yard radius
+        return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 15-yard radius
     }
 
     return false; // No positioning required for other roles
