@@ -609,7 +609,7 @@ bool IgnisPositionAction::Execute(Event event)
         // Move ranged DPS 30 yards east of the arena center
         return MoveInside(bot->GetMapId(),
                           IGNIS_ARENA_CENTER_X,
-                          IGNIS_ARENA_CENTER_Y + 30f,
+                          IGNIS_ARENA_CENTER_Y + 30.0f,
                           IGNIS_ARENA_CENTER_Z,
                           20.0f,  // 10-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
@@ -634,7 +634,7 @@ bool IgnisPositionAction::isUseful()
     // Ranged DPS positioning
     if (botAI->IsRanged(bot))
     {
-        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30f);
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30.0f);
         return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 10-yard radius
     }
 
