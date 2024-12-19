@@ -471,6 +471,12 @@ bool IgnisMoveMoltenConstructToWaterAction::Execute(Event event)
         targetZ = WATER_CENTER_SOUTH_Z;
     }
 
+    // Constructs seem buggy; the Brittle aura disappears and they reactivate if attacked too soon
+    if (bot->GetDistance2d(WATER_CENTER_NORTH_X, WATER_CENTER_NORTH_Y) <= WATER_RADIUS - 1.0f)
+    {
+        SetNextMovementDelay(1000);
+        return bot->AttackStop();
+    }
     // Move the bot inside the chosen water pool's radius
     return MoveInside(bot->GetMapId(), targetX, targetY, targetZ, WATER_RADIUS, MovementPriority::MOVEMENT_COMBAT);
 }
@@ -604,14 +610,14 @@ bool IgnisPositionAction::Execute(Event event)
                           10.0f,  // 15-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
-    else if (botAI->IsRanged(bot) && !botAI->IsTank(bot))
+    else if (botAI->IsRanged(bot))
     {
-        // Move ranged DPS 30 yards east of the arena center
+        // Move ranged DPS 35 yards east of the arena center
         return MoveInside(bot->GetMapId(),
                           IGNIS_ARENA_CENTER_X,
                           IGNIS_ARENA_CENTER_Y + 35.0f,
                           IGNIS_ARENA_CENTER_Z,
-                          14.0f,  // 15-yard radius
+                          14.0f,  // 14-yard radius
                           MovementPriority::MOVEMENT_COMBAT);
     }
 
@@ -634,8 +640,8 @@ bool IgnisPositionAction::isUseful()
     // Ranged DPS positioning
     if (botAI->IsRanged(bot))
     {
-        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30.0f);
-        return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 15-yard radius
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 35.0f);
+        return distance > 28.0f; // Positioning is useful if ranged DPS are outside the 28-yard radius from behind the boss
     }
 
     return false; // No positioning required for other roles
