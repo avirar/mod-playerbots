@@ -529,8 +529,8 @@ bool IgnisChooseTargetAction::Execute(Event event)
         // Check if the target is an Iron Construct
         if (unit->GetEntry() == NPC_IRON_CONSTRUCT)
         {
-            // Add to brittle constructs list if it has the Brittle aura
-            if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25))
+            // Add to brittle constructs list if it has the Brittle or Molten aura
+            if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25) || unit->HasAura(SPELL_MOLTEN))
             {
                 brittle_constructs.push_back(unit);
             }
@@ -612,7 +612,7 @@ bool IgnisPositionAction::Execute(Event event)
     }
     else if (botAI->IsRanged(bot))
     {
-        // Move ranged DPS 35 yards east of the arena center
+        // Move ranged DPS 35 yards west of the arena center, within a 14 yds area
         return MoveInside(bot->GetMapId(),
                           IGNIS_ARENA_CENTER_X,
                           IGNIS_ARENA_CENTER_Y + 35.0f,
