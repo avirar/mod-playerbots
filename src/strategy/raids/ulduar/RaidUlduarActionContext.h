@@ -20,7 +20,7 @@ public:
         creators["ignis move construct to scorched ground"] = &RaidUlduarActionContext::ignis_move_construct_to_scorched_ground;
         creators["ignis move molten construct to water"] = &RaidUlduarActionContext::ignis_move_molten_construct_to_water;
         creators["ignis choose target"] = &RaidUlduarActionContext::ignis_choose_target;
-        creators["ignis position"] = &RaidUlduarTriggerContext::ignis_position;
+        creators["ignis position"] = &RaidUlduarActionContext::ignis_position;
     }
 
 private:
