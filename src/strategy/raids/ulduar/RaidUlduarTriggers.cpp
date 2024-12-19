@@ -146,7 +146,7 @@ bool IgnisPositionTrigger::IsActive()
     // Ranged DPS positioning
     if (botAI->IsRanged(bot))
     {
-        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30f);
+        float distance = bot->GetDistance2d(IGNIS_ARENA_CENTER_X, IGNIS_ARENA_CENTER_Y + 30.0f);
         return distance > 20.0f; // Positioning is useful if ranged DPS are outside the 10-yard radius
     }
 
