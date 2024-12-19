@@ -518,53 +518,57 @@ bool IgnisChooseTargetAction::Execute(Event event)
     GuidVector attackers = AI_VALUE(GuidVector, "possible targets");
     Unit* target = nullptr;
     Unit* target_boss = nullptr;
-    std::vector<Unit*> brittle_constructs;
+    Unit* closest_construct = nullptr;
+    float closest_distance = std::numeric_limits<float>::max();
 
-    for (GuidVector::iterator i = attackers.begin(); i != attackers.end(); ++i)
+    for (ObjectGuid const& guid : attackers)
     {
-        Unit* unit = botAI->GetUnit(*i);
+        Unit* unit = botAI->GetUnit(guid);
         if (!unit || !unit->IsAlive())
             continue;
 
-        // Check if the target is an Iron Construct
+        // Identify the boss
+        if (unit->GetEntry() == NPC_IGNIS)
+        {
+            target_boss = unit;
+            continue;
+        }
+
+        // Identify Iron Constructs
         if (unit->GetEntry() == NPC_IRON_CONSTRUCT)
         {
-            // Add to brittle constructs list if it has the Brittle or Molten aura
+            // Prioritize brittle or molten constructs
             if (unit->HasAura(SPELL_BRITTLE_10) || unit->HasAura(SPELL_BRITTLE_25) || unit->HasAura(SPELL_MOLTEN))
             {
-                brittle_constructs.push_back(unit);
+                float distance = bot->GetDistance2d(unit);
+                if (distance < closest_distance)
+                {
+                    closest_construct = unit;
+                    closest_distance = distance;
+                }
             }
-        }
-        else if (botAI->EqualLowercaseName(unit->GetName(), "ignis the furnace master"))
-        {
-            target_boss = unit; // Assign Ignis as the boss target
         }
     }
 
     // Determine target based on role
-    if (botAI->IsMainTank(bot) || botAI->IsAssistTankOfIndex(bot, 0) || (botAI->IsMelee(bot) && !botAI->IsTank(bot)))
+    if (botAI->IsMainTank(bot) || botAI->IsAssistTankOfIndex(bot, 0) || (!botAI->IsTank(bot) && botAI->IsMelee(bot)))
     {
-        target = target_boss; // Main tank and melee prioritize the boss
+        target = target_boss; // Melee except offtanks prioritize the boss
     }
     else if (botAI->IsRanged(bot))
     {
-        // Ranged DPS prioritizes brittle and molten constructs
-        for (Unit* construct : brittle_constructs)
+        // Ranged prioritizes brittle/molten constructs if available
+        if (closest_construct)
         {
-            if (construct)
-            {
-                target = construct;
-            }
+            target = closest_construct;
         }
-
-        // If no brittle constructs, fallback to the boss
-        if (!target)
+        else
         {
-            target = target_boss;
+            target = target_boss; // Fallback to boss if no valid construct
         }
     }
 
-    // If target has not changed or no valid target, do nothing
+    // If the target is unchanged or no valid target is found, do nothing
     if (!target || context->GetValue<Unit*>("current target")->Get() == target)
     {
         return false;
@@ -573,6 +577,7 @@ bool IgnisChooseTargetAction::Execute(Event event)
     // Attack the chosen target
     return Attack(target, true);
 }
+
 
 bool IgnisChooseTargetAction::isUseful()
 {
