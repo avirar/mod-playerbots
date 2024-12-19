@@ -24,7 +24,7 @@ void RaidUlduarStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode(
         "ignis choose target",
-        NextAction::array(0, new NextAction("choose ignis target", ACTION_RAID + 2), nullptr)));
+        NextAction::array(0, new NextAction("ignis choose target", ACTION_RAID + 2), nullptr)));
 
     triggers.push_back(new TriggerNode(
         "ignis position",
