@@ -579,20 +579,40 @@ bool IgnisChooseTargetAction::Execute(Event event)
         if (closest_brittle)
         {
             target = closest_brittle;
+            // Move closer if out of range (30 yards)
+            if (bot->GetDistance2d(target) > 30.0f)
+            {
+                MoveTo(bot->GetMapId(), target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+                       false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+                return false; // Ensure movement happens before attacking
+            }
         }
         else if (closest_molten)
         {
             target = closest_molten;
+            // Move closer if out of range (30 yards)
+            if (bot->GetDistance2d(target) > 30.0f)
+            {
+                MoveTo(bot->GetMapId(), target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+                       false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+                return false; // Ensure movement happens before attacking
+            }
         }
         else
         {
             target = target_boss; // Fallback to boss if no valid construct
+            // Move closer if out of range (30 yards)
+            if (target && bot->GetDistance2d(target) > 30.0f)
+            {
+                MoveTo(bot->GetMapId(), target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(),
+                       false, false, false, false, MovementPriority::MOVEMENT_COMBAT);
+                return false; // Ensure movement happens before attacking
+            }
         }
     }
 
     // If the target is unchanged or no valid target is found, do nothing
-    // if (!target || context->GetValue<Unit*>("current target")->Get() == target)
-    if (!target)
+    if (!target || context->GetValue<Unit*>("current target")->Get() == target)
     {
         return false;
     }
@@ -600,8 +620,6 @@ bool IgnisChooseTargetAction::Execute(Event event)
     // Attack the chosen target
     return Attack(target, true);
 }
-
-
 
 bool IgnisChooseTargetAction::isUseful()
 {
