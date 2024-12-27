@@ -226,6 +226,10 @@ public:
         creators["blessing of kings on party"] = &PaladinAiObjectContextInternal::blessing_of_kings_on_party;
         creators["blessing of might on party"] = &PaladinAiObjectContextInternal::blessing_of_might_on_party;
         creators["blessing of wisdom on party"] = &PaladinAiObjectContextInternal::blessing_of_wisdom_on_party;
+        creators["greater blessing of might"] = &PaladinAiObjectContextInternal::greater_blessing_of_might;
+        creators["greater blessing of wisdom"] = &PaladinAiObjectContextInternal::greater_blessing_of_wisdom;
+        creators["greater blessing of kings"] = &PaladinAiObjectContextInternal::greater_blessing_of_kings;
+        creators["greater blessing of sanctuary"] = &PaladinAiObjectContextInternal::greater_blessing_of_sanctuary;
         creators["redemption"] = &PaladinAiObjectContextInternal::redemption;
         creators["crusader strike"] = &PaladinAiObjectContextInternal::crusader_strike;
         creators["crusader aura"] = &PaladinAiObjectContextInternal::crusader_aura;
@@ -323,6 +327,26 @@ private:
     static Action* blessing_of_wisdom_on_party(PlayerbotAI* botAI)
     {
         return new CastBlessingOfWisdomOnPartyAction(botAI);
+    }
+    // Greater Blessing Actions
+    static Action* greater_blessing_of_might(PlayerbotAI* botAI)
+    {
+        return new CastGreaterBlessingOfMightAction(botAI);
+    }
+
+    static Action* greater_blessing_of_wisdom(PlayerbotAI* botAI)
+    {
+        return new CastGreaterBlessingOfWisdomAction(botAI);
+    }
+
+    static Action* greater_blessing_of_kings(PlayerbotAI* botAI)
+    {
+        return new CastGreaterBlessingOfKingsAction(botAI);
+    }
+
+    static Action* greater_blessing_of_sanctuary(PlayerbotAI* botAI)
+    {
+        return new CastGreaterBlessingOfSanctuaryAction(botAI);
     }
     static Action* redemption(PlayerbotAI* botAI) { return new CastRedemptionAction(botAI); }
     static Action* crusader_strike(PlayerbotAI* botAI) { return new CastCrusaderStrikeAction(botAI); }
