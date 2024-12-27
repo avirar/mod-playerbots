@@ -11,6 +11,8 @@
 #include "SharedDefines.h"
 #include "Unit.h"
 
+#include "PaladinConstants.h"
+
 class PlayerbotAI;
 
 inline std::string const GetActualBlessingOfMight(Unit* target)
