@@ -33,17 +33,22 @@ bool BlessingTrigger::IsActive()
     return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
                                                             "blessing of kings", "blessing of sanctuary", nullptr);
 }
-
 bool GreaterBlessingOfMightNeededTrigger::IsActive()
 {
     // Ensure botAI and bot are valid
     if (!botAI || !botAI->GetBot())
+    {
+        botAI->TellMaster("Error: BotAI or bot is not valid.");
         return false;
+    }
 
     // Get the bot's group
     Group* group = botAI->GetBot()->GetGroup();
-    if (!group || !group->isRaidGroup())
+    if (!group || !group->IsRaidGroup())
+    {
+        botAI->TellMaster("Bot is not in a raid group.");
         return false; // Only consider raid members
+    }
 
     // Initialize Blessing Manager
     BlessingManager blessingManager(botAI);
@@ -54,13 +59,19 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
 
     // Check if Greater Blessing of Might is among the assigned blessings
     if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_MIGHT) == blessings.end())
+    {
+        botAI->TellMaster("This Paladin is not assigned to cast Greater Blessing of Might.");
         return false; // This Paladin is not assigned to cast Greater Blessing of Might
+    }
 
     // Retrieve classes assigned to Greater Blessing of Might for this Paladin
     std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
 
     if (targetClasses.empty())
+    {
+        botAI->TellMaster("No classes assigned for Greater Blessing of Might.");
         return false; // No classes assigned for this blessing
+    }
 
     // Iterate through group members and check for targets without the aura
     GroupReference* ref = group->GetFirstMember();
@@ -76,6 +87,7 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
                 // Check if the target lacks Greater Blessing of Might
                 if (!botAI->HasAura("greater blessing of might", member))
                 {
+                    botAI->TellMaster("Greater Blessing of Might is needed for a member in the raid.");
                     return true; // Trigger is active
                 }
             }
@@ -83,8 +95,10 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
         ref = ref->next();
     }
 
+    botAI->TellMaster("All members have Greater Blessing of Might or are not eligible.");
     return false; // No eligible targets found
 }
+
 
 bool GreaterBlessingOfWisdomNeededTrigger::IsActive()
 {
