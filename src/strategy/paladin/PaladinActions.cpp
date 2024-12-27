@@ -176,7 +176,7 @@ bool CastCancelDivineSacrificeAction::isUseful()
 bool CastGreaterBlessingOfMightAction::Execute(Event event)
 {
     // Check if the bot is in a raid
-    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->IsRaidGroup())
+    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->isRaidGroup())
         return false; // Only cast in raid
 
     // Initialize Blessing Manager
