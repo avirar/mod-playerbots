@@ -251,7 +251,7 @@ public:
     bool IsActive() override;
 };
 
-class GreaterBlessingOfWisdomNeededTrigger : public Trigger
+class GreaterBlessingOfWisdomNeededTrigger : public BuffTrigger
 {
 public:
     GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of wisdom") {}
