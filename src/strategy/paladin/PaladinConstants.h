@@ -42,4 +42,7 @@ struct BlessingTemplate
     std::map<ClassID, std::vector<GreaterBlessingType>> classBlessings;
 };
 
+// Extern declaration for the BlessingTemplates map
+extern std::map<int, BlessingTemplate> BlessingTemplates;
+
 #endif
