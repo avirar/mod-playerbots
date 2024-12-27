@@ -24,6 +24,11 @@ public:
         creators["repentance on enemy healer"] = &repentance_on_enemy_healer;
         creators["repentance on snare target"] = &repentance_on_snare_target;
         creators["repentance of shield"] = &repentance_or_shield;
+        creators["greater blessing of might"] = &CastGreaterBlessingOfMightAction::Create;
+        creators["greater blessing of wisdom"] = &CastGreaterBlessingOfWisdomAction::Create;
+        creators["greater blessing of kings"] = &CastGreaterBlessingOfKingsAction::Create;
+        creators["greater blessing of sanctuary"] = &CastGreaterBlessingOfSanctuaryAction::Create;
+
     }
 
 private:
@@ -132,4 +137,22 @@ void DpsPaladinStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode("enemy out of melee",
                                        NextAction::array(0, new NextAction("reach melee", ACTION_HIGH + 1), NULL)));
+
+    // Greater Blessings
+    triggers.push_back(new TriggerNode(
+        "greater blessing of might needed",
+        NextAction::array(0, new NextAction("greater blessing of might", ACTION_HIGH + 10), nullptr)));
+    
+    triggers.push_back(new TriggerNode(
+        "greater blessing of wisdom needed",
+        NextAction::array(0, new NextAction("greater blessing of wisdom", ACTION_HIGH + 10), nullptr)));
+    
+    triggers.push_back(new TriggerNode(
+        "greater blessing of kings needed",
+        NextAction::array(0, new NextAction("greater blessing of kings", ACTION_HIGH + 10), nullptr)));
+    
+    triggers.push_back(new TriggerNode(
+        "greater blessing of sanctuary needed",
+        NextAction::array(0, new NextAction("greater blessing of sanctuary", ACTION_HIGH + 10), nullptr)));
+
 }
