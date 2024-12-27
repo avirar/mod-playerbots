@@ -3,6 +3,7 @@
 
 #include "PaladinConstants.h"
 #include "ObjectGuid.h"
+#include "Player.h"
 #include <map>
 #include <vector>
 #include <string>
