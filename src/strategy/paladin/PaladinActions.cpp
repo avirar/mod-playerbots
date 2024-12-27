@@ -175,7 +175,8 @@ bool CastCancelDivineSacrificeAction::isUseful()
 // Greater Blessing of Might Action
 bool CastGreaterBlessingOfMightAction::Execute(Event event)
 {
-    if (!botAI->IsInRaid())
+    // Check if the bot is in a raid
+    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->IsRaidGroup())
         return false; // Only cast in raid
 
     // Initialize Blessing Manager
@@ -190,9 +191,21 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
     {
         if (blessing == GREATER_BLESSING_OF_MIGHT)
         {
-            // Determine target classes for Greater Blessing of Might
-            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "mage, priest, warlock"); // Adjust classes as needed
-            
+            // Retrieve raid members
+            std::vector<Unit*> targets;
+            Group* group = botAI->GetBot()->GetGroup();
+            if (group && group->IsRaidGroup())
+            {
+                GroupReference* ref = group->GetFirstMember();
+                while (ref)
+                {
+                    Player* member = ref->GetSource();
+                    if (member && member->IsInWorld() && member->getClass() == CLASS_WARRIOR) // Adjust class filter
+                        targets.push_back(member);
+                    ref = ref->next();
+                }
+            }
+
             for (Unit* target : targets)
             {
                 if (!botAI->HasAura("greater blessing of might", target))
@@ -207,6 +220,7 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
 
     return false;
 }
+
 
 // Similarly implement for other Greater Blessings
 
