@@ -331,3 +331,12 @@ bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
     return false;
 }
 */
+bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
+{
+}
+bool CastGreaterBlessingOfKingsAction::Execute(Event event)
+{
+}
+bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
+{
+}
