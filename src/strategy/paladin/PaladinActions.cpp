@@ -194,7 +194,7 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
             // Retrieve raid members
             std::vector<Unit*> targets;
             Group* group = botAI->GetBot()->GetGroup();
-            if (group && group->IsRaidGroup())
+            if (group && group->isRaidGroup())
             {
                 GroupReference* ref = group->GetFirstMember();
                 while (ref)
