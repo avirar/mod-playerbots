@@ -243,10 +243,10 @@ public:
 };
 
 // Greater Blessing Triggers
-class GreaterBlessingOfMightNeededTrigger : public Trigger
+class GreaterBlessingOfMightNeededTrigger : public BuffTrigger
 {
 public:
-    GreaterBlessingOfMightNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of might needed") {}
+    GreaterBlessingOfMightNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of might") {}
     
     bool IsActive() override;
 };
@@ -254,23 +254,23 @@ public:
 class GreaterBlessingOfWisdomNeededTrigger : public Trigger
 {
 public:
-    GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of wisdom needed") {}
+    GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of wisdom") {}
     
     bool IsActive() override;
 };
 
-class GreaterBlessingOfKingsNeededTrigger : public Trigger
+class GreaterBlessingOfKingsNeededTrigger : public BuffTrigger
 {
 public:
-    GreaterBlessingOfKingsNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of kings needed") {}
+    GreaterBlessingOfKingsNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of kings") {}
     
     bool IsActive() override;
 };
 
-class GreaterBlessingOfSanctuaryNeededTrigger : public Trigger
+class GreaterBlessingOfSanctuaryNeededTrigger : public BuffTrigger
 {
 public:
-    GreaterBlessingOfSanctuaryNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of sanctuary needed") {}
+    GreaterBlessingOfSanctuaryNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of sanctuary") {}
     
     bool IsActive() override;
 };
