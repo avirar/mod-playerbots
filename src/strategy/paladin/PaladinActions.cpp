@@ -237,106 +237,194 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
     return false; // No casting performed
 }
 
-
-
-// Similarly implement for other Greater Blessings
-/*
 bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
 {
-    if (!botAI->IsInRaid())
-        return false;
+    // Check if the bot is in a raid
+    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->isRaidGroup())
+        return false; // Only cast in raid
 
+    // Initialize Blessing Manager
     BlessingManager blessingManager(botAI);
     blessingManager.AssignBlessings();
 
+    // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
 
+    // Iterate through assigned blessings and cast Greater Blessing of Wisdom if assigned
     for (GreaterBlessingType blessing : blessings)
     {
         if (blessing == GREATER_BLESSING_OF_WISDOM)
         {
-            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "warrior, rogue, death knight, hunter"); // Adjust classes as needed
+            // Get the classes assigned to cast Greater Blessing of Wisdom
+            std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_WISDOM);
             
+            if (targetClasses.empty())
+                continue; // No classes assigned for this blessing
+
+            // Retrieve raid members of the target classes
+            std::vector<Unit*> targets;
+            Group* group = botAI->GetBot()->GetGroup();
+            if (group && group->isRaidGroup())
+            {
+                GroupReference* ref = group->GetFirstMember();
+                while (ref)
+                {
+                    Player* member = ref->GetSource();
+                    if (member && member->IsInWorld())
+                    {
+                        ClassID memberClass = static_cast<ClassID>(member->getClass());
+                        // Check if member's class is in the target classes
+                        if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+                        {
+                            targets.push_back(member);
+                        }
+                    }
+                    ref = ref->next();
+                }
+            }
+
             for (Unit* target : targets)
             {
                 if (!botAI->HasAura("greater blessing of wisdom", target))
                 {
+                    // Log the casting action for debugging purposes
+                    botAI->TellMaster("Casting Greater Blessing of Wisdom on " + std::string(target->GetName()));
+                    
+                    // Cast Greater Blessing of Wisdom
                     if (botAI->CastSpell("greater blessing of wisdom", target))
-                        return true;
+                        return true; // Successfully casted
                 }
             }
         }
     }
 
-    return false;
+    return false; // No casting performed
 }
 
 bool CastGreaterBlessingOfKingsAction::Execute(Event event)
 {
-    if (!botAI->IsInRaid())
-        return false;
+    // Check if the bot is in a raid
+    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->isRaidGroup())
+        return false; // Only cast in raid
 
+    // Initialize Blessing Manager
     BlessingManager blessingManager(botAI);
     blessingManager.AssignBlessings();
 
+    // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
 
+    // Iterate through assigned blessings and cast Greater Blessing of Kings if assigned
     for (GreaterBlessingType blessing : blessings)
     {
         if (blessing == GREATER_BLESSING_OF_KINGS)
         {
-            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "all classes"); // Typically applies to all classes
+            // Get the classes assigned to cast Greater Blessing of Kings
+            std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_KINGS);
             
+            if (targetClasses.empty())
+                continue; // No classes assigned for this blessing
+
+            // Retrieve raid members of the target classes
+            std::vector<Unit*> targets;
+            Group* group = botAI->GetBot()->GetGroup();
+            if (group && group->isRaidGroup())
+            {
+                GroupReference* ref = group->GetFirstMember();
+                while (ref)
+                {
+                    Player* member = ref->GetSource();
+                    if (member && member->IsInWorld())
+                    {
+                        ClassID memberClass = static_cast<ClassID>(member->getClass());
+                        // Check if member's class is in the target classes
+                        if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+                        {
+                            targets.push_back(member);
+                        }
+                    }
+                    ref = ref->next();
+                }
+            }
+
             for (Unit* target : targets)
             {
                 if (!botAI->HasAura("greater blessing of kings", target))
                 {
+                    // Log the casting action for debugging purposes
+                    botAI->TellMaster("Casting Greater Blessing of Kings on " + std::string(target->GetName()));
+                    
+                    // Cast Greater Blessing of Kings
                     if (botAI->CastSpell("greater blessing of kings", target))
-                        return true;
+                        return true; // Successfully casted
                 }
             }
         }
     }
 
-    return false;
+    return false; // No casting performed
 }
 
 bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
 {
-    if (!botAI->IsInRaid())
-        return false;
+    // Check if the bot is in a raid
+    if (botAI->GetBot()->GetGroup() == nullptr || !botAI->GetBot()->GetGroup()->isRaidGroup())
+        return false; // Only cast in raid
 
+    // Initialize Blessing Manager
     BlessingManager blessingManager(botAI);
     blessingManager.AssignBlessings();
 
+    // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
 
+    // Iterate through assigned blessings and cast Greater Blessing of Sanctuary if assigned
     for (GreaterBlessingType blessing : blessings)
     {
         if (blessing == GREATER_BLESSING_OF_SANCTUARY)
         {
-            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "tank"); // Typically applies to tanks
+            // Get the classes assigned to cast Greater Blessing of Sanctuary
+            std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_SANCTUARY);
             
+            if (targetClasses.empty())
+                continue; // No classes assigned for this blessing
+
+            // Retrieve raid members of the target classes
+            std::vector<Unit*> targets;
+            Group* group = botAI->GetBot()->GetGroup();
+            if (group && group->isRaidGroup())
+            {
+                GroupReference* ref = group->GetFirstMember();
+                while (ref)
+                {
+                    Player* member = ref->GetSource();
+                    if (member && member->IsInWorld())
+                    {
+                        ClassID memberClass = static_cast<ClassID>(member->getClass());
+                        // Check if member's class is in the target classes
+                        if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+                        {
+                            targets.push_back(member);
+                        }
+                    }
+                    ref = ref->next();
+                }
+            }
+
             for (Unit* target : targets)
             {
                 if (!botAI->HasAura("greater blessing of sanctuary", target))
                 {
+                    // Log the casting action for debugging purposes
+                    botAI->TellMaster("Casting Greater Blessing of Sanctuary on " + std::string(target->GetName()));
+                    
+                    // Cast Greater Blessing of Sanctuary
                     if (botAI->CastSpell("greater blessing of sanctuary", target))
-                        return true;
+                        return true; // Successfully casted
                 }
             }
         }
     }
 
-    return false;
-}
-*/
-bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
-{
-}
-bool CastGreaterBlessingOfKingsAction::Execute(Event event)
-{
-}
-bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
-{
+    return false; // No casting performed
 }
