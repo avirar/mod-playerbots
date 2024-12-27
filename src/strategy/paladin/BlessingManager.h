@@ -2,6 +2,7 @@
 #define _BLESSINGMANAGER_H
 
 #include "PaladinConstants.h"
+#include "ObjectGuid.h"
 #include <map>
 #include <vector>
 #include <string>
