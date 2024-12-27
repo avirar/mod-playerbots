@@ -84,7 +84,7 @@ std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
 
     // Get the bot's group
     Group* group = botAI->GetBot()->GetGroup();
-    if (!group || !group->IsRaidGroup())
+    if (!group || !group->isRaidGroup())
         return paladins; // Return empty if not in a raid
 
     // Iterate through the group members
