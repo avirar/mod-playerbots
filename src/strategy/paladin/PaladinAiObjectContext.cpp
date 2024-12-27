@@ -141,6 +141,11 @@ public:
         creators["blessing of wisdom on party"] = &PaladinTriggerFactoryInternal::blessing_of_wisdom_on_party;
         creators["blessing of might on party"] = &PaladinTriggerFactoryInternal::blessing_of_might_on_party;
 
+        creators["greater blessing of might needed"] = &PaladinTriggerFactoryInternal::greater_blessing_of_might_needed;
+        creators["greater blessing of wisdom needed"] = &PaladinTriggerFactoryInternal::greater_blessing_of_wisdom_needed;
+        creators["greater blessing of kings needed"] = &PaladinTriggerFactoryInternal::greater_blessing_of_kings_needed;
+        creators["greater blessing of sanctuary needed"] = &PaladinTriggerFactoryInternal::greater_blessing_of_sanctuary_needed;
+
         creators["avenging wrath"] = &PaladinTriggerFactoryInternal::avenging_wrath;
     }
 
@@ -206,6 +211,27 @@ private:
         return new BlessingOfWisdomOnPartyTrigger(botAI);
     }
     static Trigger* blessing_of_might_on_party(PlayerbotAI* botAI) { return new BlessingOfMightOnPartyTrigger(botAI); }
+
+    // Greater Blessing triggers
+    static Trigger* greater_blessing_of_might_needed(PlayerbotAI* botAI) 
+    { 
+        return new GreaterBlessingOfMightNeededTrigger(botAI); 
+    }
+    
+    static Trigger* greater_blessing_of_wisdom_needed(PlayerbotAI* botAI) 
+    { 
+        return new GreaterBlessingOfWisdomNeededTrigger(botAI); 
+    }
+    
+    static Trigger* greater_blessing_of_kings_needed(PlayerbotAI* botAI) 
+    { 
+        return new GreaterBlessingOfKingsNeededTrigger(botAI); 
+    }
+    
+    static Trigger* greater_blessing_of_sanctuary_needed(PlayerbotAI* botAI) 
+    { 
+        return new GreaterBlessingOfSanctuaryNeededTrigger(botAI); 
+    }
 
     static Trigger* avenging_wrath(PlayerbotAI* botAI) { return new AvengingWrathTrigger(botAI); }
 };
