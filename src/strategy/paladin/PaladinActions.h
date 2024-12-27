@@ -58,10 +58,12 @@ BUFF_ACTION(CastDivineFavorAction, "divine favor");
 // blessings
 
 // Greater Blessings
+/*
 BUFF_ACTION(CastGreaterBlessingOfMightAction, "greater blessing of might");
 BUFF_ACTION(CastGreaterBlessingOfWisdomAction, "greater blessing of wisdom");
 BUFF_ACTION(CastGreaterBlessingOfKingsAction, "greater blessing of kings");
 BUFF_ACTION(CastGreaterBlessingOfSanctuaryAction, "greater blessing of sanctuary");
+*/
 
 // fury
 BUFF_ACTION(CastRighteousFuryAction, "righteous fury");
