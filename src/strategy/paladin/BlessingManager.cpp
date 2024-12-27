@@ -191,6 +191,9 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
     std::vector<ClassID> targetClasses;
     ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
 
+    // Retrieve the list of Paladins in the raid
+    std::vector<Player*> paladins = GetPaladinsInRaid();
+
     // Iterate through the assigned blessings for this Paladin
     auto it = paladinBlessings.find(paladinGuid);
     if (it != paladinBlessings.end())
@@ -209,12 +212,12 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
                         int numPaladins = paladins.size();
                         if (numPaladins > 4)
                             numPaladins = 4;
-                        
+
                         if (BlessingTemplates.find(numPaladins) == BlessingTemplates.end())
                             numPaladins = 1; // Default to 1 if template not found
-                        
+
                         BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
-                        
+
                         auto classIt = currentTemplate.classBlessings.find(classId);
                         if (classIt != currentTemplate.classBlessings.end())
                         {
@@ -231,3 +234,4 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
 
     return targetClasses;
 }
+
