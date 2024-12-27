@@ -191,7 +191,13 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
     {
         if (blessing == GREATER_BLESSING_OF_MIGHT)
         {
-            // Retrieve raid members
+            // Get the classes assigned to cast Greater Blessing of Might
+            std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
+            
+            if (targetClasses.empty())
+                continue; // No classes assigned for this blessing
+
+            // Retrieve raid members of the target classes
             std::vector<Unit*> targets;
             Group* group = botAI->GetBot()->GetGroup();
             if (group && group->isRaidGroup())
@@ -200,8 +206,15 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
                 while (ref)
                 {
                     Player* member = ref->GetSource();
-                    if (member && member->IsInWorld() && member->getClass() == CLASS_WARRIOR) // Adjust class filter
-                        targets.push_back(member);
+                    if (member && member->IsInWorld())
+                    {
+                        ClassID memberClass = static_cast<ClassID>(member->getClass());
+                        // Check if member's class is in the target classes
+                        if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+                        {
+                            targets.push_back(member);
+                        }
+                    }
                     ref = ref->next();
                 }
             }
@@ -210,20 +223,24 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
             {
                 if (!botAI->HasAura("greater blessing of might", target))
                 {
+                    // Log the casting action for debugging purposes
+                    botAI->TellMaster("Casting Greater Blessing of Might on " + std::string(target->GetName()));
+                    
                     // Cast Greater Blessing of Might
                     if (botAI->CastSpell("greater blessing of might", target))
-                        return true;
+                        return true; // Successfully casted
                 }
             }
         }
     }
 
-    return false;
+    return false; // No casting performed
 }
 
 
-// Similarly implement for other Greater Blessings
 
+// Similarly implement for other Greater Blessings
+/*
 bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
 {
     if (!botAI->IsInRaid())
@@ -313,3 +330,4 @@ bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
 
     return false;
 }
+*/
