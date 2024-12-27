@@ -82,15 +82,23 @@ std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
 {
     std::vector<Player*> paladins;
 
-    // Use botAI to access the context and retrieve raid members
-    std::vector<Player*> raidMembers = botAI->GetAiObjectContext()->GetValue<std::vector<Player*>>("raid members")->Get();
-    
-    for (Player* member : raidMembers)
+    // Get the bot's group
+    Group* group = botAI->GetBot()->GetGroup();
+    if (!group || !group->IsRaidGroup())
+        return paladins; // Return empty if not in a raid
+
+    // Iterate through the group members
+    GroupReference* ref = group->GetFirstMember();
+    while (ref)
     {
-        if (member->getClass() == CLASS_PALADIN)
-            paladins.push_back(member);
+        Player* member = ref->GetSource();
+        if (member && member->IsInWorld() && member->getClass() == CLASS_PALADIN)
+        {
+            paladins.push_back(member); // Add Paladin to the list
+        }
+        ref = ref->next();
     }
-    
+
     return paladins;
 }
 
