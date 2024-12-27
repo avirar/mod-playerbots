@@ -24,10 +24,31 @@ std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
     return paladins;
 }
 
+// Get target classes for a specific blessing
+std::vector<ClassID> BlessingManager::GetTargetClasses(GreaterBlessingType blessingType) const
+{
+    std::vector<ClassID> targetClasses;
+    
+    for (auto const& [classId, blessings] : BlessingTemplates.at(1).classBlessings) // Use any template for class mapping
+    {
+        for (GreaterBlessingType blessing : blessings)
+        {
+            if (blessing == blessingType)
+            {
+                targetClasses.push_back(classId);
+                break;
+            }
+        }
+    }
+    
+    return targetClasses;
+}
+
 // Assign blessings based on the number of Paladins
 void BlessingManager::AssignBlessings()
 {
     paladinBlessings.clear();
+    classBlessingPaladinMap.clear();
     
     std::vector<Player*> paladins = GetPaladinsInRaid();
     int numPaladins = paladins.size();
@@ -47,20 +68,18 @@ void BlessingManager::AssignBlessings()
         ObjectGuid paladinGuid = paladin->GetGUID();
         
         // Determine which blessings this Paladin should cast based on the template
-        // For simplicity, distribute blessings in the order defined
         std::vector<GreaterBlessingType> assignedBlessings;
         
-        // Iterate through each class and assign blessings
         for (auto const& [classId, blessings] : currentTemplate.classBlessings)
         {
-            // Assign blessings based on index
-            // This logic can be adjusted to better distribute blessings among Paladins
-            // Here, each Paladin casts the blessings in sequence
-            // Alternatively, you can assign specific blessings to specific Paladins
-            
             for (GreaterBlessingType blessing : blessings)
             {
-                assignedBlessings.push_back(blessing);
+                // Assign this blessing to the Paladin if not already assigned
+                if (classBlessingPaladinMap.find(classId) == classBlessingPaladinMap.end())
+                {
+                    classBlessingPaladinMap[classId] = paladinGuid;
+                    assignedBlessings.push_back(blessing);
+                }
             }
         }
         
