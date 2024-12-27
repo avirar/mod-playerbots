@@ -191,7 +191,7 @@ bool GreaterBlessingOfKingsNeededTrigger::IsActive()
     return false; // No eligible targets found
 }
 
-bool GreaterBlessingOfsanctuaryNeededTrigger::IsActive()
+bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
 {
     // Ensure botAI and bot are valid
     if (!botAI || !botAI->GetBot())
