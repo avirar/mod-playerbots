@@ -13,7 +13,9 @@ BlessingManager::BlessingManager(PlayerbotAI* botAI) : botAI(botAI)
 std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
 {
     std::vector<Player*> paladins;
-    std::vector<Player*> raidMembers = AI_VALUE(std::vector<Player*>, "raid members");
+
+    // Use botAI to access the context and retrieve raid members
+    std::vector<Player*> raidMembers = botAI->GetAiObjectContext()->GetValue<std::vector<Player*>>("raid members")->Get();
     
     for (Player* member : raidMembers)
     {
@@ -23,6 +25,7 @@ std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
     
     return paladins;
 }
+
 
 // Get target classes for a specific blessing
 std::vector<ClassID> BlessingManager::GetTargetClasses(GreaterBlessingType blessingType) const
