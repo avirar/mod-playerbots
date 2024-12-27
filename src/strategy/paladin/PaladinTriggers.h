@@ -239,4 +239,38 @@ class AvengingWrathTrigger : public BoostTrigger
 public:
     AvengingWrathTrigger(PlayerbotAI* botAI) : BoostTrigger(botAI, "avenging wrath") {}
 };
+
+// Greater Blessing Triggers
+class GreaterBlessingOfMightNeededTrigger : public Trigger
+{
+public:
+    GreaterBlessingOfMightNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of might needed") {}
+    
+    bool IsActive() override;
+};
+
+class GreaterBlessingOfWisdomNeededTrigger : public Trigger
+{
+public:
+    GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of wisdom needed") {}
+    
+    bool IsActive() override;
+};
+
+class GreaterBlessingOfKingsNeededTrigger : public Trigger
+{
+public:
+    GreaterBlessingOfKingsNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of kings needed") {}
+    
+    bool IsActive() override;
+};
+
+class GreaterBlessingOfSanctuaryNeededTrigger : public Trigger
+{
+public:
+    GreaterBlessingOfSanctuaryNeededTrigger(PlayerbotAI* botAI) : Trigger(botAI, "greater blessing of sanctuary needed") {}
+    
+    bool IsActive() override;
+};
+
 #endif
