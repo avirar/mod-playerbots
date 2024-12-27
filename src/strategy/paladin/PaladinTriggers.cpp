@@ -36,7 +36,7 @@ bool BlessingTrigger::IsActive()
 }
 bool GreaterBlessingOfMightNeededTrigger::IsActive()
 {
-    botAI->TellMaster("Bot Blessing of Might Trigger");
+    botAI->TellMaster("Bot Greater Blessing of Might Trigger");
     // Ensure botAI and bot are valid
     if (!botAI || !botAI->GetBot())
     {
