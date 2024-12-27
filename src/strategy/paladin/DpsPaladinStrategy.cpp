@@ -172,19 +172,19 @@ void DpsPaladinStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     // Greater Blessings
     triggers.push_back(new TriggerNode(
-        "greater blessing of might needed",
+        "greater blessing of might",
         NextAction::array(0, new NextAction("greater blessing of might", ACTION_HIGH + 10), nullptr)));
     
     triggers.push_back(new TriggerNode(
-        "greater blessing of wisdom needed",
+        "greater blessing of wisdom",
         NextAction::array(0, new NextAction("greater blessing of wisdom", ACTION_HIGH + 10), nullptr)));
     
     triggers.push_back(new TriggerNode(
-        "greater blessing of kings needed",
+        "greater blessing of kings",
         NextAction::array(0, new NextAction("greater blessing of kings", ACTION_HIGH + 10), nullptr)));
     
     triggers.push_back(new TriggerNode(
-        "greater blessing of sanctuary needed",
+        "greater blessing of sanctuary",
         NextAction::array(0, new NextAction("greater blessing of sanctuary", ACTION_HIGH + 10), nullptr)));
 
 }
