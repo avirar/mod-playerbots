@@ -60,7 +60,39 @@ private:
     {
         return new ActionNode("blessing of might",
                               /*P*/ nullptr,
-                              /*A*/ NextAction::array(0, new NextAction("blessing of kings"), nullptr),
+                              /*A*/ NextAction::array(0, new NextAction("blessing of might"), nullptr),
+                              /*C*/ nullptr);
+    }
+
+    static ActionNode* greater_blessing_of_might([[maybe_unused]] PlayerbotAI* botAI)
+    {
+        return new ActionNode("greater blessing of might",
+                              /*P*/ nullptr,
+                              /*A*/ NextAction::array(0, new NextAction("greater blessing of might"), nullptr),
+                              /*C*/ nullptr);
+    }
+
+    static ActionNode* greater_blessing_of_wisdom([[maybe_unused]] PlayerbotAI* botAI)
+    {
+        return new ActionNode("greater blessing of wisdom",
+                              /*P*/ nullptr,
+                              /*A*/ NextAction::array(0, new NextAction("greater blessing of wisdom"), nullptr),
+                              /*C*/ nullptr);
+    }
+
+    static ActionNode* greater_blessing_of_kings([[maybe_unused]] PlayerbotAI* botAI)
+    {
+        return new ActionNode("greater blessing of kings",
+                              /*P*/ nullptr,
+                              /*A*/ NextAction::array(0, new NextAction("greater blessing of kings"), nullptr),
+                              /*C*/ nullptr);
+    }
+
+    static ActionNode* greater_blessing_of_sanctuary([[maybe_unused]] PlayerbotAI* botAI)
+    {
+        return new ActionNode("greater lessing of sanctuary",
+                              /*P*/ nullptr,
+                              /*A*/ NextAction::array(0, new NextAction("greater blessing of sanctuary"), nullptr),
                               /*C*/ nullptr);
     }
 
