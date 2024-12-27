@@ -29,6 +29,7 @@ bool CrusaderAuraTrigger::IsActive()
 
 bool BlessingTrigger::IsActive()
 {
+    botAI->TellMaster("Bot Blessing of Might Trigger");
     Unit* target = GetTarget();
     return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
                                                             "blessing of kings", "blessing of sanctuary", nullptr);
