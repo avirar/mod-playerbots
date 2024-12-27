@@ -10,6 +10,8 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 
+#include "BlessingManager.h"
+
 bool SealTrigger::IsActive()
 {
     Unit* target = GetTarget();
