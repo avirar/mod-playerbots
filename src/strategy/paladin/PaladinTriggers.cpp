@@ -34,48 +34,210 @@ bool BlessingTrigger::IsActive()
 
 bool GreaterBlessingOfMightNeededTrigger::IsActive()
 {
-    // Check if any mage, priest, or warlock lacks Greater Blessing of Might
-    std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "warrior, rogue, death knight, hunter"); // Adjust classes as needed
-    for (Unit* target : targets)
+    // Ensure botAI and bot are valid
+    if (!botAI || !botAI->GetBot())
+        return false;
+
+    // Get the bot's group
+    Group* group = botAI->GetBot()->GetGroup();
+    if (!group || !group->isRaidGroup())
+        return false; // Only consider raid members
+
+    // Initialize Blessing Manager
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    // Get assigned blessings for this Paladin
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    // Check if Greater Blessing of Might is among the assigned blessings
+    if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_MIGHT) == blessings.end())
+        return false; // This Paladin is not assigned to cast Greater Blessing of Might
+
+    // Retrieve classes assigned to Greater Blessing of Might for this Paladin
+    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
+
+    if (targetClasses.empty())
+        return false; // No classes assigned for this blessing
+
+    // Iterate through group members and check for targets without the aura
+    GroupReference* ref = group->GetFirstMember();
+    while (ref)
     {
-        if (!botAI->HasAura("greater blessing of might", target))
-            return true;
+        Player* member = ref->GetSource();
+        if (member && member->IsInWorld())
+        {
+            ClassID memberClass = static_cast<ClassID>(member->getClass());
+            // Check if the member's class is in the target classes
+            if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+            {
+                // Check if the target lacks Greater Blessing of Might
+                if (!botAI->HasAura("greater blessing of might", member))
+                {
+                    return true; // Trigger is active
+                }
+            }
+        }
+        ref = ref->next();
     }
-    return false;
+
+    return false; // No eligible targets found
 }
 
 bool GreaterBlessingOfWisdomNeededTrigger::IsActive()
 {
-    // Check if any warrior, rogue, death knight, or hunter lacks Greater Blessing of Wisdom
-    std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "mage, priest, warlock"); // Adjust classes as needed
-    for (Unit* target : targets)
+    // Ensure botAI and bot are valid
+    if (!botAI || !botAI->GetBot())
+        return false;
+
+    // Get the bot's group
+    Group* group = botAI->GetBot()->GetGroup();
+    if (!group || !group->isRaidGroup())
+        return false; // Only consider raid members
+
+    // Initialize Blessing Manager
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    // Get assigned blessings for this Paladin
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    // Check if Greater Blessing of Wisdom is among the assigned blessings
+    if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_WISDOM) == blessings.end())
+        return false; // This Paladin is not assigned to cast Greater Blessing of Wisdom
+
+    // Retrieve classes assigned to Greater Blessing of Wisdom for this Paladin
+    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_WISDOM);
+
+    if (targetClasses.empty())
+        return false; // No classes assigned for this blessing
+
+    // Iterate through group members and check for targets without the aura
+    GroupReference* ref = group->GetFirstMember();
+    while (ref)
     {
-        if (!botAI->HasAura("greater blessing of wisdom", target))
-            return true;
+        Player* member = ref->GetSource();
+        if (member && member->IsInWorld())
+        {
+            ClassID memberClass = static_cast<ClassID>(member->getClass());
+            // Check if the member's class is in the target classes
+            if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+            {
+                // Check if the target lacks Greater Blessing of Wisdom
+                if (!botAI->HasAura("greater blessing of wisdom", member))
+                {
+                    return true; // Trigger is active
+                }
+            }
+        }
+        ref = ref->next();
     }
-    return false;
+
+    return false; // No eligible targets found
 }
+
 
 bool GreaterBlessingOfKingsNeededTrigger::IsActive()
 {
-    // Check if any class lacks Greater Blessing of Kings
-    std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "all classes"); // Typically applies to all classes
-    for (Unit* target : targets)
+    // Ensure botAI and bot are valid
+    if (!botAI || !botAI->GetBot())
+        return false;
+
+    // Get the bot's group
+    Group* group = botAI->GetBot()->GetGroup();
+    if (!group || !group->isRaidGroup())
+        return false; // Only consider raid members
+
+    // Initialize Blessing Manager
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    // Get assigned blessings for this Paladin
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    // Check if Greater Blessing of Might is among the assigned blessings
+    if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_KINGS) == blessings.end())
+        return false; // This Paladin is not assigned to cast Greater Blessing of Might
+
+    // Retrieve classes assigned to Greater Blessing of Might for this Paladin
+    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_KINGS);
+
+    if (targetClasses.empty())
+        return false; // No classes assigned for this blessing
+
+    // Iterate through group members and check for targets without the aura
+    GroupReference* ref = group->GetFirstMember();
+    while (ref)
     {
-        if (!botAI->HasAura("greater blessing of kings", target))
-            return true;
+        Player* member = ref->GetSource();
+        if (member && member->IsInWorld())
+        {
+            ClassID memberClass = static_cast<ClassID>(member->getClass());
+            // Check if the member's class is in the target classes
+            if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+            {
+                // Check if the target lacks Greater Blessing of Might
+                if (!botAI->HasAura("greater blessing of might", member))
+                {
+                    return true; // Trigger is active
+                }
+            }
+        }
+        ref = ref->next();
     }
-    return false;
+
+    return false; // No eligible targets found
 }
 
-bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
+bool GreaterBlessingOfsanctuaryNeededTrigger::IsActive()
 {
-    // Check if any tank lacks Greater Blessing of Sanctuary
-    std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "tank"); // Adjust role as needed
-    for (Unit* target : targets)
+    // Ensure botAI and bot are valid
+    if (!botAI || !botAI->GetBot())
+        return false;
+
+    // Get the bot's group
+    Group* group = botAI->GetBot()->GetGroup();
+    if (!group || !group->isRaidGroup())
+        return false; // Only consider raid members
+
+    // Initialize Blessing Manager
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    // Get assigned blessings for this Paladin
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    // Check if Greater Blessing of Might is among the assigned blessings
+    if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_SANCTUARY) == blessings.end())
+        return false; // This Paladin is not assigned to cast Greater Blessing of Might
+
+    // Retrieve classes assigned to Greater Blessing of Might for this Paladin
+    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_SANCTUARY);
+
+    if (targetClasses.empty())
+        return false; // No classes assigned for this blessing
+
+    // Iterate through group members and check for targets without the aura
+    GroupReference* ref = group->GetFirstMember();
+    while (ref)
     {
-        if (!botAI->HasAura("greater blessing of sanctuary", target))
-            return true;
+        Player* member = ref->GetSource();
+        if (member && member->IsInWorld())
+        {
+            ClassID memberClass = static_cast<ClassID>(member->getClass());
+            // Check if the member's class is in the target classes
+            if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
+            {
+                // Check if the target lacks Greater Blessing of Might
+                if (!botAI->HasAura("greater blessing of might", member))
+                {
+                    return true; // Trigger is active
+                }
+            }
+        }
+        ref = ref->next();
     }
-    return false;
+
+    return false; // No eligible targets found
 }
+
