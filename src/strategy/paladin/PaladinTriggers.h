@@ -243,34 +243,46 @@ public:
 };
 
 // Greater Blessing Triggers
-class GreaterBlessingOfMightNeededTrigger : public BuffTrigger
+class GreaterBlessingOfMightNeededTrigger : public BuffOnPartyTrigger
 {
 public:
-    GreaterBlessingOfMightNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of might") {}
+    GreaterBlessingOfMightNeededTrigger(PlayerbotAI* botAI) 
+        : BuffOnPartyTrigger(botAI, "greater blessing of might", 2 * 2000)
+    {
+    }
     
     bool IsActive() override;
 };
 
-class GreaterBlessingOfWisdomNeededTrigger : public BuffTrigger
+class GreaterBlessingOfWisdomNeededTrigger : public BuffOnPartyTrigger
 {
 public:
-    GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of wisdom") {}
+    GreaterBlessingOfWisdomNeededTrigger(PlayerbotAI* botAI) 
+        : BuffOnPartyTrigger(botAI, "greater blessing of wisdom", 2 * 2000)
+    {
+    }
     
     bool IsActive() override;
 };
 
-class GreaterBlessingOfKingsNeededTrigger : public BuffTrigger
+class GreaterBlessingOfKingsNeededTrigger : public BuffOnPartyTrigger
 {
 public:
-    GreaterBlessingOfKingsNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of kings") {}
+    GreaterBlessingOfKingsNeededTrigger(PlayerbotAI* botAI) 
+        : BuffOnPartyTrigger(botAI, "greater blessing of kings", 2 * 2000)
+    {
+    }
     
     bool IsActive() override;
 };
 
-class GreaterBlessingOfSanctuaryNeededTrigger : public BuffTrigger
+class GreaterBlessingOfSanctuaryNeededTrigger : public BuffOnPartyTrigger
 {
 public:
-    GreaterBlessingOfSanctuaryNeededTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "greater blessing of sanctuary") {}
+    GreaterBlessingOfSanctuaryNeededTrigger(PlayerbotAI* botAI) 
+        : BuffOnPartyTrigger(botAI, "greater blessing of sanctuary", 2 * 2000)
+    {
+    }
     
     bool IsActive() override;
 };
