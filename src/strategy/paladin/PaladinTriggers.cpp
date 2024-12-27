@@ -157,11 +157,11 @@ bool GreaterBlessingOfKingsNeededTrigger::IsActive()
     // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
 
-    // Check if Greater Blessing of Might is among the assigned blessings
+    // Check if Greater Blessing is among the assigned blessings
     if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_KINGS) == blessings.end())
-        return false; // This Paladin is not assigned to cast Greater Blessing of Might
+        return false; // This Paladin is not assigned to cast this Greater Blessing
 
-    // Retrieve classes assigned to Greater Blessing of Might for this Paladin
+    // Retrieve classes assigned to Greater Blessing for this Paladin
     std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_KINGS);
 
     if (targetClasses.empty())
@@ -179,7 +179,7 @@ bool GreaterBlessingOfKingsNeededTrigger::IsActive()
             if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
             {
                 // Check if the target lacks Greater Blessing of Might
-                if (!botAI->HasAura("greater blessing of might", member))
+                if (!botAI->HasAura("greater blessing of kings", member))
                 {
                     return true; // Trigger is active
                 }
@@ -209,11 +209,11 @@ bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
     // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
 
-    // Check if Greater Blessing of Might is among the assigned blessings
+    // Check if Greater Blessing is among the assigned blessings
     if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_SANCTUARY) == blessings.end())
-        return false; // This Paladin is not assigned to cast Greater Blessing of Might
+        return false; // This Paladin is not assigned to cast this Greater Blessing
 
-    // Retrieve classes assigned to Greater Blessing of Might for this Paladin
+    // Retrieve classes assigned to Greater Blessing for this Paladin
     std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_SANCTUARY);
 
     if (targetClasses.empty())
@@ -230,8 +230,8 @@ bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
             // Check if the member's class is in the target classes
             if (std::find(targetClasses.begin(), targetClasses.end(), memberClass) != targetClasses.end())
             {
-                // Check if the target lacks Greater Blessing of Might
-                if (!botAI->HasAura("greater blessing of might", member))
+                // Check if the target lacks Greater Blessing
+                if (!botAI->HasAura("greater blessing of sanctuary", member))
                 {
                     return true; // Trigger is active
                 }
