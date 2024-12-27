@@ -4,6 +4,7 @@
  */
 
 #include "PaladinActions.h"
+#include "BlessingManager.h"
 
 #include "AiFactory.h"
 #include "Event.h"
@@ -169,4 +170,132 @@ bool CastCancelDivineSacrificeAction::Execute(Event event)
 bool CastCancelDivineSacrificeAction::isUseful()
 {
     return botAI->HasAura("divine sacrifice", GetTarget(), false, true, -1, true);
+}
+
+// Greater Blessing of Might Action
+bool CastGreaterBlessingOfMightAction::Execute(Event event)
+{
+    if (!botAI->IsInRaid())
+        return false; // Only cast in raid
+
+    // Initialize Blessing Manager
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    // Get assigned blessings for this Paladin
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    // Iterate through assigned blessings and cast Greater Blessing of Might if assigned
+    for (GreaterBlessingType blessing : blessings)
+    {
+        if (blessing == GREATER_BLESSING_OF_MIGHT)
+        {
+            // Determine target classes for Greater Blessing of Might
+            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "mage, priest, warlock"); // Adjust classes as needed
+            
+            for (Unit* target : targets)
+            {
+                if (!botAI->HasAura("greater blessing of might", target))
+                {
+                    // Cast Greater Blessing of Might
+                    if (botAI->CastSpell("greater blessing of might", target))
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+// Similarly implement for other Greater Blessings
+
+bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
+{
+    if (!botAI->IsInRaid())
+        return false;
+
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    for (GreaterBlessingType blessing : blessings)
+    {
+        if (blessing == GREATER_BLESSING_OF_WISDOM)
+        {
+            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "warrior, rogue, death knight, hunter"); // Adjust classes as needed
+            
+            for (Unit* target : targets)
+            {
+                if (!botAI->HasAura("greater blessing of wisdom", target))
+                {
+                    if (botAI->CastSpell("greater blessing of wisdom", target))
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+bool CastGreaterBlessingOfKingsAction::Execute(Event event)
+{
+    if (!botAI->IsInRaid())
+        return false;
+
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    for (GreaterBlessingType blessing : blessings)
+    {
+        if (blessing == GREATER_BLESSING_OF_KINGS)
+        {
+            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "all classes"); // Typically applies to all classes
+            
+            for (Unit* target : targets)
+            {
+                if (!botAI->HasAura("greater blessing of kings", target))
+                {
+                    if (botAI->CastSpell("greater blessing of kings", target))
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
+{
+    if (!botAI->IsInRaid())
+        return false;
+
+    BlessingManager blessingManager(botAI);
+    blessingManager.AssignBlessings();
+
+    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+
+    for (GreaterBlessingType blessing : blessings)
+    {
+        if (blessing == GREATER_BLESSING_OF_SANCTUARY)
+        {
+            std::vector<Unit*> targets = AI_VALUE2(std::vector<Unit*>, "raid members", "tank"); // Typically applies to tanks
+            
+            for (Unit* target : targets)
+            {
+                if (!botAI->HasAura("greater blessing of sanctuary", target))
+                {
+                    if (botAI->CastSpell("greater blessing of sanctuary", target))
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
