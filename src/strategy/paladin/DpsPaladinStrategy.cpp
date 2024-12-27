@@ -90,7 +90,7 @@ private:
 
     static ActionNode* greater_blessing_of_sanctuary([[maybe_unused]] PlayerbotAI* botAI)
     {
-        return new ActionNode("greater lessing of sanctuary",
+        return new ActionNode("greater blessing of sanctuary",
                               /*P*/ nullptr,
                               /*A*/ NextAction::array(0, new NextAction("greater blessing of sanctuary"), nullptr),
                               /*C*/ nullptr);
