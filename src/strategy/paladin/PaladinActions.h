@@ -57,6 +57,12 @@ BUFF_ACTION(CastDivineFavorAction, "divine favor");
 
 // blessings
 
+// Greater Blessings
+BUFF_ACTION(CastGreaterBlessingOfMightAction, "greater blessing of might");
+BUFF_ACTION(CastGreaterBlessingOfWisdomAction, "greater blessing of wisdom");
+BUFF_ACTION(CastGreaterBlessingOfKingsAction, "greater blessing of kings");
+BUFF_ACTION(CastGreaterBlessingOfSanctuaryAction, "greater blessing of sanctuary");
+
 // fury
 BUFF_ACTION(CastRighteousFuryAction, "righteous fury");
 
@@ -423,5 +429,38 @@ public:
     CastCancelDivineSacrificeAction(PlayerbotAI* botAI) : Action(botAI, "cancel divine sacrifice") {}
     bool Execute(Event event) override;
     bool isUseful() override;
+};
+
+// Greater Blessings
+class CastGreaterBlessingOfMightAction : public CastBuffSpellAction
+{
+public:
+    CastGreaterBlessingOfMightAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "greater blessing of might") {}
+
+    bool Execute(Event event) override;
+};
+
+class CastGreaterBlessingOfWisdomAction : public CastBuffSpellAction
+{
+public:
+    CastGreaterBlessingOfWisdomAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "greater blessing of wisdom") {}
+
+    bool Execute(Event event) override;
+};
+
+class CastGreaterBlessingOfKingsAction : public CastBuffSpellAction
+{
+public:
+    CastGreaterBlessingOfKingsAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "greater blessing of kings") {}
+
+    bool Execute(Event event) override;
+};
+
+class CastGreaterBlessingOfSanctuaryAction : public CastBuffSpellAction
+{
+public:
+    CastGreaterBlessingOfSanctuaryAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "greater blessing of sanctuary") {}
+
+    bool Execute(Event event) override;
 };
 #endif
