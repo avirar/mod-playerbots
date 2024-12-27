@@ -24,10 +24,10 @@ public:
         creators["repentance on enemy healer"] = &repentance_on_enemy_healer;
         creators["repentance on snare target"] = &repentance_on_snare_target;
         creators["repentance of shield"] = &repentance_or_shield;
-        creators["greater blessing of might"] = &CastGreaterBlessingOfMightAction::Create;
-        creators["greater blessing of wisdom"] = &CastGreaterBlessingOfWisdomAction::Create;
-        creators["greater blessing of kings"] = &CastGreaterBlessingOfKingsAction::Create;
-        creators["greater blessing of sanctuary"] = &CastGreaterBlessingOfSanctuaryAction::Create;
+        creators["greater blessing of might"] = &greater_blessing_of_might;
+        creators["greater blessing of wisdom"] = &greater_blessing_of_wisdom;
+        creators["greater blessing of kings"] = &greater_blessing_of_kings;
+        creators["greater blessing of sanctuary"] = &greater_blessing_of_sanctuary;
 
     }
 
