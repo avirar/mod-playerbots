@@ -44,7 +44,7 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
 
     // Get the bot's group
     Group* group = botAI->GetBot()->GetGroup();
-    if (!group || !group->IsRaidGroup())
+    if (!group || !group->isRaidGroup())
     {
         botAI->TellMaster("Bot is not in a raid group.");
         return false; // Only consider raid members
