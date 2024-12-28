@@ -7,75 +7,104 @@
 #include <algorithm>
 #include <string>
 
+// Define the Greater Blessing spells
+std::map<int, std::string> GSpells = {
+    {0, ""},
+    {1, "greater blessing of wisdom"},       // GREATER_BLESSING_OF_WISDOM
+    {2, "greater blessing of might"},        // GREATER_BLESSING_OF_MIGHT
+    {3, "greater blessing of kings"},        // GREATER_BLESSING_OF_KINGS
+    {4, "greater blessing of sanctuary"}     // GREATER_BLESSING_OF_SANCTUARY
+};
+
+// Define class IDs mapping
+std::map<int, std::string> ClassIDMap = {
+    {1, "WARRIOR"},
+    {2, "PALADIN"},
+    {3, "HUNTER"},
+    {4, "ROGUE"},
+    {5, "PRIEST"},
+    {6, "DEATH_KNIGHT"},
+    {7, "SHAMAN"},
+    {8, "MAGE"},
+    {9, "WARLOCK"},
+    {10, "UNK"},
+    {11, "DRUID"}
+    // {12, "PET"} // Uncomment if pets should receive blessings
+};
+
 // Define the Blessing Templates based on the provided PallyPower.Templates
 std::map<int, BlessingTemplate> BlessingManager::BlessingTemplates = {
     {1, BlessingTemplate{
             {
-                {CLASS_WARRIOR, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_ROGUE, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PRIEST, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DRUID, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PALADIN, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_HUNTER, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_MAGE, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_WARLOCK, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_SHAMAN, {GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DEATH_KNIGHT, {GREATER_BLESSING_OF_KINGS}},
-                // {PET, {GREATER_BLESSING_OF_KINGS}}
+                {WARRIOR, {GREATER_BLESSING_OF_KINGS}},
+                {PALADIN, {GREATER_BLESSING_OF_KINGS}},
+                {HUNTER, {GREATER_BLESSING_OF_KINGS}},
+                {ROGUE, {GREATER_BLESSING_OF_KINGS}},
+                {PRIEST, {GREATER_BLESSING_OF_KINGS}},
+                {DEATH_KNIGHT, {GREATER_BLESSING_OF_KINGS}},
+                {SHAMAN, {GREATER_BLESSING_OF_KINGS}},
+                {MAGE, {GREATER_BLESSING_OF_KINGS}},
+                {WARLOCK, {GREATER_BLESSING_OF_KINGS}},
+                {DRUID, {GREATER_BLESSING_OF_KINGS}},
+                // {UNK, {GREATER_BLESSING_OF_KINGS}} // Uncomment if needed
+                // {PET, {GREATER_BLESSING_OF_KINGS}} // Excluded as per your note
             }
         }
     },
     {2, BlessingTemplate{
             {
-                {CLASS_WARRIOR, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_ROGUE, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DRUID, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_HUNTER, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_MAGE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_WARLOCK, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_SHAMAN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DEATH_KNIGHT, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                // {PET, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}}
+                {WARRIOR, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {HUNTER, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {ROGUE, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {DEATH_KNIGHT, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {SHAMAN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {MAGE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {WARLOCK, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {DRUID, {GREATER_BLESSING_OF_WISdom, GREATER_BLESSING_OF_KINGS}},
+                // {UNK, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}} // Uncomment if needed
+                // {PET, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}} // Excluded
             }
         }
     },
     {3, BlessingTemplate{
             {
-                {CLASS_WARRIOR, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_ROGUE, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DRUID, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_HUNTER, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_MAGE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_WARLOCK, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_SHAMAN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DEATH_KNIGHT, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                // {PET, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}}
+                {WARRIOR, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {HUNTER, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS}},
+                {ROGUE, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DEATH_KNIGHT, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {SHAMAN, {GREATER_BLESSING_OF_WISdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                {MAGE, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {WARLOCK, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DRUID, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS}},
+                // {UNK, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Uncomment if needed
+                // {PET, {GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Excluded
             }
         }
     },
     {4, BlessingTemplate{
             {
-                {CLASS_WARRIOR, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_ROGUE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DRUID, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_HUNTER, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_MAGE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_WARLOCK, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_SHAMAN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {CLASS_DEATH_KNIGHT, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                // {PET, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}}
+                {WARRIOR, {GREATER_BLESSING_OF_WISdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {PALADIN, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {HUNTER, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {ROGUE, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {PRIEST, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DEATH_KNIGHT, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {SHAMAN, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {MAGE, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {WARLOCK, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DRUID, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                // {UNK, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Uncomment if needed
+                // {PET, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Excluded
             }
         }
     }
 };
 
-std::map<uint64, BlessingManager*> BlessingManager::instances = {};
+std::map<uint64, std::unique_ptr<BlessingManager>> BlessingManager::instances = {};
 
 // Static method to get or create the BlessingManager instance for a group
 BlessingManager* BlessingManager::getInstance(PlayerbotAI* botAI, uint64 groupId)
@@ -83,13 +112,24 @@ BlessingManager* BlessingManager::getInstance(PlayerbotAI* botAI, uint64 groupId
     auto it = instances.find(groupId);
     if (it != instances.end())
     {
-        return it->second;
+        return it->second.get();
     }
     else
     {
-        BlessingManager* manager = new BlessingManager(botAI, groupId);
-        instances[groupId] = manager;
-        return manager;
+        auto manager = std::make_unique<BlessingManager>(botAI, groupId);
+        BlessingManager* managerPtr = manager.get();
+        instances[groupId] = std::move(manager);
+        return managerPtr;
+    }
+}
+
+// Static method to cleanup instance for a group
+void BlessingManager::cleanupInstance(uint64 groupId)
+{
+    auto it = instances.find(groupId);
+    if (it != instances.end())
+    {
+        instances.erase(it); // unique_ptr automatically deletes the instance
     }
 }
 
@@ -102,8 +142,7 @@ BlessingManager::BlessingManager(PlayerbotAI* botAI, uint64 groupId) : botAI(bot
 // Destructor
 BlessingManager::~BlessingManager()
 {
-    // Cleanup if necessary
-    instances.erase(groupId);
+    // Cleanup is handled by unique_ptr
 }
 
 // Helper function to check if a paladin has the required talent for a blessing
@@ -139,7 +178,7 @@ std::vector<Player*> BlessingManager::GetPaladinsInGroup() const
     while (ref)
     {
         Player* member = ref->GetSource();
-        if (member && member->IsInWorld() && member->getClass() == CLASS_PALADIN)
+        if (member && member->IsInWorld() && member->getClass() == PALADIN)
         {
             paladins.push_back(member); // Add Paladin to the list
         }
@@ -393,86 +432,127 @@ void BlessingManager::AssignBlessings()
                 classBlessingPaladinMap[classId][blessing] = paladinGuid;
                 paladinBlessings[paladinGuid].push_back(blessing);
 
-                LOG_INFO("playerbots", "Assigned {} to Paladin GUID {} <{}> for ClassID {}",
-                         blessing, paladinGuid.ToString().c_str(), assignedPaladin->GetName().c_str(), classId);
+                LOG_INFO("playerbots", "Assigned {} to Paladin GUID {} <{}> for Class {}",
+                         GreaterBlessingTypeToString(blessing), paladinGuid.ToString().c_str(),
+                         assignedPaladin->GetName().c_str(), ClassIDMap[classId]);
             }
             else
             {
-                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}",
-                         blessing, classId);
+                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for Class {}", 
+                         GreaterBlessingTypeToString(blessing), ClassIDMap[classId]);
             }
         }
     }
 }
-
-
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
 {
-    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
-    auto it = paladinBlessings.find(paladinGuid);
-    if (it != paladinBlessings.end())
-    {
-        LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin GUID {}: {}",
-                 paladinGuid.ToString().c_str(),
-                 [&]() {
-                     std::string result;
-                     for (auto blessing : it->second)
-                         result += std::to_string(blessing) + ", ";
-                     return result;
-                 }());
-        return it->second;
-    }
+	ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
+	auto it = paladinBlessings.find(paladinGuid);
+	if (it != paladinBlessings.end())
+	{
+		LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin GUID {}: {}",
+				 paladinGuid.ToString().c_str(),
+				 [&]() {
+					 std::string result;
+					 for (auto blessing : it->second)
+						 result += GreaterBlessingTypeToString(blessing) + ", ";
+					 return result;
+				 }());
+		return it->second;
+	}
 
-    LOG_INFO("playerbots", "No blessings assigned to Paladin GUID {}",
-             paladinGuid.ToString().c_str());
-    return {};
+	LOG_INFO("playerbots", "No blessings assigned to Paladin GUID {}",
+			 paladinGuid.ToString().c_str());
+	return {};
 }
 
 // Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
-    std::vector<ClassID> targetClasses;
+	std::vector<ClassID> targetClasses;
 
-    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
-    
-    // Retrieve the actual number of paladins in the group
-    std::vector<Player*> paladins = GetPaladinsInGroup();
-    int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
+	ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
 
-    if (numPaladins == 0)
-    {
-        LOG_WARN("playerbots", "No Paladins found in the group. Cannot retrieve classes for blessing.");
-        return targetClasses;
-    }
+	// Retrieve the actual number of paladins in the group
+	std::vector<Player*> paladins = GetPaladinsInGroup();
+	int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
 
-    // Find the appropriate template
-    auto templateIt = BlessingTemplates.find(numPaladins);
-    if (templateIt == BlessingTemplates.end())
-    {
-        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetClassesForBlessing.", numPaladins);
-        return targetClasses;
-    }
+	if (numPaladins == 0)
+	{
+		LOG_WARN("playerbots", "No Paladins found in the group. Cannot retrieve classes for blessing.");
+		return targetClasses;
+	}
 
-    BlessingTemplate currentTemplate = templateIt->second;
+	// Find the appropriate template
+	auto templateIt = BlessingTemplates.find(numPaladins);
+	if (templateIt == BlessingTemplates.end())
+	{
+		LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetClassesForBlessing.", numPaladins);
+		return targetClasses;
+	}
 
-    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
-    {
-        // Check if the blessingType is part of the blessings for this class
-        if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
-        {
-            targetClasses.push_back(classId);
-        }
-    }
+	BlessingTemplate currentTemplate = templateIt->second;
 
-    LOG_INFO("playerbots", "Paladin GUID {} assigned classes for blessing {}: {}",
-             paladinGuid.ToString().c_str(), blessingType,
-             [&]() {
-                 std::string result;
-                 for (auto cls : targetClasses)
-                     result += std::to_string(cls) + ", ";
-                 return result;
-             }());
-    return targetClasses;
+	for (const auto& [classId, blessings] : currentTemplate.classBlessings)
+	{
+		// Check if the blessingType is part of the blessings for this class
+		if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
+		{
+			targetClasses.push_back(classId);
+		}
+	}
+
+	LOG_INFO("playerbots", "Paladin GUID {} assigned classes for blessing {}: {}",
+			 paladinGuid.ToString().c_str(), GreaterBlessingTypeToString(blessingType),
+			 [&]() {
+				 std::string result;
+				 for (auto cls : targetClasses)
+					 result += ClassIDMap[cls] + ", ";
+				 return result;
+			 }());
+	return targetClasses;
 }
 
+// Remove blessings assigned by a specific Paladin
+void BlessingManager::RemoveBlessingsByPaladin(ObjectGuid paladinGuid)
+{
+	auto it = paladinBlessings.find(paladinGuid);
+	if (it != paladinBlessings.end())
+	{
+		for (auto blessing : it->second)
+		{
+			// Iterate through classBlessingPaladinMap to remove the blessing
+			for (auto& [classId, blessingMap] : classBlessingPaladinMap)
+			{
+				auto blessingIt = blessingMap.find(blessing);
+				if (blessingIt != blessingMap.end() && blessingIt->second == paladinGuid)
+				{
+					blessingMap.erase(blessingIt);
+					LOG_INFO("playerbots", "Removed {} from Paladin GUID {} for Class {}",
+							 GreaterBlessingTypeToString(blessing), paladinGuid.ToString().c_str(),
+							 ClassIDMap[classId]);
+				}
+			}
+		}
+		paladinBlessings.erase(it);
+	}
+}
+
+// Utility Functions
+
+std::string ClassIDToString(ClassID classId)
+{
+	auto it = ClassIDMap.find(static_cast<int>(classId));
+	if (it != ClassIDMap.end())
+		return it->second;
+	return "Unknown";
+}
+
+std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType)
+{
+	auto it = GSpells.find(static_cast<int>(blessingType));
+	if (it != GSpells.end())
+		return it->second;
+	return "Unknown Blessing";
+}
