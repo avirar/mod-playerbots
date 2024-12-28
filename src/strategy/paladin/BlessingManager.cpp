@@ -125,7 +125,7 @@ bool BlessingManager::CanCastBlessing(Player* paladin, GreaterBlessingType bless
 }
 
 // Get all Paladins in the raid
-std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
+std::vector<Player*> BlessingManager::GetPaladinsInGroup() const
 {
     std::vector<Player*> paladins;
 
