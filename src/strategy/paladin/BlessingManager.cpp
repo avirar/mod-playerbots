@@ -287,6 +287,7 @@ std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(Playerbot
 
 
 // Get classes assigned to a specific blessing for a Paladin
+// Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
     ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
@@ -300,16 +301,12 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
         return targetClasses;
     }
 
-    for (auto const& [classId, assignedPaladinGuid] : classBlessingPaladinMap)
+    for (const auto& [classId, blessingsMap] : classBlessingPaladinMap)
     {
-        if (assignedPaladinGuid == paladinGuid)
+        auto blessingIt = blessingsMap.find(blessingType);
+        if (blessingIt != blessingsMap.end() && blessingIt->second == paladinGuid)
         {
-            auto classIt = BlessingTemplates.at(4).classBlessings.find(classId); // Use the template for 4 paladins
-            if (classIt != BlessingTemplates.at(4).classBlessings.end())
-            {
-                if (std::find(classIt->second.begin(), classIt->second.end(), blessingType) != classIt->second.end())
-                    targetClasses.push_back(classId);
-            }
+            targetClasses.push_back(classId);
         }
     }
 
