@@ -6,7 +6,8 @@
 #include <string>
 #include <vector>
 #include <map>
-#include "ObjectGuid.h"  // Ensure this path is correct based on your project structure
+#include "ObjectGuid.h"
+#include "Player.h"
 
 // Enum for Class IDs aligned with the server's Classes enum
 enum ClassID
