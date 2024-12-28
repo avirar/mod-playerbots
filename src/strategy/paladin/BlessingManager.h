@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <memory>
 #include "ObjectGuid.h"
 #include "Player.h"
 
@@ -91,7 +92,7 @@ private:
     static std::map<int, BlessingTemplate> BlessingTemplates;
 
     // Static map to hold instances per group using raw pointers (to be updated to smart pointers)
-    static std::map<uint64, BlessingManager*> instances;
+    static std::map<uint64, std::unique_ptr<BlessingManager>> instances;
 };
 
 #endif
