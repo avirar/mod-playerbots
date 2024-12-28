@@ -34,6 +34,7 @@ bool BlessingTrigger::IsActive()
     return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
                                                             "blessing of kings", "blessing of sanctuary", nullptr);
 }
+
 bool GreaterBlessingOfMightNeededTrigger::IsActive()
 {
     botAI->TellMaster("Bot Greater Blessing of Might Trigger");
@@ -52,12 +53,13 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
         return false; // Only consider raid members
     }
 
-    // Initialize Blessing Manager
-    BlessingManager blessingManager(botAI);
-    blessingManager.AssignBlessings();
+    uint64 groupId = group->GetGUID(); // Assuming group has a unique GUID
+
+    // Retrieve the BlessingManager singleton instance for this group
+    BlessingManager* blessingManager = BlessingManager::getInstance(botAI, groupId);
 
     // Get assigned blessings for this Paladin
-    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+    std::vector<GreaterBlessingType> blessings = blessingManager->GetAssignedBlessings(botAI);
 
     // Check if Greater Blessing of Might is among the assigned blessings
     if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_MIGHT) == blessings.end())
@@ -67,7 +69,7 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
     }
 
     // Retrieve classes assigned to Greater Blessing of Might for this Paladin
-    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
+    std::vector<ClassID> targetClasses = blessingManager->GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
 
     if (targetClasses.empty())
     {
