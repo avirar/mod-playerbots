@@ -152,13 +152,12 @@ void BlessingManager::AssignBlessings()
 
     BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
 
-    // Create a map of paladins with their talent-based priorities
+    // Create a priority map for paladins based on their talents
     std::map<Player*, int> paladinPriority;
     for (Player* paladin : paladins)
     {
         int priority = 0;
 
-        // Check for talents that improve specific blessings
         if (paladin->HasTalent(20045, paladin->GetActiveSpec())) // Improved Blessing of Might
             priority += 10;
 
@@ -171,45 +170,60 @@ void BlessingManager::AssignBlessings()
         paladinPriority[paladin] = priority;
     }
 
-    // Sort paladins by priority (higher priority first)
+    // Sort paladins by priority
     std::vector<Player*> sortedPaladins(paladins.begin(), paladins.end());
     std::sort(sortedPaladins.begin(), sortedPaladins.end(),
               [&paladinPriority](Player* a, Player* b) {
                   return paladinPriority[a] > paladinPriority[b];
               });
 
-    // Assign blessings to paladins based on the sorted order
-    for (Player* paladin : sortedPaladins)
+    // Distribute blessings
+    for (auto const& [classId, blessings] : currentTemplate.classBlessings)
     {
-        ObjectGuid paladinGuid = paladin->GetGUID();
-        std::vector<GreaterBlessingType> assignedBlessings;
-
-        for (auto const& [classId, blessings] : currentTemplate.classBlessings)
+        for (GreaterBlessingType blessing : blessings)
         {
-            for (GreaterBlessingType blessing : blessings)
+            bool blessingAssigned = false;
+
+            for (Player* paladin : sortedPaladins)
             {
-                // Skip Sanctuary if the paladin lacks the required talent
+                ObjectGuid paladinGuid = paladin->GetGUID();
+
+                // Skip Sanctuary if the paladin lacks the talent
                 if (blessing == GREATER_BLESSING_OF_SANCTUARY &&
                     !paladin->HasTalent(20911, paladin->GetActiveSpec()))
                 {
                     continue;
                 }
 
-                // Assign the blessing to the paladin if not already assigned
-                if (classBlessingPaladinMap.find(classId) == classBlessingPaladinMap.end())
+                // Assign this blessing to the first eligible paladin
+                if (paladinBlessings[paladinGuid].size() < blessings.size())
                 {
                     classBlessingPaladinMap[classId] = paladinGuid;
-                    assignedBlessings.push_back(blessing);
+                    paladinBlessings[paladinGuid].push_back(blessing);
+                    blessingAssigned = true;
+                    LOG_INFO("playerbots", "Assigned {} to Paladin {} <{}> for ClassID {}",
+                             blessing, paladinGuid.ToString().c_str(), paladin->GetName().c_str(), classId);
+                    break;
                 }
             }
+
+            // If no paladin could be assigned this blessing, log a warning
+            if (!blessingAssigned)
+            {
+                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}",
+                         blessing, classId);
+            }
         }
+    }
 
-        paladinBlessings[paladinGuid] = assignedBlessings;
-
-        // Log the assignments
-        LOG_INFO("playerbots", "Assigned blessings to Paladin {} <{}>: {}", 
+    // Final log of all assignments
+    for (Player* paladin : paladins)
+    {
+        ObjectGuid paladinGuid = paladin->GetGUID();
+        auto assignedBlessings = paladinBlessings[paladinGuid];
+        LOG_INFO("playerbots", "Final blessings for Paladin {} <{}>: {}", 
                  paladinGuid.ToString().c_str(), paladin->GetName().c_str(),
-                 [&assignedBlessings]() {
+                 [&]() {
                      std::string result;
                      for (auto blessing : assignedBlessings)
                          result += std::to_string(blessing) + ", ";
@@ -217,6 +231,7 @@ void BlessingManager::AssignBlessings()
                  }());
     }
 }
+
 
 
 
