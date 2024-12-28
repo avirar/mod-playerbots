@@ -8,12 +8,6 @@
 #include <vector>
 #include <string>
 
-// Structure for Blessing Templates
-struct BlessingTemplate
-{
-    std::map<ClassID, std::vector<GreaterBlessingType>> classBlessings;
-};
-
 class PlayerbotAI;
 
 class BlessingManager
