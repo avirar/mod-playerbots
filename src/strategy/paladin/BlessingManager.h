@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <memory>
 #include "ObjectGuid.h"
 #include "Player.h"
 
@@ -52,8 +51,9 @@ class PlayerbotAI; // Forward declaration
 class BlessingManager
 {
 public:
-    // Static method to get the BlessingManager instance for a group
-    static BlessingManager* getInstance(PlayerbotAI* botAI, uint64 groupId);
+    // Constructor and Destructor
+    BlessingManager(PlayerbotAI* botAI, uint64 groupId);
+    ~BlessingManager();
 
     // Assign blessings to Paladins based on the number in the group
     void AssignBlessings();
@@ -64,17 +64,10 @@ public:
     // Get classes assigned to a specific blessing for a Paladin
     std::vector<ClassID> GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const;
 
-    // Get target classes for a specific blessing (possibly used elsewhere)
-    std::vector<ClassID> GetTargetClasses(GreaterBlessingType blessingType) const;
-
     // Remove blessings assigned by a specific Paladin
     void RemoveBlessingsByPaladin(ObjectGuid paladinGuid);
 
 private:
-    // Private constructor to enforce singleton
-    BlessingManager(PlayerbotAI* botAI, uint64 groupId);
-    ~BlessingManager();
-
     PlayerbotAI* botAI;
     uint64 groupId;
 
@@ -90,18 +83,9 @@ private:
 
     // Define the Blessing Templates
     static std::map<int, BlessingTemplate> BlessingTemplates;
-
-    // Static map to hold instances per group using raw pointers (to be updated to smart pointers)
-    static std::map<uint64, std::unique_ptr<BlessingManager>> instances;
-
-    // Static method to clean up a specific instance by groupId
-    static void cleanupInstance(uint64 groupId);
-
-    // Allow std::make_unique to access the private constructor
-    friend std::unique_ptr<BlessingManager> std::make_unique<BlessingManager>(PlayerbotAI*, uint64);
-
 };
 
+// Utility Functions
 std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType);
 std::string ClassIDToString(ClassID classId);
 
