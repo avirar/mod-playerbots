@@ -93,6 +93,10 @@ private:
 
     // Static map to hold instances per group using raw pointers (to be updated to smart pointers)
     static std::map<uint64, std::unique_ptr<BlessingManager>> instances;
+
+    // Static method to clean up a specific instance by groupId
+    static void cleanupInstance(uint64 groupId);
+
 };
 
 #endif
