@@ -103,7 +103,7 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
     return false; // No eligible targets found
 }
 
-bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
+bool GreaterBlessingOfWisdomNeededTrigger::IsActive()
 {
     return false;
 }
