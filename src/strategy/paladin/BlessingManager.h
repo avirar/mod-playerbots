@@ -97,10 +97,9 @@ private:
     // Static method to clean up a specific instance by groupId
     static void cleanupInstance(uint64 groupId);
 
-    std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType);
-    std::string ClassIDToString(ClassID classId);
-
-
 };
+
+std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType);
+std::string ClassIDToString(ClassID classId);
 
 #endif
