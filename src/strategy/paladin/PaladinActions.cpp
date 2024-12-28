@@ -183,10 +183,13 @@ Value<Unit*>* CastGreaterBlessingOfMightAction::GetTargetValue()
         return new ManualSetValue<Unit*>(botAI, nullptr);
     }
 
-    // Initialize Blessing Manager and get assigned blessings
-    BlessingManager blessingManager(botAI);
-    blessingManager.AssignBlessings();
-    std::vector<GreaterBlessingType> blessings = blessingManager.GetAssignedBlessings(botAI);
+    uint64 groupId = group->GetGUID(); // Assuming group has a unique GUID
+
+    // Retrieve the BlessingManager instance for this group
+    BlessingManager* blessingManager = BlessingManager::getInstance(botAI, groupId);
+
+    // Get assigned blessings for the bot
+    std::vector<GreaterBlessingType> blessings = blessingManager->GetAssignedBlessings(botAI);
 
     // Check if Greater Blessing of Might is assigned
     if (std::find(blessings.begin(), blessings.end(), GREATER_BLESSING_OF_MIGHT) == blessings.end())
@@ -197,7 +200,7 @@ Value<Unit*>* CastGreaterBlessingOfMightAction::GetTargetValue()
     }
 
     // Get the target classes for Greater Blessing of Might
-    std::vector<ClassID> targetClasses = blessingManager.GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
+    std::vector<ClassID> targetClasses = blessingManager->GetClassesForBlessing(botAI, GREATER_BLESSING_OF_MIGHT);
     if (targetClasses.empty())
     {
         LOG_INFO("playerbots", "Bot {} <{}> has no assigned classes for Greater Blessing of Might", 
