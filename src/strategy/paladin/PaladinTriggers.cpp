@@ -54,8 +54,14 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
 
     uint64 groupId = group->GetGUID().GetRawValue(); // Assuming group has a unique GUID
 
-    // Retrieve the BlessingManager singleton instance for this group
-    BlessingManager* blessingManager = BlessingManager::getInstance(botAI, groupId);
+    // Retrieve the BlessingManager instance from PlayerbotAI
+    BlessingManager* blessingManager = botAI->GetBlessingManager();
+
+    if (!blessingManager)
+    {
+        botAI->TellMaster("Error: BlessingManager instance not found.");
+        return false;
+    }
 
     // Get assigned blessings for this Paladin
     std::vector<GreaterBlessingType> blessings = blessingManager->GetAssignedBlessings(botAI);
