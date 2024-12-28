@@ -150,6 +150,13 @@ void BlessingManager::AssignBlessings()
     if (numPaladins == 0)
         return; // No Paladins to assign blessings
 
+    // Ensure the template exists
+    if (BlessingTemplates.find(numPaladins) == BlessingTemplates.end())
+    {
+        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins.", numPaladins);
+        return;
+    }
+
     BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
 
     // Create a priority map for paladins based on their talents
@@ -170,7 +177,7 @@ void BlessingManager::AssignBlessings()
         paladinPriority[paladin] = priority;
     }
 
-    // Sort paladins by priority
+    // Sort paladins by priority (descending)
     std::vector<Player*> sortedPaladins(paladins.begin(), paladins.end());
     std::sort(sortedPaladins.begin(), sortedPaladins.end(),
               [&paladinPriority](Player* a, Player* b) {
@@ -178,9 +185,9 @@ void BlessingManager::AssignBlessings()
               });
 
     // Distribute blessings
-    for (auto const& [classId, blessings] : currentTemplate.classBlessings)
+    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
     {
-        for (GreaterBlessingType blessing : blessings)
+        for (const GreaterBlessingType blessing : blessings)
         {
             bool blessingAssigned = false;
 
@@ -195,24 +202,38 @@ void BlessingManager::AssignBlessings()
                     continue;
                 }
 
-                // Ensure each paladin casts only one blessing per class
-                if (std::find(paladinBlessings[paladinGuid].begin(), paladinBlessings[paladinGuid].end(), blessing) == paladinBlessings[paladinGuid].end() &&
-                    classBlessingPaladinMap[classId] != paladinGuid)
+                // Check if the paladin has already assigned a blessing to this class
+                bool hasAssigned = false;
+                if (classBlessingPaladinMap.find(classId) != classBlessingPaladinMap.end())
                 {
-                    classBlessingPaladinMap[classId] = paladinGuid;
-                    paladinBlessings[paladinGuid].push_back(blessing);
-                    blessingAssigned = true;
-
-                    LOG_INFO("playerbots", "Assigned {} to Paladin {} <{}> for ClassID {}",
-                             blessing, paladinGuid.ToString().c_str(), paladin->GetName().c_str(), classId);
-                    break;
+                    for (const auto& [assignedBlessing, assignedPaladinGuid] : classBlessingPaladinMap[classId])
+                    {
+                        if (assignedPaladinGuid == paladinGuid)
+                        {
+                            hasAssigned = true;
+                            break;
+                        }
+                    }
                 }
+
+                if (hasAssigned)
+                    continue; // Paladin has already assigned a blessing to this class
+
+                // Assign the blessing
+                classBlessingPaladinMap[classId][blessing] = paladinGuid;
+                paladinBlessings[paladinGuid].push_back(blessing);
+                blessingAssigned = true;
+
+                LOG_INFO("playerbots", "Assigned {} to Paladin {} <{}> for ClassID {}",
+                         blessing, paladinGuid.ToString().c_str(), paladin->GetName().c_str(), classId);
+                break; // Move to the next blessing
             }
 
             // If no paladin could be assigned this blessing, log a warning
             if (!blessingAssigned)
             {
-                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}", blessing, classId);
+                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}",
+                         blessing, classId);
             }
         }
     }
@@ -221,17 +242,24 @@ void BlessingManager::AssignBlessings()
     for (Player* paladin : paladins)
     {
         ObjectGuid paladinGuid = paladin->GetGUID();
-        auto assignedBlessings = paladinBlessings[paladinGuid];
-        LOG_INFO("playerbots", "Final blessings for Paladin {} <{}>: {}", 
-                 paladinGuid.ToString().c_str(), paladin->GetName().c_str(),
-                 [&]() {
-                     std::string result;
-                     for (auto blessing : assignedBlessings)
-                         result += std::to_string(blessing) + ", ";
-                     return result;
-                 }());
+        auto it = paladinBlessings.find(paladinGuid);
+        if (it != paladinBlessings.end())
+        {
+            const auto& assignedBlessings = it->second;
+            std::string blessingsStr;
+            for (auto blessing : assignedBlessings)
+                blessingsStr += std::to_string(blessing) + ", ";
+            LOG_INFO("playerbots", "Final blessings for Paladin {} <{}>: {}", 
+                     paladinGuid.ToString().c_str(), paladin->GetName().c_str(), blessingsStr);
+        }
+        else
+        {
+            LOG_INFO("playerbots", "No blessings assigned to Paladin {} <{}>",
+                     paladinGuid.ToString().c_str(), paladin->GetName().c_str());
+        }
     }
 }
+
 
 
 // Get assigned blessings for a specific Paladin
