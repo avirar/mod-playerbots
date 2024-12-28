@@ -434,6 +434,8 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
 {
     std::vector<ClassID> targetClasses;
 
+    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
+    
     // Retrieve the actual number of paladins in the group
     std::vector<Player*> paladins = GetPaladinsInGroup();
     int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
