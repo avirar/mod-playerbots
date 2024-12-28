@@ -379,6 +379,7 @@ void BlessingManager::AssignBlessings()
             }
         }
     }
+}
 
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
