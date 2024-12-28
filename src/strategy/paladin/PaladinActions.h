@@ -440,6 +440,7 @@ class CastGreaterBlessingOfMightAction : public CastBuffSpellAction
 public:
     CastGreaterBlessingOfMightAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "greater blessing of might") {}
 
+    Value<Unit*>* GetTargetValue() override;
     bool Execute(Event event) override;
 };
 
