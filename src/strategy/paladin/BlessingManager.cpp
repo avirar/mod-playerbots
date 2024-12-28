@@ -10,10 +10,10 @@
 // Define the Greater Blessing spells
 std::map<int, std::string> GSpells = {
     {0, ""},
-    {1, "greater blessing of wisdom"},       // GREATER_BLESSING_OF_WISDOM
-    {2, "greater blessing of might"},        // GREATER_BLESSING_OF_MIGHT
-    {3, "greater blessing of kings"},        // GREATER_BLESSING_OF_KINGS
-    {4, "greater blessing of sanctuary"}     // GREATER_BLESSING_OF_SANCTUARY
+    {1, "Greater Blessing of Wisdom"},       // GREATER_BLESSING_OF_WISDOM
+    {2, "Greater Blessing of Might"},        // GREATER_BLESSING_OF_MIGHT
+    {3, "Greater Blessing of Kings"},        // GREATER_BLESSING_OF_KINGS
+    {4, "Greater Blessing of Sanctuary"}     // GREATER_BLESSING_OF_SANCTUARY
 };
 
 // Define class IDs mapping
@@ -89,14 +89,14 @@ std::map<int, BlessingTemplate> BlessingManager::BlessingTemplates = {
             {
                 {WARRIOR, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
                 {PALADIN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {HUNTER, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {ROGUE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {PRIEST, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {DEATH_KNIGHT, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {SHAMAN, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {MAGE, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {WARLOCK, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
-                {DRUID, {GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {HUNTER, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {ROGUE, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {PRIEST, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DEATH_KNIGHT, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {SHAMAN, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {MAGE, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {WARLOCK, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
+                {DRUID, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}},
                 // {UNK, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Uncomment if needed
                 // {PET, {GREATER_BLESSING_OF_Wisdom, GREATER_BLESSING_OF_Might, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS}} // Excluded
             }
@@ -104,37 +104,9 @@ std::map<int, BlessingTemplate> BlessingManager::BlessingTemplates = {
     }
 };
 
-std::map<uint64, std::unique_ptr<BlessingManager>> BlessingManager::instances = {};
-
-// Static method to get or create the BlessingManager instance for a group
-BlessingManager* BlessingManager::getInstance(PlayerbotAI* botAI, uint64 groupId)
-{
-    auto it = instances.find(groupId);
-    if (it != instances.end())
-    {
-        return it->second.get();
-    }
-    else
-    {
-        auto manager = std::make_unique<BlessingManager>(botAI, groupId);
-        BlessingManager* managerPtr = manager.get();
-        instances[groupId] = std::move(manager);
-        return managerPtr;
-    }
-}
-
-// Static method to cleanup instance for a group
-void BlessingManager::cleanupInstance(uint64 groupId)
-{
-    auto it = instances.find(groupId);
-    if (it != instances.end())
-    {
-        instances.erase(it); // unique_ptr automatically deletes the instance
-    }
-}
-
-// Private constructor
-BlessingManager::BlessingManager(PlayerbotAI* botAI, uint64 groupId) : botAI(botAI), groupId(groupId)
+// Constructor
+BlessingManager::BlessingManager(PlayerbotAI* botAI, uint64 groupId) 
+    : botAI(botAI), groupId(groupId)
 {
     AssignBlessings();
 }
@@ -142,7 +114,7 @@ BlessingManager::BlessingManager(PlayerbotAI* botAI, uint64 groupId) : botAI(bot
 // Destructor
 BlessingManager::~BlessingManager()
 {
-    // Cleanup is handled by unique_ptr
+    // Any necessary cleanup can be performed here
 }
 
 // Helper function to check if a paladin has the required talent for a blessing
@@ -186,42 +158,6 @@ std::vector<Player*> BlessingManager::GetPaladinsInGroup() const
     }
 
     return paladins;
-}
-
-// Get target classes for a specific blessing
-std::vector<ClassID> BlessingManager::GetTargetClasses(GreaterBlessingType blessingType) const
-{
-    std::vector<ClassID> targetClasses;
-
-    // Determine the number of paladins, capped at 4
-    int numPaladins = 1;
-    if (!BlessingTemplates.empty())
-    {
-        // Assuming the highest key corresponds to the current number of paladins
-        numPaladins = BlessingTemplates.rbegin()->first;
-        numPaladins = std::min(numPaladins, 4);
-    }
-
-    // Find the appropriate template
-    auto templateIt = BlessingTemplates.find(numPaladins);
-    if (templateIt == BlessingTemplates.end())
-    {
-        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetTargetClasses.", numPaladins);
-        return targetClasses;
-    }
-
-    BlessingTemplate currentTemplate = templateIt->second;
-
-    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
-    {
-        // Check if the blessingType is part of the blessings for this class
-        if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
-        {
-            targetClasses.push_back(classId);
-        }
-    }
-
-    return targetClasses;
 }
 
 // Assign blessings based on the number of Paladins
@@ -434,125 +370,125 @@ void BlessingManager::AssignBlessings()
 
                 LOG_INFO("playerbots", "Assigned {} to Paladin GUID {} <{}> for Class {}",
                          GreaterBlessingTypeToString(blessing), paladinGuid.ToString().c_str(),
-                         assignedPaladin->GetName().c_str(), ClassIDMap[classId]);
+                         assignedPaladin->GetName().c_str(), ClassIDToString(classId));
             }
             else
             {
                 LOG_WARN("playerbots", "No eligible Paladin found to assign {} for Class {}", 
-                         GreaterBlessingTypeToString(blessing), ClassIDMap[classId]);
+                         GreaterBlessingTypeToString(blessing), ClassIDToString(classId));
             }
         }
     }
-}
+
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
 {
-	ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
-	auto it = paladinBlessings.find(paladinGuid);
-	if (it != paladinBlessings.end())
-	{
-		LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin GUID {}: {}",
-				 paladinGuid.ToString().c_str(),
-				 [&]() {
-					 std::string result;
-					 for (auto blessing : it->second)
-						 result += GreaterBlessingTypeToString(blessing) + ", ";
-					 return result;
-				 }());
-		return it->second;
-	}
+    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
+    auto it = paladinBlessings.find(paladinGuid);
+    if (it != paladinBlessings.end())
+    {
+        LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin GUID {}: {}",
+                 paladinGuid.ToString().c_str(),
+                 [&]() {
+                     std::string result;
+                     for (auto blessing : it->second)
+                         result += GreaterBlessingTypeToString(blessing) + ", ";
+                     return result;
+                 }());
+        return it->second;
+    }
 
-	LOG_INFO("playerbots", "No blessings assigned to Paladin GUID {}",
-			 paladinGuid.ToString().c_str());
-	return {};
+    LOG_INFO("playerbots", "No blessings assigned to Paladin GUID {}",
+             paladinGuid.ToString().c_str());
+    return {};
 }
 
 // Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
-	std::vector<ClassID> targetClasses;
+    std::vector<ClassID> targetClasses;
 
-	ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
+    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
 
-	// Retrieve the actual number of paladins in the group
-	std::vector<Player*> paladins = GetPaladinsInGroup();
-	int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
+    // Retrieve the actual number of paladins in the group
+    std::vector<Player*> paladins = GetPaladinsInGroup();
+    int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
 
-	if (numPaladins == 0)
-	{
-		LOG_WARN("playerbots", "No Paladins found in the group. Cannot retrieve classes for blessing.");
-		return targetClasses;
-	}
+    if (numPaladins == 0)
+    {
+        LOG_WARN("playerbots", "No Paladins found in the group. Cannot retrieve classes for blessing.");
+        return targetClasses;
+    }
 
-	// Find the appropriate template
-	auto templateIt = BlessingTemplates.find(numPaladins);
-	if (templateIt == BlessingTemplates.end())
-	{
-		LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetClassesForBlessing.", numPaladins);
-		return targetClasses;
-	}
+    // Find the appropriate template
+    auto templateIt = BlessingTemplates.find(numPaladins);
+    if (templateIt == BlessingTemplates.end())
+    {
+        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetClassesForBlessing.", numPaladins);
+        return targetClasses;
+    }
 
-	BlessingTemplate currentTemplate = templateIt->second;
+    BlessingTemplate currentTemplate = templateIt->second;
 
-	for (const auto& [classId, blessings] : currentTemplate.classBlessings)
-	{
-		// Check if the blessingType is part of the blessings for this class
-		if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
-		{
-			targetClasses.push_back(classId);
-		}
-	}
+    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
+    {
+        // Check if the blessingType is part of the blessings for this class
+        if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
+        {
+            targetClasses.push_back(classId);
+        }
+    }
 
-	LOG_INFO("playerbots", "Paladin GUID {} assigned classes for blessing {}: {}",
-			 paladinGuid.ToString().c_str(), GreaterBlessingTypeToString(blessingType),
-			 [&]() {
-				 std::string result;
-				 for (auto cls : targetClasses)
-					 result += ClassIDMap[cls] + ", ";
-				 return result;
-			 }());
-	return targetClasses;
+    LOG_INFO("playerbots", "Paladin GUID {} assigned classes for blessing {}: {}",
+             paladinGuid.ToString().c_str(), GreaterBlessingTypeToString(blessingType),
+             [&]() {
+                 std::string result;
+                 for (auto cls : targetClasses)
+                     result += ClassIDToString(cls) + ", ";
+                 return result;
+             }());
+    return targetClasses;
 }
 
 // Remove blessings assigned by a specific Paladin
 void BlessingManager::RemoveBlessingsByPaladin(ObjectGuid paladinGuid)
 {
-	auto it = paladinBlessings.find(paladinGuid);
-	if (it != paladinBlessings.end())
-	{
-		for (auto blessing : it->second)
-		{
-			// Iterate through classBlessingPaladinMap to remove the blessing
-			for (auto& [classId, blessingMap] : classBlessingPaladinMap)
-			{
-				auto blessingIt = blessingMap.find(blessing);
-				if (blessingIt != blessingMap.end() && blessingIt->second == paladinGuid)
-				{
-					blessingMap.erase(blessingIt);
-					LOG_INFO("playerbots", "Removed {} from Paladin GUID {} for Class {}",
-							 GreaterBlessingTypeToString(blessing), paladinGuid.ToString().c_str(),
-							 ClassIDMap[classId]);
-				}
-			}
-		}
-		paladinBlessings.erase(it);
-	}
+    auto it = paladinBlessings.find(paladinGuid);
+    if (it != paladinBlessings.end())
+    {
+        for (auto blessing : it->second)
+        {
+            // Iterate through classBlessingPaladinMap to remove the blessing
+            for (auto& [classId, blessingMap] : classBlessingPaladinMap)
+            {
+                auto blessingIt = blessingMap.find(blessing);
+                if (blessingIt != blessingMap.end() && blessingIt->second == paladinGuid)
+                {
+                    blessingMap.erase(blessingIt);
+                    LOG_INFO("playerbots", "Removed {} from Paladin GUID {} for Class {}",
+                             GreaterBlessingTypeToString(blessing), paladinGuid.ToString().c_str(),
+                             ClassIDToString(classId));
+                }
+            }
+        }
+        paladinBlessings.erase(it);
+    }
 }
 
 // Utility Functions
 
 std::string ClassIDToString(ClassID classId)
 {
-	auto it = ClassIDMap.find(static_cast<int>(classId));
-	if (it != ClassIDMap.end())
-		return it->second;
-	return "Unknown";
+    auto it = ClassIDMap.find(static_cast<int>(classId));
+    if (it != ClassIDMap.end())
+        return it->second;
+    return "Unknown";
 }
 
 std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType)
 {
-	auto it = GSpells.find(static_cast<int>(blessingType));
-	if (it != GSpells.end())
-		return it->second;
-	return "Unknown Blessing";
+    auto it = GSpells.find(static_cast<int>(blessingType));
+    if (it != GSpells.end())
+        return it->second;
+    return "Unknown Blessing";
 }
