@@ -8,17 +8,17 @@
 // Enum for Class IDs
 enum ClassID
 {
-    CLASS_WARRIOR       = 1, // TITLE Warrior
-    CLASS_PALADIN       = 2, // TITLE Paladin
-    CLASS_HUNTER        = 3, // TITLE Hunter
-    CLASS_ROGUE         = 4, // TITLE Rogue
-    CLASS_PRIEST        = 5, // TITLE Priest
-    CLASS_DEATH_KNIGHT  = 6, // TITLE Death Knight
-    CLASS_SHAMAN        = 7, // TITLE Shaman
-    CLASS_MAGE          = 8, // TITLE Mage
-    CLASS_WARLOCK       = 9, // TITLE Warlock
+    WARRIOR       = 1, // TITLE Warrior
+    PALADIN       = 2, // TITLE Paladin
+    HUNTER        = 3, // TITLE Hunter
+    ROGUE         = 4, // TITLE Rogue
+    PRIEST        = 5, // TITLE Priest
+    DEATH_KNIGHT  = 6, // TITLE Death Knight
+    SHAMAN        = 7, // TITLE Shaman
+    MAGE          = 8, // TITLE Mage
+    WARLOCK       = 9, // TITLE Warlock
     //CLASS_UNK           = 10,
-    CLASS_DRUID         = 11 // TITLE Druid
+    DRUID         = 11 // TITLE Druid
 };
 
 // Enum for Greater Blessing Types
