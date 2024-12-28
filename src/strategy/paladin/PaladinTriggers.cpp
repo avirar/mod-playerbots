@@ -103,7 +103,19 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
     return false; // No eligible targets found
 }
 
-
+bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
+{
+    return false;
+}
+bool GreaterBlessingOfKingsNeededTrigger::IsActive()
+{
+    return false;
+}
+bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
+{
+    return false;
+}
+/*
 bool GreaterBlessingOfWisdomNeededTrigger::IsActive()
 {
     // Ensure botAI and bot are valid
@@ -260,4 +272,4 @@ bool GreaterBlessingOfSanctuaryNeededTrigger::IsActive()
 
     return false; // No eligible targets found
 }
-
+*/
