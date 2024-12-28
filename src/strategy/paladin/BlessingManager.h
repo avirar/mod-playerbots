@@ -97,6 +97,9 @@ private:
     // Static method to clean up a specific instance by groupId
     static void cleanupInstance(uint64 groupId);
 
+    // Allow std::make_unique to access the private constructor
+    friend std::unique_ptr<BlessingManager> std::make_unique<BlessingManager>(PlayerbotAI*, uint64);
+
 };
 
 std::string GreaterBlessingTypeToString(GreaterBlessingType blessingType);
