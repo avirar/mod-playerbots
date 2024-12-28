@@ -53,7 +53,7 @@ bool GreaterBlessingOfMightNeededTrigger::IsActive()
         return false; // Only consider raid members
     }
 
-    uint64 groupId = group->GetGUID(); // Assuming group has a unique GUID
+    uint64 groupId = group->GetGUID().GetRawValue(); // Assuming group has a unique GUID
 
     // Retrieve the BlessingManager singleton instance for this group
     BlessingManager* blessingManager = BlessingManager::getInstance(botAI, groupId);
