@@ -1,7 +1,11 @@
+// BlessingManager.cpp
+
 #include "BlessingManager.h"
 #include "Playerbots.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include <algorithm>
+#include <string>
 
 // Define the Blessing Templates based on the provided PallyPower.Templates
 std::map<int, BlessingTemplate> BlessingTemplates = {
@@ -77,6 +81,24 @@ BlessingManager::BlessingManager(PlayerbotAI* botAI) : botAI(botAI)
     AssignBlessings();
 }
 
+// Helper function to check if a paladin has the required talent for a blessing
+bool BlessingManager::CanCastBlessing(Player* paladin, GreaterBlessingType blessingType) const
+{
+    switch (blessingType)
+    {
+        case GREATER_BLESSING_OF_WISDOM:
+            return paladin->HasTalent(20245, paladin->GetActiveSpec()); // Improved Blessing of Wisdom
+        case GREATER_BLESSING_OF_MIGHT:
+            return paladin->HasTalent(20045, paladin->GetActiveSpec()); // Improved Blessing of Might
+        case GREATER_BLESSING_OF_SANCTUARY:
+            return paladin->HasTalent(20911, paladin->GetActiveSpec()); // Greater Blessing of Sanctuary
+        case GREATER_BLESSING_OF_KINGS:
+            return true; // No talent required
+        default:
+            return false;
+    }
+}
+
 // Get all Paladins in the raid
 std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
 {
@@ -106,36 +128,35 @@ std::vector<Player*> BlessingManager::GetPaladinsInRaid() const
 std::vector<ClassID> BlessingManager::GetTargetClasses(GreaterBlessingType blessingType) const
 {
     std::vector<ClassID> targetClasses;
-    
-    // This function should reference the current template based on the number of Paladins
-    // However, since this is a const function, we'll need to pass the number of Paladins or the current template
-    // For simplicity, let's assume the maximum number of Paladins is 4
-    
-    // Find the template with the highest number of Paladins not exceeding 4
-    int applicablePaladins = 1;
-    if (BlessingTemplates.find(4) != BlessingTemplates.end())
-        applicablePaladins = 4;
-    else if (BlessingTemplates.find(3) != BlessingTemplates.end())
-        applicablePaladins = 3;
-    else if (BlessingTemplates.find(2) != BlessingTemplates.end())
-        applicablePaladins = 2;
-    else
-        applicablePaladins = 1;
-    
-    BlessingTemplate currentTemplate = BlessingTemplates.at(applicablePaladins);
-    
-    for (auto const& [classId, blessings] : currentTemplate.classBlessings)
+
+    // Determine the number of paladins, capped at 4
+    int numPaladins = 1;
+    if (!BlessingTemplates.empty())
     {
-        for (GreaterBlessingType blessing : blessings)
+        // Assuming the highest key corresponds to the current number of paladins
+        numPaladins = BlessingTemplates.rbegin()->first;
+        numPaladins = std::min(numPaladins, 4);
+    }
+
+    // Find the appropriate template
+    auto templateIt = BlessingTemplates.find(numPaladins);
+    if (templateIt == BlessingTemplates.end())
+    {
+        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetTargetClasses.", numPaladins);
+        return targetClasses;
+    }
+
+    BlessingTemplate currentTemplate = templateIt->second;
+
+    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
+    {
+        // Check if the blessingType is part of the blessings for this class
+        if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
         {
-            if (blessing == blessingType)
-            {
-                targetClasses.push_back(classId);
-                break;
-            }
+            targetClasses.push_back(classId);
         }
     }
-    
+
     return targetClasses;
 }
 
@@ -159,108 +180,171 @@ void BlessingManager::AssignBlessings()
 
     BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
 
-    // Create a priority map for paladins based on their talents
-    std::map<Player*, int> paladinPriority;
+    // Create categorized lists of paladins based on their talents
+    std::vector<Player*> paladinsWithSanctuary;
+    std::vector<Player*> paladinsWithMight;
+    std::vector<Player*> paladinsWithWisdom;
+    std::vector<Player*> paladinsWithoutBoosts;
+
     for (Player* paladin : paladins)
     {
-        int priority = 0;
+        bool hasSanctuary = CanCastBlessing(paladin, GREATER_BLESSING_OF_SANCTUARY);
+        bool hasMight = CanCastBlessing(paladin, GREATER_BLESSING_OF_MIGHT);
+        bool hasWisdom = CanCastBlessing(paladin, GREATER_BLESSING_OF_WISDOM);
 
-        if (paladin->HasTalent(20045, paladin->GetActiveSpec())) // Improved Blessing of Might
-            priority += 10;
-
-        if (paladin->HasTalent(20245, paladin->GetActiveSpec())) // Improved Blessing of Wisdom
-            priority += 10;
-
-        if (paladin->HasTalent(20911, paladin->GetActiveSpec())) // Greater Blessing of Sanctuary
-            priority += 20;
-
-        paladinPriority[paladin] = priority;
+        if (hasSanctuary)
+            paladinsWithSanctuary.push_back(paladin);
+        if (hasMight)
+            paladinsWithMight.push_back(paladin);
+        if (hasWisdom)
+            paladinsWithWisdom.push_back(paladin);
+        if (!hasSanctuary && !hasMight && !hasWisdom)
+            paladinsWithoutBoosts.push_back(paladin);
     }
-
-    // Sort paladins by priority (descending)
-    std::vector<Player*> sortedPaladins(paladins.begin(), paladins.end());
-    std::sort(sortedPaladins.begin(), sortedPaladins.end(),
-              [&paladinPriority](Player* a, Player* b) {
-                  return paladinPriority[a] > paladinPriority[b];
-              });
 
     // Distribute blessings
     for (const auto& [classId, blessings] : currentTemplate.classBlessings)
     {
         for (const GreaterBlessingType blessing : blessings)
         {
-            bool blessingAssigned = false;
+            Player* assignedPaladin = nullptr;
 
-            for (Player* paladin : sortedPaladins)
+            switch (blessing)
             {
-                ObjectGuid paladinGuid = paladin->GetGUID();
-
-                // Skip Sanctuary if the paladin lacks the talent
-                if (blessing == GREATER_BLESSING_OF_SANCTUARY &&
-                    !paladin->HasTalent(20911, paladin->GetActiveSpec()))
-                {
-                    continue;
-                }
-
-                // Check if the paladin has already assigned a blessing to this class
-                bool hasAssigned = false;
-                if (classBlessingPaladinMap.find(classId) != classBlessingPaladinMap.end())
-                {
-                    for (const auto& [assignedBlessing, assignedPaladinGuid] : classBlessingPaladinMap[classId])
+                case GREATER_BLESSING_OF_SANCTUARY:
+                    // Assign to a paladin with Sanctuary talent
+                    for (Player* paladin : paladinsWithSanctuary)
                     {
-                        if (assignedPaladinGuid == paladinGuid)
+                        // Check if the paladin hasn't assigned a blessing to this class
+                        if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     blessing) == paladinBlessings[paladin->GetGUID()].end())
                         {
-                            hasAssigned = true;
+                            assignedPaladin = paladin;
                             break;
                         }
                     }
-                }
+                    break;
 
-                if (hasAssigned)
-                    continue; // Paladin has already assigned a blessing to this class
+                case GREATER_BLESSING_OF_MIGHT:
+                    // Assign to a paladin with Improved Might talent
+                    for (Player* paladin : paladinsWithMight)
+                    {
+                        if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     blessing) == paladinBlessings[paladin->GetGUID()].end())
+                        {
+                            assignedPaladin = paladin;
+                            break;
+                        }
+                    }
+                    if (!assignedPaladin)
+                    {
+                        // Assign to any paladin who hasn't assigned a blessing to this class
+                        for (Player* paladin : paladins)
+                        {
+                            if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_SANCTUARY) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_MIGHT) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_WISDOM) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_KINGS) == paladinBlessings[paladin->GetGUID()].end())
+                            {
+                                assignedPaladin = paladin;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                case GREATER_BLESSING_OF_WISDOM:
+                    // Assign to a paladin with Improved Wisdom talent
+                    for (Player* paladin : paladinsWithWisdom)
+                    {
+                        if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     blessing) == paladinBlessings[paladin->GetGUID()].end())
+                        {
+                            assignedPaladin = paladin;
+                            break;
+                        }
+                    }
+                    if (!assignedPaladin)
+                    {
+                        // Assign to any paladin who hasn't assigned a blessing to this class
+                        for (Player* paladin : paladins)
+                        {
+                            if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_SANCTUARY) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_MIGHT) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_WISDOM) == paladinBlessings[paladin->GetGUID()].end() &&
+                                std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                         paladinBlessings[paladin->GetGUID()].end(),
+                                         GREATER_BLESSING_OF_KINGS) == paladinBlessings[paladin->GetGUID()].end())
+                            {
+                                assignedPaladin = paladin;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                case GREATER_BLESSING_OF_KINGS:
+                    // Assign to any paladin who hasn't assigned a blessing to this class
+                    for (Player* paladin : paladins)
+                    {
+                        if (std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     GREATER_BLESSING_OF_SANCTUARY) == paladinBlessings[paladin->GetGUID()].end() &&
+                            std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     GREATER_BLESSING_OF_MIGHT) == paladinBlessings[paladin->GetGUID()].end() &&
+                            std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     GREATER_BLESSING_OF_WISDOM) == paladinBlessings[paladin->GetGUID()].end() &&
+                            std::find(paladinBlessings[paladin->GetGUID()].begin(),
+                                     paladinBlessings[paladin->GetGUID()].end(),
+                                     GREATER_BLESSING_OF_KINGS) == paladinBlessings[paladin->GetGUID()].end())
+                        {
+                            assignedPaladin = paladin;
+                            break;
+                        }
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+            if (assignedPaladin)
+            {
+                ObjectGuid paladinGuid = assignedPaladin->GetGUID();
 
                 // Assign the blessing
                 classBlessingPaladinMap[classId][blessing] = paladinGuid;
                 paladinBlessings[paladinGuid].push_back(blessing);
-                blessingAssigned = true;
 
-                LOG_INFO("playerbots", "Assigned {} to Paladin {} <{}> for ClassID {}",
-                         blessing, paladinGuid.ToString().c_str(), paladin->GetName().c_str(), classId);
-                break; // Move to the next blessing
+                LOG_INFO("playerbots", "Assigned {} to Paladin GUID {} for ClassID {}",
+                         blessing, paladinGuid.ToString().c_str(), classId);
             }
-
-            // If no paladin could be assigned this blessing, log a warning
-            if (!blessingAssigned)
+            else
             {
                 LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}",
                          blessing, classId);
             }
         }
     }
-
-    // Final log of all assignments
-    for (Player* paladin : paladins)
-    {
-        ObjectGuid paladinGuid = paladin->GetGUID();
-        auto it = paladinBlessings.find(paladinGuid);
-        if (it != paladinBlessings.end())
-        {
-            const auto& assignedBlessings = it->second;
-            std::string blessingsStr;
-            for (auto blessing : assignedBlessings)
-                blessingsStr += std::to_string(blessing) + ", ";
-            LOG_INFO("playerbots", "Final blessings for Paladin {} <{}>: {}", 
-                     paladinGuid.ToString().c_str(), paladin->GetName().c_str(), blessingsStr);
-        }
-        else
-        {
-            LOG_INFO("playerbots", "No blessings assigned to Paladin {} <{}>",
-                     paladinGuid.ToString().c_str(), paladin->GetName().c_str());
-        }
-    }
-}
-
-
 
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
@@ -269,7 +353,7 @@ std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(Playerbot
     auto it = paladinBlessings.find(paladinGuid);
     if (it != paladinBlessings.end())
     {
-        LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin {}: {}",
+        LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin GUID {}: {}",
                  paladinGuid.ToString().c_str(),
                  [&]() {
                      std::string result;
@@ -280,13 +364,11 @@ std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(Playerbot
         return it->second;
     }
 
-    LOG_INFO("playerbots", "No blessings assigned to Paladin {}",
+    LOG_INFO("playerbots", "No blessings assigned to Paladin GUID {}",
              paladinGuid.ToString().c_str());
     return {};
 }
 
-
-// Get classes assigned to a specific blessing for a Paladin
 // Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
@@ -296,7 +378,7 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
     auto it = paladinBlessings.find(paladinGuid);
     if (it == paladinBlessings.end())
     {
-        LOG_INFO("playerbots", "Paladin {} has no assigned blessings for GetClassesForBlessing",
+        LOG_INFO("playerbots", "Paladin GUID {} has no assigned blessings for GetClassesForBlessing",
                  paladinGuid.ToString().c_str());
         return targetClasses;
     }
@@ -310,7 +392,7 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
         }
     }
 
-    LOG_INFO("playerbots", "Paladin {} assigned classes for blessing {}: {}",
+    LOG_INFO("playerbots", "Paladin GUID {} assigned classes for blessing {}: {}",
              paladinGuid.ToString().c_str(), blessingType,
              [&]() {
                  std::string result;
