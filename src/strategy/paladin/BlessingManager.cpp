@@ -177,7 +177,7 @@ void BlessingManager::AssignBlessings()
                   return paladinPriority[a] > paladinPriority[b];
               });
 
-    // Assign blessings, ensuring one blessing per class per paladin
+    // Distribute blessings
     for (auto const& [classId, blessings] : currentTemplate.classBlessings)
     {
         for (GreaterBlessingType blessing : blessings)
@@ -195,9 +195,9 @@ void BlessingManager::AssignBlessings()
                     continue;
                 }
 
-                // Ensure this paladin has not already been assigned a blessing for this class
-                auto it = classBlessingPaladinMap.find(classId);
-                if (it == classBlessingPaladinMap.end())
+                // Ensure each paladin casts only one blessing per class
+                if (std::find(paladinBlessings[paladinGuid].begin(), paladinBlessings[paladinGuid].end(), blessing) == paladinBlessings[paladinGuid].end() &&
+                    classBlessingPaladinMap[classId] != paladinGuid)
                 {
                     classBlessingPaladinMap[classId] = paladinGuid;
                     paladinBlessings[paladinGuid].push_back(blessing);
@@ -212,8 +212,7 @@ void BlessingManager::AssignBlessings()
             // If no paladin could be assigned this blessing, log a warning
             if (!blessingAssigned)
             {
-                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}",
-                         blessing, classId);
+                LOG_WARN("playerbots", "No eligible Paladin found to assign {} for ClassID {}", blessing, classId);
             }
         }
     }
@@ -233,6 +232,7 @@ void BlessingManager::AssignBlessings()
                  }());
     }
 }
+
 
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
