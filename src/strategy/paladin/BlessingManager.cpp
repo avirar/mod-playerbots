@@ -432,21 +432,32 @@ std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(Playerbot
 // Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
-    ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
     std::vector<ClassID> targetClasses;
 
-    auto it = paladinBlessings.find(paladinGuid);
-    if (it == paladinBlessings.end())
+    // Retrieve the actual number of paladins in the group
+    std::vector<Player*> paladins = GetPaladinsInGroup();
+    int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
+
+    if (numPaladins == 0)
     {
-        LOG_INFO("playerbots", "Paladin GUID {} has no assigned blessings for GetClassesForBlessing",
-                 paladinGuid.ToString().c_str());
+        LOG_WARN("playerbots", "No Paladins found in the group. Cannot retrieve classes for blessing.");
         return targetClasses;
     }
 
-    for (const auto& [classId, blessingsMap] : classBlessingPaladinMap)
+    // Find the appropriate template
+    auto templateIt = BlessingTemplates.find(numPaladins);
+    if (templateIt == BlessingTemplates.end())
     {
-        auto blessingIt = blessingsMap.find(blessingType);
-        if (blessingIt != blessingsMap.end() && blessingIt->second == paladinGuid)
+        LOG_WARN("playerbots", "No BlessingTemplate found for {} Paladins in GetClassesForBlessing.", numPaladins);
+        return targetClasses;
+    }
+
+    BlessingTemplate currentTemplate = templateIt->second;
+
+    for (const auto& [classId, blessings] : currentTemplate.classBlessings)
+    {
+        // Check if the blessingType is part of the blessings for this class
+        if (std::find(blessings.begin(), blessings.end(), blessingType) != blessings.end())
         {
             targetClasses.push_back(classId);
         }
@@ -462,3 +473,4 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
              }());
     return targetClasses;
 }
+
