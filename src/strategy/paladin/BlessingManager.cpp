@@ -8,7 +8,7 @@
 #include <string>
 
 // Define the Blessing Templates based on the provided PallyPower.Templates
-std::map<int, BlessingTemplate> BlessingTemplates = {
+std::map<int, BlessingTemplate> BlessingManager::BlessingTemplates = {
     {1, BlessingTemplate{
             {
                 {WARRIOR, {GREATER_BLESSING_OF_KINGS}},
@@ -75,10 +75,35 @@ std::map<int, BlessingTemplate> BlessingTemplates = {
     }
 };
 
-// Constructor
-BlessingManager::BlessingManager(PlayerbotAI* botAI) : botAI(botAI)
+std::map<uint64, BlessingManager*> BlessingManager::instances = {};
+
+// Static method to get or create the BlessingManager instance for a group
+BlessingManager* BlessingManager::getInstance(PlayerbotAI* botAI, uint64 groupId)
+{
+    auto it = instances.find(groupId);
+    if (it != instances.end())
+    {
+        return it->second;
+    }
+    else
+    {
+        BlessingManager* manager = new BlessingManager(botAI, groupId);
+        instances[groupId] = manager;
+        return manager;
+    }
+}
+
+// Private constructor
+BlessingManager::BlessingManager(PlayerbotAI* botAI, uint64 groupId) : botAI(botAI), groupId(groupId)
 {
     AssignBlessings();
+}
+
+// Destructor
+BlessingManager::~BlessingManager()
+{
+    // Cleanup if necessary
+    instances.erase(groupId);
 }
 
 // Helper function to check if a paladin has the required talent for a blessing
