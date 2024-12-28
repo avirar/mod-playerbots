@@ -34,7 +34,7 @@ private:
     std::map<ObjectGuid, std::vector<GreaterBlessingType>> paladinBlessings;
 
     // Mapping from class to which Paladin is blessing it
-    std::map<ClassID, ObjectGuid> classBlessingPaladinMap;
+    std::map<ClassID, std::map<GreaterBlessingType, ObjectGuid>> classBlessingPaladinMap;
 
     // Helper function to get all Paladins in the raid
     std::vector<Player*> GetPaladinsInRaid() const;
