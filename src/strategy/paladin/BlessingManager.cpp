@@ -152,8 +152,34 @@ void BlessingManager::AssignBlessings()
 
     BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
 
-    // Assign blessings to paladins
+    // Create a map of paladins with their talent-based priorities
+    std::map<Player*, int> paladinPriority;
     for (Player* paladin : paladins)
+    {
+        int priority = 0;
+
+        // Check for talents that improve specific blessings
+        if (paladin->HasTalent(20045, paladin->GetActiveSpec())) // Improved Blessing of Might
+            priority += 10;
+
+        if (paladin->HasTalent(20245, paladin->GetActiveSpec())) // Improved Blessing of Wisdom
+            priority += 10;
+
+        if (paladin->HasTalent(20911, paladin->GetActiveSpec())) // Greater Blessing of Sanctuary
+            priority += 20;
+
+        paladinPriority[paladin] = priority;
+    }
+
+    // Sort paladins by priority (higher priority first)
+    std::vector<Player*> sortedPaladins(paladins.begin(), paladins.end());
+    std::sort(sortedPaladins.begin(), sortedPaladins.end(),
+              [&paladinPriority](Player* a, Player* b) {
+                  return paladinPriority[a] > paladinPriority[b];
+              });
+
+    // Assign blessings to paladins based on the sorted order
+    for (Player* paladin : sortedPaladins)
     {
         ObjectGuid paladinGuid = paladin->GetGUID();
         std::vector<GreaterBlessingType> assignedBlessings;
@@ -162,7 +188,14 @@ void BlessingManager::AssignBlessings()
         {
             for (GreaterBlessingType blessing : blessings)
             {
-                // Assign blessing to the current paladin if not already assigned
+                // Skip Sanctuary if the paladin lacks the required talent
+                if (blessing == GREATER_BLESSING_OF_SANCTUARY &&
+                    !paladin->HasTalent(20911, paladin->GetActiveSpec()))
+                {
+                    continue;
+                }
+
+                // Assign the blessing to the paladin if not already assigned
                 if (classBlessingPaladinMap.find(classId) == classBlessingPaladinMap.end())
                 {
                     classBlessingPaladinMap[classId] = paladinGuid;
@@ -174,7 +207,7 @@ void BlessingManager::AssignBlessings()
         paladinBlessings[paladinGuid] = assignedBlessings;
 
         // Log the assignments
-        LOG_INFO("playerbots", "Assigned blessings to Paladin {} <{}>: {}",
+        LOG_INFO("playerbots", "Assigned blessings to Paladin {} <{}>: {}", 
                  paladinGuid.ToString().c_str(), paladin->GetName().c_str(),
                  [&assignedBlessings]() {
                      std::string result;
@@ -184,6 +217,7 @@ void BlessingManager::AssignBlessings()
                  }());
     }
 }
+
 
 
 // Get assigned blessings for a specific Paladin
