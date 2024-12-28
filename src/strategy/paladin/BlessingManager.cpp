@@ -323,5 +323,3 @@ std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, 
              }());
     return targetClasses;
 }
-
-
