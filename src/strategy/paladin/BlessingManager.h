@@ -24,6 +24,7 @@ public:
 
     // Get classes assigned to a specific blessing for a Paladin
     std::vector<ClassID> GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const;
+    std::vector<ClassID> GetTargetClasses(GreaterBlessingType blessingType) const;
 
     // Remove blessings assigned by a specific Paladin
     void RemoveBlessingsByPaladin(ObjectGuid paladinGuid);
