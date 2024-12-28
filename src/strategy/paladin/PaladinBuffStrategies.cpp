@@ -30,6 +30,9 @@ void PaladinBuffDpsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(
         new TriggerNode("blessing of might on party",
                         NextAction::array(0, new NextAction("blessing of might on party", 11.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("greater blessing of might",
+                        NextAction::array(0, new NextAction("greater blessing of might", 12.0f), nullptr)));
     // triggers.push_back(new TriggerNode("blessing", NextAction::array(0, new NextAction("blessing of might",
     // ACTION_HIGH + 8), nullptr)));
 }
