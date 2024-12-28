@@ -6,7 +6,6 @@
 #include "PaladinTriggers.h"
 
 #include "PaladinActions.h"
-#include "PaladinConstants.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 
