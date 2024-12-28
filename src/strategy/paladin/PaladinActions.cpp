@@ -249,7 +249,13 @@ bool CastGreaterBlessingOfMightAction::Execute(Event event)
     return botAI->CastSpell("greater blessing of might", target);
 }
 
-
+bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
+{}
+bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
+{}
+bool CastGreaterBlessingOfKingsAction::Execute(Event event)
+{}
+/*
 bool CastGreaterBlessingOfWisdomAction::Execute(Event event)
 {
     // Check if the bot is in a raid
@@ -441,3 +447,4 @@ bool CastGreaterBlessingOfSanctuaryAction::Execute(Event event)
 
     return false; // No casting performed
 }
+*/
