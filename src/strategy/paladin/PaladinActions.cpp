@@ -183,7 +183,7 @@ Value<Unit*>* CastGreaterBlessingOfMightAction::GetTargetValue()
         return new ManualSetValue<Unit*>(botAI, nullptr);
     }
 
-    uint64 groupId = group->GetGUID(); // Assuming group has a unique GUID
+    uint64 groupId = group->GetGUID().GetRawValue(); // Explicitly get the raw uint64 value
 
     // Retrieve the BlessingManager instance for this group
     BlessingManager* blessingManager = BlessingManager::getInstance(botAI, groupId);
