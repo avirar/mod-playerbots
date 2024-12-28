@@ -185,14 +185,8 @@ Value<Unit*>* CastGreaterBlessingOfMightAction::GetTargetValue()
 
     uint64 groupId = group->GetGUID().GetRawValue(); // Explicitly get the raw uint64 value
 
-    // Retrieve the BlessingManager instance from PlayerbotAI
-    BlessingManager* blessingManager = botAI->GetBlessingManager();
-
-    if (!blessingManager)
-    {
-        botAI->TellMaster("Error: BlessingManager instance not found.");
-        return false;
-    }
+    // Instantiate BlessingManager locally for the current group
+    BlessingManager blessingManager(botAI, groupId);
 
     // Get assigned blessings for the bot
     std::vector<GreaterBlessingType> blessings = blessingManager->GetAssignedBlessings(botAI);
