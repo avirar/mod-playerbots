@@ -191,7 +191,7 @@ void BlessingManager::AssignBlessings()
     paladinBlessings.clear();
     classBlessingPaladinMap.clear();
 
-    std::vector<Player*> paladins = GetPaladinsInRaid();
+    std::vector<Player*> paladins = GetPaladinsInGroup();
     int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
     if (numPaladins == 0)
     {
