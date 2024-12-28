@@ -144,32 +144,25 @@ void BlessingManager::AssignBlessings()
 {
     paladinBlessings.clear();
     classBlessingPaladinMap.clear();
-    
+
     std::vector<Player*> paladins = GetPaladinsInRaid();
-    int numPaladins = paladins.size();
-    
+    int numPaladins = std::min(static_cast<int>(paladins.size()), 4); // Max 4 paladins
     if (numPaladins == 0)
         return; // No Paladins to assign blessings
-    
-    // Clamp the number of Paladins to the available templates
-    if (numPaladins > 4)
-        numPaladins = 4;
-    
-    BlessingTemplate currentTemplate = BlessingTemplates[numPaladins];
-    
-    for (int i = 0; i < paladins.size(); ++i)
+
+    BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
+
+    // Assign blessings to paladins
+    for (Player* paladin : paladins)
     {
-        Player* paladin = paladins[i];
         ObjectGuid paladinGuid = paladin->GetGUID();
-        
-        // Determine which blessings this Paladin should cast based on the template
         std::vector<GreaterBlessingType> assignedBlessings;
-        
+
         for (auto const& [classId, blessings] : currentTemplate.classBlessings)
         {
             for (GreaterBlessingType blessing : blessings)
             {
-                // Assign this blessing to the Paladin if not already assigned
+                // Assign blessing to the current paladin if not already assigned
                 if (classBlessingPaladinMap.find(classId) == classBlessingPaladinMap.end())
                 {
                     classBlessingPaladinMap[classId] = paladinGuid;
@@ -177,10 +170,21 @@ void BlessingManager::AssignBlessings()
                 }
             }
         }
-        
+
         paladinBlessings[paladinGuid] = assignedBlessings;
+
+        // Log the assignments
+        LOG_INFO("playerbots", "Assigned blessings to Paladin {} <{}>: {}",
+                 paladinGuid.ToString().c_str(), paladin->GetName().c_str(),
+                 [&assignedBlessings]() {
+                     std::string result;
+                     for (auto blessing : assignedBlessings)
+                         result += std::to_string(blessing) + ", ";
+                     return result;
+                 }());
     }
 }
+
 
 // Get assigned blessings for a specific Paladin
 std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(PlayerbotAI* botAI) const
@@ -188,58 +192,60 @@ std::vector<GreaterBlessingType> BlessingManager::GetAssignedBlessings(Playerbot
     ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
     auto it = paladinBlessings.find(paladinGuid);
     if (it != paladinBlessings.end())
+    {
+        LOG_INFO("playerbots", "Retrieved assigned blessings for Paladin {}: {}",
+                 paladinGuid.ToString().c_str(),
+                 [&]() {
+                     std::string result;
+                     for (auto blessing : it->second)
+                         result += std::to_string(blessing) + ", ";
+                     return result;
+                 }());
         return it->second;
-    
+    }
+
+    LOG_INFO("playerbots", "No blessings assigned to Paladin {}",
+             paladinGuid.ToString().c_str());
     return {};
 }
+
 
 // Get classes assigned to a specific blessing for a Paladin
 std::vector<ClassID> BlessingManager::GetClassesForBlessing(PlayerbotAI* botAI, GreaterBlessingType blessingType) const
 {
-    std::vector<ClassID> targetClasses;
     ObjectGuid paladinGuid = botAI->GetBot()->GetGUID();
+    std::vector<ClassID> targetClasses;
 
-    // Retrieve the list of Paladins in the raid
-    std::vector<Player*> paladins = GetPaladinsInRaid();
-
-    // Iterate through the assigned blessings for this Paladin
     auto it = paladinBlessings.find(paladinGuid);
-    if (it != paladinBlessings.end())
+    if (it == paladinBlessings.end())
     {
-        for (GreaterBlessingType blessing : it->second)
+        LOG_INFO("playerbots", "Paladin {} has no assigned blessings for GetClassesForBlessing",
+                 paladinGuid.ToString().c_str());
+        return targetClasses;
+    }
+
+    for (auto const& [classId, assignedPaladinGuid] : classBlessingPaladinMap)
+    {
+        if (assignedPaladinGuid == paladinGuid)
         {
-            if (blessing == blessingType)
+            auto classIt = BlessingTemplates.at(4).classBlessings.find(classId); // Use the template for 4 paladins
+            if (classIt != BlessingTemplates.at(4).classBlessings.end())
             {
-                // Find which classes are mapped to this blessing in the current template
-                for (auto const& [classId, assignedPaladinGuid] : classBlessingPaladinMap)
-                {
-                    if (assignedPaladinGuid == paladinGuid)
-                    {
-                        // Check if this class has this blessing type in the current template
-                        // Find the number of Paladins to determine the current template
-                        int numPaladins = paladins.size();
-                        if (numPaladins > 4)
-                            numPaladins = 4;
-
-                        if (BlessingTemplates.find(numPaladins) == BlessingTemplates.end())
-                            numPaladins = 1; // Default to 1 if template not found
-
-                        BlessingTemplate currentTemplate = BlessingTemplates.at(numPaladins);
-
-                        auto classIt = currentTemplate.classBlessings.find(classId);
-                        if (classIt != currentTemplate.classBlessings.end())
-                        {
-                            if (std::find(classIt->second.begin(), classIt->second.end(), blessingType) != classIt->second.end())
-                            {
-                                targetClasses.push_back(classId);
-                            }
-                        }
-                    }
-                }
+                if (std::find(classIt->second.begin(), classIt->second.end(), blessingType) != classIt->second.end())
+                    targetClasses.push_back(classId);
             }
         }
     }
 
+    LOG_INFO("playerbots", "Paladin {} assigned classes for blessing {}: {}",
+             paladinGuid.ToString().c_str(), blessingType,
+             [&]() {
+                 std::string result;
+                 for (auto cls : targetClasses)
+                     result += std::to_string(cls) + ", ";
+                 return result;
+             }());
     return targetClasses;
 }
+
 
