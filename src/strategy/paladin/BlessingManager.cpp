@@ -201,6 +201,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
             paladinsWithoutImprovements.push_back(pal);
     }
 
+    std::map<Player*, std::set<uint8>> paladinAssignedClasses;
     // Keep track of which class each Paladin has already assigned
     // so we don't assign multiple blessings from the same Paladin to the same class.
     for (auto& [classId, blessingsVec] : classToBlessings)
