@@ -369,7 +369,18 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
             // If we found a Paladin who can cast it (and assigned them), 
             // record it in 'results'
             if (assignedPaladin)
+            {
                 results[assignedPaladin][classId] = b;
+            
+                std::string blessingSpell = GetGreaterBlessingSpellName(b);
+            
+                LOG_INFO("playerbots",
+                         "AssignBlessingsForGroup: Paladin '{}' <{}> is assigned '{}' for classId {}",
+                         assignedPaladin->GetName().c_str(),
+                         assignedPaladin->GetGUID().ToString().c_str(),
+                         blessingSpell.c_str(),
+                         classId);
+            }
         }
     }
 
