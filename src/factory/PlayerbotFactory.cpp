@@ -36,6 +36,7 @@
 #include "SharedDefines.h"
 #include "SpellAuraDefines.h"
 #include "StatsWeightCalculator.h"
+#include "World.h"
 
 #define PLAYER_SKILL_INDEX(x) (PLAYER_SKILL_INFO_1_1 + ((x)*3))
 
@@ -784,6 +785,13 @@ void PlayerbotFactory::InitPet()
                 continue;
 
             if (itr->second.minlevel > bot->GetLevel())
+                continue;
+
+            bool onlyWolf = sPlayerbotAIConfig->hunterWolfPet == 2 ||
+                            (sPlayerbotAIConfig->hunterWolfPet == 1 &&
+                             bot->GetLevel() >= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+            // Wolf only (for higher dps)
+            if (onlyWolf && itr->second.family != CREATURE_FAMILY_WOLF)
                 continue;
 
             ids.push_back(itr->first);
@@ -2185,6 +2193,7 @@ void PlayerbotFactory::InitSkills()
     uint32 skillLevel = bot->GetLevel() < 40 ? 0 : 1;
     uint32 dualWieldLevel = bot->GetLevel() < 20 ? 0 : 1;
     SetRandomSkill(SKILL_DEFENSE);
+    SetRandomSkill(SKILL_UNARMED);
     switch (bot->getClass())
     {
         case CLASS_DRUID:
@@ -2328,8 +2337,8 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
     uint16 step = bot->GetSkillValue(id) ? bot->GetSkillStep(id) : 1;
 
-    if (!bot->HasSkill(id) || value > curValue)
-        bot->SetSkill(id, step, value, maxValue);
+    // if (!bot->HasSkill(id) || value > curValue)
+    bot->SetSkill(id, step, value, maxValue);
 }
 
 void PlayerbotFactory::InitAvailableSpells()
@@ -2475,7 +2484,7 @@ void PlayerbotFactory::InitClassSpells()
         case CLASS_WARLOCK:
             bot->learnSpell(687, true);
             bot->learnSpell(686, true);
-            bot->learnSpell(688, true);  // summon imp
+            bot->learnSpell(688, false);  // summon imp
             if (level >= 10)
             {
                 bot->learnSpell(697, false);  // summon voidwalker
@@ -2806,11 +2815,11 @@ void PlayerbotFactory::InitAmmo()
 
     uint32 entry = sRandomItemMgr->GetAmmo(level, subClass);
     uint32 count = bot->GetItemCount(entry);
-    uint32 maxCount = 6000;
+    uint32 maxCount = bot->getClass() == CLASS_HUNTER ? 6000 : 1000;
 
-    if (count < maxCount / 2)
+    if (count < maxCount)
     {
-        if (Item* newItem = StoreNewItemInInventorySlot(bot, entry, maxCount / 2))
+        if (Item* newItem = StoreNewItemInInventorySlot(bot, entry, maxCount - count))
         {
             newItem->AddToUpdateQueueOf(bot);
         }
@@ -2825,10 +2834,10 @@ uint32 PlayerbotFactory::CalcMixedGearScore(uint32 gs, uint32 quality)
 
 void PlayerbotFactory::InitMounts()
 {
-    uint32 firstmount = 20;
-    uint32 secondmount = 40;
-    uint32 thirdmount = 60;
-    uint32 fourthmount = 70;
+    uint32 firstmount = sPlayerbotAIConfig->useGroundMountAtMinLevel;
+    uint32 secondmount = sPlayerbotAIConfig->useFastGroundMountAtMinLevel;
+    uint32 thirdmount = sPlayerbotAIConfig->useFlyMountAtMinLevel;
+    uint32 fourthmount = sPlayerbotAIConfig->useFastFlyMountAtMinLevel;
 
     if (bot->GetLevel() < firstmount)
         return;
@@ -2867,7 +2876,7 @@ void PlayerbotFactory::InitMounts()
             fast = {23225, 23223, 23222};
             break;
         case RACE_TROLL:
-            slow = {10796, 10799, 8395, 472};
+            slow = {10796, 10799, 8395};
             fast = {23241, 23242, 23243};
             break;
         case RACE_DRAENEI:

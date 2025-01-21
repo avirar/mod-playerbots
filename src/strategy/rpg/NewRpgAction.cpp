@@ -18,8 +18,11 @@
 
 bool TellRpgStatusAction::Execute(Event event)
 {
+    Player* owner = event.getOwner();
+    if (!owner)
+        return false;
     std::string out = botAI->rpgInfo.ToString();
-    botAI->TellMasterNoFacing(out);
+    bot->Whisper(out.c_str(), LANG_UNIVERSAL, owner);
     return true;
 }
 
@@ -44,7 +47,7 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
                 }
             }
             // IDLE -> GO_INNKEEPER
-            else if (bot->GetLevel() >= 6 && roll <= 40)
+            else if (roll <= 45)
             {
                 WorldPosition pos = SelectRandomInnKeeperPos();
                 if (pos != WorldPosition() && bot->GetExactDist(pos) > 50.0f)
@@ -241,11 +244,11 @@ bool NewRpgGoFarAwayPosAction::MoveFarTo(WorldPosition dest)
     const float z = bot->GetPositionZ();
     float rx, ry, rz;
     bool found = false;
-    int attempt = 10;
+    int attempt = 3;
     while (--attempt)
     {
         float angle = bot->GetAngle(&dest);
-        float delta = (rand_norm() - 0.5) * M_PI * 2;
+        float delta = urand(1, 100) <= 75 ? (rand_norm() - 0.5) * M_PI * 0.5 : (rand_norm() - 0.5) * M_PI * 2;
         angle += delta;
         float dis = rand_norm() * pathFinderDis;
         float dx = x + cos(angle) * dis;

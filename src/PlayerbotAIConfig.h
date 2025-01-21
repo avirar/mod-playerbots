@@ -173,12 +173,25 @@ public:
 
     bool randomBotJoinBG;
     bool randomBotAutoJoinBG;
-    uint32 randomBotAutoJoinWarsongBracket;
+
+    std::string randomBotAutoJoinICBrackets;
+    std::string randomBotAutoJoinEYBrackets;
+    std::string randomBotAutoJoinAVBrackets;
+    std::string randomBotAutoJoinABBrackets;
+    std::string randomBotAutoJoinWSBrackets;
+
+    uint32 randomBotAutoJoinBGICCount;
+    uint32 randomBotAutoJoinBGEYCount;
+    uint32 randomBotAutoJoinBGAVCount;
+    uint32 randomBotAutoJoinBGABCount;
+    uint32 randomBotAutoJoinBGWSCount;
+
     uint32 randomBotAutoJoinArenaBracket;
-    uint32 randomBotAutoJoinBGWarsongCount;
+
     uint32 randomBotAutoJoinBGRatedArena2v2Count;
     uint32 randomBotAutoJoinBGRatedArena3v3Count;
     uint32 randomBotAutoJoinBGRatedArena5v5Count;
+
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLowerLevel, randomBotTeleHigherLevel;
     bool logInGroupOnly, logValuesPerTick;
@@ -272,6 +285,8 @@ public:
     bool BotActiveAloneForceWhenIsFriend;
     bool BotActiveAloneForceWhenInGuild;
     bool botActiveAloneSmartScale;
+    uint32 botActiveAloneSmartScaleDiffLimitfloor;
+    uint32 botActiveAloneSmartScaleDiffLimitCeiling;
     uint32 botActiveAloneSmartScaleWhenMinLevel;
     uint32 botActiveAloneSmartScaleWhenMaxLevel;
 
@@ -287,6 +302,7 @@ public:
     std::string autoTrainSpells;
     bool autoPickTalents;
     bool autoUpgradeEquip;
+    int32 hunterWolfPet;
     bool autoLearnTrainerSpells;
     bool autoDoQuests;
     bool enableNewRpgStrategy;
@@ -323,6 +339,11 @@ public:
     int32 addClassAccountPoolSize;
     int32 maintenanceCommand;
     int32 autoGearCommand, autoGearCommandAltBots, autoGearQualityLimit, autoGearScoreLimit;
+
+    uint32 useGroundMountAtMinLevel;
+    uint32 useFastGroundMountAtMinLevel;
+    uint32 useFlyMountAtMinLevel;
+    uint32 useFastFlyMountAtMinLevel;
 
     std::string const GetTimestampStr();
     bool hasLog(std::string const fileName)
