@@ -48,6 +48,7 @@ public:
         creators["baoe"] = &PaladinResistanceStrategyFactoryInternal::baoe;
         creators["barmor"] = &PaladinResistanceStrategyFactoryInternal::barmor;
         creators["bcast"] = &PaladinResistanceStrategyFactoryInternal::bcast;
+        creators["bspeed"] = &PaladinResistanceStrategyFactoryInternal::bspeed;
     }
 
 private:
