@@ -81,26 +81,55 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
-        bool isQuestItemOnly = false;
-
+        bool onlyHasQuestItems = true; // Assume everything is quest-only until proven otherwise
+        bool hasAnyQuestItems = false;
+        
         GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
         for (int i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
         {
             if (!items || i >= items->size())
                 break;
-
-            auto itemId = uint32((*items)[i]);
-
+        
+            uint32 itemId = uint32((*items)[i]);
+            if (!itemId)
+                continue;
+        
+            // Mark that we've encountered at least one quest item
+            hasAnyQuestItems = true;
+        
+            // If the bot needs this item for a quest, allow it to gather and return now.
             if (IsNeededForQuest(bot, itemId))
             {
                 this->guid = lootGUID;
                 return;
             }
-            isQuestItemOnly |= itemId > 0;
+        
+            // Check the item class in item_template or from the DB
+            // to see if it's truly a 'quest item' or not.
+            const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
+            if (!proto)
+                continue;
+        
+            // If itemClass != ITEM_CLASS_QUEST, it is not a quest-only drop
+            if (proto->Class != ITEM_CLASS_QUEST)
+            {
+                onlyHasQuestItems = false;
+            }
         }
-
-        if (isQuestItemOnly)
+        
+        // Now handle the final logic
+        // - if the gameobject has no items at all, or only quest items
+        //   AND the bot doesn't need them => skip
+        if (hasAnyQuestItems && onlyHasQuestItems)
+        {
+            // The node only provides quest items, none of which the bot needs
             return;
+        }
+        
+        // Otherwise, the node is valid for the bot to gather. We set guid = lootGUID if skill checks pass:
+        // e.g. check for SKILL_HERBALISM, skill level, etc.
+        guid = lootGUID;
+
 
         uint32 goId = go->GetEntry();
         uint32 lockId = go->GetGOInfo()->GetLockId();
@@ -236,25 +265,34 @@ bool LootObject::IsLootPossible(Player* bot)
     uint32 skillValue = uint32(bot->GetSkillValue(skillId));
     if (reqSkillValue > skillValue)
         return false;
-
-    if (skillId == SKILL_MINING && !bot->HasItemCount(756, 1) &&
-                                !bot->HasItemCount(778, 1) &&
-                                !bot->HasItemCount(1819, 1) &&
-                                !bot->HasItemCount(1893, 1) &&
-                                !bot->HasItemCount(1959, 1) &&
-                                !bot->HasItemCount(2901, 1) &&
-                                !bot->HasItemCount(9465, 1) &&
-                                !bot->HasItemCount(20723, 1) &&
-                                !bot->HasItemCount(40772, 1) &&
-                                !bot->HasItemCount(40892, 1) &&
-                                !bot->HasItemCount(40893, 1) )
-
-    if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1) &&
-                                  !bot->HasItemCount(40772, 1) &&
-                                  !bot->HasItemCount(40893, 1) &&
-                                  !bot->HasItemCount(12709, 1) &&
-                                  !bot->HasItemCount(19901, 1) )
+    
+    if (skillId == SKILL_MINING &&
+        !bot->HasItemCount(756, 1) &&
+        !bot->HasItemCount(778, 1) &&
+        !bot->HasItemCount(1819, 1) &&
+        !bot->HasItemCount(1893, 1) &&
+        !bot->HasItemCount(1959, 1) &&
+        !bot->HasItemCount(2901, 1) &&
+        !bot->HasItemCount(9465, 1) &&
+        !bot->HasItemCount(20723, 1) &&
+        !bot->HasItemCount(40772, 1) &&
+        !bot->HasItemCount(40892, 1) &&
+        !bot->HasItemCount(40893, 1))
+    {
+        // If the bot is missing a pick for mining
         return false;
+    }
+    
+    if (skillId == SKILL_SKINNING &&
+        !bot->HasItemCount(7005, 1) &&
+        !bot->HasItemCount(40772, 1) &&
+        !bot->HasItemCount(40893, 1) &&
+        !bot->HasItemCount(12709, 1) &&
+        !bot->HasItemCount(19901, 1))
+    {
+        // If the bot is missing a skinner's knife
+        return false;
+    }
 
     return true;
 }
