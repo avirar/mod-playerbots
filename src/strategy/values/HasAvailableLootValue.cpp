@@ -13,6 +13,14 @@
 #include "PlayerbotAIConfig.h"
 // adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
 
+#include "HasAvailableLootValue.h"
+
+#include "LootObjectStack.h"
+#include "Playerbots.h"
+#include "PlayerbotAIConfig.h"
+#include <limits> // for std::numeric_limits
+#include <set>    // To track checked loot objects
+
 bool HasAvailableLootValue::Calculate()
 {
     // Get the available loot stack
@@ -39,7 +47,7 @@ bool HasAvailableLootValue::Calculate()
 
         // Prevent duplicate checks
         if (checkedLoots.find(loot.guid) != checkedLoots.end())
-            break; // We have already checked this loot object
+            break; // Already checked this loot object
 
         checkedLoots.insert(loot.guid); // Mark as checked
 
@@ -48,11 +56,11 @@ bool HasAvailableLootValue::Calculate()
             continue; // Skip invalid objects
 
         // ✅ **Fix: Ensure AI_VALUE2 does not receive an invalid GUID**
-        Unit* target = AI_VALUE(Unit*, loot.guid);
+        Unit* target = AI_VALUE2(Unit*, "nearest unit", loot.guid.GetString());
         if (!target) 
             continue; // Skip if target is invalid or not found
 
-        float dist = AI_VALUE2(float, "distance", loot.guid);
+        float dist = AI_VALUE2(float, "distance", loot.guid.GetString());
 
         // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Null Object**
         if (dist < 0.1f || dist > maxSearchDistance)
