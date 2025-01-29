@@ -13,7 +13,6 @@
 #include "PlayerbotAIConfig.h"
 // adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
 
-
 bool HasAvailableLootValue::Calculate()
 {
     // Get the available loot stack
@@ -48,8 +47,13 @@ bool HasAvailableLootValue::Calculate()
         if (!loot.guid.IsPlayer() && !loot.guid.IsCreature() && !loot.guid.IsGameObject()) 
             continue; // Skip invalid objects
 
+        // ✅ **Fix: Ensure AI_VALUE2 does not receive an invalid GUID**
+        Unit* target = AI_VALUE(Unit*, loot.guid);
+        if (!target) 
+            continue; // Skip if target is invalid or not found
+
         float dist = AI_VALUE2(float, "distance", loot.guid);
-        
+
         // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Null Object**
         if (dist < 0.1f || dist > maxSearchDistance)
             continue; // Ignore objects beyond max search range or bad values
