@@ -144,7 +144,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         
             Loot loot;
-            lootTemplate->Process(loot, *lootTemplate, 1, bot);  // Use correct loot template reference
+            lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);  // Corrected: Pass LootTemplates_Gameobject
         
             if (botDebugEnabled)
             {
@@ -191,7 +191,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         
             Loot refLoot;
-            refLootTemplate->Process(refLoot, *refLootTemplate, 1, bot);  // Use correct loot template reference
+            refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);  // Corrected: Pass LootTemplates_Reference
         
             if (botDebugEnabled)
             {
@@ -227,6 +227,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 }
             }
         }
+
 
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
