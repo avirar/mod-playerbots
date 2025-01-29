@@ -139,7 +139,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         
             if (botDebugEnabled)
             {
-                LOG_INFO("playerbots", "GameObject {} processed {} loot items.", go->GetEntry(), loot.Items.size());
+                LOG_INFO("playerbots", "GameObject {} processed {} loot items.", go->GetEntry(), loot.items.size());
             }
         
             for (LootItem const& item : loot.items)
