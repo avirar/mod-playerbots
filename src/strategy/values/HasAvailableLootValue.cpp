@@ -26,12 +26,11 @@ bool HasAvailableLootValue::Calculate()
     if (loot.guid.IsEmpty()) // Corrected check for an invalid GUID
         return false;
 
-    float adjustedLootDistance = baseLootDistance; // Reset per loot object
+    float adjustedLootDistance = baseLootDistance; // Set default adjusted to base
 
-    // Corrected: Check if the loot is a GameObject
-    if (loot.guid.IsGameObject()) // Using ObjectGuid to detect if it's a GO
+    if (loot.guid.IsGameObject()) // Check if the loot is a GameObject
     {
-        adjustedLootDistance *= 2.0f; // Double the loot distance for GOs
+        adjustedLootDistance *= 5.0f; // Double the loot distance for GOs
     }
 
     return lootStack->CanLoot(adjustedLootDistance); // Use adjusted distance
