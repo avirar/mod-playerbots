@@ -129,8 +129,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             // Create a loot object to hold the processed items
             Loot loot;
         
-            // Process the loot for the given template
-            lootTemplate->Process(loot, LootStore(), 0, bot);
+            // Process the loot using the existing LootTemplates_Gameobject store
+            lootTemplate->Process(loot, LootTemplates_Gameobject, 0, bot);
         
             for (LootItem const& item : loot.Items)
             {
@@ -150,6 +150,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 }
             }
         }
+
         
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
