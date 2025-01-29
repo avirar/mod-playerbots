@@ -53,7 +53,7 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
         return false;
 
     if (!bot->IsWithinLOSInMap(wo))
-        return MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
+        return botAI-MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
 
     if (loot.skillId == SKILL_NONE)
         return false;
@@ -72,9 +72,8 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
         {
             Unit* target = targets.front(); // Get the nearest enemy
 
-            // Command the bot to move closer to the enemy
-            botAI->MoveNear(target, INTERACTION_DISTANCE);
-            return false;
+            // Move closer to the enemy to engage near the node
+            return botAI->MoveNear(target, INTERACTION_DISTANCE);;
         }
     }
 
