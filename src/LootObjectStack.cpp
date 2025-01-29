@@ -126,30 +126,52 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // Then ALSO check the normal loot template:
         if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(go->GetEntry()))
         {
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "Processing loot for GameObject {} (lootGUID: {}).", go->GetEntry(), lootGUID.ToString());
+            }
+        
             // Create a loot object to hold the processed items
             Loot loot;
         
             // Process the loot using the existing LootTemplates_Gameobject store
             lootTemplate->Process(loot, LootTemplates_Gameobject, 0, bot);
         
-            for (LootItem const& item : loot.items)
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "GameObject {} processed {} loot items.", go->GetEntry(), loot.Items.size());
+            }
+        
+            for (LootItem const& item : loot.Items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
                     continue;
         
-                // Check if the item is not a quest item
                 const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
                 if (!proto)
                     continue;
         
+                if (botDebugEnabled)
+                {
+                    LOG_INFO("playerbots", "Bot {} found item ID {} (Class: {}).", bot->GetName(), itemId, proto->Class);
+                }
+        
+                // Check if the item is not a quest item
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
+        
+                    if (botDebugEnabled)
+                    {
+                        LOG_INFO("playerbots", "Item ID {} is NOT a quest item. Allowing loot.", itemId);
+                    }
+        
                     break; // Non-quest loot found; stop further checks
                 }
             }
         }
+
 
         
         if (hasAnyQuestItems && onlyHasQuestItems)
