@@ -15,18 +15,16 @@
 bool HasAvailableLootValue::Calculate()
 {
     LootObjectStack* lootStack = AI_VALUE(LootObjectStack*, "available loot");
-    if (!lootStack || lootStack->IsEmpty())
+    if (!lootStack || lootStack->Size() == 0) // Corrected check for empty stack
         return false;
 
     float adjustedLootDistance = sPlayerbotAIConfig->lootDistance; // Default loot distance
 
-    for (uint32 i = 0; i < lootStack->Size(); ++i)  // Use indexed loop instead of range-based
+    for (uint32 i = 0; i < lootStack->Size(); ++i)  // Use indexed loop
     {
-        LootObject* loot = lootStack->GetObject(i); // Retrieve loot object safely
-        if (!loot)
-            continue;
+        LootObject& loot = lootStack->GetObject(i); // Retrieve loot object safely
 
-        if (loot->IsGameObject()) // Check if the lootable object is a GameObject (like chest/herb/mining node)
+        if (loot.IsGameObject()) // Check if the lootable object is a GameObject (like chest/herb/mining node)
         {
             adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
         }
