@@ -28,7 +28,8 @@ bool HasAvailableLootValue::Calculate()
 
     float adjustedLootDistance = baseLootDistance; // Reset per loot object
 
-    if (loot.IsGameObject()) // Check if the lootable object is a GameObject (chest, herb, mining node)
+    // Corrected: Check if the loot is a GameObject
+    if (loot.guid.IsGameObject()) // Using ObjectGuid to detect if it's a GO
     {
         adjustedLootDistance *= 2.0f; // Double the loot distance for GOs
     }
