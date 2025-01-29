@@ -126,9 +126,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // Then ALSO check the normal loot template:
         if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(go->GetEntry()))
         {
-            // Use a simulated loot object to test what the GameObject would drop
+            // Create a loot object to hold the processed items
             Loot loot;
-            lootTemplate->Process(&loot, false, bot, go);
+        
+            // Process the loot for the given template
+            lootTemplate->Process(loot, LootStore(), 0, bot);
         
             for (LootItem const& item : loot.Items)
             {
