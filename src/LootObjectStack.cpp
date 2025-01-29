@@ -135,7 +135,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         }
         
         // Check the normal loot template
-        if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
+        if (const LootTemplate* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
         {
             if (botDebugEnabled)
             {
@@ -144,7 +144,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         
             Loot loot;
-            lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
+            lootTemplate->Process(loot, *lootTemplate, 1, bot);  // Use correct loot template reference
         
             if (botDebugEnabled)
             {
@@ -152,7 +152,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                          go->GetEntry(), lootEntry, loot.items.size());
             }
         
-            for (LootItem const& item : loot.items)
+            for (const LootItem& item : loot.items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
@@ -182,7 +182,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         }
         
         // Check reference loot templates using the correct loot table
-        if (auto lootTemplate = LootTemplates_Reference.GetLootFor(lootEntry))
+        if (const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(lootEntry))
         {
             if (botDebugEnabled)
             {
@@ -191,7 +191,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         
             Loot refLoot;
-            lootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+            refLootTemplate->Process(refLoot, *refLootTemplate, 1, bot);  // Use correct loot template reference
         
             if (botDebugEnabled)
             {
@@ -199,7 +199,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                          go->GetEntry(), lootEntry, refLoot.items.size());
             }
         
-            for (LootItem const& item : refLoot.items)
+            for (const LootItem& item : refLoot.items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
@@ -228,10 +228,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         }
 
-
-
-
-        
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
             if (botDebugEnabled)
@@ -366,7 +362,11 @@ LootObject::LootObject(LootObject const& other)
 
 bool LootObject::IsLootPossible(Player* bot)
 {
-    if (IsEmpty() || !GetWorldObject(bot))
+    if (IsEmpty() || !bot)
+        return false;
+
+    WorldObject* worldObj = GetWorldObject(bot);  // Store result to avoid multiple calls
+    if (!worldObj)
         return false;
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
@@ -377,7 +377,7 @@ bool LootObject::IsLootPossible(Player* bot)
     if (reqItem && !bot->HasItemCount(reqItem, 1))
         return false;
 
-    if (abs(GetWorldObject(bot)->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE)
+    if (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE)
         return false;
 
     Creature* creature = botAI->GetCreature(guid);
@@ -416,8 +416,7 @@ bool LootObject::IsLootPossible(Player* bot)
         !bot->HasItemCount(40892, 1) &&
         !bot->HasItemCount(40893, 1))
     {
-        // If the bot is missing a pick for mining
-        return false;
+        return false;  // Bot is missing a mining pick
     }
     
     if (skillId == SKILL_SKINNING &&
@@ -427,8 +426,7 @@ bool LootObject::IsLootPossible(Player* bot)
         !bot->HasItemCount(12709, 1) &&
         !bot->HasItemCount(19901, 1))
     {
-        // If the bot is missing a skinner's knife
-        return false;
+        return false;  // Bot is missing a skinning knife
     }
 
     return true;
@@ -472,7 +470,6 @@ LootObject LootObjectStack::GetLoot(float maxDistance)
     std::vector<LootObject> ordered = OrderByDistance(maxDistance);
     return ordered.empty() ? LootObject() : *ordered.begin();
 }
-
 std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
@@ -483,17 +480,24 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
     {
         ObjectGuid guid = i->guid;
         LootObject lootObject(bot, guid);
-        if (!lootObject.IsLootPossible(bot))
+        if (!lootObject.IsLootPossible(bot)) // Ensure loot object is valid
             continue;
 
-        float distance = bot->GetDistance(lootObject.GetWorldObject(bot));
+        WorldObject* worldObj = lootObject.GetWorldObject(bot);
+        if (!worldObj) // Prevent null pointer dereference
+        {
+            continue;
+        }
+
+        float distance = bot->GetDistance(worldObj);
         if (!maxDistance || distance <= maxDistance)
             sortedMap[distance] = lootObject;
     }
 
     std::vector<LootObject> result;
-    for (std::map<float, LootObject>::iterator i = sortedMap.begin(); i != sortedMap.end(); i++)
-        result.push_back(i->second);
+    for (auto& [_, lootObject] : sortedMap)
+        result.push_back(lootObject);
 
     return result;
 }
+
