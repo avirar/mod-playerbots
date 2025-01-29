@@ -22,7 +22,7 @@ bool HasAvailableLootValue::Calculate()
     float baseLootDistance = sPlayerbotAIConfig->lootDistance; // Default loot distance
 
     LootObject loot = lootStack->GetLoot(baseLootDistance); // Retrieve nearest loot object
-    if (!loot.IsValid()) // Ensure the loot object is valid
+    if (!loot.guid.IsValid()) // Check if the loot object has a valid GUID
         return false;
 
     float adjustedLootDistance = baseLootDistance; // Reset per loot object
