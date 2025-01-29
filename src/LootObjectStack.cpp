@@ -132,7 +132,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             // Process the loot using the existing LootTemplates_Gameobject store
             lootTemplate->Process(loot, LootTemplates_Gameobject, 0, bot);
         
-            for (LootItem const& item : loot.Items)
+            for (LootItem const& item : loot.items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
