@@ -47,7 +47,7 @@ bool HasAvailableLootValue::Calculate()
 
         // Prevent duplicate checks
         if (checkedLoots.find(loot.guid) != checkedLoots.end())
-            break; // Already checked this loot object
+            continue; // Skip already checked loot
 
         checkedLoots.insert(loot.guid); // Mark as checked
 
@@ -55,15 +55,23 @@ bool HasAvailableLootValue::Calculate()
         if (!loot.guid.IsPlayer() && !loot.guid.IsCreature() && !loot.guid.IsGameObject()) 
             continue; // Skip invalid objects
 
-        // ✅ **Fix: Ensure AI_VALUE2 does not receive an invalid GUID**
-        Unit* target = AI_VALUE2(Unit*, "nearest unit", loot.guid.ToString());
+        // ✅ **Fix: Use correct AI_VALUE2 lookup based on object type**
+        Unit* target = nullptr;
+        if (loot.guid.IsPlayer() || loot.guid.IsCreature()) 
+        {
+            target = AI_VALUE2(Unit*, "nearest unit", loot.guid.ToString());
+        } 
+        else if (loot.guid.IsGameObject()) 
+        {
+            target = AI_VALUE2(GameObject*, "nearest game object", loot.guid.ToString());
+        }
         if (!target) 
             continue; // Skip if target is invalid or not found
 
         float dist = AI_VALUE2(float, "distance", loot.guid.ToString());
 
-        // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Null Object**
-        if (dist < 0.1f || dist > maxSearchDistance)
+        // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Negative Value**
+        if (dist <= 0.0f || dist > maxSearchDistance)
             continue; // Ignore objects beyond max search range or bad values
 
         // Adjust allowed loot distance based on type
@@ -88,3 +96,4 @@ bool HasAvailableLootValue::Calculate()
     // Return true if a valid loot object was found
     return !bestLoot.guid.IsEmpty();
 }
+
