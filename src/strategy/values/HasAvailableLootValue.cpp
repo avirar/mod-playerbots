@@ -7,19 +7,8 @@
 
 #include "LootObjectStack.h"
 #include "Playerbots.h"
-
-#include "HasAvailableLootValue.h"
-#include "LootObjectStack.h"
 #include "PlayerbotAIConfig.h"
 // adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
-
-#include "HasAvailableLootValue.h"
-
-#include "LootObjectStack.h"
-#include "Playerbots.h"
-#include "PlayerbotAIConfig.h"
-#include <limits> // for std::numeric_limits
-#include <set>    // To track checked loot objects
 
 bool HasAvailableLootValue::Calculate()
 {
@@ -51,26 +40,30 @@ bool HasAvailableLootValue::Calculate()
 
         checkedLoots.insert(loot.guid); // Mark as checked
 
-        // ✅ **Fix: Ensure loot.guid is valid before fetching distance**
+        // ✅ **Ensure loot.guid is valid before fetching distance**
         if (!loot.guid.IsPlayer() && !loot.guid.IsCreature() && !loot.guid.IsGameObject()) 
             continue; // Skip invalid objects
 
-        // ✅ **Fix: Use correct AI_VALUE2 lookup based on object type**
-        Unit* target = nullptr;
+        // ✅ **Use correct AI_VALUE2 lookup based on object type**
+        Unit* targetUnit = nullptr;
+        GameObject* targetGameObject = nullptr;
+
         if (loot.guid.IsPlayer() || loot.guid.IsCreature()) 
         {
-            target = AI_VALUE2(Unit*, "nearest unit", loot.guid.ToString());
+            targetUnit = AI_VALUE2(Unit*, "nearest unit", loot.guid.ToString());
+            if (!targetUnit) 
+                continue; // Skip if target is invalid or not found
         } 
         else if (loot.guid.IsGameObject()) 
         {
-            target = AI_VALUE2(GameObject*, "nearest game object", loot.guid.ToString());
+            targetGameObject = AI_VALUE2(GameObject*, "nearest game object", loot.guid.ToString());
+            if (!targetGameObject) 
+                continue; // Skip if target is invalid or not found
         }
-        if (!target) 
-            continue; // Skip if target is invalid or not found
 
         float dist = AI_VALUE2(float, "distance", loot.guid.ToString());
 
-        // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Negative Value**
+        // ✅ **Ensure Distance Calculation Doesn't Use a Negative Value**
         if (dist <= 0.0f || dist > maxSearchDistance)
             continue; // Ignore objects beyond max search range or bad values
 
@@ -96,4 +89,3 @@ bool HasAvailableLootValue::Calculate()
     // Return true if a valid loot object was found
     return !bestLoot.guid.IsEmpty();
 }
-
