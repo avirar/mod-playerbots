@@ -16,46 +16,50 @@
 
 bool HasAvailableLootValue::Calculate()
 {
+    // Get the available loot stack
     LootObjectStack* lootStack = AI_VALUE(LootObjectStack*, "available loot");
     if (!lootStack)
-        return false;
+        return false; // No loot available
 
-    // 1. Use the normal loot distance and max "search" distance
-    float baseLootDistance = sPlayerbotAIConfig->lootDistance;    // e.g. 15 yards
-    float maxSearchDistance = sPlayerbotAIConfig->sightDistance;  // e.g. 75 yards
+    // Define normal loot distance and max search range
+    float baseLootDistance = sPlayerbotAIConfig->lootDistance;    // Default loot range (e.g., 15 yards)
+    float maxSearchDistance = sPlayerbotAIConfig->sightDistance;  // Max possible search range (e.g., 75 yards)
 
-    // 2. Retrieve all loot objects within your max search distance
-    std::vector<LootObject> possibleLoots = lootStack->OrderByDistance(maxSearchDistance);
-    if (possibleLoots.empty())
-        return false;
+    std::set<ObjectGuid> checkedLoots; // To prevent checking the same loot multiple times
 
-    // 3. We will pick the nearest lootable object
     LootObject bestLoot;
+    bestLoot.guid.Clear(); // Initialize bestLoot to an invalid object
     float bestDist = std::numeric_limits<float>::max();
 
-    // 4. Check each candidate
-    for (auto const& loot : possibleLoots)
+    while (true)
     {
-        if (loot.guid.IsEmpty())
-            continue;
+        // Retrieve the next closest loot object
+        LootObject loot = lootStack->GetLoot(maxSearchDistance);
+        if (loot.guid.IsEmpty()) 
+            break; // No more loot objects found
 
-        // Distance from the player to this loot object
+        // Prevent duplicate checks
+        if (checkedLoots.find(loot.guid) != checkedLoots.end())
+            break; // We have already checked this loot object
+
+        checkedLoots.insert(loot.guid); // Mark as checked
+
+        // Get the distance to this loot object
         float dist = AI_VALUE2(float, "distance", loot.guid);
         if (dist > maxSearchDistance)
-            continue; // It's beyond even our sight distance, so ignore
+            continue; // Ignore objects beyond max search range
 
-        // 5. Figure out if it's a GameObject or a corpse, and set the "allowed" distance
-        float allowedDist = baseLootDistance; // e.g. 15 yards for corpse by default
-        if (loot.guid.IsGameObject())
+        // Adjust allowed loot distance based on type
+        float allowedDist = baseLootDistance; // Default (e.g., 15 yards for corpses)
+        if (loot.guid.IsGameObject()) 
         {
-            // We want to allow a bigger distance (e.g. x5)
-            allowedDist *= 5.0f; // e.g. 75 yards
+            allowedDist *= 5.0f; // Increase distance for GameObjects (e.g., chests, herbs, mining nodes)
         }
 
-        // 6. Check if this loot is actually in range for that type
-        if (dist <= allowedDist)
+        // Check if loot is within allowed range
+        if (dist <= allowedDist + 0.1f) // Use small epsilon for floating-point precision
         {
-            // 7. If it is lootable, see if it is the closest so far
+            // Choose the closest lootable object
             if (dist < bestDist)
             {
                 bestDist = dist;
@@ -64,9 +68,6 @@ bool HasAvailableLootValue::Calculate()
         }
     }
 
-    // 8. Finally, return true if we found any lootable object
-    if (!bestLoot.guid.IsEmpty())
-        return true;
-
-    return false;
+    // Return true if a valid loot object was found
+    return !bestLoot.guid.IsEmpty();
 }
