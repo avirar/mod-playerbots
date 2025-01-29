@@ -20,18 +20,53 @@ bool HasAvailableLootValue::Calculate()
     if (!lootStack)
         return false;
 
-    float baseLootDistance = sPlayerbotAIConfig->lootDistance; // Default loot distance
+    // 1. Use the normal loot distance and max "search" distance
+    float baseLootDistance = sPlayerbotAIConfig->lootDistance;    // e.g. 15 yards
+    float maxSearchDistance = sPlayerbotAIConfig->sightDistance;  // e.g. 75 yards
 
-    LootObject loot = lootStack->GetLoot(baseLootDistance); // Retrieve nearest loot object
-    if (loot.guid.IsEmpty()) // Corrected check for an invalid GUID
+    // 2. Retrieve all loot objects within your max search distance
+    std::vector<LootObject> possibleLoots = lootStack->OrderByDistance(maxSearchDistance);
+    if (possibleLoots.empty())
         return false;
 
-    float adjustedLootDistance = baseLootDistance; // Set default adjusted to base
+    // 3. We will pick the nearest lootable object
+    LootObject bestLoot;
+    float bestDist = std::numeric_limits<float>::max();
 
-    if (loot.guid.IsGameObject()) // Check if the loot is a GameObject
+    // 4. Check each candidate
+    for (auto const& loot : possibleLoots)
     {
-        adjustedLootDistance *= 5.0f; // Double the loot distance for GOs
+        if (loot.guid.IsEmpty())
+            continue;
+
+        // Distance from the player to this loot object
+        float dist = AI_VALUE2(float, "distance", loot.guid);
+        if (dist > maxSearchDistance)
+            continue; // It's beyond even our sight distance, so ignore
+
+        // 5. Figure out if it's a GameObject or a corpse, and set the "allowed" distance
+        float allowedDist = baseLootDistance; // e.g. 15 yards for corpse by default
+        if (loot.guid.IsGameObject())
+        {
+            // We want to allow a bigger distance (e.g. x5)
+            allowedDist *= 5.0f; // e.g. 75 yards
+        }
+
+        // 6. Check if this loot is actually in range for that type
+        if (dist <= allowedDist)
+        {
+            // 7. If it is lootable, see if it is the closest so far
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                bestLoot = loot;
+            }
+        }
     }
 
-    return lootStack->CanLoot(adjustedLootDistance); // Use adjusted distance
+    // 8. Finally, return true if we found any lootable object
+    if (!bestLoot.guid.IsEmpty())
+        return true;
+
+    return false;
 }
