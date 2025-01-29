@@ -82,6 +82,13 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE)
         return false;
 
+    // Dismount if the bot is mounted
+    if (bot->IsMounted())
+    {
+        bot->Dismount();
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay); // Small delay to avoid animation issues
+    }
+
     if (creature && creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
     {
         WorldPacket packet(CMSG_LOOT, 8);
