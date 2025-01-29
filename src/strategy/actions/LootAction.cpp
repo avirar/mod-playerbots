@@ -79,7 +79,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     Creature* creature = botAI->GetCreature(lootObject.guid);
-    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE)
+    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 1.0f)
         return false;
 
     // Dismount if the bot is mounted
@@ -123,7 +123,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
-    if (go && bot->GetDistance(go) > INTERACTION_DISTANCE)
+    if (go && bot->GetDistance(go) > INTERACTION_DISTANCE - 1.0f)
         return false;
 
     if (go && (go->GetGoState() != GO_STATE_READY))
