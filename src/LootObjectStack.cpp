@@ -135,7 +135,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             Loot loot;
         
             // Process the loot using the existing LootTemplates_Gameobject store
-            lootTemplate->Process(loot, LootTemplates_Gameobject, 0, bot);
+            lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
         
             if (botDebugEnabled)
             {
