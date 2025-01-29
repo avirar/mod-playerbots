@@ -425,6 +425,7 @@ bool StoreLootAction::Execute(Event event)
         WorldPacket packet(CMSG_AUTOSTORE_LOOT_ITEM, 1);
         packet << itemindex;
         bot->GetSession()->HandleAutostoreLootItemOpcode(packet);
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
         if (proto->Quality > ITEM_QUALITY_NORMAL && !urand(0, 50) && botAI->HasStrategy("emote", BOT_STATE_NON_COMBAT) && sPlayerbotAIConfig->randomBotEmote)
             botAI->PlayEmote(TEXT_EMOTE_CHEER);
