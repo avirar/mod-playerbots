@@ -123,23 +123,33 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         }
 
-        // Then ALSO check the normal loot template:
-        if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(go->GetEntry()))
+        // Retrieve the correct loot table entry from Data1
+        uint32 lootEntry = go->GetGOInfo()->GetLootId();
+        if (lootEntry == 0)
         {
             if (botDebugEnabled)
             {
-                LOG_INFO("playerbots", "Processing loot for GameObject {} (lootGUID: {}).", go->GetEntry(), lootGUID.ToString());
+                LOG_INFO("playerbots", "GameObject {} has no loot entry in Data1. Skipping.", go->GetEntry());
+            }
+            return;
+        }
+        
+        // Check the normal loot template
+        if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
+        {
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "Processing loot for GameObject {} with lootEntry {} (lootGUID: {}).",
+                         go->GetEntry(), lootEntry, lootGUID.ToString());
             }
         
-            // Create a loot object to hold the processed items
             Loot loot;
-        
-            // Process the loot using the existing LootTemplates_Gameobject store
             lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
         
             if (botDebugEnabled)
             {
-                LOG_INFO("playerbots", "GameObject {} processed {} loot items.", go->GetEntry(), loot.items.size());
+                LOG_INFO("playerbots", "GameObject {} (lootEntry {}) processed {} loot items.",
+                         go->GetEntry(), lootEntry, loot.items.size());
             }
         
             for (LootItem const& item : loot.items)
@@ -157,7 +167,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     LOG_INFO("playerbots", "Bot {} found item ID {} (Class: {}).", bot->GetName(), itemId, proto->Class);
                 }
         
-                // Check if the item is not a quest item
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
@@ -167,28 +176,27 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         LOG_INFO("playerbots", "Item ID {} is NOT a quest item. Allowing loot.", itemId);
                     }
         
-                    break; // Non-quest loot found; stop further checks
+                    break; // Stop further checks if non-quest loot is found
                 }
             }
         }
         
-        // Process reference loot templates
-        if (auto lootTemplate = LootTemplates_Reference.GetLootFor(go->GetEntry()))
+        // Check reference loot templates using the correct loot table
+        if (auto lootTemplate = LootTemplates_Reference.GetLootFor(lootEntry))
         {
             if (botDebugEnabled)
             {
-                LOG_INFO("playerbots", "Processing reference loot for GameObject {} (lootGUID: {}).", go->GetEntry(), lootGUID.ToString());
+                LOG_INFO("playerbots", "Processing reference loot for GameObject {} with lootEntry {} (lootGUID: {}).",
+                         go->GetEntry(), lootEntry, lootGUID.ToString());
             }
         
-            // Create a loot object to hold the processed reference items
             Loot refLoot;
-        
-            // Process the loot using the LootTemplates_Reference store
             lootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
         
             if (botDebugEnabled)
             {
-                LOG_INFO("playerbots", "GameObject {} processed {} reference loot items.", go->GetEntry(), refLoot.items.size());
+                LOG_INFO("playerbots", "GameObject {} (lootEntry {}) processed {} reference loot items.",
+                         go->GetEntry(), lootEntry, refLoot.items.size());
             }
         
             for (LootItem const& item : refLoot.items)
@@ -206,7 +214,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     LOG_INFO("playerbots", "Bot {} found reference item ID {} (Class: {}).", bot->GetName(), itemId, proto->Class);
                 }
         
-                // Check if the item is not a quest item
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
@@ -216,10 +223,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         LOG_INFO("playerbots", "Reference item ID {} is NOT a quest item. Allowing loot.", itemId);
                     }
         
-                    break; // Non-quest loot found; stop further checks
+                    break; // Stop further checks if non-quest loot is found
                 }
             }
         }
+
 
 
 
