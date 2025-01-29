@@ -126,14 +126,17 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // Then ALSO check the normal loot template:
         if (auto lootTemplate = LootTemplates_Gameobject.GetLootFor(go->GetEntry()))
         {
-            // The loot template has all items that can drop from the node (Peacebloom, etc.)
-            for (auto const& lootEntry : lootTemplate->Entries)
+            // Use a simulated loot object to test what the GameObject would drop
+            Loot loot;
+            lootTemplate->Process(&loot, false, bot, go);
+        
+            for (LootItem const& item : loot.Items)
             {
-                uint32 itemId = lootEntry.itemid;
+                uint32 itemId = item.itemid;
                 if (!itemId)
                     continue;
         
-                // If that item is not class=ITEM_CLASS_QUEST, we know it's normal loot
+                // Check if the item is not a quest item
                 const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
                 if (!proto)
                     continue;
@@ -141,7 +144,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
-                    break;  // we already know it’s not purely quest
+                    break; // Non-quest loot found; stop further checks
                 }
             }
         }
