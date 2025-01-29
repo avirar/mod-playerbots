@@ -78,10 +78,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         return;
     }
 
+    bool botDebugEnabled = (botAI->HasStrategy("debug", BotState::BOT_STATE_NON_COMBAT));
+
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
-        LOG_INFO("playerbots", "Found gameobject with lootGUID {} in ready state", lootGUID.ToString());
+        if (botDebugEnabled)
+        {
+            LOG_INFO("playerbots", "Found gameobject {} with lootGUID {} in ready state", go->GetEntry(), lootGUID.ToString());
+        }
 
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
@@ -100,7 +105,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
             if (IsNeededForQuest(bot, itemId))
             {
-                LOG_INFO("playerbots", "Bot needs quest item with ID {}", itemId);
+                if (botDebugEnabled)
+                {
+                    LOG_INFO("playerbots", "Bot needs quest item with ID {}", itemId);
+                }
                 this->guid = lootGUID;
                 return;
             }
@@ -117,7 +125,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
-            LOG_INFO("playerbots", "Gameobject contains only quest items that the bot doesn't need. Skipping.");
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "Gameobject contains only quest items that the bot doesn't need. Skipping.");
+            }
             return;
         }
 
@@ -128,7 +139,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
         {
-            LOG_INFO("playerbots", "No lock information found for gameobject {}", goId);
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "No lock information found for gameobject {}", goId);
+            }
             return;
         }
 
@@ -140,7 +154,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     if (lockInfo->Index[i] > 0)
                     {
                         reqItem = lockInfo->Index[i];
-                        LOG_INFO("playerbots", "Lock requires item with ID {}", reqItem);
+                        if (botDebugEnabled)
+                        {
+                            LOG_INFO("playerbots", "Lock requires item with ID {}", reqItem);
+                        }
                         guid = lootGUID;
                     }
                     break;
@@ -148,20 +165,30 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 case LOCK_KEY_SKILL:
                     if (goId == 13891 || goId == 19535)  // Serpentbloom
                     {
-                        LOG_INFO("playerbots", "Serpentbloom gameobject, setting GUID directly.");
+                        if (botDebugEnabled)
+                        {
+                            LOG_INFO("playerbots", "Serpentbloom gameobject, setting GUID directly.");
+                        }
                         this->guid = lootGUID;
                     }
                     else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
                     {
                         skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                         reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-                        LOG_INFO("playerbots", "Lock requires skill ID {} with value {}", skillId, reqSkillValue);
+
+                        if (botDebugEnabled)
+                        {
+                            LOG_INFO("playerbots", "Lock requires skill ID {} with value {}", skillId, reqSkillValue);
+                        }
                         guid = lootGUID;
                     }
                     break;
 
                 case LOCK_KEY_NONE:
-                    LOG_INFO("playerbots", "No lock required for this gameobject");
+                    if (botDebugEnabled)
+                    {
+                        LOG_INFO("playerbots", "No lock required for this gameobject");
+                    }
                     guid = lootGUID;
                     break;
             }
