@@ -10,8 +10,6 @@
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "LootObjectStack.h"
-#include "MovementActions.h"
-#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
@@ -53,15 +51,15 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
     if (loot.IsEmpty() || !wo)
         return false;
 
-    if (!bot->IsWithinLOSInMap(wo))
-        return botAI->MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
+    // if (!bot->IsWithinLOSInMap(wo))
+    //    return botAI->MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
 
     if (loot.skillId == SKILL_NONE)
         return false;
 
     if (!loot.IsLootPossible(bot))
         return false;
-    
+    /*
     if (sServerFacade->IsDistanceGreaterThan(sServerFacade->GetDistance2d(bot, wo), INTERACTION_DISTANCE))
     {
         std::list<Unit*> targets;
@@ -77,6 +75,7 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
             return MoveNear(target, INTERACTION_DISTANCE);;
         }
     }
+    */
 
 
     return AddAllLootAction::AddLoot(guid);
