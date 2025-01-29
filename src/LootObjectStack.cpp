@@ -171,6 +171,56 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 }
             }
         }
+        
+        // Process reference loot templates
+        if (auto lootTemplate = LootTemplates_Reference.GetLootFor(go->GetEntry()))
+        {
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "Processing reference loot for GameObject {} (lootGUID: {}).", go->GetEntry(), lootGUID.ToString());
+            }
+        
+            // Create a loot object to hold the processed reference items
+            Loot refLoot;
+        
+            // Process the loot using the LootTemplates_Reference store
+            lootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+        
+            if (botDebugEnabled)
+            {
+                LOG_INFO("playerbots", "GameObject {} processed {} reference loot items.", go->GetEntry(), refLoot.items.size());
+            }
+        
+            for (LootItem const& item : refLoot.items)
+            {
+                uint32 itemId = item.itemid;
+                if (!itemId)
+                    continue;
+        
+                const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
+                if (!proto)
+                    continue;
+        
+                if (botDebugEnabled)
+                {
+                    LOG_INFO("playerbots", "Bot {} found reference item ID {} (Class: {}).", bot->GetName(), itemId, proto->Class);
+                }
+        
+                // Check if the item is not a quest item
+                if (proto->Class != ITEM_CLASS_QUEST)
+                {
+                    onlyHasQuestItems = false;
+        
+                    if (botDebugEnabled)
+                    {
+                        LOG_INFO("playerbots", "Reference item ID {} is NOT a quest item. Allowing loot.", itemId);
+                    }
+        
+                    break; // Non-quest loot found; stop further checks
+                }
+            }
+        }
+
 
 
         
