@@ -10,7 +10,7 @@
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "LootObjectStack.h"
-#include "PlayerbotAI.h"
+#include "MovementActions.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
