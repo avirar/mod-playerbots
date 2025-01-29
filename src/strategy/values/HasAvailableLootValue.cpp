@@ -10,6 +10,23 @@
 
 bool HasAvailableLootValue::Calculate()
 {
-    return !AI_VALUE(bool, "can loot") &&
-           AI_VALUE(LootObjectStack*, "available loot")->CanLoot(sPlayerbotAIConfig->lootDistance);
+    LootObjectStack* lootStack = AI_VALUE(LootObjectStack*, "available loot");
+    if (!lootStack)
+        return false;
+
+    float adjustedLootDistance = sPlayerbotAIConfig->lootDistance; // Default loot distance
+
+    for (LootObject loot : lootStack->GetLoot(adjustedLootDistance))
+    {
+        if (loot.IsGameObject()) // Check if the lootable object is a GameObject (like chest/herb/mining node)
+        {
+            adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
+        }
+
+        if (lootStack->CanLoot(adjustedLootDistance))
+        {
+            return true;
+        }
+    }
+    return false;
 }
