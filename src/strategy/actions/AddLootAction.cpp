@@ -11,6 +11,7 @@
 #include "GridNotifiersImpl.h"
 #include "LootObjectStack.h"
 #include "MovementActions.h"
+#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
@@ -53,7 +54,7 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
         return false;
 
     if (!bot->IsWithinLOSInMap(wo))
-        return MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
+        return botAI->MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
 
     if (loot.skillId == SKILL_NONE)
         return false;
