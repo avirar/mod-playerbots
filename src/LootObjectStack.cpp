@@ -81,61 +81,56 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
-        bool onlyHasQuestItems = true; // Assume everything is quest-only until proven otherwise
+        LOG_INFO("playerbots", "Found gameobject with lootGUID {} in ready state", lootGUID.ToString());
+
+        bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
-        
+
         GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
         for (int i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
         {
             if (!items || i >= items->size())
                 break;
-        
+
             uint32 itemId = uint32((*items)[i]);
             if (!itemId)
                 continue;
-        
-            // Mark that we've encountered at least one quest item
+
             hasAnyQuestItems = true;
-        
-            // If the bot needs this item for a quest, allow it to gather and return now.
+
             if (IsNeededForQuest(bot, itemId))
             {
+                LOG_INFO("playerbots", "Bot needs quest item with ID {}", itemId);
                 this->guid = lootGUID;
                 return;
             }
-        
-            // Check the item class in item_template or from the DB
-            // to see if it's truly a 'quest item' or not.
+
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto)
                 continue;
-        
-            // If itemClass != ITEM_CLASS_QUEST, it is not a quest-only drop
+
             if (proto->Class != ITEM_CLASS_QUEST)
             {
                 onlyHasQuestItems = false;
             }
         }
-        
-        // Now handle the final logic
-        // - if the gameobject has no items at all, or only quest items
-        //   AND the bot doesn't need them => skip
+
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
-            // The node only provides quest items, none of which the bot needs
+            LOG_INFO("playerbots", "Gameobject contains only quest items that the bot doesn't need. Skipping.");
             return;
         }
-        
-        // Otherwise, the node is valid for the bot to gather. We set guid = lootGUID if skill checks pass:
-        // e.g. check for SKILL_HERBALISM, skill level, etc.
-        guid = lootGUID;
 
+        guid = lootGUID;
 
         uint32 goId = go->GetEntry();
         uint32 lockId = go->GetGOInfo()->GetLockId();
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
+        {
+            LOG_INFO("playerbots", "No lock information found for gameobject {}", goId);
             return;
+        }
 
         for (uint8 i = 0; i < 8; ++i)
         {
@@ -145,22 +140,28 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     if (lockInfo->Index[i] > 0)
                     {
                         reqItem = lockInfo->Index[i];
+                        LOG_INFO("playerbots", "Lock requires item with ID {}", reqItem);
                         guid = lootGUID;
                     }
                     break;
+
                 case LOCK_KEY_SKILL:
                     if (goId == 13891 || goId == 19535)  // Serpentbloom
                     {
+                        LOG_INFO("playerbots", "Serpentbloom gameobject, setting GUID directly.");
                         this->guid = lootGUID;
                     }
                     else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
                     {
                         skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                         reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
+                        LOG_INFO("playerbots", "Lock requires skill ID {} with value {}", skillId, reqSkillValue);
                         guid = lootGUID;
                     }
                     break;
+
                 case LOCK_KEY_NONE:
+                    LOG_INFO("playerbots", "No lock required for this gameobject");
                     guid = lootGUID;
                     break;
             }
