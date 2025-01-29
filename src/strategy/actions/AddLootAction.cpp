@@ -52,28 +52,31 @@ bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
         return false;
 
     if (!bot->IsWithinLOSInMap(wo))
-        return false;
+        return MoveNear(wo, INTERACTION_DISTANCE); // Movenear within interaction range if LOS blocked;
 
     if (loot.skillId == SKILL_NONE)
         return false;
 
     if (!loot.IsLootPossible(bot))
         return false;
-
+    
     if (sServerFacade->IsDistanceGreaterThan(sServerFacade->GetDistance2d(bot, wo), INTERACTION_DISTANCE))
     {
         std::list<Unit*> targets;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck u_check(bot, bot, sPlayerbotAIConfig->lootDistance);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(bot, targets, u_check);
         Cell::VisitAllObjects(bot, searcher, sPlayerbotAIConfig->lootDistance * 1.5f);
+        
         if (!targets.empty())
         {
-            std::ostringstream out;
-            out << "Kill that " << targets.front()->GetName() << " so I can loot freely";
-            botAI->TellError(out.str());
+            Unit* target = targets.front(); // Get the nearest enemy
+
+            // Command the bot to move closer to the enemy
+            botAI->MoveNear(target, INTERACTION_DISTANCE);
             return false;
         }
     }
+
 
     return AddAllLootAction::AddLoot(guid);
 }
