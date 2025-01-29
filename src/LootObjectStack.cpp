@@ -142,7 +142,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 LOG_INFO("playerbots", "GameObject {} processed {} loot items.", go->GetEntry(), loot.Items.size());
             }
         
-            for (LootItem const& item : loot.Items)
+            for (LootItem const& item : loot.items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
