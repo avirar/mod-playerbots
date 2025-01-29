@@ -13,6 +13,7 @@
 #include "PlayerbotAIConfig.h"
 // adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
 
+
 bool HasAvailableLootValue::Calculate()
 {
     LootObjectStack* lootStack = AI_VALUE(LootObjectStack*, "available loot");
@@ -22,14 +23,14 @@ bool HasAvailableLootValue::Calculate()
     float baseLootDistance = sPlayerbotAIConfig->lootDistance; // Default loot distance
 
     LootObject loot = lootStack->GetLoot(baseLootDistance); // Retrieve nearest loot object
-    if (!loot.guid.IsValid()) // Check if the loot object has a valid GUID
+    if (loot.guid.IsEmpty()) // Corrected check for an invalid GUID
         return false;
 
     float adjustedLootDistance = baseLootDistance; // Reset per loot object
 
     if (loot.IsGameObject()) // Check if the lootable object is a GameObject (chest, herb, mining node)
     {
-        adjustedLootDistance *= 5.0f; // 15 * 5 = 75, SightDistance
+        adjustedLootDistance *= 2.0f; // Double the loot distance for GOs
     }
 
     return lootStack->CanLoot(adjustedLootDistance); // Use adjusted distance
