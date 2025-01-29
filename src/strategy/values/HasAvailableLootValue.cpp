@@ -56,11 +56,11 @@ bool HasAvailableLootValue::Calculate()
             continue; // Skip invalid objects
 
         // ✅ **Fix: Ensure AI_VALUE2 does not receive an invalid GUID**
-        Unit* target = AI_VALUE2(Unit*, "nearest unit", loot.guid.GetString());
+        Unit* target = AI_VALUE2(Unit*, "nearest unit", loot.guid.ToString());
         if (!target) 
             continue; // Skip if target is invalid or not found
 
-        float dist = AI_VALUE2(float, "distance", loot.guid.GetString());
+        float dist = AI_VALUE2(float, "distance", loot.guid.ToString());
 
         // ✅ **Fix: Ensure Distance Calculation Doesn't Use a Null Object**
         if (dist < 0.1f || dist > maxSearchDistance)
