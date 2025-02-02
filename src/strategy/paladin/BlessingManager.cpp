@@ -1,6 +1,7 @@
 #include "PlayerbotAI.h"
 #include "Group.h"
 #include "Player.h"
+#include "Playerbots.h"
 #include <map>
 #include <vector>
 #include <set>
