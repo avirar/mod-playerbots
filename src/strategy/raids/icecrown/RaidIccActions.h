@@ -16,6 +16,7 @@
 
 const Position ICC_LM_TANK_POSITION = Position(-391.0f, 2259.0f, 42.0f);
 const Position ICC_DARK_RECKONING_SAFE_POSITION = Position(-523.33386f, 2211.2031f, 62.823116f);
+const Position ICC_LDW_TANK_POSTION = Position(-589.9879f, 2211.2456f, 49.476616f);
 const Position ICC_ROTTING_FROST_GIANT_TANK_POSITION = Position(-265.90125f, 2209.0605f, 199.97006f);
 const Position ICC_GUNSHIP_TELEPORT_ALLY = Position (-370.04645f, 1993.3536f, 466.65656f);
 const Position ICC_GUNSHIP_TELEPORT_ALLY2 = Position (-392.66208f, 2064.893f, 466.5672f, 5.058196f);
@@ -49,7 +50,8 @@ const Position ICC_SINDRAGOSA_THOMB4_POSITION = Position(4381.819f, 2483.1448f, 
 const Position ICC_SINDRAGOSA_THOMB5_POSITION = Position(4381.819f, 2495.1448f, 203.37704f);       // 12y east from pos2/4
 const Position ICC_SINDRAGOSA_CENTER_POSITION = Position(4408.0464f, 2484.478f, 203.37529f);           
 const Position ICC_SINDRAGOSA_THOMBMB2_POSITION = Position(4382.6113f, 2505.4922f, 203.38197f);       
-const Position ICC_SINDRAGOSA_FBOMB_POSITION = Position(4366.0225f, 2501.569f, 203.38226f);      //old 4400.031f, 2507.0295f, 203.37929f  
+const Position ICC_SINDRAGOSA_FBOMB_POSITION = Position(4400.031f, 2507.0295f, 203.37929f);      //old 4400.031f, 2507.0295f, 203.37929f  //alternate for 10 man  4366.0225f, 2501.569f, 203.38226f 
+const Position ICC_SINDRAGOSA_FBOMB10_POSITION = Position(4366.0225f, 2501.569f, 203.38226f);
 const Position ICC_SINDRAGOSA_LOS2_POSITION = Position(4376.0938f, 2511.103f, 203.38303f); 
 const Position ICC_LICH_KING_ADDS_POSITION = Position(486.63647f, -2095.7915f, 840.857f);
 const Position ICC_LK_FROST1_POSITION = Position(503.96548f, -2183.216f, 840.857f);           
@@ -269,12 +271,19 @@ public:
     bool Execute(Event event) override;
 };
 
-//BPC Vortex
 class IccBpcEmpoweredVortexAction : public MovementAction
 {
 public:
     IccBpcEmpoweredVortexAction(PlayerbotAI* botAI) 
         : MovementAction(botAI, "icc bpc empowered vortex") {}
+    bool Execute(Event event) override;
+};
+
+class IccBpcKineticBombAction : public AttackAction
+{
+public:
+    IccBpcKineticBombAction(PlayerbotAI* botAI) 
+        : AttackAction(botAI, "icc bpc kinetic bomb") {}
     bool Execute(Event event) override;
 };
 
