@@ -223,7 +223,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         if (!paladinAssignedClasses[pal].count(classId))
                         {
                             // Check if this Paladin can cast e.g. "greater blessing of sanctuary"
-                            if (botAI->CanCastSpell(blessingSpell, pal))
+                            if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                             {
                                 assignedPaladin = pal;
                                 paladinAssignedClasses[pal].insert(classId);
@@ -241,7 +241,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                     {
                         if (!paladinAssignedClasses[pal].count(classId))
                         {
-                            if (botAI->CanCastSpell(blessingSpell, pal))
+                            if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                             {
                                 assignedPaladin = pal;
                                 paladinAssignedClasses[pal].insert(classId);
@@ -256,7 +256,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         {
                             if (!paladinAssignedClasses[pal].count(classId))
                             {
-                                if (botAI->CanCastSpell(blessingSpell, pal))
+                                if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                                 {
                                     assignedPaladin = pal;
                                     paladinAssignedClasses[pal].insert(classId);
@@ -272,7 +272,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         {
                             if (!paladinAssignedClasses[pal].count(classId))
                             {
-                                if (botAI->CanCastSpell(blessingSpell, pal))
+                                if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                                 {
                                     assignedPaladin = pal;
                                     paladinAssignedClasses[pal].insert(classId);
@@ -290,7 +290,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                     {
                         if (!paladinAssignedClasses[pal].count(classId))
                         {
-                            if (botAI->CanCastSpell(blessingSpell, pal))
+                            if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                             {
                                 assignedPaladin = pal;
                                 paladinAssignedClasses[pal].insert(classId);
@@ -305,7 +305,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         {
                             if (!paladinAssignedClasses[pal].count(classId))
                             {
-                                if (botAI->CanCastSpell(blessingSpell, pal))
+                                if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                                 {
                                     assignedPaladin = pal;
                                     paladinAssignedClasses[pal].insert(classId);
@@ -320,7 +320,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         {
                             if (!paladinAssignedClasses[pal].count(classId))
                             {
-                                if (botAI->CanCastSpell(blessingSpell, pal))
+                                if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                                 {
                                     assignedPaladin = pal;
                                     paladinAssignedClasses[pal].insert(classId);
@@ -338,7 +338,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                     {
                         if (!paladinAssignedClasses[pal].count(classId))
                         {
-                            if (botAI->CanCastSpell(blessingSpell, pal))
+                            if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                             {
                                 assignedPaladin = pal;
                                 paladinAssignedClasses[pal].insert(classId);
@@ -353,7 +353,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                         {
                             if (!paladinAssignedClasses[pal].count(classId))
                             {
-                                if (botAI->CanCastSpell(blessingSpell, pal))
+                                if (pal->GetPlayerbotAI()->CanCastSpell(blessingSpell, pal))
                                 {
                                     assignedPaladin = pal;
                                     paladinAssignedClasses[pal].insert(classId);
@@ -380,6 +380,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                          assignedPaladin->GetGUID().ToString().c_str(),
                          blessingSpell.c_str(),
                          classId);
+                break;
             }
         }
     }
