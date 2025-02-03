@@ -104,6 +104,6 @@ void PaladinBuffGreaterBlessingStrategy::InitTriggers(std::vector<TriggerNode*>&
     triggers.push_back(new TriggerNode(
         "cast greater blessing",                          // The name you gave to your custom trigger
         NextAction::array(0,
-            new NextAction("cast greater blessing", 10.0f),  // 10.0f = priority, tweak as you like
+            new NextAction("cast greater blessing", 5.0f),  // 10.0f = priority, tweak as you like
             nullptr)));
 }
