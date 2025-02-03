@@ -26,7 +26,7 @@ public:
         creators["cc"] = &PaladinStrategyFactoryInternal::cc;
         creators["bthreat"] = &PaladinStrategyFactoryInternal::bthreat;
         creators["healer dps"] = &PaladinStrategyFactoryInternal::healer_dps;
-        creators["bgreater"] = &PaladinBuffStrategyFactoryInternal::bgreater;
+        creators["bgreater"] = &PaladinStrategyFactoryInternal::bgreater;
     }
 
 private:
