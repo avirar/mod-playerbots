@@ -28,8 +28,12 @@ bool CrusaderAuraTrigger::IsActive()
 bool BlessingTrigger::IsActive()
 {
     Unit* target = GetTarget();
-    return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                                            "blessing of kings", "blessing of sanctuary", nullptr);
+    return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, 
+                                                            "blessing of might", "blessing of wisdom",
+                                                            "blessing of kings", "blessing of sanctuary", 
+                                                            "greater blessing of might", "greater blessing of wisdom",
+                                                            "greater blessing of kings", "greater blessing of sanctuary",
+                                                            nullptr);
 }
 
 bool CastGreaterBlessingTrigger::IsActive()
