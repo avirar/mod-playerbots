@@ -57,7 +57,10 @@ bool CastGreaterBlessingTrigger::IsActive()
         uint8 classId = kv.first;
         GreaterBlessingType gBlessing = kv.second;
 
+        // **Define blessingSpell properly here**
+        std::string blessingSpell = GetGreaterBlessingSpellName(gBlessing);
         std::string auraName;
+
         switch (gBlessing)
         {
             case GREATER_BLESSING_OF_MIGHT: auraName = "greater blessing of might"; break;
@@ -79,15 +82,21 @@ bool CastGreaterBlessingTrigger::IsActive()
 
             // Ensure the member is alive
             if (!member->IsAlive())
+            {
                 continue;
+            }
 
             // Ensure the member is within range (30 yards)
             if (!bot->IsWithinDistInMap(member, 30.0f))
+            {
                 continue;
+            }
 
-            // Now check if our bot (the paladin) can actually cast the blessing on that target.
+            // Check if the bot can actually cast the Greater Blessing on this target
             if (!botAI->CanCastSpell(blessingSpell, member))
+            {
                 continue;
+            }
 
             // If we find a valid target, return true to activate the trigger
             return true;
@@ -97,3 +106,4 @@ bool CastGreaterBlessingTrigger::IsActive()
     // No missing blessings found
     return false;
 }
+
