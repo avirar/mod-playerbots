@@ -41,11 +41,11 @@ bool CastGreaterBlessingTrigger::IsActive()
     Group* group = bot->GetGroup();
     if (!group)
         return false;
-
+/*
     // Require at least 6 total members (the bot plus 5 others), or an explicit raid check
     if (group->GetMembersCount() <= 5 && !group->isRaidGroup())
         return false;
-
+*/
     // Get the list of assigned blessings
     auto assignment = AssignBlessingsForGroup(botAI);
     auto paladinIt = assignment.find(bot);
