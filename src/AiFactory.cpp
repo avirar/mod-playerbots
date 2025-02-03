@@ -530,6 +530,12 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             else
                 nonCombatEngine->addStrategiesNoInit("cure", "bgreater", "dps assist", "bdps", "baoe", nullptr);
 
+            // Minimum level for Greater Blessings
+            if (player->GetLevel() >= 52)
+            {
+                nonCombatEngine->addStrategy("bgreater", false);
+            }
+
             // nonCombatEngine->addStrategiesNoInit("cure", "bgreater", nullptr);
             break;
         case CLASS_HUNTER:
