@@ -85,6 +85,10 @@ bool CastGreaterBlessingTrigger::IsActive()
             if (!bot->IsWithinDistInMap(member, 30.0f))
                 continue;
 
+            // Now check if our bot (the paladin) can actually cast the blessing on that target.
+            if (!botAI->CanCastSpell(blessingSpell, member))
+                continue;
+
             // If we find a valid target, return true to activate the trigger
             return true;
         }
