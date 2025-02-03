@@ -57,16 +57,28 @@ bool CastGreaterBlessingTrigger::IsActive()
         uint8 classId = kv.first;
         GreaterBlessingType gBlessing = kv.second;
 
-        // **Define blessingSpell properly here**
-        std::string blessingSpell = GetGreaterBlessingSpellName(gBlessing);
+        // Manually assign spell names (instead of calling GetGreaterBlessingSpellName)
+        std::string blessingSpell;
         std::string auraName;
 
         switch (gBlessing)
         {
-            case GREATER_BLESSING_OF_MIGHT: auraName = "greater blessing of might"; break;
-            case GREATER_BLESSING_OF_WISDOM: auraName = "greater blessing of wisdom"; break;
-            case GREATER_BLESSING_OF_KINGS: auraName = "greater blessing of kings"; break;
-            case GREATER_BLESSING_OF_SANCTUARY: auraName = "greater blessing of sanctuary"; break;
+            case GREATER_BLESSING_OF_MIGHT:
+                blessingSpell = "greater blessing of might";
+                auraName = "greater blessing of might";
+                break;
+            case GREATER_BLESSING_OF_WISDOM:
+                blessingSpell = "greater blessing of wisdom";
+                auraName = "greater blessing of wisdom";
+                break;
+            case GREATER_BLESSING_OF_KINGS:
+                blessingSpell = "greater blessing of kings";
+                auraName = "greater blessing of kings";
+                break;
+            case GREATER_BLESSING_OF_SANCTUARY:
+                blessingSpell = "greater blessing of sanctuary";
+                auraName = "greater blessing of sanctuary";
+                break;
         }
 
         // Find a target who needs the blessing
@@ -92,7 +104,7 @@ bool CastGreaterBlessingTrigger::IsActive()
                 continue;
             }
 
-            // Check if the bot can actually cast the Greater Blessing on this target
+            // **New: Check if the bot can actually cast the Greater Blessing on this target**
             if (!botAI->CanCastSpell(blessingSpell, member))
             {
                 continue;
@@ -106,4 +118,3 @@ bool CastGreaterBlessingTrigger::IsActive()
     // No missing blessings found
     return false;
 }
-
