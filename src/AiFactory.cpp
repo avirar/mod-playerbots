@@ -515,7 +515,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         case CLASS_PALADIN:
             if (tab == 1)
             {
-                nonCombatEngine->addStrategiesNoInit("bthreat", "tank assist", "barmor", nullptr);
+                nonCombatEngine->addStrategiesNoInit("cure", "bgreater", "bthreat", "tank assist", "barmor", nullptr);
                 if (player->GetLevel() >= 20)
                 {
                     nonCombatEngine->addStrategy("bstats", false);
@@ -526,11 +526,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 }
             }
             else if (tab == 0)
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bmana", "bcast", nullptr);
+                nonCombatEngine->addStrategiesNoInit("cure", "bgreater", "dps assist", "bmana", "bcast", nullptr);
             else
-                nonCombatEngine->addStrategiesNoInit("dps assist", "bdps", "baoe", nullptr);
+                nonCombatEngine->addStrategiesNoInit("cure", "bgreater", "dps assist", "bdps", "baoe", nullptr);
 
-            nonCombatEngine->addStrategiesNoInit("cure", "bgreater", nullptr);
+            // nonCombatEngine->addStrategiesNoInit("cure", "bgreater", nullptr);
             break;
         case CLASS_HUNTER:
             nonCombatEngine->addStrategiesNoInit("bdps", "dps assist", "pet", nullptr);
