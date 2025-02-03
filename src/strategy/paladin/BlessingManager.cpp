@@ -9,17 +9,6 @@
 #include <set>
 #include <algorithm>
 
-/*
-// Minimal Blessing Type enum
-enum GreaterBlessingType
-{
-    GREATER_BLESSING_OF_WISDOM,
-    GREATER_BLESSING_OF_MIGHT,
-    GREATER_BLESSING_OF_KINGS,
-    GREATER_BLESSING_OF_SANCTUARY
-};
-*/
-
 static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
 {
     switch (type)
@@ -35,83 +24,6 @@ static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
     }
     return ""; // Fallback
 }
-
-/*
-
-// A simple structure to hold which blessings each class should get,
-// depending on how many Paladins are in the group.
-static std::map<int, std::map<uint8, std::vector<GreaterBlessingType>>> BlessingTemplates =
-{
-    // 1 Paladin: everyone just gets Kings
-    {
-        1,
-        {
-            { CLASS_WARRIOR,       { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PALADIN,       { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_HUNTER,        { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_ROGUE,         { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PRIEST,        { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DEATH_KNIGHT,  { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_SHAMAN,        { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_MAGE,          { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_WARLOCK,       { GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DRUID,         { GREATER_BLESSING_OF_KINGS } }
-        }
-    },
-    // 2 Paladins: physical classes prefer Might, casters prefer Wisdom, all get Kings
-    {
-        2,
-        {
-            { CLASS_WARRIOR,       { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PALADIN,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_HUNTER,        { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_ROGUE,         { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PRIEST,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DEATH_KNIGHT,  { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_SHAMAN,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_MAGE,          { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_WARLOCK,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DRUID,         { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } },
-        }
-    },
-    // 3 Paladins: might see some Sanctuary usage as well
-    {
-        3,
-        {
-            { CLASS_WARRIOR,       { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PALADIN,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT,     GREATER_BLESSING_OF_KINGS } },
-            { CLASS_HUNTER,        { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_WISDOM,     GREATER_BLESSING_OF_KINGS } },
-            { CLASS_ROGUE,         { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PRIEST,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DEATH_KNIGHT,  { GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_SHAMAN,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT,     GREATER_BLESSING_OF_KINGS } },
-            { CLASS_MAGE,          { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_WARLOCK,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DRUID,         { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT,     GREATER_BLESSING_OF_KINGS } },
-        }
-    },
-    // 4 Paladins: basically everything is on the table
-    {
-        4,
-        {
-            { CLASS_WARRIOR,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PALADIN,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_HUNTER,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_ROGUE,         { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_PRIEST,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DEATH_KNIGHT,  { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_SHAMAN,        { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_MAGE,          { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_WARLOCK,       { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } },
-            { CLASS_DRUID,         { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_MIGHT, GREATER_BLESSING_OF_SANCTUARY, GREATER_BLESSING_OF_KINGS } }
-        }
-    }
-};
-
-*/
-
-
-
 
 // -------------------------------------------------------------------------
 // Simple helper to check if a Paladin has the required talent for the blessing
@@ -156,8 +68,18 @@ static std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI)
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (member && member->IsInWorld() && member->getClass() == CLASS_PALADIN)
-            paladins.push_back(member);
+        if (!member || !member->IsInWorld() || member->getClass() != CLASS_PALADIN)
+            continue;
+
+        // Ignore dead paladins
+        if (!member->IsAlive())
+            continue;
+
+        // Ignore paladins that are out of range (>30 yards)
+        if (!bot->IsWithinDistInMap(member, 30.0f))
+            continue;
+
+        paladins.push_back(member);
     }
 
     return paladins;
