@@ -102,7 +102,7 @@ inline static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBless
 static bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType blessing);
 
 // Returns all Paladins (Player*) in the same group/raid as the bot.
-std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI);
+static std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI);
 
 // Main function to assign blessings for the current group/raid.
 // Returns a map of (Paladin pointer) -> (classId -> assigned blessing).
