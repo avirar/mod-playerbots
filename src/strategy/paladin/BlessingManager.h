@@ -99,7 +99,7 @@ inline static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBless
 // -----------------------------------------------------------------------------
 
 // Checks if a Paladin has the talent required to cast the given blessing.
-bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType blessing);
+static bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType blessing);
 
 // Returns all Paladins (Player*) in the same group/raid as the bot.
 std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI);
