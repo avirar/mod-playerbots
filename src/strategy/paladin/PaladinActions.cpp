@@ -240,7 +240,7 @@ bool CastGreaterBlessingAction::Execute(Event event)
                 continue;
             }
 
-            // **New: Check if the bot can actually cast the Greater Blessing on this target**
+            // Check if the bot can actually cast the Greater Blessing on this target
             if (!botAI->CanCastSpell(spellName, member))
             {
                 continue;
@@ -248,10 +248,8 @@ bool CastGreaterBlessingAction::Execute(Event event)
 
             // Found a valid target
             botAI->TellMaster("Casting " + spellName + " on " + member->GetName());
-            bool casted = botAI->CastSpell(spellName, member);
 
-            // Return true as soon as we cast a single Greater Blessing
-            return casted;
+            return botAI->CastSpell(spellName, member);
         }
     }
 
