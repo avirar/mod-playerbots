@@ -175,7 +175,7 @@ bool CastCancelDivineSacrificeAction::isUseful()
 bool CastGreaterBlessingAction::Execute(Event event)
 {
     Player* bot = botAI->GetBot();
-    if (!bot)
+    if (!bot || !bot->IsAlive())
         return false;
 
     Group* group = bot->GetGroup();
@@ -226,14 +226,26 @@ bool CastGreaterBlessingAction::Execute(Event event)
             if (!member || !member->IsInWorld())
                 continue;
 
-            if (member->getClass() == classId && !botAI->HasAura(auraName, member))
+            // Skip if the member already has the blessing
+            if (member->getClass() != classId || botAI->HasAura(auraName, member))
+                continue;
+
+            if (!member->IsAlive())
             {
-                // Found a target
-                botAI->TellMaster("Casting " + spellName + " on " + member->GetName());
-                bool casted = botAI->CastSpell(spellName, member);
-                // Return true as soon as we cast a single Greater Blessing
-                return casted;
+                continue;
             }
+
+            if (!bot->IsWithinDistInMap(member, 30.0f))
+            {
+                continue;
+            }
+
+            // Found a valid target
+            botAI->TellMaster("Casting " + spellName + " on " + member->GetName());
+            bool casted = botAI->CastSpell(spellName, member);
+
+            // Return true as soon as we cast a single Greater Blessing
+            return casted;
         }
     }
 
