@@ -173,229 +173,90 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
 {
     std::map<Player*, std::map<uint8, GreaterBlessingType>> results;
 
-    // Get relevant Paladins
+    // Get all paladins in the group.
     std::vector<Player*> paladins = GetPaladinsInGroup(botAI);
-    int numPaladins = std::min(static_cast<int>(paladins.size()), 4);
-    if (numPaladins == 0)
-    {
-        // No paladins -> empty map
+    if (paladins.empty())
         return results;
-    }
 
-    // Find which template we’ll use
+    // Sort paladins alphabetically for a stable order.
+    std::sort(paladins.begin(), paladins.end(), [](Player* a, Player* b) {
+        return a->GetName() < b->GetName();
+    });
+
+    // Use the number of paladins (capped at 4) to choose the correct template.
+    int numPaladins = std::min(static_cast<int>(paladins.size()), 4);
     auto templIt = BlessingTemplates.find(numPaladins);
     if (templIt == BlessingTemplates.end())
-    {
-        // If no valid template, return empty
         return results;
-    }
-
     auto& classToBlessings = templIt->second;
 
-    // Categorize Paladins by which improved blessings they can cast
-    std::vector<Player*> paladinsWithSanctuary;
-    std::vector<Player*> paladinsWithMight;
-    std::vector<Player*> paladinsWithWisdom;
-    std::vector<Player*> paladinsWithoutImprovements; // can only cast Kings or unimproved Might/Wisdom
-
-    for (Player* pal : paladins)
+    // For each target class (for example, CLASS_WARRIOR, CLASS_HUNTER, etc.)
+    for (auto& [classId, blessingVector] : classToBlessings)
     {
-        bool canSanctuary = PaladinHasTalentForBlessing(pal, GREATER_BLESSING_OF_SANCTUARY);
-        bool canMight     = PaladinHasTalentForBlessing(pal, GREATER_BLESSING_OF_MIGHT);
-        bool canWisdom    = PaladinHasTalentForBlessing(pal, GREATER_BLESSING_OF_WISDOM);
+        // This set will track which paladins have already been assigned a blessing for this class.
+        std::set<Player*> assignedPaladins;
 
-        if (canSanctuary) paladinsWithSanctuary.push_back(pal);
-        if (canMight)     paladinsWithMight.push_back(pal);
-        if (canWisdom)    paladinsWithWisdom.push_back(pal);
-
-        if (!canSanctuary && !canMight && !canWisdom)
-            paladinsWithoutImprovements.push_back(pal);
-    }
-
-    std::map<Player*, std::set<uint8>> paladinAssignedClasses;
-    // Keep track of which class each Paladin has already assigned
-    // so we don't assign multiple blessings from the same Paladin to the same class.
-    for (auto& [classId, blessingsVec] : classToBlessings)
-    {
-        for (GreaterBlessingType b : blessingsVec)
+        // For each blessing option in the order given by the template:
+        for (GreaterBlessingType blessing : blessingVector)
         {
-            Player* assignedPaladin = nullptr;
-    
-            // We'll need the spell name for a quick check
-            std::string blessingSpell = GetGreaterBlessingSpellName(b);
-    
-            switch (b)
+            // Build a list of candidate paladins not yet assigned a blessing for this class.
+            std::vector<Player*> candidates;
+            for (Player* pal : paladins)
             {
-                case GREATER_BLESSING_OF_SANCTUARY:
+                if (assignedPaladins.find(pal) != assignedPaladins.end())
+                    continue; // already assigned for this class
+
+                // For Sanctuary, the paladin must have the talent.
+                if (blessing == GREATER_BLESSING_OF_SANCTUARY && !PaladinHasTalentForBlessing(pal, blessing))
+                    continue;
+
+                // For Might and Wisdom, include every candidate first.
+                candidates.push_back(pal);
+            }
+
+            // For improved blessings (Might or Wisdom), prioritize those with the improved talent.
+            if (blessing == GREATER_BLESSING_OF_MIGHT || blessing == GREATER_BLESSING_OF_WISDOM)
+            {
+                bool anyHasImproved = false;
+                for (Player* candidate : candidates)
                 {
-                    // Try paladins with Sanctuary talent
-                    for (Player* pal : paladinsWithSanctuary)
+                    if (PaladinHasTalentForBlessing(candidate, blessing))
                     {
-                        if (!paladinAssignedClasses[pal].count(classId))
-                        {
-                            // Check if this Paladin can cast e.g. "greater blessing of sanctuary"
-                            if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                            {
-                                assignedPaladin = pal;
-                                paladinAssignedClasses[pal].insert(classId);
-                                break;
-                            }
-                            // else skip this pal; continue searching
-                        }
+                        anyHasImproved = true;
+                        break;
                     }
-                    break;
                 }
-                case GREATER_BLESSING_OF_MIGHT:
+                if (anyHasImproved)
                 {
-                    // First try improved Might paladins
-                    for (Player* pal : paladinsWithMight)
+                    std::vector<Player*> filtered;
+                    for (Player* candidate : candidates)
                     {
-                        if (!paladinAssignedClasses[pal].count(classId))
-                        {
-                            if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                            {
-                                assignedPaladin = pal;
-                                paladinAssignedClasses[pal].insert(classId);
-                                break;
-                            }
-                        }
+                        if (PaladinHasTalentForBlessing(candidate, blessing))
+                            filtered.push_back(candidate);
                     }
-                    // Otherwise try "no improvements"
-                    if (!assignedPaladin)
-                    {
-                        for (Player* pal : paladinsWithoutImprovements)
-                        {
-                            if (!paladinAssignedClasses[pal].count(classId))
-                            {
-                                if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                                {
-                                    assignedPaladin = pal;
-                                    paladinAssignedClasses[pal].insert(classId);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    // Lastly pick ANY paladin if still unassigned
-                    if (!assignedPaladin)
-                    {
-                        for (Player* pal : paladins)
-                        {
-                            if (!paladinAssignedClasses[pal].count(classId))
-                            {
-                                if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                                {
-                                    assignedPaladin = pal;
-                                    paladinAssignedClasses[pal].insert(classId);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-                case GREATER_BLESSING_OF_WISDOM:
-                {
-                    // Same pattern as Might, but for Wisdom
-                    for (Player* pal : paladinsWithWisdom)
-                    {
-                        if (!paladinAssignedClasses[pal].count(classId))
-                        {
-                            if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                            {
-                                assignedPaladin = pal;
-                                paladinAssignedClasses[pal].insert(classId);
-                                break;
-                            }
-                        }
-                    }
-                    // Then paladinsWithoutImprovements, etc.
-                    if (!assignedPaladin)
-                    {
-                        for (Player* pal : paladinsWithoutImprovements)
-                        {
-                            if (!paladinAssignedClasses[pal].count(classId))
-                            {
-                                if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                                {
-                                    assignedPaladin = pal;
-                                    paladinAssignedClasses[pal].insert(classId);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!assignedPaladin)
-                    {
-                        for (Player* pal : paladins)
-                        {
-                            if (!paladinAssignedClasses[pal].count(classId))
-                            {
-                                if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                                {
-                                    assignedPaladin = pal;
-                                    paladinAssignedClasses[pal].insert(classId);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-                case GREATER_BLESSING_OF_KINGS:
-                {
-                    // Try no-improvement paladins first if you want them to cast kings
-                    for (Player* pal : paladinsWithoutImprovements)
-                    {
-                        if (!paladinAssignedClasses[pal].count(classId))
-                        {
-                            if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                            {
-                                assignedPaladin = pal;
-                                paladinAssignedClasses[pal].insert(classId);
-                                break;
-                            }
-                        }
-                    }
-                    // Then any paladin
-                    if (!assignedPaladin)
-                    {
-                        for (Player* pal : paladins)
-                        {
-                            if (!paladinAssignedClasses[pal].count(classId))
-                            {
-                                if (GET_PLAYERBOT_AI(pal) && GET_PLAYERBOT_AI(pal)->CanCastSpell(blessingSpell, pal))
-                                {
-                                    assignedPaladin = pal;
-                                    paladinAssignedClasses[pal].insert(classId);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    break;
+                    candidates = filtered;
                 }
             }
-    
-            // If we found a Paladin who can cast it (and assigned them), 
-            // record it in 'results'
-            if (assignedPaladin)
+
+            // If we have any candidates, assign the blessing to the first one.
+            if (!candidates.empty())
             {
-                results[assignedPaladin][classId] = b;
-            
-                std::string blessingSpell = GetGreaterBlessingSpellName(b);
-            
+                // The candidates list remains sorted (since paladins was sorted).
+                Player* chosenPal = candidates.front();
+                results[chosenPal][classId] = blessing;
+                assignedPaladins.insert(chosenPal);
+
+                std::string blessingSpell = GetGreaterBlessingSpellName(blessing);
                 LOG_INFO("playerbots",
                          "AssignBlessingsForGroup: Paladin '{}' <{}> is assigned '{}' for classId {}",
-                         assignedPaladin->GetName().c_str(),
-                         assignedPaladin->GetGUID().ToString().c_str(),
-                         blessingSpell.c_str(),
+                         chosenPal->GetName(),
+                         chosenPal->GetGUID().ToString(),
+                         blessingSpell,
                          classId);
-                break;
             }
         }
     }
 
-
-    return results; // (Paladin -> (classId -> Blessing)) for the entire group
+    return results;
 }
+
