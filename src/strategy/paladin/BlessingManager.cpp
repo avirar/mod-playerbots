@@ -1,3 +1,5 @@
+#include "BlessingManager.h"
+
 #include "PlayerbotAI.h"
 #include "Group.h"
 #include "Player.h"
