@@ -7,6 +7,7 @@
 #include <set>
 #include <algorithm>
 
+/*
 // Minimal Blessing Type enum
 enum GreaterBlessingType
 {
@@ -15,7 +16,7 @@ enum GreaterBlessingType
     GREATER_BLESSING_OF_KINGS,
     GREATER_BLESSING_OF_SANCTUARY
 };
-
+*/
 
 static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
 {
@@ -33,9 +34,11 @@ static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
     return ""; // Fallback
 }
 
+/*
+
 // A simple structure to hold which blessings each class should get,
 // depending on how many Paladins are in the group.
-static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBlessingType>>> BlessingTemplates =
+static std::map<int, std::map<uint8, std::vector<GreaterBlessingType>>> BlessingTemplates =
 {
     // 1 Paladin: everyone just gets Kings
     {
@@ -102,6 +105,11 @@ static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBlessingType
         }
     }
 };
+
+*/
+
+
+
 
 // -------------------------------------------------------------------------
 // Simple helper to check if a Paladin has the required talent for the blessing
