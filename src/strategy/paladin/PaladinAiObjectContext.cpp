@@ -26,6 +26,7 @@ public:
         creators["cc"] = &PaladinStrategyFactoryInternal::cc;
         creators["bthreat"] = &PaladinStrategyFactoryInternal::bthreat;
         creators["healer dps"] = &PaladinStrategyFactoryInternal::healer_dps;
+        creators["bgreater"] = &PaladinBuffStrategyFactoryInternal::bgreater;
     }
 
 private:
@@ -35,6 +36,7 @@ private:
     static Strategy* cc(PlayerbotAI* botAI) { return new PaladinCcStrategy(botAI); }
     static Strategy* bthreat(PlayerbotAI* botAI) { return new PaladinBuffThreatStrategy(botAI); }
     static Strategy* healer_dps(PlayerbotAI* botAI) { return new PaladinHealerDpsStrategy(botAI); }
+    static Strategy* bgreater(PlayerbotAI* botAI) { return new PaladinBuffGreaterBlessingStrategy(botAI); }
 };
 
 class PaladinResistanceStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -70,7 +72,6 @@ public:
         creators["bmana"] = &PaladinBuffStrategyFactoryInternal::bmana;
         creators["bdps"] = &PaladinBuffStrategyFactoryInternal::bdps;
         creators["bstats"] = &PaladinBuffStrategyFactoryInternal::bstats;
-        creators["bgreater"] = &PaladinBuffStrategyFactoryInternal::bgreater;
     }
 
 private:
@@ -78,8 +79,6 @@ private:
     static Strategy* bmana(PlayerbotAI* botAI) { return new PaladinBuffManaStrategy(botAI); }
     static Strategy* bdps(PlayerbotAI* botAI) { return new PaladinBuffDpsStrategy(botAI); }
     static Strategy* bstats(PlayerbotAI* botAI) { return new PaladinBuffStatsStrategy(botAI); }
-
-    static Strategy* bgreater(PlayerbotAI* botAI) { return new PaladinBuffGreaterBlessingStrategy(botAI); }
 };
 
 class PaladinCombatStrategyFactoryInternal : public NamedObjectContext<Strategy>
