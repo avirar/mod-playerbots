@@ -25,6 +25,23 @@ static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
     return ""; // Fallback
 }
 
+static uint32 GetGreaterBlessingSpellId(GreaterBlessingType blessing)
+{
+    switch (blessing)
+    {
+        case GREATER_BLESSING_OF_MIGHT:
+            return 25782; // first rank greater blessing of might
+        case GREATER_BLESSING_OF_WISDOM:
+            return 25894; // first rank greater blessing of wisdom
+        case GREATER_BLESSING_OF_SANCTUARY:
+            return 25899; // first rank greater blessing of sanctuary
+        case GREATER_BLESSING_OF_KINGS:
+            return 25898; // first rank greater blessing of kings
+        default:
+            return 0;
+    }
+}
+
 // -------------------------------------------------------------------------
 // Simple helper to check if a Paladin has the required talent for the blessing
 // (In your environment, replace HasTalent(SpellID, Spec) with the actual logic.)
@@ -112,7 +129,7 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
         return results;
     auto& classToBlessings = templIt->second;
 
-    // For each target class (for example, CLASS_WARRIOR, CLASS_HUNTER, etc.)
+    // For each target class (e.g. CLASS_WARRIOR, CLASS_HUNTER, etc.)
     for (auto& [classId, blessingVector] : classToBlessings)
     {
         // This set will track which paladins have already been assigned a blessing for this class.
@@ -128,11 +145,16 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                 if (assignedPaladins.find(pal) != assignedPaladins.end())
                     continue; // already assigned for this class
 
-                // For Sanctuary, the paladin must have the talent.
+                // For Sanctuary, the paladin must have the Sanctuary talent.
                 if (blessing == GREATER_BLESSING_OF_SANCTUARY && !PaladinHasTalentForBlessing(pal, blessing))
                     continue;
+                
+                // Check that the paladin actually knows this spell (first rank).
+                uint32 basicSpellId = GetGreaterBlessingSpellId(blessing);
+                if (!pal->HasSpell(basicSpellId))
+                    continue;
 
-                // For Might and Wisdom, include every candidate first.
+                // For Might and Wisdom, candidates are added regardless (we'll later filter by improved talent if available).
                 candidates.push_back(pal);
             }
 
@@ -170,10 +192,10 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
 
                 std::string blessingSpell = GetGreaterBlessingSpellName(blessing);
                 LOG_INFO("playerbots",
-                         "AssignBlessingsForGroup: Paladin '{}' <{}> is assigned '{}' for classId {}",
-                         chosenPal->GetName(),
-                         chosenPal->GetGUID().ToString(),
-                         blessingSpell,
+                         "AssignBlessingsForGroup: Paladin '%s' <%s> is assigned '%s' for classId %d",
+                         chosenPal->GetName().c_str(),
+                         chosenPal->GetGUID().ToString().c_str(),
+                         blessingSpell.c_str(),
                          classId);
             }
         }
@@ -181,4 +203,3 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
 
     return results;
 }
-
