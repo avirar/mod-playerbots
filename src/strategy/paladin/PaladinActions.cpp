@@ -16,7 +16,7 @@
 
 inline std::string const GetActualBlessingOfMight(Unit* target)
 {
-    Group* group = bot->GetGroup();
+    Group* group = botAI->GetBot()->GetGroup();
     
     if (!target->ToPlayer())
     {
