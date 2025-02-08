@@ -14,7 +14,7 @@ class PlayerbotAI;
 
 // disc
 BUFF_ACTION(CastPowerWordFortitudeAction, "power word: fortitude");
-BUFF_PARTY_ACTION(CastPowerWordFortitudeOnPartyAction, "power word: fortitude");
+// BUFF_PARTY_ACTION(CastPowerWordFortitudeOnPartyAction, "power word: fortitude");
 BUFF_PARTY_ACTION(CastPrayerOfFortitudeOnPartyAction, "prayer of fortitude");
 BUFF_ACTION(CastPowerWordShieldAction, "power word: shield");
 
@@ -27,7 +27,7 @@ SPELL_ACTION_U(CastManaBurnAction, "mana burn",
                AI_VALUE2(uint8, "mana", "self target") < 50 && AI_VALUE2(uint8, "mana", "current target") >= 20);
 BUFF_ACTION(CastLevitateAction, "levitate");
 BUFF_ACTION(CastDivineSpiritAction, "divine spirit");
-BUFF_PARTY_ACTION(CastDivineSpiritOnPartyAction, "divine spirit");
+// BUFF_PARTY_ACTION(CastDivineSpiritOnPartyAction, "divine spirit");
 BUFF_PARTY_ACTION(CastPrayerOfSpiritOnPartyAction, "prayer of spirit");
 // disc 2.4.3
 SPELL_ACTION(CastMassDispelAction, "mass dispel");
@@ -208,6 +208,20 @@ class CastGuardianSpiritOnPartyAction : public HealPartyMemberAction
 {
 public:
     CastGuardianSpiritOnPartyAction(PlayerbotAI* ai) : HealPartyMemberAction(ai, "guardian spirit", 40.0f, HealingManaEfficiency::MEDIUM) {}
+};
+
+class CastPowerWordFortitudeOnPartyAction : public BuffOnPartyAction
+{
+public:
+    CastPowerWordFortitudeOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "power word: fortitude") {}
+    bool Execute(Event event) override;
+};
+
+class CastDivineSpiritOnPartyAction : public BuffOnPartyAction
+{
+public:
+    CastDivineSpiritOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "divine spirit") {}
+    bool Execute(Event event) override;
 };
 
 #endif
