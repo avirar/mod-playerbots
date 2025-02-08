@@ -100,6 +100,15 @@ bool CastBlessingOfMightAction::Execute(Event event)
     if (!target)
         return false;
 
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
     return botAI->CastSpell(GetActualBlessingOfMight(target), target);
 }
 
@@ -114,6 +123,15 @@ bool CastBlessingOfMightOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
     return botAI->CastSpell(GetActualBlessingOfMight(target), target);
 }
 
@@ -122,6 +140,15 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
     Unit* target = GetTarget();
     if (!target)
         return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
 
     return botAI->CastSpell(GetActualBlessingOfWisdom(target), target);
 }
@@ -136,6 +163,15 @@ bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
     Unit* target = GetTarget();
     if (!target)
         return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
 
     return botAI->CastSpell(GetActualBlessingOfWisdom(target), target);
 }
