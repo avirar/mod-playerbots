@@ -527,13 +527,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategiesNoInit("cure", "bthreat", "tank assist", "barmor", nullptr);
                 if (player->GetLevel() >= 20)
                 {
-                    // Minimum level for Greater Blessing of Kings/Sanctuary
-                    if (player->GetLevel() >= 60)
-                    {
-                        nonCombatEngine->addStrategy("bgreater", false);
-                    }
-                    else
-                        nonCombatEngine->addStrategy("bstats", false);
+                    nonCombatEngine->addStrategy("bstats", false);
                 }
                 else
                 {
@@ -543,22 +537,17 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             else if (tab == 0)
             {
                 nonCombatEngine->addStrategiesNoInit("cure", "dps assist", "bmana", "bcast", nullptr);
-                // Minimum level for Greater Blessing of Wisdom
-                if (player->GetLevel() >= 54)
-                {
-                    nonCombatEngine->addStrategy("bgreater", false);
-                }
             }
             else
             {
                 nonCombatEngine->addStrategiesNoInit("cure", "dps assist", "bdps", "baoe", nullptr);
-                // Minimum level for Greater Blessing of Might
-                if (player->GetLevel() >= 52)
-                {
-                    nonCombatEngine->addStrategy("bgreater", false);
-                }
             }
 
+            // Minimum level to start using Greater Blessings
+            if (player->GetLevel() >= 52)
+            {
+                nonCombatEngine->addStrategy("bgreater", false);
+            }
 
             // nonCombatEngine->addStrategiesNoInit("cure", "bgreater", nullptr);
             break;
