@@ -42,6 +42,10 @@ bool CastGreaterBlessingTrigger::IsActive()
     if (!bot || !bot->IsAlive())
         return false;
 
+    // Check if the bot has the required item (Symbol of Kings)
+    if (!bot->HasItemCount(21177, 1))
+        return false;
+
     Group* group = bot->GetGroup();
     if (!group)
         return false;
