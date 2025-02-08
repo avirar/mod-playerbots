@@ -191,12 +191,14 @@ std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(
                 assignedPaladins.insert(chosenPal);
 
                 std::string blessingSpell = GetGreaterBlessingSpellName(blessing);
+                /*
                 LOG_INFO("playerbots",
                          "AssignBlessingsForGroup: Paladin '{}' <{}> is assigned '{}' for classId {}",
                          chosenPal->GetName(),
                          chosenPal->GetGUID().ToString(),
                          GetGreaterBlessingSpellName(blessing),
                          classId);
+                */
             }
         }
     }
