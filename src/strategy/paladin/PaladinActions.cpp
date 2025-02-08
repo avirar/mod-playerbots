@@ -14,9 +14,15 @@
 #include "Playerbots.h"
 #include "SharedDefines.h"
 
-inline std::string const GetActualBlessingOfMight(Unit* target)
+inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* botAI)
 {
-    Group* group = botAI->GetBot()->GetGroup();
+    Player* bot = botAI->GetBot();
+    if (!bot)
+    {
+        return "";
+    }
+
+    Group* group = bot->GetGroup();
     
     if (!target->ToPlayer())
     {
@@ -76,8 +82,15 @@ inline std::string const GetActualBlessingOfMight(Unit* target)
     return "blessing of might";
 }
 
-inline std::string const GetActualBlessingOfWisdom(Unit* target)
+inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* botAI)
 {
+    Player* bot = botAI->GetBot();
+    
+    if (!bot)
+    {
+        return "";
+    }
+
     Group* group = bot->GetGroup();
     
     if (!target->ToPlayer())
@@ -159,7 +172,7 @@ bool CastBlessingOfMightAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfMight(target), target);
+    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
 }
 
 Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
@@ -182,7 +195,7 @@ bool CastBlessingOfMightOnPartyAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfMight(target), target);
+    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
 }
 
 bool CastBlessingOfWisdomAction::Execute(Event event)
@@ -200,7 +213,7 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfWisdom(target), target);
+    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
 }
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
@@ -223,7 +236,7 @@ bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfWisdom(target), target);
+    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
 }
 
 bool CastSealSpellAction::isUseful() { return AI_VALUE2(bool, "combat", "self target"); }
