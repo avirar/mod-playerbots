@@ -96,6 +96,8 @@ class CastMarkOfTheWildOnPartyAction : public BuffOnPartyAction
 {
 public:
     CastMarkOfTheWildOnPartyAction(PlayerbotAI* botAI) : BuffOnPartyAction(botAI, "mark of the wild") {}
+
+    bool Execute(Event event) override;
 };
 
 class CastSurvivalInstinctsAction : public CastBuffSpellAction
