@@ -33,7 +33,7 @@ bool BlessingTrigger::IsActive()
                                                             "blessing of kings", "blessing of sanctuary", 
                                                             "greater blessing of might", "greater blessing of wisdom",
                                                             "greater blessing of kings", "greater blessing of sanctuary",
-                                                            nullptr, true);
+                                                            nullptr/*, true*/);
 }
 
 bool CastGreaterBlessingTrigger::IsActive()
