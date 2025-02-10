@@ -152,6 +152,144 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
     return "blessing of wisdom";
 }
 
+inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    if (!bot)
+    {
+        return "";
+    }
+
+    Group* group = bot->GetGroup();
+    
+    if (!target->ToPlayer())
+    {
+        if (group && bot->HasSpell(25898))
+        {
+            return "greater blessing of kings";
+        }
+        return "blessing of kings";
+    }
+    int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
+    switch (target->getClass())
+    {
+        case CLASS_DRUID:
+            if (tab == DRUID_TAB_FERAL)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_PALADIN:
+            if (tab == PALADIN_TAB_PROTECTION)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_WARRIOR
+            if (tab == WARRIOR_TAB_PROTECTION)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_DEATH_KNIGHT
+            if (tab == DEATH_KNIGHT_TAB_BLOOD)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+    }
+    if (group && bot->HasSpell(25898))
+    {
+        return "greater blessing of kings";
+    }
+    return "blessing of kings";
+}
+
+inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    if (!bot)
+    {
+        return "";
+    }
+
+    Group* group = bot->GetGroup();
+    
+    if (!target->ToPlayer())
+    {
+        if (group && bot->HasSpell(25899))
+        {
+            return "greater blessing of sanctuary";
+        }
+        return "blessing of sanctuary";
+    }
+    int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
+    switch (target->getClass())
+    {
+        case CLASS_DRUID:
+            if (tab == DRUID_TAB_FERAL)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_PALADIN:
+            if (tab == PALADIN_TAB_PROTECTION)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_WARRIOR
+            if (tab == WARRIOR_TAB_PROTECTION)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+        case CLASS_DEATH_KNIGHT
+            if (tab == DEATH_KNIGHT_TAB_BLOOD)
+            {
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                {
+                    return "greater blessing of sanctuary";
+                }
+                return "blessing of sanctuary";
+            }
+            break;
+    }
+    if (group && bot->HasSpell(25898))
+    {
+        return "greater blessing of kings";
+    }
+    return "blessing of kings";
+}
+
 Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
 {
     return context->GetValue<Unit*>("party member without aura", name);
@@ -213,7 +351,7 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
+    return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
 }
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
@@ -236,7 +374,7 @@ bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
         return false;
     }
 
-    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
+    return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
 }
 
 bool CastSealSpellAction::isUseful() { return AI_VALUE2(bool, "combat", "self target"); }
@@ -354,4 +492,86 @@ bool CastGreaterBlessingAction::Execute(Event event)
 
     // If we reach here, we didn't find any missing aura
     return false;
+}
+
+bool CastBlessingOfKingsAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
+    return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
+}
+
+Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
+{
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary,blessing of kings");
+}
+
+bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
+    return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
+}
+
+bool CastBlessingOfSanctuaryAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
+    return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
+}
+
+Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
+{
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary,blessing of kings");
+}
+
+bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
+                                    "blessing of kings", "blessing of sanctuary", 
+                                    "greater blessing of might", "greater blessing of wisdom",
+                                    "greater blessing of kings", "greater blessing of sanctuary",
+                                    nullptr, true))
+    {
+        return false;
+    }
+
+    return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
 }
