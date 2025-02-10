@@ -204,7 +204,7 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
             }
             break;
         case CLASS_DEATH_KNIGHT:
-            if (tab == DEATH_KNIGHT_TAB_BLOOD)
+            if (tab == DEATHKNIGHT_TAB_BLOOD)
             {
                 if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
@@ -273,7 +273,7 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
             }
             break;
         case CLASS_DEATH_KNIGHT:
-            if (tab == DEATH_KNIGHT_TAB_BLOOD)
+            if (tab == DEATHKNIGHT_TAB_BLOOD)
             {
                 if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
