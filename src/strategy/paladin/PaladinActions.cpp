@@ -176,7 +176,7 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -186,7 +186,7 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -196,7 +196,7 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
         case CLASS_WARRIOR
             if (tab == WARRIOR_TAB_PROTECTION)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -206,7 +206,7 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
         case CLASS_DEATH_KNIGHT
             if (tab == DEATH_KNIGHT_TAB_BLOOD)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -245,7 +245,7 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -255,7 +255,7 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -265,7 +265,7 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
         case CLASS_WARRIOR
             if (tab == WARRIOR_TAB_PROTECTION)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
@@ -275,7 +275,7 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
         case CLASS_DEATH_KNIGHT
             if (tab == DEATH_KNIGHT_TAB_BLOOD)
             {
-                if (group && bot->HasSpell(25899) && botAI->IsTank(target))
+                if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
                 {
                     return "greater blessing of sanctuary";
                 }
