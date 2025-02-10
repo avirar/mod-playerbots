@@ -301,13 +301,21 @@ bool CastBlessingOfMightAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
@@ -324,13 +332,21 @@ bool CastBlessingOfMightOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
@@ -342,13 +358,21 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
@@ -365,13 +389,21 @@ bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
@@ -500,13 +532,21 @@ bool CastBlessingOfKingsAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
@@ -523,13 +563,21 @@ bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
@@ -541,13 +589,21 @@ bool CastBlessingOfSanctuaryAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
@@ -564,13 +620,21 @@ bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "blessing of wisdom",
-                                    "blessing of kings", "blessing of sanctuary", 
-                                    "greater blessing of might", "greater blessing of wisdom",
-                                    "greater blessing of kings", "greater blessing of sanctuary",
-                                    nullptr, true))
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
     {
-        return false;
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
     }
 
     return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
