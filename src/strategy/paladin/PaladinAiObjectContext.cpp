@@ -73,7 +73,6 @@ public:
         creators["bhealth"] = &PaladinBuffStrategyFactoryInternal::bhealth;
         creators["bmana"] = &PaladinBuffStrategyFactoryInternal::bmana;
         creators["bdps"] = &PaladinBuffStrategyFactoryInternal::bdps;
-        creators["bstats"] = &PaladinBuffStrategyFactoryInternal::bstats;
     }
 
 private:
