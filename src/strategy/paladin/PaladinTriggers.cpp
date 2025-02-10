@@ -43,7 +43,7 @@ bool BlessingTrigger::IsActive()
     // Check if the target is missing the specific blessing the bot wants to cast
     for (const auto& blessing : blessings)
     {
-        if (!botAI->HasAura(target, blessing, true))  // Only check bot's blessings
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
         {
             return SpellTrigger::IsActive();
         }
