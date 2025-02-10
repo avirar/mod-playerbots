@@ -550,6 +550,7 @@ Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
 
 bool CastBlessingOfMightAction::Execute(Event event)
 {
+    botAI->TellMaster("Starting CastBlessingOfMightAction");
     Unit* target = GetTarget();
     if (!target)
         return false;
@@ -581,6 +582,7 @@ Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
 {
+    botAI->TellMaster("Starting CastBlessingOfMightOnPartyAction");
     Unit* target = GetTarget();
     if (!target)
         return false;
