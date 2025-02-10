@@ -527,7 +527,14 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategiesNoInit("cure", "bthreat", "tank assist", "barmor", nullptr);
                 if (player->GetLevel() >= 20)
                 {
-                    nonCombatEngine->addStrategy("bstats", false);
+                    if (bot->HasTalent(20911,bot->GetActiveSpec())) // Sanctuary talent
+                    {
+                        nonCombatEngine->addStrategy("bhealth", false);
+                    }
+                    else
+                    {
+                        nonCombatEngine->addStrategy("bstats", false);
+                    }
                 }
                 else
                 {
