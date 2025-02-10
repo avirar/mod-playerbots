@@ -38,8 +38,8 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
         case CLASS_MAGE:
         case CLASS_PRIEST:
         case CLASS_WARLOCK:
-            if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom")) && 
-                (!botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings"))
+            if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom") && 
+                !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings"))
             {
                 if (group && bot->HasSpell(25898))
                 {
