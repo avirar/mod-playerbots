@@ -539,7 +539,7 @@ bool CastBlessingOfMightAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
+    return context->GetValue<Unit*>("party member without aura", "blessing of might");
 }
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
@@ -596,7 +596,7 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
+    return context->GetValue<Unit*>("party member without aura", "blessing of wisdom");
 }
 
 bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
@@ -770,7 +770,7 @@ bool CastBlessingOfKingsAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary,blessing of kings");
+    return context->GetValue<Unit*>("party member without aura", "blessing of kings");
 }
 
 bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
@@ -827,7 +827,7 @@ bool CastBlessingOfSanctuaryAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary,blessing of kings");
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
 }
 
 bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
