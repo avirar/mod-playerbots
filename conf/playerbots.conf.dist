@@ -480,6 +480,9 @@ AiPlayerbot.BotCheats = "taxi"
 # ID of spell to open lootable chests
 AiPlayerbot.OpenGoSpell = 6477
 
+# Allow Paladin bots to use greater blessings at earliest opportunity (lvl 52) or at lvl 60
+AiPlayerbot.AllowGreaterBlessingsBeforeLevel60 = 1
+
 #
 #
 #
