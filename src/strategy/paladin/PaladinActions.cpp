@@ -26,7 +26,16 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
     
     if (!target->ToPlayer())
     {
-        if (group && bot->HasSpell(25782))
+        if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
+            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
+        {
+            if (group && bot->HasSpell(25898))
+            {
+                return "greater blessing of kings";
+            }
+            return "blessing of kings";
+        }
+        else if (group && bot->HasSpell(25782))
         {
             return "greater blessing of might";
         }
@@ -140,7 +149,16 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
     
     if (!target->ToPlayer())
     {
-        if (group && bot->HasSpell(25894))
+        if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
+            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
+        {
+            if (group && bot->HasSpell(25898))
+            {
+                return "greater blessing of kings";
+            }
+            return "blessing of kings";
+        }
+        else if (group && bot->HasSpell(25894))
         {
             return "greater blessing of wisdom";
         }
@@ -254,7 +272,16 @@ inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* bot
     
     if (!target->ToPlayer())
     {
-        if (group && bot->HasSpell(25898))
+        if (botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr) && 
+            !botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr))
+        {
+            if (group && bot->HasSpell(25898))
+            {
+                return "greater blessing of sanctuary";
+            }
+            return "blessing of sanctuary";
+        }
+        else if (group && bot->HasSpell(25898))
         {
             return "greater blessing of kings";
         }
@@ -368,7 +395,16 @@ inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI*
     
     if (!target->ToPlayer())
     {
-        if (group && bot->HasSpell(25899))
+        if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
+            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
+        {
+            if (group && bot->HasSpell(25898))
+            {
+                return "greater blessing of kings";
+            }
+            return "blessing of kings";
+        }
+        else if (group && bot->HasSpell(25899))
         {
             return "greater blessing of sanctuary";
         }
