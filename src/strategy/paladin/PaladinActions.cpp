@@ -23,22 +23,28 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
     }
 
     Group* group = bot->GetGroup();
-    
+    botAI->TellMaster("Started GetActualBlessingOfMight function");
     if (!target->ToPlayer())
     {
+        botAI->TellMaster("No conversion ToPlayer");
         if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
             !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
         {
+            botAI->TellMaster("Might already on target, casting Kings");
+            /*
             if (group && bot->HasSpell(25898))
             {
                 return "greater blessing of kings";
             }
+            */
             return "blessing of kings";
         }
+        /*
         else if (group && bot->HasSpell(25782))
         {
             return "greater blessing of might";
         }
+        */
         return "blessing of might";
     }
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
@@ -50,16 +56,21 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
             if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
                 !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
             {
+                botAI->TellMaster("Wisdom already on target, casting Kings");
+                /*
                 if (group && bot->HasSpell(25898))
                 {
                     return "greater blessing of kings";
                 }
+                */
                 return "blessing of kings";
             }
+            /*
             else if (group && bot->HasSpell(25894))
             {
                 return "greater blessing of wisdom";
             }
+            */
             return "blessing of wisdom";
             break;
         case CLASS_SHAMAN:
@@ -68,16 +79,21 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                 if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
+                    botAI->TellMaster("Wisdom already on target, casting Kings");
+                    /*
                     if (group && bot->HasSpell(25898))
                     {
                         return "greater blessing of kings";
                     }
-                return "blessing of kings";
+                    */
+                    return "blessing of kings";
                 }
+                /*
                 else if (group && bot->HasSpell(25894))
                 {
                     return "greater blessing of wisdom";
                 }
+                */
                 return "blessing of wisdom";
             }
             break;
@@ -87,16 +103,21 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                 if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
+                    botAI->TellMaster("Wisdom already on target, casting Kings");
+                    /*
                     if (group && bot->HasSpell(25898))
                     {
                         return "greater blessing of kings";
                     }
-                return "blessing of kings";
+                    */
+                    return "blessing of kings";
                 }
+                /*
                 else if (group && bot->HasSpell(25894))
                 {
                     return "greater blessing of wisdom";
                 }
+                */
                 return "blessing of wisdom";
             }
             break;
@@ -106,16 +127,21 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                 if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
+                    botAI->TellMaster("Wisdom already on target, casting Kings");
+                    /*
                     if (group && bot->HasSpell(25898))
                     {
                         return "greater blessing of kings";
                     }
-                return "blessing of kings";
+                    */
+                    return "blessing of kings";
                 }
+                /*
                 else if (group && bot->HasSpell(25894))
                 {
                     return "greater blessing of wisdom";
                 }
+                */
                 return "blessing of wisdom";
             }
             break;
@@ -123,16 +149,21 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
     if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
         !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
     {
+        botAI->TellMaster("Might already on target, casting Kings");
+        /*
         if (group && bot->HasSpell(25898))
         {
             return "greater blessing of kings";
         }
-    return "blessing of kings";
+        */
+        return "blessing of kings";
     }
+    /*
     else if (group && bot->HasSpell(25782))
     {
         return "greater blessing of might";
     }
+    */
     return "blessing of might";
 }
 
