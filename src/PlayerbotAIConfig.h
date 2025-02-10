@@ -73,6 +73,8 @@ public:
     bool tellWhenAvoidAoe;
 
     uint32 openGoSpell;
+    bool allowGreaterBlessingsBeforeLevel60;
+
     bool randomBotAutologin;
     bool botAutologin;
     std::string randomBotMapsAsString;
