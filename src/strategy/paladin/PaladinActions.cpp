@@ -45,6 +45,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
             return "greater blessing of might";
         }
         */
+        botAI->TellMaster("Casting Might");
         return "blessing of might";
     }
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
@@ -71,6 +72,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                 return "greater blessing of wisdom";
             }
             */
+            botAI->TellMaster("Casting Wisdom on Warlock/Priest/Mage");
             return "blessing of wisdom";
             break;
         case CLASS_SHAMAN:
@@ -94,6 +96,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                     return "greater blessing of wisdom";
                 }
                 */
+                botAI->TellMaster("Casting Wisdom on Ele/Resto Shaman");
                 return "blessing of wisdom";
             }
             break;
@@ -118,6 +121,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                     return "greater blessing of wisdom";
                 }
                 */
+                botAI->TellMaster("Casting Wisdom on Resto/Boomy Druid");
                 return "blessing of wisdom";
             }
             break;
@@ -142,6 +146,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
                     return "greater blessing of wisdom";
                 }
                 */
+                botAI->TellMaster("Casting Wisdom on Holy Paladin");
                 return "blessing of wisdom";
             }
             break;
@@ -164,6 +169,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
         return "greater blessing of might";
     }
     */
+    botAI->TellMaster("Casting Might");
     return "blessing of might";
 }
 
