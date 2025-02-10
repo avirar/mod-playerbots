@@ -582,10 +582,13 @@ Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
 {
-    botAI->TellMaster("Starting CastBlessingOfMightOnPartyAction");
+    botAI->TellMaster("Started CastBlessingOfMightOnPartyAction");
     Unit* target = GetTarget();
     if (!target)
+    {
+        botAI->TellMaster("Invalid/No target");
         return false;
+    }
 
     // Define all possible blessings
     std::vector<std::string> blessings = {
@@ -600,6 +603,9 @@ bool CastBlessingOfMightOnPartyAction::Execute(Event event)
     {
         if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
         {
+            std::ostringstream str;
+            str << target->GetName() << " already has " << blessing << " from me.";
+            botAI->TellMaster(str.str());
             return false; // If any blessing from this Paladin exists, don't cast another
         }
     }
