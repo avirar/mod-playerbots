@@ -40,18 +40,126 @@ bool BlessingTrigger::IsActive()
         "greater blessing of kings", "greater blessing of sanctuary"
     };
 
-    // Check if the target is missing the specific blessing the bot wants to cast
+    // Check if this Paladin has already applied *any* blessing to the target
     for (const auto& blessing : blessings)
     {
         if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
         {
-            return SpellTrigger::IsActive();
+            return false; // If any blessing from this Paladin exists, don't cast another
         }
     }
 
-    return false;
+    // If no blessings from this Paladin were found, cast one
+    return SpellTrigger::IsActive();
 }
 
+bool BlessingOfKingsOnPartyTrigger::IsActive()
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
+    }
+
+    // If no blessings from this Paladin were found, cast one
+    return SpellTrigger::IsActive();
+}
+
+bool BlessingOfWisdomOnPartyTrigger::IsActive()
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
+    }
+
+    // If no blessings from this Paladin were found, cast one
+    return SpellTrigger::IsActive();
+}
+
+bool BlessingOfMightOnPartyTrigger::IsActive()
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
+    }
+
+    // If no blessings from this Paladin were found, cast one
+    return SpellTrigger::IsActive();
+}
+
+bool BlessingOnPartyTrigger::IsActive()
+{
+    Unit* target = GetTarget();
+    if (!target)
+        return false;
+
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if this Paladin has already applied *any* blessing to the target
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+        {
+            return false; // If any blessing from this Paladin exists, don't cast another
+        }
+    }
+
+    // If no blessings from this Paladin were found, cast one
+    return SpellTrigger::IsActive();
+}
 
 bool CastGreaterBlessingTrigger::IsActive()
 {
