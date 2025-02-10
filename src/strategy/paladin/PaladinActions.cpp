@@ -872,7 +872,7 @@ bool CastBlessingOfSanctuaryAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary,blessing of kings");
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
 }
 
 bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
