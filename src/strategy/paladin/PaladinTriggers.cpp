@@ -28,13 +28,29 @@ bool CrusaderAuraTrigger::IsActive()
 bool BlessingTrigger::IsActive()
 {
     Unit* target = GetTarget();
-    return SpellTrigger::IsActive() && !botAI->HasAnyAuraOf(target, 
-                                                            "blessing of might", "blessing of wisdom",
-                                                            "blessing of kings", "blessing of sanctuary", 
-                                                            "greater blessing of might", "greater blessing of wisdom",
-                                                            "greater blessing of kings", "greater blessing of sanctuary",
-                                                            nullptr/*, true*/);
+    if (!target)
+        return false;
+
+    // Define all possible blessings
+    std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    // Check if the target is missing the specific blessing the bot wants to cast
+    for (const auto& blessing : blessings)
+    {
+        if (!botAI->HasAura(target, blessing, true))  // Only check bot's blessings
+        {
+            return SpellTrigger::IsActive();
+        }
+    }
+
+    return false;
 }
+
 
 bool CastGreaterBlessingTrigger::IsActive()
 {
