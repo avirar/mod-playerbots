@@ -525,16 +525,10 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             if (tab == 1)
             {
                 nonCombatEngine->addStrategiesNoInit("cure", "bthreat", "tank assist", "barmor", nullptr);
-                if (player->GetLevel() >= 20)
+                
+                if (player->HasTalent(20911,player->GetActiveSpec())) // Sanctuary talent
                 {
-                    if (player->HasTalent(20911,player->GetActiveSpec())) // Sanctuary talent
-                    {
-                        nonCombatEngine->addStrategy("bhealth", false);
-                    }
-                    else
-                    {
-                        nonCombatEngine->addStrategy("bstats", false);
-                    }
+                    nonCombatEngine->addStrategy("bhealth", false);
                 }
                 else
                 {
@@ -550,6 +544,11 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategiesNoInit("cure", "dps assist", "bdps", "baoe", nullptr);
             }
             
+            if (player->GetLevel() >= 20)
+            {
+                nonCombatEngine->addStrategy("bstats", false);
+            }
+
             // Minimum level to start using Greater Blessings as defined in config file
             if ((sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 && player->GetLevel() >= 52) || player->GetLevel() >= 60)
             {
