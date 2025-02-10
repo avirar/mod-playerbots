@@ -77,7 +77,8 @@ class BlessingOnPartyTrigger : public BuffOnPartyTrigger
 {
 public:
     BlessingOnPartyTrigger(PlayerbotAI* botAI)
-        : BuffOnPartyTrigger(botAI, "blessing of kings,blessing of might,blessing of wisdom", 2 * 2000) { }
+        : BuffOnPartyTrigger(botAI, "blessing of kings,blessing of might,
+                                        blessing of wisdom,blessing of sanctuary", 2 * 2000) { }
 
     bool IsActive() override;
 };
@@ -213,7 +214,8 @@ public:
 class BlessingOfKingsOnPartyTrigger : public BuffOnPartyTrigger
 {
 public:
-    BlessingOfKingsOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "blessing of kings", 2 * 2000) {}
+    BlessingOfKingsOnPartyTrigger(PlayerbotAI* botAI)
+        : BuffOnPartyTrigger(botAI, "blessing of kings,blessing of sanctuary", 2 * 2000) {}
 
     bool IsActive() override;
 };
