@@ -309,6 +309,7 @@ bool PlayerbotAIConfig::Initialize()
     randomBotTeleLowerLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotTeleLowerLevel", 3);
     randomBotTeleHigherLevel = sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotTeleHigherLevel", 1);
     openGoSpell = sConfigMgr->GetOption<int32>("AiPlayerbot.OpenGoSpell", 6477);
+    allowGreaterBlessingsBeforeLevel60 = sConfigMgr->GetOption<bool>("AiPlayerbot.AllowGreaterBlessingsBeforeLevel60", true);
 
     randomChangeMultiplier = sConfigMgr->GetOption<float>("AiPlayerbot.RandomChangeMultiplier", 1.0);
 
