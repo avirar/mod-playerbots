@@ -577,7 +577,7 @@ bool CastBlessingOfMightAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of might");
+    return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
 }
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
@@ -641,7 +641,7 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of wisdom");
+    return context->GetValue<Unit*>("party member without aura", "blessing of wisdom,blessing of might");
 }
 
 bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
