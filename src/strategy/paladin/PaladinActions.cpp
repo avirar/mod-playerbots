@@ -111,7 +111,7 @@ inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* bot
             }
             break;
     }
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", nullptr) && 
+    if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
         !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
     {
         if (group && bot->HasSpell(25898))
@@ -153,7 +153,7 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
         case CLASS_ROGUE:
         case CLASS_DEATH_KNIGHT:
         case CLASS_HUNTER:
-            if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", nullptr) && 
+            if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
                 !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
             {
                 if (group && bot->HasSpell(25898))
@@ -171,7 +171,7 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
         case CLASS_SHAMAN:
             if (tab == SHAMAN_TAB_ENHANCEMENT)
             {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", nullptr) && 
+                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
                     if (group && bot->HasSpell(25898))
@@ -190,7 +190,7 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
             {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", nullptr) && 
+                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
                     if (group && bot->HasSpell(25898))
@@ -209,7 +209,7 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION || tab == PALADIN_TAB_RETRIBUTION)
             {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", nullptr) && 
+                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
                     !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
                 {
                     if (group && bot->HasSpell(25898))
