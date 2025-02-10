@@ -7,6 +7,7 @@
 #include "BlessingManager.h"
 
 #include "PaladinActions.h"
+#include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 
