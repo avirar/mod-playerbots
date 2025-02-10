@@ -542,9 +542,9 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             {
                 nonCombatEngine->addStrategiesNoInit("cure", "dps assist", "bdps", "baoe", nullptr);
             }
-
-            // Minimum level to start using Greater Blessings
-            if (player->GetLevel() >= 52)
+            
+            // Minimum level to start using Greater Blessings as defined in config file
+            if ((sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 && player->GetLevel() >= 52) || player->GetLevel() >= 60)
             {
                 nonCombatEngine->addStrategy("bgreater", false);
             }
