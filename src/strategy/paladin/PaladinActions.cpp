@@ -435,23 +435,28 @@ bool CastGreaterBlessingAction::Execute(Event event)
         // Convert the blessing to a spell name
         std::string spellName;
         std::string auraName; 
+
         switch (gBlessing)
         {
             case GREATER_BLESSING_OF_MIGHT:
                 spellName = "greater blessing of might";
                 auraName  = "greater blessing of might";
+                minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_WISDOM:
                 spellName = "greater blessing of wisdom";
                 auraName  = "greater blessing of wisdom";
+                minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_KINGS:
                 spellName = "greater blessing of kings";
                 auraName  = "greater blessing of kings";
+                minLevelRequired = 50;
                 break;
             case GREATER_BLESSING_OF_SANCTUARY:
                 spellName = "greater blessing of sanctuary";
                 auraName  = "greater blessing of sanctuary";
+                minLevelRequired = 50;
                 break;
         }
 
@@ -466,11 +471,17 @@ bool CastGreaterBlessingAction::Execute(Event event)
             if (member->getClass() != classId || botAI->HasAura(auraName, member))
                 continue;
 
+            // Skip if dead
             if (!member->IsAlive())
             {
                 continue;
             }
+            
+            // Check if the member meets the level requirement of the spell
+            if (member->GetLevel() < minLevelRequired)
+                continue;
 
+            // Check if the member is within casting range
             if (!bot->IsWithinDistInMap(member, 30.0f))
             {
                 continue;
