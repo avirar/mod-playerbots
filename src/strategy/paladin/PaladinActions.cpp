@@ -62,7 +62,8 @@ inline std::string SelectBlessingForCaster(Unit* target, PlayerbotAI* botAI)
     if (ShouldCastKings(target, botAI, blessingWisdom))
     {
         // Minimum level requirement to receive Greater Blessing of Kings is 50
-        if (bot->HasSpell(25898) && target->GetLevel() >= 50)
+        if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+            && bot->HasSpell(25898) && target->GetLevel() >= 50)
         {
             return "greater blessing of kings";
         }
@@ -70,7 +71,8 @@ inline std::string SelectBlessingForCaster(Unit* target, PlayerbotAI* botAI)
     }
 
     // Minimum level requirement to receive Greater Blessing of Wisdom is 44
-    if (bot->HasSpell(25894) && target->GetLevel() >= 44)
+    if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60
+        && bot->HasSpell(25894) && target->GetLevel() >= 44)
     {
         return "greater blessing of wisdom";
     }
@@ -83,7 +85,8 @@ inline std::string SelectBlessingForMelee(Unit* target, PlayerbotAI* botAI)
     if (ShouldCastKings(target, botAI, blessingMight))
     {
         // Minimum level requirement to receive Greater Blessing of Kings is 50
-        if (bot->HasSpell(25898) && target->GetLevel() >= 50)
+        if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+            && bot->HasSpell(25898) && target->GetLevel() >= 50)
         {
             return "greater blessing of kings";
         }
@@ -91,7 +94,8 @@ inline std::string SelectBlessingForMelee(Unit* target, PlayerbotAI* botAI)
     }
 
     // Minimum level requirement to receive Greater Blessing of Might is 44
-    if (bot->HasSpell(25782) && target->GetLevel() >= 44)
+    if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+        && bot->HasSpell(25782) && target->GetLevel() >= 44)
     {
         return "greater blessing of might";
     }
@@ -103,7 +107,8 @@ inline std::string SelectBlessingForTank(Unit* target, PlayerbotAI* botAI, Playe
     if (ShouldCastKings(target, botAI, blessingSanctuary))
     {
         // Minimum level requirement to receive Greater Blessing of Kings is 50
-        if (bot->HasSpell(25898) && target->GetLevel() >= 50)
+        if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+            && bot->HasSpell(25898) && target->GetLevel() >= 50)
         {
             return "greater blessing of kings";
         }
@@ -111,7 +116,8 @@ inline std::string SelectBlessingForTank(Unit* target, PlayerbotAI* botAI, Playe
     }
 
     // Minimum level requirement to receive Greater Blessing of Sanctuary is 50
-    if (bot->HasSpell(25899) && target->GetLevel() >= 50)
+    if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+        && bot->HasSpell(25899) && target->GetLevel() >= 50)
     {
         return "greater blessing of sanctuary";
     }
@@ -196,7 +202,8 @@ inline std::string GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
     if (!target->ToPlayer())
     {
         if (ShouldCastKings(target, botAI, blessingKings))
-            if (target->GetLevel() >= 50)
+            if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+                && bot->HasSpell(25899)&& target->GetLevel() >= 50)
             {
                 return "greater blessing of sanctuary";
             }
@@ -206,7 +213,8 @@ inline std::string GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
             }
 
         // Minimum level requirement to receive Greater Blessing of Kings is 50
-        if (bot->HasSpell(25898) && target->GetLevel() >= 50)
+        if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+            && bot->HasSpell(25898) && target->GetLevel() >= 50)
         {
             return "greater blessing of kings";
         }
@@ -235,7 +243,8 @@ inline std::string GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
     }
 
     // Minimum level requirement to receive Greater Blessing of Kings is 50
-    if (bot->HasSpell(25898) && target->GetLevel() >= 50)
+    if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+        && bot->HasSpell(25898) && target->GetLevel() >= 50)
     {
         return "greater blessing of kings";
     }
@@ -253,7 +262,8 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
     {
         if (ShouldCastKings(target, botAI, blessingSanctuary))
         {
-            if (target->GetLevel() >= 50)
+            if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+                && bot->HasSpell(25898) && target->GetLevel() >= 50)
             {
                 return "greater blessing of kings";
             }
@@ -263,7 +273,8 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
             }
         }
         // Minimum level requirement to receive Greater Blessing of Sanctuary is 50
-        if (bot->HasSpell(25899) && target->GetLevel() >= 50)
+        if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 
+            && bot->HasSpell(25899) && target->GetLevel() >= 50)
         {
             return "greater blessing of sanctuary";
         }
@@ -291,7 +302,8 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
             break;
     }
     // Minimum level requirement to receive Greater Blessing of Sanctuary is 50
-    if (bot->HasSpell(25899) && target->GetLevel() >= 50)
+    if (sPlayerbotAIConfig->allowGreaterBlessingsBeforeLevel60 && 
+        bot->HasSpell(25899) && target->GetLevel() >= 50)
     {
         return "greater blessing of sanctuary";
     }
