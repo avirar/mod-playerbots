@@ -15,10 +15,10 @@
 #include "SharedDefines.h"
 
 // Blessings by type
-static const std::vector<std::string> blessingMight = {"blessing of might", "greater blessing of might", "battle shout"};
-static const std::vector<std::string> blessingWisdom = {"blessing of wisdom", "greater blessing of wisdom"};
-static const std::vector<std::string> blessingKings = {"blessing of kings", "greater blessing of kings"};
-static const std::vector<std::string> blessingSanctuary = {"blessing of sanctuary", "greater blessing of sanctuary"};
+static const std::vector<const char*> blessingMight = {"blessing of might", "greater blessing of might", "battle shout", nullptr};
+static const std::vector<const char*> blessingWisdom = {"blessing of wisdom", "greater blessing of wisdom", nullptr};
+static const std::vector<const char*> blessingKings = {"blessing of kings", "greater blessing of kings", nullptr};
+static const std::vector<const char*> blessingSanctuary = {"blessing of sanctuary", "greater blessing of sanctuary", nullptr};
 
 // All Blessings
 static const std::vector<std::string> blessings = {
@@ -29,17 +29,12 @@ static const std::vector<std::string> blessings = {
 };
 
 // Helper function to check if the target already has a blessing
-inline bool HasAnyBlessing(PlayerbotAI* botAI, Unit* target)
+inline bool HasAnyBlessing(BotAI* botAI, Unit* target, const std::vector<const char*>& blessingList)
 {
     if (!target)
         return false;
 
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-            return true;
-    }
-    return false;
+    return botAI->HasAnyAuraOf(target, blessingList[0], blessingList[1], blessingList[2], blessingList[3], nullptr);
 }
 
 // Generic blessing casting function
@@ -52,10 +47,10 @@ inline bool CastBlessing(PlayerbotAI* botAI, Unit* target, std::string (*GetBles
 }
 
 // Helper function to determine whether to cast Blessing of Kings instead
-inline bool ShouldCastKings(Unit* target, PlayerbotAI* botAI, const std::vector<std::string>& blessingCheck)
+inline bool ShouldCastKings(Unit* target, PlayerbotAI* botAI, const std::vector<const char*>& blessingCheck)
 {
-    return botAI->HasAnyAuraOf(target, blessingCheck, nullptr) &&
-           !botAI->HasAnyAuraOf(target, blessingKings, nullptr);
+    return HasAnyBlessing(botAI, target, blessingCheck) &&
+           !HasAnyBlessing(botAI, target, blessingKings);
 }
 
 // Helper function to determine the best blessing based on role
