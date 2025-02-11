@@ -14,193 +14,121 @@
 #include "Playerbots.h"
 #include "SharedDefines.h"
 
-inline std::string const GetActualBlessingOfMight(Unit* target, PlayerbotAI* botAI)
+// Blessings by type
+static const std::vector<std::string> blessingMight = {"blessing of might", "greater blessing of might", "battle shout"};
+static const std::vector<std::string> blessingWisdom = {"blessing of wisdom", "greater blessing of wisdom"};
+static const std::vector<std::string> blessingKings = {"blessing of kings", "greater blessing of kings"};
+static const std::vector<std::string> blessingSanctuary = {"blessing of sanctuary", "greater blessing of sanctuary"};
+
+// All Blessings
+static const std::vector<std::string> blessings = {
+    "blessing of might", "blessing of wisdom",
+    "blessing of kings", "blessing of sanctuary",
+    "greater blessing of might", "greater blessing of wisdom",
+    "greater blessing of kings", "greater blessing of sanctuary"
+};
+
+// Helper function to check if the target already has a blessing
+inline bool HasAnyBlessing(BotAI* botAI, Unit* target)
+{
+    if (!target)
+        return false;
+
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
+            return true;
+    }
+    return false;
+}
+
+// Generic blessing casting function
+inline bool CastBlessing(BotAI* botAI, Unit* target, std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*))
+{
+    if (!target || HasAnyBlessing(botAI, target))
+        return false;
+
+    return botAI->CastSpell(GetBlessingFunc(target, botAI), target);
+}
+
+// Helper function to determine whether to cast Blessing of Kings instead
+inline bool ShouldCastKings(Unit* target, PlayerbotAI* botAI, const std::vector<std::string>& blessingCheck)
+{
+    return botAI->HasAnyAuraOf(target, blessingCheck, nullptr) &&
+           !botAI->HasAnyAuraOf(target, blessingKings, nullptr);
+}
+
+// Helper function to determine the best blessing based on role
+inline std::string SelectBlessingForCaster(Unit* target, PlayerbotAI* botAI)
+{
+    if (ShouldCastKings(target, botAI, blessingWisdom))
+    {
+        return "blessing of kings";
+    }
+    return "blessing of wisdom";
+}
+
+inline std::string SelectBlessingForMelee(Unit* target, PlayerbotAI* botAI)
+{
+    if (ShouldCastKings(target, botAI, blessingMight))
+    {
+        return "blessing of kings";
+    }
+    return "blessing of might";
+}
+
+inline std::string SelectBlessingForTank(Unit* target, PlayerbotAI* botAI, Player* bot)
+{
+    if (ShouldCastKings(target, botAI, blessingSanctuary))
+    {
+        return "blessing of kings";
+    }
+    return bot->HasSpell(25899) ? "greater blessing of sanctuary" : "blessing of sanctuary";
+}
+
+// Function to determine the best blessing of Might
+inline std::string GetActualBlessingOfMight(Unit* target, PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     if (!bot)
-    {
         return "";
-    }
 
-    Group* group = bot->GetGroup();
-    botAI->TellMaster("Started GetActualBlessingOfMight function");
     if (!target->ToPlayer())
-    {
-        botAI->TellMaster("No conversion ToPlayer");
-        if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-        {
-            botAI->TellMaster("Might already on target, casting Kings");
-            /*
-            if (group && bot->HasSpell(25898))
-            {
-                return "greater blessing of kings";
-            }
-            */
-            return "blessing of kings";
-        }
-        /*
-        else if (group && bot->HasSpell(25782))
-        {
-            return "greater blessing of might";
-        }
-        */
-        botAI->TellMaster("Casting Might");
-        return "blessing of might";
-    }
+        return SelectBlessingForMelee(target, botAI);
+
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
     switch (target->getClass())
     {
         case CLASS_MAGE:
         case CLASS_PRIEST:
         case CLASS_WARLOCK:
-            if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-                !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-            {
-                botAI->TellMaster("Wisdom already on target, casting Kings");
-                /*
-                if (group && bot->HasSpell(25898))
-                {
-                    return "greater blessing of kings";
-                }
-                */
-                return "blessing of kings";
-            }
-            /*
-            else if (group && bot->HasSpell(25894))
-            {
-                return "greater blessing of wisdom";
-            }
-            */
-            botAI->TellMaster("Casting Wisdom on Warlock/Priest/Mage");
-            return "blessing of wisdom";
-            break;
+            return SelectBlessingForCaster(target, botAI);
         case CLASS_SHAMAN:
             if (tab == SHAMAN_TAB_ELEMENTAL || tab == SHAMAN_TAB_RESTORATION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    botAI->TellMaster("Wisdom already on target, casting Kings");
-                    /*
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    */
-                    return "blessing of kings";
-                }
-                /*
-                else if (group && bot->HasSpell(25894))
-                {
-                    return "greater blessing of wisdom";
-                }
-                */
-                botAI->TellMaster("Casting Wisdom on Ele/Resto Shaman");
-                return "blessing of wisdom";
-            }
+                return SelectBlessingForCaster(target, botAI);
             break;
         case CLASS_DRUID:
             if (tab == DRUID_TAB_RESTORATION || tab == DRUID_TAB_BALANCE)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    botAI->TellMaster("Wisdom already on target, casting Kings");
-                    /*
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    */
-                    return "blessing of kings";
-                }
-                /*
-                else if (group && bot->HasSpell(25894))
-                {
-                    return "greater blessing of wisdom";
-                }
-                */
-                botAI->TellMaster("Casting Wisdom on Resto/Boomy Druid");
-                return "blessing of wisdom";
-            }
+                return SelectBlessingForCaster(target, botAI);
             break;
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_HOLY)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    botAI->TellMaster("Wisdom already on target, casting Kings");
-                    /*
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    */
-                    return "blessing of kings";
-                }
-                /*
-                else if (group && bot->HasSpell(25894))
-                {
-                    return "greater blessing of wisdom";
-                }
-                */
-                botAI->TellMaster("Casting Wisdom on Holy Paladin");
-                return "blessing of wisdom";
-            }
+                return SelectBlessingForCaster(target, botAI);
             break;
     }
-    if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-        !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-    {
-        botAI->TellMaster("Might already on target, casting Kings");
-        /*
-        if (group && bot->HasSpell(25898))
-        {
-            return "greater blessing of kings";
-        }
-        */
-        return "blessing of kings";
-    }
-    /*
-    else if (group && bot->HasSpell(25782))
-    {
-        return "greater blessing of might";
-    }
-    */
-    botAI->TellMaster("Casting Might");
-    return "blessing of might";
+    return SelectBlessingForMelee(target, botAI);
 }
 
-inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* botAI)
+// Function to determine the best blessing of Wisdom
+inline std::string GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
-    
     if (!bot)
-    {
         return "";
-    }
 
-    Group* group = bot->GetGroup();
-    
     if (!target->ToPlayer())
-    {
-        if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-        {
-            if (group && bot->HasSpell(25898))
-            {
-                return "greater blessing of kings";
-            }
-            return "blessing of kings";
-        }
-        else if (group && bot->HasSpell(25894))
-        {
-            return "greater blessing of wisdom";
-        }
-        return "blessing of wisdom";
-    }
+        return SelectBlessingForCaster(target, botAI);
+
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
     switch (target->getClass())
     {
@@ -208,339 +136,97 @@ inline std::string const GetActualBlessingOfWisdom(Unit* target, PlayerbotAI* bo
         case CLASS_ROGUE:
         case CLASS_DEATH_KNIGHT:
         case CLASS_HUNTER:
-            if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-                !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-            {
-                if (group && bot->HasSpell(25898))
-                {
-                    return "greater blessing of kings";
-                }
-                return "blessing of kings";
-            }
-            else if (group && bot->HasSpell(25782))
-            {
-                return "greater blessing of might";
-            }
-            return "blessing of might";
-            break;
+            return SelectBlessingForMelee(target, botAI);
         case CLASS_SHAMAN:
             if (tab == SHAMAN_TAB_ENHANCEMENT)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25782))
-                {
-                    return "greater blessing of might";
-                }
-                return "blessing of might";
-            }
+                return SelectBlessingForMelee(target, botAI);
             break;
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25782))
-                {
-                    return "greater blessing of might";
-                }
-                return "blessing of might";
-            }
+                return SelectBlessingForMelee(target, botAI);
             break;
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION || tab == PALADIN_TAB_RETRIBUTION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of might", "greater blessing of might", "battle shout", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25782))
-                {
-                    return "greater blessing of might";
-                }
-                return "blessing of might";
-            }
+                return SelectBlessingForMelee(target, botAI);
             break;
     }
-    if (botAI->HasAnyAuraOf(target, "blessing of wisdom", "greater blessing of wisdom", nullptr) && 
-        !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-    {
-        if (group && bot->HasSpell(25898))
-        {
-            return "greater blessing of kings";
-        }
-        return "blessing of kings";
-    }
-    else if (group && bot->HasSpell(25894))
-    {
-        return "greater blessing of wisdom";
-    }
-    return "blessing of wisdom";
+    return SelectBlessingForCaster(target, botAI);
 }
 
-inline std::string const GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
+// Function to determine the best blessing of Kings
+inline std::string GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     if (!bot)
-    {
         return "";
-    }
 
-    Group* group = bot->GetGroup();
-    
     if (!target->ToPlayer())
     {
-        if (botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr) && 
-            !botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr))
-        {
-            if (group && bot->HasSpell(25898))
-            {
-                return "greater blessing of sanctuary";
-            }
+        if (ShouldCastKings(target, botAI, blessingKings))
             return "blessing of sanctuary";
-        }
-        else if (group && bot->HasSpell(25898))
-        {
-            return "greater blessing of kings";
-        }
-        return "blessing of kings";
+
+        return bot->HasSpell(25898) ? "greater blessing of kings" : "blessing of kings";
     }
+
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
     switch (target->getClass())
     {
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_WARRIOR:
             if (tab == WARRIOR_TAB_PROTECTION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_DEATH_KNIGHT:
             if (tab == DEATHKNIGHT_TAB_BLOOD)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
     }
-    if (botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr) && 
-        !botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr))        
-    {
-        if (group && bot->HasSpell(25898))
-        {
-            return "greater blessing of sanctuary";
-        }
-        return "blessing of sanctuary";
-    }
-    else if (group && bot->HasSpell(25898))
-    {
-        return "greater blessing of kings";
-    }
-    return "blessing of kings";
+    return bot->HasSpell(25898) ? "greater blessing of kings" : "blessing of kings";
 }
 
-inline std::string const GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI)
+// Function to determine the best blessing of Sanctuary
+inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     if (!bot)
-    {
         return "";
-    }
 
-    Group* group = bot->GetGroup();
-    
     if (!target->ToPlayer())
     {
-        if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-            !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-        {
-            if (group && bot->HasSpell(25898))
-            {
-                return "greater blessing of kings";
-            }
+        if (ShouldCastKings(target, botAI, blessingSanctuary))
             return "blessing of kings";
-        }
-        else if (group && bot->HasSpell(25899))
-        {
-            return "greater blessing of sanctuary";
-        }
-        return "blessing of sanctuary";
+
+        return bot->HasSpell(25899) ? "greater blessing of sanctuary" : "blessing of sanctuary";
     }
+
     int tab = AiFactory::GetPlayerSpecTab(target->ToPlayer());
     switch (target->getClass())
     {
         case CLASS_DRUID:
             if (tab == DRUID_TAB_FERAL)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_PALADIN:
             if (tab == PALADIN_TAB_PROTECTION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_WARRIOR:
             if (tab == WARRIOR_TAB_PROTECTION)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
         case CLASS_DEATH_KNIGHT:
             if (tab == DEATHKNIGHT_TAB_BLOOD)
-            {
-                if (botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr) && 
-                    !botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr))
-                {
-                    if (group && bot->HasSpell(25898))
-                    {
-                        return "greater blessing of kings";
-                    }
-                    return "blessing of kings";
-                }
-                else if (group && bot->HasSpell(25899) && botAI->IsTank(target->ToPlayer()))
-                {
-                    return "greater blessing of sanctuary";
-                }
-                return "blessing of sanctuary";
-            }
+                return SelectBlessingForTank(target, botAI, bot);
             break;
     }
-    if (botAI->HasAnyAuraOf(target, "blessing of kings", "greater blessing of kings", nullptr) && 
-        !botAI->HasAnyAuraOf(target, "blessing of sanctuary", "greater blessing of sanctuary", nullptr))
-    {
-        if (group && bot->HasSpell(25898))
-        {
-            return "greater blessing of sanctuary";
-        }
-        return "blessing of sanctuary";
-    }
-    else if (group && bot->HasSpell(25898))
-    {
-        return "greater blessing of kings";
-    }
-    return "blessing of kings";
+    return bot->HasSpell(25899) ? "greater blessing of sanctuary" : "blessing of sanctuary";
 }
 
 Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
@@ -548,95 +234,9 @@ Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
     return context->GetValue<Unit*>("party member without aura", name);
 }
 
-bool CastBlessingOfMightAction::Execute(Event event)
-{
-    botAI->TellMaster("Starting CastBlessingOfMightAction");
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
-}
-
 Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 {
     return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
-}
-
-bool CastBlessingOfMightOnPartyAction::Execute(Event event)
-{
-    botAI->TellMaster("Started CastBlessingOfMightOnPartyAction");
-    Unit* target = GetTarget();
-    if (!target)
-    {
-        botAI->TellMaster("Invalid/No target");
-        return false;
-    }
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            std::ostringstream str;
-            str << target->GetName() << " already has " << blessing << " from me.";
-            botAI->TellMaster(str.str());
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfMight(target, botAI), target);
-}
-
-bool CastBlessingOfWisdomAction::Execute(Event event)
-{
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
 }
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
@@ -644,30 +244,57 @@ Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
     return context->GetValue<Unit*>("party member without aura", "blessing of wisdom,blessing of might");
 }
 
+Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
+{
+    return context->GetValue<Unit*>("party member without aura", "blessing of kings");
+}
+
+Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
+{
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
+}
+
+// Individual blessing actions
+bool CastBlessingOfMightAction::Execute(Event event)
+{
+    botAI->TellMaster("Starting CastBlessingOfMightAction");
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight);
+}
+
+bool CastBlessingOfMightOnPartyAction::Execute(Event event)
+{
+    botAI->TellMaster("Started CastBlessingOfMightOnPartyAction");
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight);
+}
+
+bool CastBlessingOfWisdomAction::Execute(Event event)
+{
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom);
+}
+
 bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
 {
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom);
+}
 
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
+bool CastBlessingOfKingsAction::Execute(Event event)
+{
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings);
+}
 
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
+bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
+{
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings);
+}
 
-    return botAI->CastSpell(GetActualBlessingOfWisdom(target, botAI), target);
+bool CastBlessingOfSanctuaryAction::Execute(Event event)
+{
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary);
+}
+
+bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
+{
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary);
 }
 
 bool CastSealSpellAction::isUseful() { return AI_VALUE2(bool, "combat", "self target"); }
@@ -785,118 +412,4 @@ bool CastGreaterBlessingAction::Execute(Event event)
 
     // If we reach here, we didn't find any missing aura
     return false;
-}
-
-bool CastBlessingOfKingsAction::Execute(Event event)
-{
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
-}
-
-Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
-{
-    return context->GetValue<Unit*>("party member without aura", "blessing of kings");
-}
-
-bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
-{
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfKings(target, botAI), target);
-}
-
-bool CastBlessingOfSanctuaryAction::Execute(Event event)
-{
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
-}
-
-Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
-{
-    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
-}
-
-bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
-{
-    Unit* target = GetTarget();
-    if (!target)
-        return false;
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    // Check if this Paladin has already applied *any* blessing to the target
-    for (const auto& blessing : blessings)
-    {
-        if (botAI->HasAura(blessing, target, false, true)) // Only check bot's blessings
-        {
-            return false; // If any blessing from this Paladin exists, don't cast another
-        }
-    }
-
-    return botAI->CastSpell(GetActualBlessingOfSanctuary(target, botAI), target);
 }
