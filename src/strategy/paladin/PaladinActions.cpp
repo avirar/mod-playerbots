@@ -38,9 +38,11 @@ inline bool HasAnyBlessing(PlayerbotAI* botAI, Unit* target, const std::vector<c
 }
 
 // Generic blessing casting function
-inline bool CastBlessing(PlayerbotAI* botAI, Unit* target, std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*))
+inline bool CastBlessing(PlayerbotAI* botAI, Unit* target, 
+                         std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*), 
+                         const std::vector<const char*>& blessingList)
 {
-    if (!target || HasAnyBlessing(botAI, target))
+    if (!target || HasAnyBlessing(botAI, target, blessingList))
         return false;
 
     return botAI->CastSpell(GetBlessingFunc(target, botAI), target);
@@ -252,44 +254,42 @@ Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
 // Individual blessing actions
 bool CastBlessingOfMightAction::Execute(Event event)
 {
-    botAI->TellMaster("Starting CastBlessingOfMightAction");
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight, blessingMight);
 }
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
 {
-    botAI->TellMaster("Started CastBlessingOfMightOnPartyAction");
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfMight, blessingMight);
 }
 
 bool CastBlessingOfWisdomAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom, blessingWisdom);
 }
 
 bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfWisdom, blessingWisdom);
 }
 
 bool CastBlessingOfKingsAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings, blessingKings);
 }
 
 bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfKings, blessingKings);
 }
 
 bool CastBlessingOfSanctuaryAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary, blessingSanctuary);
 }
 
 bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
 {
-    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary);
+    return CastBlessing(botAI, GetTarget(), GetActualBlessingOfSanctuary, blessingSanctuary);
 }
 
 bool CastSealSpellAction::isUseful() { return AI_VALUE2(bool, "combat", "self target"); }
