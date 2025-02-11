@@ -27,7 +27,7 @@ bool CrusaderAuraTrigger::IsActive()
 }
 
 // Helper function to check target for any existing blessing from the paladin
-bool HasBlessing(BotAI* botAI, Unit* target)
+bool HasBlessing(PlayerbotAI* botAI, Unit* target)
 {
     if (!target)
         return false;
