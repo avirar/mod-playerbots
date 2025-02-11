@@ -607,7 +607,7 @@ Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
         }
 
         if (!hasBlessing)
-            return new SingleValue<Unit*>(player); // Return first unbuffed player found
+            return player; // Return the first unbuffed player
     }
 
     return nullptr; // Everyone is buffed
@@ -705,7 +705,7 @@ Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
         }
 
         if (!hasBlessing)
-            return new SingleValue<Unit*>(player); // Return first unbuffed player found
+            return player; // Return first unbuffed player found
     }
 
     return nullptr; // Everyone is buffed
@@ -912,7 +912,7 @@ Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
         }
 
         if (!hasBlessing)
-            return new SingleValue<Unit*>(player); // Return first unbuffed player found
+            return player; // Return first unbuffed player found
     }
 
     return nullptr; // Everyone is buffed
@@ -1002,7 +1002,7 @@ Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
         }
 
         if (!hasBlessing)
-            return new SingleValue<Unit*>(player); // Return first unbuffed player found
+            return player; // Return first unbuffed player found
     }
 
     return nullptr; // Everyone is buffed
