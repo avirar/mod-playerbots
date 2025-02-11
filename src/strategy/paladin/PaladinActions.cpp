@@ -577,42 +577,8 @@ bool CastBlessingOfMightAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr; // No group, no target
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* player = ref->GetSource();
-        if (!player || !player->IsAlive() || player == bot)
-            continue;
-
-        // Check if player has any of our blessings
-        bool hasBlessing = false;
-        for (const auto& blessing : blessings)
-        {
-            if (botAI->HasAura(blessing, player, false, true))
-            {
-                hasBlessing = true;
-                break;
-            }
-        }
-
-        if (!hasBlessing)
-            return player; // Return the first unbuffed player
-    }
-
-    return nullptr; // Everyone is buffed
+    return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
 }
-
 
 bool CastBlessingOfMightOnPartyAction::Execute(Event event)
 {
@@ -675,40 +641,7 @@ bool CastBlessingOfWisdomAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr; // No group, no target
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* player = ref->GetSource();
-        if (!player || !player->IsAlive() || player == bot)
-            continue;
-
-        // Check if player has any of our blessings
-        bool hasBlessing = false;
-        for (const auto& blessing : blessings)
-        {
-            if (botAI->HasAura(blessing, player, false, true))
-            {
-                hasBlessing = true;
-                break;
-            }
-        }
-
-        if (!hasBlessing)
-            return player; // Return first unbuffed player found
-    }
-
-    return nullptr; // Everyone is buffed
+    return context->GetValue<Unit*>("party member without aura", "blessing of wisdom,blessing of might");
 }
 
 bool CastBlessingOfWisdomOnPartyAction::Execute(Event event)
@@ -882,40 +815,7 @@ bool CastBlessingOfKingsAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr; // No group, no target
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* player = ref->GetSource();
-        if (!player || !player->IsAlive() || player == bot)
-            continue;
-
-        // Check if player has any of our blessings
-        bool hasBlessing = false;
-        for (const auto& blessing : blessings)
-        {
-            if (botAI->HasAura(blessing, player, false, true))
-            {
-                hasBlessing = true;
-                break;
-            }
-        }
-
-        if (!hasBlessing)
-            return player; // Return first unbuffed player found
-    }
-
-    return nullptr; // Everyone is buffed
+    return context->GetValue<Unit*>("party member without aura", "blessing of kings");
 }
 
 bool CastBlessingOfKingsOnPartyAction::Execute(Event event)
@@ -972,40 +872,7 @@ bool CastBlessingOfSanctuaryAction::Execute(Event event)
 
 Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr; // No group, no target
-
-    // Define all possible blessings
-    std::vector<std::string> blessings = {
-        "blessing of might", "blessing of wisdom",
-        "blessing of kings", "blessing of sanctuary",
-        "greater blessing of might", "greater blessing of wisdom",
-        "greater blessing of kings", "greater blessing of sanctuary"
-    };
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* player = ref->GetSource();
-        if (!player || !player->IsAlive() || player == bot)
-            continue;
-
-        // Check if player has any of our blessings
-        bool hasBlessing = false;
-        for (const auto& blessing : blessings)
-        {
-            if (botAI->HasAura(blessing, player, false, true))
-            {
-                hasBlessing = true;
-                break;
-            }
-        }
-
-        if (!hasBlessing)
-            return player; // Return first unbuffed player found
-    }
-
-    return nullptr; // Everyone is buffed
+    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
 }
 
 bool CastBlessingOfSanctuaryOnPartyAction::Execute(Event event)
