@@ -25,6 +25,7 @@ static std::string GetGreaterBlessingSpellName(GreaterBlessingType type)
     return ""; // Fallback
 }
 
+// First rank of each spell
 static uint32 GetGreaterBlessingSpellId(GreaterBlessingType blessing)
 {
     switch (blessing)
@@ -42,10 +43,7 @@ static uint32 GetGreaterBlessingSpellId(GreaterBlessingType blessing)
     }
 }
 
-// -------------------------------------------------------------------------
-// Simple helper to check if a Paladin has the required talent for the blessing
-// (In your environment, replace HasTalent(SpellID, Spec) with the actual logic.)
-// -------------------------------------------------------------------------
+// Simple helper to check if a Paladin HasTalent for the blessing
 static bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType blessing)
 {
     switch (blessing)
@@ -67,9 +65,7 @@ static bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType ble
     }
 }
 
-// -------------------------------------------------------------------------
-// Gather all Paladins in the group/raid
-// -------------------------------------------------------------------------
+// Gather all Paladins in the group/raid within 30yds
 static std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI)
 {
     std::vector<Player*> paladins;
@@ -102,12 +98,9 @@ static std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI)
     return paladins;
 }
 
-// -------------------------------------------------------------------------
-// Core function: AssignBlessingsForGroup
 // Returns a map from (Paladin Player*) -> (set of (classId -> assigned blessing)).
 // The logic is “one greater blessing per class per paladin,” assigned in order
 // of talent preference.
-// -------------------------------------------------------------------------
 std::map<Player*, std::map<uint8, GreaterBlessingType>> AssignBlessingsForGroup(PlayerbotAI* botAI)
 {
     std::map<Player*, std::map<uint8, GreaterBlessingType>> results;
