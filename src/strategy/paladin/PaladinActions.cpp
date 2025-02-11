@@ -468,16 +468,16 @@ bool CastGreaterBlessingAction::Execute(Event event)
             if (!member || !member->IsInWorld())
                 continue;
 
-            // Skip if the member already has the blessing
-            if (member->getClass() != classId || botAI->HasAura(auraName, member))
-                continue;
-
             // Skip if dead
             if (!member->IsAlive())
             {
                 continue;
             }
-            
+
+            // Skip if the member already has the blessing
+            if (member->getClass() != classId || botAI->HasAura(auraName, member))
+                continue;
+
             // Check if the member meets the level requirement of the spell
             if (member->GetLevel() < minLevelRequired)
                 continue;
