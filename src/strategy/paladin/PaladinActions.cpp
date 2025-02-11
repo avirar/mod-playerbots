@@ -58,6 +58,7 @@ inline bool ShouldCastKings(Unit* target, PlayerbotAI* botAI, const std::vector<
 // Helper function to determine the best blessing based on role
 inline std::string SelectBlessingForCaster(Unit* target, PlayerbotAI* botAI)
 {
+    Player* bot = botAI->GetBot();
     if (ShouldCastKings(target, botAI, blessingWisdom))
     {
         // Minimum level requirement to receive Greater Blessing of Kings is 50
@@ -78,6 +79,7 @@ inline std::string SelectBlessingForCaster(Unit* target, PlayerbotAI* botAI)
 
 inline std::string SelectBlessingForMelee(Unit* target, PlayerbotAI* botAI)
 {
+    Player* bot = botAI->GetBot();
     if (ShouldCastKings(target, botAI, blessingMight))
     {
         // Minimum level requirement to receive Greater Blessing of Kings is 50
