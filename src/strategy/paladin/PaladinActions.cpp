@@ -483,8 +483,7 @@ bool CastGreaterBlessingAction::Execute(Event event)
             }
 
             // Found a valid target
-            botAI->TellMaster("Casting " + spellName + " on " + member->GetName());
-
+            // botAI->TellMaster("Casting " + spellName + " on " + member->GetName());
             return botAI->CastSpell(spellName, member);
         }
     }
