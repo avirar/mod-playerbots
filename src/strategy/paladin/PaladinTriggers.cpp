@@ -133,24 +133,29 @@ bool CastGreaterBlessingTrigger::IsActive()
         // Manually assign spell names (instead of calling GetGreaterBlessingSpellName)
         std::string blessingSpell;
         std::string auraName;
+        uint8 minLevelRequired = 0;
 
         switch (gBlessing)
         {
             case GREATER_BLESSING_OF_MIGHT:
-                blessingSpell = "greater blessing of might";
-                auraName = "greater blessing of might";
+                spellName = "greater blessing of might";
+                auraName  = "greater blessing of might";
+                minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_WISDOM:
-                blessingSpell = "greater blessing of wisdom";
-                auraName = "greater blessing of wisdom";
+                spellName = "greater blessing of wisdom";
+                auraName  = "greater blessing of wisdom";
+                minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_KINGS:
-                blessingSpell = "greater blessing of kings";
-                auraName = "greater blessing of kings";
+                spellName = "greater blessing of kings";
+                auraName  = "greater blessing of kings";
+                minLevelRequired = 50;
                 break;
             case GREATER_BLESSING_OF_SANCTUARY:
-                blessingSpell = "greater blessing of sanctuary";
-                auraName = "greater blessing of sanctuary";
+                spellName = "greater blessing of sanctuary";
+                auraName  = "greater blessing of sanctuary";
+                minLevelRequired = 50;
                 break;
         }
 
@@ -161,23 +166,27 @@ bool CastGreaterBlessingTrigger::IsActive()
             if (!member || !member->IsInWorld())
                 continue;
 
-            // Check if the member is of the correct class and missing the aura
-            if (member->getClass() != classId || botAI->HasAura(auraName, member))
-                continue;
-
             // Ensure the member is alive
             if (!member->IsAlive())
             {
                 continue;
             }
 
+            // Check if the member is of the correct class and missing the aura
+            if (member->getClass() != classId || botAI->HasAura(auraName, member))
+                continue;
+
+            // Check if the member meets the level requirement of the spell
+            if (member->GetLevel() < minLevelRequired)
+                continue;
+            
             // Ensure the member is within range (30 yards)
             if (!bot->IsWithinDistInMap(member, 30.0f))
             {
                 continue;
             }
 
-            // **New: Check if the bot can actually cast the Greater Blessing on this target**
+            // Check if the bot can actually cast the Greater Blessing on this target
             if (!botAI->CanCastSpell(blessingSpell, member))
             {
                 continue;
