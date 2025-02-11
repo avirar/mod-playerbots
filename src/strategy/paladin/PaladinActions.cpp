@@ -196,7 +196,7 @@ inline std::string GetActualBlessingOfKings(Unit* target, PlayerbotAI* botAI)
     if (!target->ToPlayer())
     {
         if (ShouldCastKings(target, botAI, blessingKings))
-            if (target->GetLevel() >= 50))
+            if (target->GetLevel() >= 50)
             {
                 return "greater blessing of sanctuary";
             }
@@ -253,7 +253,7 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
     {
         if (ShouldCastKings(target, botAI, blessingSanctuary))
         {
-            if (target->GetLevel() >= 50))
+            if (target->GetLevel() >= 50)
             {
                 return "greater blessing of kings";
             }
