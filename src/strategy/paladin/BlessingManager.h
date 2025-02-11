@@ -10,9 +10,8 @@
 #include <set>
 #include <algorithm>
 
-// -----------------------------------------------------------------------------
+
 // Minimal Blessing Type enum
-// -----------------------------------------------------------------------------
 enum GreaterBlessingType
 {
     GREATER_BLESSING_OF_WISDOM,
@@ -22,9 +21,8 @@ enum GreaterBlessingType
 };
 
 // -----------------------------------------------------------------------------
-// A simple structure to hold which blessings each class should get,
-// depending on how many Paladins are in the group.
-// Using 'inline static' ensures there's exactly one definition in the program.
+// A simple structure to hold which blessings each class should get depending on how many Paladins are in the group.
+// This does dictate the priority that blessings are applied to classes, assuming paladins have the necessary talents
 // -----------------------------------------------------------------------------
 inline static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBlessingType>>> BlessingTemplates =
 {
@@ -60,7 +58,7 @@ inline static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBless
             { CLASS_DRUID,         { GREATER_BLESSING_OF_WISDOM, GREATER_BLESSING_OF_KINGS } }   
         }
     },
-    // 3 Paladins: Sanctuary prioritized, Kings always last
+    // 3 Paladins: Sanctuary first so tank paladins cast it reliably, then Might/Wis, and Kings always last
     {
         3,
         {
@@ -94,14 +92,10 @@ inline static std::map<int, std::map<uint8 /*classId*/, std::vector<GreaterBless
     }
 };
 
-// -----------------------------------------------------------------------------
-// Function Prototypes
-// -----------------------------------------------------------------------------
-
-// Checks if a Paladin has the talent required to cast the given blessing.
+// Checks if a Paladin has a talent to cast (e.g Sanctuary), or to Improve the given blessing.
 static bool PaladinHasTalentForBlessing(Player* paladin, GreaterBlessingType blessing);
 
-// Returns all Paladins (Player*) in the same group/raid as the bot.
+// Returns all Paladins (Player*) in the same group/raid as the bot and within 30yd range.
 static std::vector<Player*> GetPaladinsInGroup(PlayerbotAI* botAI);
 
 // Main function to assign blessings for the current group/raid.
