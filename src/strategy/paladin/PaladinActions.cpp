@@ -29,7 +29,7 @@ static const std::vector<std::string> blessings = {
 };
 
 // Helper function to check if the target already has a blessing
-inline bool HasAnyBlessing(BotAI* botAI, Unit* target, const std::vector<const char*>& blessingList)
+inline bool HasAnyBlessing(PlayerbotAI* botAI, Unit* target, const std::vector<const char*>& blessingList)
 {
     if (!target)
         return false;
