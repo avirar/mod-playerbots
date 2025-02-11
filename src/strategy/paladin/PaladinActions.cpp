@@ -29,7 +29,7 @@ static const std::vector<std::string> blessings = {
 };
 
 // Helper function to check if the target already has a blessing
-inline bool HasAnyBlessing(BotAI* botAI, Unit* target)
+inline bool HasAnyBlessing(PlayerbotAI* botAI, Unit* target)
 {
     if (!target)
         return false;
@@ -43,7 +43,7 @@ inline bool HasAnyBlessing(BotAI* botAI, Unit* target)
 }
 
 // Generic blessing casting function
-inline bool CastBlessing(BotAI* botAI, Unit* target, std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*))
+inline bool CastBlessing(PlayerbotAI* botAI, Unit* target, std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*))
 {
     if (!target || HasAnyBlessing(botAI, target))
         return false;
