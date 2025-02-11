@@ -138,22 +138,22 @@ bool CastGreaterBlessingTrigger::IsActive()
         switch (gBlessing)
         {
             case GREATER_BLESSING_OF_MIGHT:
-                spellName = "greater blessing of might";
+                blessingSpell = "greater blessing of might";
                 auraName  = "greater blessing of might";
                 minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_WISDOM:
-                spellName = "greater blessing of wisdom";
+                blessingSpell = "greater blessing of wisdom";
                 auraName  = "greater blessing of wisdom";
                 minLevelRequired = 44;
                 break;
             case GREATER_BLESSING_OF_KINGS:
-                spellName = "greater blessing of kings";
+                blessingSpell = "greater blessing of kings";
                 auraName  = "greater blessing of kings";
                 minLevelRequired = 50;
                 break;
             case GREATER_BLESSING_OF_SANCTUARY:
-                spellName = "greater blessing of sanctuary";
+                blessingSpell = "greater blessing of sanctuary";
                 auraName  = "greater blessing of sanctuary";
                 minLevelRequired = 50;
                 break;
