@@ -434,7 +434,8 @@ bool CastGreaterBlessingAction::Execute(Event event)
 
         // Convert the blessing to a spell name
         std::string spellName;
-        std::string auraName; 
+        std::string auraName;
+        uint8 minLevelRequired = 0;
 
         switch (gBlessing)
         {
