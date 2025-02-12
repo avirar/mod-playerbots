@@ -36,7 +36,7 @@ Unit* ArcaneIntellectOnPartyTrigger::GetTarget()
             continue;
         }
         if (botAI->HasAnyAuraOf(player, "arcane brilliance", "arcane intellect", 
-                                        "dalaran brilliance", "dalaran intellect", nullptr));
+                                        "dalaran brilliance", "dalaran intellect", nullptr))
         {
             continue;
         }
