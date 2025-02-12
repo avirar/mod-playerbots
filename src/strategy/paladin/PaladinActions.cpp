@@ -336,35 +336,6 @@ Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
     return context->GetValue<Unit*>("party member without aura", name);
 }
 
-bool CastBlessingOnPartyAction::isUseful()
-{
-    Group* group = bot->GetGroup();
-
-    if (!group)
-        return false;
-
-    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
-    {
-        Player* player = gref->GetSource();
-        if (!player)
-            continue;
-        if (player->isDead())
-        {
-            continue;
-        }
-        if (HasBlessing(botAI,player)
-        {
-            continue;
-        }
-        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
-        {
-            continue;
-        }
-        return true;
-    }
-    return false;
-}
-
 Unit* CastBlessingOfMightOnPartyAction::GetTarget()
 {
     Group* group = bot->GetGroup();
