@@ -106,7 +106,7 @@ public:
     CastBlessingOfMightOnPartyAction(PlayerbotAI* botAI) : BuffOnPartyAction(botAI, "blessing of might") {}
 
     std::string const getName() override { return "blessing of might on party"; }
-    bool IsUseful() override;
+    bool isUseful() override;
     Unit* GetTarget() override;
     bool Execute(Event event) override;
 };
@@ -125,7 +125,7 @@ public:
     CastBlessingOfWisdomOnPartyAction(PlayerbotAI* botAI) : BuffOnPartyAction(botAI, "blessing of wisdom") {}
 
     std::string const getName() override { return "blessing of wisdom on party"; }
-    bool IsUseful() override;
+    bool isUseful() override;
     Unit* GetTarget() override;
     bool Execute(Event event) override;
 };
@@ -144,7 +144,7 @@ public:
     CastBlessingOfKingsOnPartyAction(PlayerbotAI* botAI) : CastBlessingOnPartyAction(botAI, "blessing of kings") {}
 
     std::string const getName() override { return "blessing of kings on party"; }
-    bool IsUseful() override;
+    bool isUseful() override;
     Unit* GetTarget() override;
     bool Execute(Event event) override;
 };
@@ -165,7 +165,7 @@ public:
     }
 
     std::string const getName() override { return "blessing of sanctuary on party"; }
-    bool IsUseful() override;
+    bool isUseful() override;
     Unit* GetTarget() override;
     bool Execute(Event event) override;
 };
