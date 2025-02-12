@@ -100,3 +100,57 @@ bool CastMarkOfTheWildOnPartyAction::Execute(Event event)
     // Otherwise, fall back to single-target "mark of the wild"
     return botAI->CastSpell("mark of the wild", target);
 }
+
+Unit* CastMarkOfTheWildOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "gift of the wild", "mark of the wild", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
+bool CastMarkOfTheWildOnPartyAction::isUseful()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "gift of the wild", "mark of the wild", nullptr))
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
