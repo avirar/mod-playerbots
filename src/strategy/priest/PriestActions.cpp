@@ -115,7 +115,7 @@ bool CastPowerWordFortitudeOnPartyAction::Execute(Event event)
 
     // If in a group, try Prayer first
     Group* group = botAI->GetBot()->GetGroup();
-    if (group && botAI->CanCastSpell("prayer of fortitude", target))
+    if (group && target->GetLevel() >= 48 && botAI->CanCastSpell("prayer of fortitude", target))
     {
         return botAI->CastSpell("prayer of fortitude", target);
     }
@@ -132,7 +132,7 @@ bool CastDivineSpiritOnPartyAction::Execute(Event event)
 
     // If in a group, try Prayer first
     Group* group = botAI->GetBot()->GetGroup();
-    if (group && botAI->CanCastSpell("prayer of spirit", target))
+    if (group && target->GetLevel() >= 50 && botAI->CanCastSpell("prayer of spirit", target))
     {
         return botAI->CastSpell("prayer of spirit", target);
     }
