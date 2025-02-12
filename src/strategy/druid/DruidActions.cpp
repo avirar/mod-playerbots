@@ -86,8 +86,6 @@ bool CastMarkOfTheWildOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    botAI->TellMaster("Casting Spirit on " + target->GetName());
-
     // Is the bot in a group?
     Group* group = botAI->GetBot()->GetGroup();
     if (group && target->GetLevel() >= 40)
@@ -99,7 +97,7 @@ bool CastMarkOfTheWildOnPartyAction::Execute(Event event)
         }
     }
 
-    // Otherwise, fall back to single-target "mark of the wild"
+    // Otherwise, fall back to mark of the wild
     return botAI->CastSpell("mark of the wild", target);
 }
 
