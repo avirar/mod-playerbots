@@ -15,7 +15,7 @@ class PlayerbotAI;
 // disc
 BUFF_ACTION(CastPowerWordFortitudeAction, "power word: fortitude");
 // BUFF_PARTY_ACTION(CastPowerWordFortitudeOnPartyAction, "power word: fortitude");
-BUFF_PARTY_ACTION(CastPrayerOfFortitudeOnPartyAction, "prayer of fortitude");
+// BUFF_PARTY_ACTION(CastPrayerOfFortitudeOnPartyAction, "prayer of fortitude");
 BUFF_ACTION(CastPowerWordShieldAction, "power word: shield");
 
 BUFF_ACTION(CastInnerFireAction, "inner fire");
@@ -28,7 +28,7 @@ SPELL_ACTION_U(CastManaBurnAction, "mana burn",
 BUFF_ACTION(CastLevitateAction, "levitate");
 BUFF_ACTION(CastDivineSpiritAction, "divine spirit");
 // BUFF_PARTY_ACTION(CastDivineSpiritOnPartyAction, "divine spirit");
-BUFF_PARTY_ACTION(CastPrayerOfSpiritOnPartyAction, "prayer of spirit");
+// BUFF_PARTY_ACTION(CastPrayerOfSpiritOnPartyAction, "prayer of spirit");
 // disc 2.4.3
 SPELL_ACTION(CastMassDispelAction, "mass dispel");
 
