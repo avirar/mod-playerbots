@@ -65,6 +65,31 @@ bool BlessingOfKingsOnPartyTrigger::IsActive()
     return SpellTrigger::IsActive();
 }
 
+Unit* BlessingOfKingsOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (HasBlessing(botAI, player))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
 bool BlessingOfWisdomOnPartyTrigger::IsActive()
 {
     Unit* target = GetTarget();
@@ -72,6 +97,31 @@ bool BlessingOfWisdomOnPartyTrigger::IsActive()
         return false;
 
     return SpellTrigger::IsActive();
+}
+
+Unit* BlessingOfWisdomOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (HasBlessing(botAI, player))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
 bool BlessingOfMightOnPartyTrigger::IsActive()
@@ -83,6 +133,31 @@ bool BlessingOfMightOnPartyTrigger::IsActive()
     return SpellTrigger::IsActive();
 }
 
+Unit* BlessingOfMightOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (HasBlessing(botAI, player))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
 bool BlessingOfSanctuaryOnPartyTrigger::IsActive()
 {
     Unit* target = GetTarget();
@@ -92,6 +167,31 @@ bool BlessingOfSanctuaryOnPartyTrigger::IsActive()
     return SpellTrigger::IsActive();
 }
 
+Unit* BlessingOfSanctuaryOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (HasBlessing(botAI, player))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
 bool BlessingOnPartyTrigger::IsActive()
 {
     Unit* target = GetTarget();
@@ -99,6 +199,31 @@ bool BlessingOnPartyTrigger::IsActive()
         return false;
 
     return SpellTrigger::IsActive();
+}
+
+Unit* BlessingOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (HasBlessing(botAI, player))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
 bool CastGreaterBlessingTrigger::IsActive()
