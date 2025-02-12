@@ -115,7 +115,7 @@ bool CastPowerWordFortitudeOnPartyAction::Execute(Event event)
 
     // If in a group, try Prayer first
     Group* group = botAI->GetBot()->GetGroup();
-    if (group && target->GetLevel() >= 48 && botAI->CanCastSpell("prayer of fortitude", target))
+    if (group && target->GetLevel() >= 38 && botAI->CanCastSpell("prayer of fortitude", target))
     {
         return botAI->CastSpell("prayer of fortitude", target);
     }
