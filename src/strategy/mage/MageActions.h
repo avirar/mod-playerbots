@@ -121,6 +121,8 @@ class CastArcaneIntellectOnPartyAction : public BuffOnPartyAction
 public:
     CastArcaneIntellectOnPartyAction(PlayerbotAI* botAI) : BuffOnPartyAction(botAI, "arcane intellect") {}
 
+    Unit* GetTarget() override;
+    bool isUseful() override;
     bool Execute(Event event) override;
 };
 
