@@ -97,7 +97,7 @@ bool CastArcaneIntellectOnPartyAction::Execute(Event event)
 
     Group* group = botAI->GetBot()->GetGroup();
 
-    if (group)
+    if (group && target->GetLevel() >= 46) // Check if the member meets the level requirement of the spell
     {
         if (botAI->CanCastSpell("dalaran brilliance", target))
             return botAI->CastSpell("dalaran brilliance", target);
