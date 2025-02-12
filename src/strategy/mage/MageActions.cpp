@@ -109,3 +109,59 @@ bool CastArcaneIntellectOnPartyAction::Execute(Event event)
     // If not in a group or we cannot cast brilliance, fall back to arcane intellect
     return botAI->CastSpell("arcane intellect", target);
 }
+
+Unit* CastArcaneIntellectOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "dalaran intellect", "dalaran brilliance",
+                                        "arcane intellect", "arcane brilliance", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
+bool CastArcaneIntellectOnPartyAction::isUseful()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "dalaran brilliance", "dalaran intellect",
+                                        "arcane intellect", "arcane brilliance", nullptr))
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
