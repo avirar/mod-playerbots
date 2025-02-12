@@ -68,6 +68,10 @@ bool BlessingOfKingsOnPartyTrigger::IsActive()
 Unit* BlessingOfKingsOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
@@ -102,6 +106,10 @@ bool BlessingOfWisdomOnPartyTrigger::IsActive()
 Unit* BlessingOfWisdomOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
@@ -136,6 +144,10 @@ bool BlessingOfMightOnPartyTrigger::IsActive()
 Unit* BlessingOfMightOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
@@ -170,6 +182,10 @@ bool BlessingOfSanctuaryOnPartyTrigger::IsActive()
 Unit* BlessingOfSanctuaryOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
@@ -204,6 +220,10 @@ bool BlessingOnPartyTrigger::IsActive()
 Unit* BlessingOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
