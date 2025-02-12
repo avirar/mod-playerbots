@@ -18,6 +18,10 @@ bool ArcaneIntellectOnPartyTrigger::IsActive()
 Unit* ArcaneIntellectOnPartyTrigger::GetTarget()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
