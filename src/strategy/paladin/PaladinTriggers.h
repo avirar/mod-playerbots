@@ -80,6 +80,7 @@ public:
         : BuffOnPartyTrigger(botAI, "blessing of kings,blessing of might,blessing of wisdom,blessing of sanctuary", 2 * 2000)
     { }
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
@@ -217,6 +218,7 @@ public:
     BlessingOfKingsOnPartyTrigger(PlayerbotAI* botAI)
         : BuffOnPartyTrigger(botAI, "blessing of kings", 2 * 2000) {}
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
@@ -226,6 +228,7 @@ public:
     BlessingOfWisdomOnPartyTrigger(PlayerbotAI* botAI)
         : BuffOnPartyTrigger(botAI, "blessing of wisdom", 2 * 2000) { }
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
@@ -235,6 +238,7 @@ public:
     BlessingOfMightOnPartyTrigger(PlayerbotAI* botAI)
         : BuffOnPartyTrigger(botAI, "blessing of might", 2 * 2000) { }
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
@@ -244,6 +248,7 @@ public:
     BlessingOfSanctuaryOnPartyTrigger(PlayerbotAI* botAI)
         : BuffOnPartyTrigger(botAI, "blessing of sanctuary", 2 * 2000) {}
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
