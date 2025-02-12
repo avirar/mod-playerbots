@@ -30,7 +30,7 @@ bool DivineSpiritTrigger::IsActive()
     return BuffTrigger::IsActive() && !botAI->HasAura("divine spirit", GetTarget()) &&
            !botAI->HasAura("prayer of spirit", GetTarget());
 }
-
+/*
 bool PrayerOfFortitudeTrigger::IsActive()
 {
     Unit* target = GetTarget();
@@ -55,7 +55,7 @@ bool PrayerOfSpiritTrigger::IsActive()
            botAI->GetBuffedCount((Player*)GetTarget(), "prayer of spirit") < 4 &&
            !botAI->GetBuffedCount((Player*)GetTarget(), "divine spirit");
 }
-
+*/
 bool InnerFireTrigger::IsActive()
 {
     Unit* target = GetTarget();
