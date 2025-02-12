@@ -147,7 +147,7 @@ Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
         }
         return player->ToUnit();
     }
-    return player->ToUnit();
+    return nullptr;
 }
 
 bool CastPowerWordFortitudeOnPartyAction::isUseful()
@@ -195,7 +195,7 @@ Unit* CastDivineSpiritOnPartyAction::GetTarget()
         }
         return player->ToUnit();
     }
-    return player->ToUnit();
+    return nullptr;
 }
 bool CastDivineSpiritOnPartyAction::isUseful()
 {
