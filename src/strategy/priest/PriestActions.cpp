@@ -152,7 +152,27 @@ Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
 
 bool CastPowerWordFortitudeOnPartyAction::isUseful()
 {
-    return GetTarget();
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "power word: fortitude", "prayer of fortitude", nullptr))
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
 }
 
 bool CastDivineSpiritOnPartyAction::Execute(Event event)
@@ -197,9 +217,30 @@ Unit* CastDivineSpiritOnPartyAction::GetTarget()
     }
     return nullptr;
 }
+
 bool CastDivineSpiritOnPartyAction::isUseful()
 {
-    return GetTarget();
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
 }
 /*
 bool CastDivineSpiritOnPartyAction::isPossible() { return true; }
