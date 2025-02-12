@@ -34,7 +34,14 @@ inline bool HasAnyBlessing(PlayerbotAI* botAI, Unit* target, const std::vector<c
     if (!target)
         return false;
 
-    return botAI->HasAnyAuraOf(target, blessingList[0], blessingList[1], blessingList[2], blessingList[3], nullptr);
+    for (const char* blessing : blessingList)
+    {
+        if (blessing && botAI->HasAura(blessing, target))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Generic blessing casting function
@@ -42,17 +49,21 @@ inline bool CastBlessing(PlayerbotAI* botAI, Unit* target,
                          std::string (*GetBlessingFunc)(Unit*, PlayerbotAI*), 
                          const std::vector<const char*>& blessingList)
 {
-    if (!target || HasAnyBlessing(botAI, target, blessingList))
+    if (!target)
         return false;
 
-    return botAI->CastSpell(GetBlessingFunc(target, botAI), target);
+    std::string blessing = GetBlessingFunc(target, botAI);
+    if (blessing.empty() || botAI->HasAura(blessing, target)) 
+        return false;
+
+    return botAI->CastSpell(blessing, target);
 }
 
 // Helper function to determine whether to cast Blessing of Kings instead
 inline bool ShouldCastKings(Unit* target, PlayerbotAI* botAI, const std::vector<const char*>& blessingCheck)
 {
-    return HasAnyBlessing(botAI, target, blessingCheck) &&
-           !HasAnyBlessing(botAI, target, blessingKings);
+    return !HasAnyBlessing(botAI, target, blessingKings) &&
+        (HasAnyBlessing(botAI, target, blessingWisdom) || HasAnyBlessing(botAI, target, blessingMight));
 }
 
 // Helper function to determine the best blessing based on role
