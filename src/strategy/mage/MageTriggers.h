@@ -18,8 +18,9 @@ DEFLECT_TRIGGER(FrostWardTrigger, "frost ward");
 class ArcaneIntellectOnPartyTrigger : public BuffOnPartyTrigger
 {
 public:
-    ArcaneIntellectOnPartyTrigger(PlayerbotAI* botAI)
-        : BuffOnPartyTrigger(botAI, "arcane intellect,arcane brilliance", 2 * 2000) {}
+    ArcaneIntellectOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "arcane intellect,arcane brilliance", 2 * 2000)
+    {
+    }
 
     Unit* GetTarget() override;
     bool IsActive() override;
