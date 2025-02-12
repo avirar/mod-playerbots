@@ -94,8 +94,7 @@ public:
     CastBlessingOnPartyAction(PlayerbotAI* botAI, std::string const name) : BuffOnPartyAction(botAI, name), name(name)
     {
     }
-    bool IsUseful() override;
-    Unit* GetTarget() override;
+    Value<Unit*>* GetTargetValue() override;
 
 private:
     std::string name;
