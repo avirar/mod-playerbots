@@ -153,6 +153,10 @@ Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
 bool CastPowerWordFortitudeOnPartyAction::isUseful()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
@@ -221,6 +225,10 @@ Unit* CastDivineSpiritOnPartyAction::GetTarget()
 bool CastDivineSpiritOnPartyAction::isUseful()
 {
     Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
     for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
     {
         Player* player = gref->GetSource();
