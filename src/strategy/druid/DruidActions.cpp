@@ -86,6 +86,8 @@ bool CastMarkOfTheWildOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
+    botAI->TellMaster("Casting Spirit on " + target->GetName());
+
     // Is the bot in a group?
     Group* group = botAI->GetBot()->GetGroup();
     if (group && target->GetLevel() >= 40)
