@@ -45,7 +45,7 @@ BOOST_TRIGGER_A(ShadowfiendTrigger, "shadowfiend");
 class PowerWordFortitudeOnPartyTrigger : public BuffOnPartyTrigger
 {
 public:
-    PowerWordFortitudeOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "power word: fortitude", 4 * 2000)
+    PowerWordFortitudeOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "power word: fortitude,prayer of fortitude", 4 * 2000)
     {
     }
 
@@ -55,7 +55,7 @@ public:
 class PowerWordFortitudeTrigger : public BuffTrigger
 {
 public:
-    PowerWordFortitudeTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "power word: fortitude", 4 * 2000) {}
+    PowerWordFortitudeTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "power word: fortitude,prayer of fortitude", 4 * 2000) {}
 
     bool IsActive() override;
 };
@@ -63,7 +63,7 @@ public:
 class DivineSpiritOnPartyTrigger : public BuffOnPartyTrigger
 {
 public:
-    DivineSpiritOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "divine spirit", 4 * 2000) {}
+    DivineSpiritOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "divine spirit,prayer of spirit", 4 * 2000) {}
 
     bool IsActive() override;
 };
@@ -71,11 +71,11 @@ public:
 class DivineSpiritTrigger : public BuffTrigger
 {
 public:
-    DivineSpiritTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "divine spirit", 4 * 2000) {}
+    DivineSpiritTrigger(PlayerbotAI* botAI) : BuffTrigger(botAI, "divine spirit,prayer of spirit", 4 * 2000) {}
 
     bool IsActive() override;
 };
-
+/*
 class PrayerOfFortitudeTrigger : public BuffOnPartyTrigger
 {
 public:
@@ -91,7 +91,7 @@ public:
 
     bool IsActive() override;
 };
-
+*/
 class BindingHealTrigger : public PartyMemberLowHealthTrigger
 {
 public:
