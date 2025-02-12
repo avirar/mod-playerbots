@@ -14,6 +14,31 @@ bool MarkOfTheWildOnPartyTrigger::IsActive()
            !botAI->HasAnyAuraOf(GetTarget(), "gift of the wild", "mark of the wild", nullptr);
 }
 
+Unit* MarkOfTheWildOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "gift of the wild", "mark of the wild", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
 bool MarkOfTheWildTrigger::IsActive()
 {
     // Check both Gift & Mark auras
