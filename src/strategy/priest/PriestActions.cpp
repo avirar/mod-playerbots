@@ -131,7 +131,7 @@ bool CastDivineSpiritOnPartyAction::Execute(Event event)
     if (!target)
         return false;
 
-    botAI->TellMaster("Casting Fortitude on " + target->GetName());
+    botAI->TellMaster("Casting Spirit on " + target->GetName());
     // If in a group, try Prayer first
     Group* group = botAI->GetBot()->GetGroup();
     if (group && target->GetLevel() >= 50 && bot->HasSpell(27681)/* && botAI->CanCastSpell("prayer of spirit", target) */)
