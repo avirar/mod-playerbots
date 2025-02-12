@@ -348,7 +348,7 @@ Unit* CastBlessingOfMightOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -377,7 +377,7 @@ bool CastBlessingOfMightOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -402,7 +402,7 @@ Unit* CastBlessingOfWisdomOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -431,7 +431,7 @@ bool CastBlessingOfWisdomOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -456,7 +456,7 @@ Unit* CastBlessingOfKingsOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -485,7 +485,7 @@ bool CastBlessingOfKingsOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -510,7 +510,7 @@ Unit* CastBlessingOfSanctuaryOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
@@ -539,7 +539,7 @@ bool CastBlessingOfSanctuaryOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player)
+        if (HasBlessing(botAI,player))
         {
             continue;
         }
