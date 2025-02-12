@@ -543,7 +543,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
             {
                 nonCombatEngine->addStrategiesNoInit("cure", "dps assist", "bdps", "baoe", nullptr);
             }
-            
+
             if (player->GetLevel() >= 20)
             {
                 nonCombatEngine->addStrategy("bstats", false);
@@ -555,7 +555,6 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategy("bgreater", false);
             }
 
-            // nonCombatEngine->addStrategiesNoInit("cure", "bgreater", nullptr);
             break;
         case CLASS_HUNTER:
             nonCombatEngine->addStrategiesNoInit("bdps", "dps assist", "pet", nullptr);
