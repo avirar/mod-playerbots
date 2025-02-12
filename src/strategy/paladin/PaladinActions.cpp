@@ -310,29 +310,295 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
     return "blessing of sanctuary";
 }
 
-Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
+// Helper function to check target for any existing blessing from the paladin
+bool HasBlessing(PlayerbotAI* botAI, Unit* target)
 {
-    return context->GetValue<Unit*>("party member without aura", name);
+    if (!target)
+        return false;
+
+    static const std::vector<std::string> blessings = {
+        "blessing of might", "blessing of wisdom",
+        "blessing of kings", "blessing of sanctuary",
+        "greater blessing of might", "greater blessing of wisdom",
+        "greater blessing of kings", "greater blessing of sanctuary"
+    };
+
+    for (const auto& blessing : blessings)
+    {
+        if (botAI->HasAura(blessing, target, false, true))
+            return true;
+    }
+    return false;
 }
 
-Value<Unit*>* CastBlessingOfMightOnPartyAction::GetTargetValue()
+Unit* CastBlessingOnPartyAction::GetTarget()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of might,blessing of wisdom");
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
-Value<Unit*>* CastBlessingOfWisdomOnPartyAction::GetTargetValue()
+bool CastBlessingOnPartyAction::isUseful()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of wisdom,blessing of might");
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
 }
 
-Value<Unit*>* CastBlessingOfKingsOnPartyAction::GetTargetValue()
+Unit* CastBlessingOfMightOnPartyAction::GetTarget()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of kings");
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
-Value<Unit*>* CastBlessingOfSanctuaryOnPartyAction::GetTargetValue()
+bool CastBlessingOfMightOnPartyAction::isUseful()
 {
-    return context->GetValue<Unit*>("party member without aura", "blessing of sanctuary");
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+Unit* CastBlessingOfWisdomOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
+bool CastBlessingOfWisdomOnPartyAction::isUseful()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+Unit* CastBlessingOfKingsOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
+bool CastBlessingOfKingsOnPartyAction::isUseful()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+Unit* CastBlessingOfSanctuaryOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
+bool CastBlessingOfSanctuaryOnPartyAction::isUseful()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (HasBlessing(botAI,player)
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        return true;
+    }
+    return false;
 }
 
 // Individual blessing actions
