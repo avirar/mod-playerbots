@@ -309,9 +309,9 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
     }
     return "blessing of sanctuary";
 }
-/*
+
 // Helper function to check target for any existing blessing from the paladin
-bool HasBlessing(PlayerbotAI* botAI, Unit* target)
+bool TargetHasBlessing(PlayerbotAI* botAI, Unit* target)
 {
     if (!target)
         return false;
@@ -330,7 +330,7 @@ bool HasBlessing(PlayerbotAI* botAI, Unit* target)
     }
     return false;
 }
-*/
+
 Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
 {
     return context->GetValue<Unit*>("party member without aura", name);
@@ -348,7 +348,7 @@ Unit* CastBlessingOfMightOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -377,7 +377,7 @@ bool CastBlessingOfMightOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -402,7 +402,7 @@ Unit* CastBlessingOfWisdomOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -431,7 +431,7 @@ bool CastBlessingOfWisdomOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -456,7 +456,7 @@ Unit* CastBlessingOfKingsOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -485,7 +485,7 @@ bool CastBlessingOfKingsOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -510,7 +510,7 @@ Unit* CastBlessingOfSanctuaryOnPartyAction::GetTarget()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
@@ -539,7 +539,7 @@ bool CastBlessingOfSanctuaryOnPartyAction::isUseful()
         {
             continue;
         }
-        if (HasBlessing(botAI,player))
+        if (TargetHasBlessing(botAI,player))
         {
             continue;
         }
