@@ -125,6 +125,36 @@ bool CastPowerWordFortitudeOnPartyAction::Execute(Event event)
     return botAI->CastSpell("power word: fortitude", target);
 }
 
+Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "power word: fortitude", "prayer of fortitude", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return player->ToUnit();
+}
+
+bool CastPowerWordFortitudeOnPartyAction::isUseful()
+{
+    return GetTarget();
+}
+
 bool CastDivineSpiritOnPartyAction::Execute(Event event)
 {
     Unit* target = GetTarget();
@@ -142,7 +172,38 @@ bool CastDivineSpiritOnPartyAction::Execute(Event event)
     // Otherwise do normal single-target
     return botAI->CastSpell("divine spirit", target);
 }
+
+Unit* CastDivineSpiritOnPartyAction::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return player->ToUnit();
+}
+bool CastDivineSpiritOnPartyAction::isUseful()
+{
+    return GetTarget();
+}
+/*
 bool CastDivineSpiritOnPartyAction::isPossible() { return true; }
 bool CastDivineSpiritOnPartyAction::isUseful() { return true; }
 bool CastPowerWordFortitudeOnPartyAction::isPossible() { return true; }
 bool CastPowerWordFortitudeOnPartyAction::isUseful() { return true; }
+*/
