@@ -88,7 +88,7 @@ bool CastMarkOfTheWildOnPartyAction::Execute(Event event)
 
     // Is the bot in a group?
     Group* group = botAI->GetBot()->GetGroup();
-    if (group)
+    if (group && target->GetLevel() >= 40)
     {
         // If the bot can cast "gift of the wild" on this target, do so
         if (botAI->CanCastSpell("gift of the wild", target))
