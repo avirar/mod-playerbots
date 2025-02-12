@@ -309,7 +309,7 @@ inline std::string GetActualBlessingOfSanctuary(Unit* target, PlayerbotAI* botAI
     }
     return "blessing of sanctuary";
 }
-
+/*
 // Helper function to check target for any existing blessing from the paladin
 bool HasBlessing(PlayerbotAI* botAI, Unit* target)
 {
@@ -330,7 +330,7 @@ bool HasBlessing(PlayerbotAI* botAI, Unit* target)
     }
     return false;
 }
-
+*/
 Value<Unit*>* CastBlessingOnPartyAction::GetTargetValue()
 {
     return context->GetValue<Unit*>("party member without aura", name);
