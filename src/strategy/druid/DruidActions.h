@@ -97,6 +97,8 @@ class CastMarkOfTheWildOnPartyAction : public BuffOnPartyAction
 public:
     CastMarkOfTheWildOnPartyAction(PlayerbotAI* botAI) : BuffOnPartyAction(botAI, "mark of the wild") {}
 
+    Unit* GetTarget() override;
+    bool isUseful() override;
     bool Execute(Event event) override;
 };
 
