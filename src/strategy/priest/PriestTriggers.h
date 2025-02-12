@@ -49,6 +49,7 @@ public:
     {
     }
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
