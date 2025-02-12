@@ -142,3 +142,7 @@ bool CastDivineSpiritOnPartyAction::Execute(Event event)
     // Otherwise do normal single-target
     return botAI->CastSpell("divine spirit", target);
 }
+bool CastDivineSpiritOnPartyAction::isPossible() { return true; }
+bool CastDivineSpiritOnPartyAction::isUseful() { return true; }
+bool CastPowerWordFortitudeOnPartyAction::isPossible() { return true; }
+bool CastPowerWordFortitudeOnPartyAction::isUseful() { return true; }
