@@ -15,6 +15,32 @@ bool ArcaneIntellectOnPartyTrigger::IsActive()
             "dalaran intellect", nullptr);
 }
 
+Unit* ArcaneIntellectOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "arcane brilliance", "arcane intellect", 
+                                        "dalaran brilliance", "dalaran intellect", nullptr);
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
+}
+
 bool ArcaneIntellectTrigger::IsActive()
 {
     return BuffTrigger::IsActive() &&
