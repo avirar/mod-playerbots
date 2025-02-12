@@ -9,8 +9,33 @@
 
 bool PowerWordFortitudeOnPartyTrigger::IsActive()
 {
-    return BuffOnPartyTrigger::IsActive() && !botAI->HasAura("power word : fortitude", GetTarget()) &&
+    return BuffOnPartyTrigger::IsActive() && !botAI->HasAura("power word: fortitude", GetTarget()) &&
            !botAI->HasAura("prayer of fortitude", GetTarget());
+}
+
+Unit* PowerWordFortitudeOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        if (botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
 bool PowerWordFortitudeTrigger::IsActive()
