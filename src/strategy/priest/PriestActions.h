@@ -214,8 +214,11 @@ class CastPowerWordFortitudeOnPartyAction : public BuffOnPartyAction
 {
 public:
     CastPowerWordFortitudeOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "power word: fortitude") {}
+
     bool isUseful() override;
-    bool isPossible() override;
+    // bool isPossible() override;
+    Unit* GetTarget() override;
+
     bool Execute(Event event) override;
 };
 
@@ -223,8 +226,11 @@ class CastDivineSpiritOnPartyAction : public BuffOnPartyAction
 {
 public:
     CastDivineSpiritOnPartyAction(PlayerbotAI* ai) : BuffOnPartyAction(ai, "divine spirit") {}
+
     bool isUseful() override;
-    bool isPossible() override;
+    // bool isPossible() override;
+    Unit* GetTarget() override;
+
     bool Execute(Event event) override;
 };
 
