@@ -85,6 +85,15 @@ Unit* BlessingOfKingsOnPartyTrigger::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !HasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
+        }
         if (HasBlessing(botAI, player))
         {
             continue;
@@ -122,6 +131,15 @@ Unit* BlessingOfWisdomOnPartyTrigger::GetTarget()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+// Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !HasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
         }
         if (HasBlessing(botAI, player))
         {
@@ -161,6 +179,15 @@ Unit* BlessingOfMightOnPartyTrigger::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !HasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
+        }
         if (HasBlessing(botAI, player))
         {
             continue;
@@ -199,6 +226,15 @@ Unit* BlessingOfSanctuaryOnPartyTrigger::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !HasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
+        }
         if (HasBlessing(botAI, player))
         {
             continue;
@@ -236,6 +272,15 @@ Unit* BlessingOnPartyTrigger::GetTarget()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !HasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
         }
         if (HasBlessing(botAI, player))
         {
