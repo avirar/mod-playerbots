@@ -33,6 +33,15 @@ Unit* PowerWordFortitudeOnPartyTrigger::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+        {
+            return pet->ToUnit();
+        }
         if (botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
         {
             continue;
@@ -52,6 +61,44 @@ bool DivineSpiritOnPartyTrigger::IsActive()
 {
     return BuffOnPartyTrigger::IsActive() && !botAI->HasAura("divine spirit", GetTarget()) &&
            !botAI->HasAura("prayer of spirit", GetTarget());
+}
+
+Unit* DivineSpiritOnPartyTrigger::GetTarget()
+{
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return nullptr;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* player = gref->GetSource();
+        if (!player)
+            continue;
+        if (player->isDead())
+        {
+            continue;
+        }
+        if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
+        {
+            continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "prayer of spirit", "divine spirit", nullptr))
+        {
+            return pet->ToUnit();
+        }
+        if (botAI->HasAnyAuraOf(player, "prayer of spirit", "divine spirit", nullptr))
+        {
+            continue;
+        }
+        return player->ToUnit();
+    }
+    return nullptr;
 }
 
 bool DivineSpiritTrigger::IsActive()
