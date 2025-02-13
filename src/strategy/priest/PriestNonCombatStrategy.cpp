@@ -71,9 +71,9 @@ void PriestBuffStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 */
     triggers.push_back(
         new TriggerNode("power word: fortitude on party",
-                        NextAction::array(0, new NextAction("power word: fortitude on party", 11.0f), nullptr)));
+                        NextAction::array(0, new NextAction("power word: fortitude on party", 13.0f), nullptr)));
     triggers.push_back(new TriggerNode("divine spirit on party",
-                                       NextAction::array(0, new NextAction("divine spirit on party", 13.0f), nullptr)));
+                                       NextAction::array(0, new NextAction("divine spirit on party", 11.0f), nullptr)));
     // triggers.push_back(new TriggerNode("fear ward", NextAction::array(0, new NextAction("fear ward", 10.0f),
     // nullptr))); triggers.push_back(new TriggerNode("touch of weakness", NextAction::array(0, new NextAction("touch of
     // weakness", 10.0f), nullptr))); triggers.push_back(new TriggerNode("shadowguard", NextAction::array(0, new
