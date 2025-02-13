@@ -66,6 +66,7 @@ class DivineSpiritOnPartyTrigger : public BuffOnPartyTrigger
 public:
     DivineSpiritOnPartyTrigger(PlayerbotAI* botAI) : BuffOnPartyTrigger(botAI, "divine spirit,prayer of spirit", 4 * 2000) {}
 
+    Unit* GetTarget() override;
     bool IsActive() override;
 };
 
