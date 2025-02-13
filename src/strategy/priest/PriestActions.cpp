@@ -140,6 +140,15 @@ Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+        {
+            return pet->ToUnit();
+        }
         if (botAI->HasAnyAuraOf(player, "power word: fortitude", "prayer of fortitude", nullptr))
         {
             continue;
@@ -168,6 +177,15 @@ bool CastPowerWordFortitudeOnPartyAction::isUseful()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+        {
+            return true;
         }
         if (botAI->HasAnyAuraOf(player, "power word: fortitude", "prayer of fortitude", nullptr))
         {
@@ -211,6 +229,15 @@ Unit* CastDivineSpiritOnPartyAction::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+        {
+            return pet->ToUnit();
+        }
         if (botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
         {
             continue;
@@ -239,6 +266,15 @@ bool CastDivineSpiritOnPartyAction::isUseful()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+        {
+            return true;
         }
         if (botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
         {
