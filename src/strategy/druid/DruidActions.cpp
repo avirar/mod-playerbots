@@ -117,6 +117,15 @@ Unit* CastMarkOfTheWildOnPartyAction::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(pet, "gift of the wild", "mark of the wild", nullptr))
+        {
+            return pet->ToUnit();
+        }
         if (botAI->HasAnyAuraOf(player, "gift of the wild", "mark of the wild", nullptr))
         {
             continue;
@@ -145,6 +154,15 @@ bool CastMarkOfTheWildOnPartyAction::isUseful()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(pet, "gift of the wild", "mark of the wild", nullptr))
+        {
+            return true;
         }
         if (botAI->HasAnyAuraOf(player, "gift of the wild", "mark of the wild", nullptr))
         {
