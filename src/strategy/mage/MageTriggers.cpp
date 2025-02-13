@@ -40,7 +40,7 @@ Unit* ArcaneIntellectOnPartyTrigger::GetTarget()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "arcane brilliance", "arcane intellect", 
+            !botAI->HasAnyAuraOf(pet, "arcane brilliance", "arcane intellect", 
                                         "dalaran brilliance", "dalaran intellect", nullptr))
         {
             return pet->ToUnit();
