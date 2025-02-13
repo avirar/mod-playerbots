@@ -38,7 +38,7 @@ Unit* PowerWordFortitudeOnPartyTrigger::GetTarget()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+            !botAI->HasAnyAuraOf(pet, "prayer of fortitude", "power word: fortitude", nullptr))
         {
             return pet->ToUnit();
         }
@@ -88,7 +88,7 @@ Unit* DivineSpiritOnPartyTrigger::GetTarget()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "prayer of spirit", "divine spirit", nullptr))
+            !botAI->HasAnyAuraOf(pet, "prayer of spirit", "divine spirit", nullptr))
         {
             return pet->ToUnit();
         }
