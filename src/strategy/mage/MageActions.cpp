@@ -126,6 +126,16 @@ Unit* CastArcaneIntellectOnPartyAction::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "arcane brilliance", "arcane intellect", 
+                                        "dalaran brilliance", "dalaran intellect", nullptr))
+        {
+            return pet->ToUnit();
+        }
         if (botAI->HasAnyAuraOf(player, "dalaran intellect", "dalaran brilliance",
                                         "arcane intellect", "arcane brilliance", nullptr))
         {
@@ -155,6 +165,16 @@ bool CastArcaneIntellectOnPartyAction::isUseful()
         if (player->GetDistance2d(bot) > sPlayerbotAIConfig->spellDistance)
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !botAI->HasAnyAuraOf(player, "arcane brilliance", "arcane intellect", 
+                                        "dalaran brilliance", "dalaran intellect", nullptr))
+        {
+            return true;
         }
         if (botAI->HasAnyAuraOf(player, "dalaran brilliance", "dalaran intellect",
                                         "arcane intellect", "arcane brilliance", nullptr))
