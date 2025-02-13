@@ -145,7 +145,7 @@ Unit* CastPowerWordFortitudeOnPartyAction::GetTarget()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+            !botAI->HasAnyAuraOf(pet, "prayer of fortitude", "power word: fortitude", nullptr))
         {
             return pet->ToUnit();
         }
@@ -183,7 +183,7 @@ bool CastPowerWordFortitudeOnPartyAction::isUseful()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "prayer of fortitude", "power word: fortitude", nullptr))
+            !botAI->HasAnyAuraOf(pet, "prayer of fortitude", "power word: fortitude", nullptr))
         {
             return true;
         }
@@ -234,7 +234,7 @@ Unit* CastDivineSpiritOnPartyAction::GetTarget()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+            !botAI->HasAnyAuraOf(pet, "divine spirit", "prayer of spirit", nullptr))
         {
             return pet->ToUnit();
         }
@@ -272,7 +272,7 @@ bool CastDivineSpiritOnPartyAction::isUseful()
         if (pet &&
             !pet->isDead() &&
             pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
-            !botAI->HasAnyAuraOf(player, "divine spirit", "prayer of spirit", nullptr))
+            !botAI->HasAnyAuraOf(pet, "divine spirit", "prayer of spirit", nullptr))
         {
             return true;
         }
