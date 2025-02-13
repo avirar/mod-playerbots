@@ -404,6 +404,15 @@ Unit* CastBlessingOfMightOnPartyAction::GetTarget()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
+        }
         if (TargetHasBlessing(botAI,player))
         {
             continue;
@@ -433,6 +442,15 @@ bool CastBlessingOfMightOnPartyAction::isUseful()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return true;
+        }
         if (TargetHasBlessing(botAI,player))
         {
             continue;
@@ -457,6 +475,15 @@ Unit* CastBlessingOfWisdomOnPartyAction::GetTarget()
         if (player->isDead())
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
         }
         if (TargetHasBlessing(botAI,player))
         {
@@ -487,6 +514,15 @@ bool CastBlessingOfWisdomOnPartyAction::isUseful()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return true;
+        }
         if (TargetHasBlessing(botAI,player))
         {
             continue;
@@ -511,6 +547,15 @@ Unit* CastBlessingOfKingsOnPartyAction::GetTarget()
         if (player->isDead())
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
         }
         if (TargetHasBlessing(botAI,player))
         {
@@ -541,6 +586,15 @@ bool CastBlessingOfKingsOnPartyAction::isUseful()
         {
             continue;
         }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return true;
+        }
         if (TargetHasBlessing(botAI,player))
         {
             continue;
@@ -565,6 +619,15 @@ Unit* CastBlessingOfSanctuaryOnPartyAction::GetTarget()
         if (player->isDead())
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return pet->ToUnit();
         }
         if (TargetHasBlessing(botAI,player))
         {
@@ -594,6 +657,15 @@ bool CastBlessingOfSanctuaryOnPartyAction::isUseful()
         if (player->isDead())
         {
             continue;
+        }
+        // Check the player's pet
+        Pet* pet = player->GetPet();
+        if (pet &&
+            !pet->isDead() &&
+            pet->GetDistance2d(bot) <= sPlayerbotAIConfig->spellDistance &&
+            !TargetHasBlessing(botAI, pet))
+        {
+            return true;
         }
         if (TargetHasBlessing(botAI,player))
         {
