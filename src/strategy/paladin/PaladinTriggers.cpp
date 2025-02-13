@@ -132,7 +132,7 @@ Unit* BlessingOfWisdomOnPartyTrigger::GetTarget()
         {
             continue;
         }
-// Check the player's pet
+        // Check the player's pet
         Pet* pet = player->GetPet();
         if (pet &&
             !pet->isDead() &&
