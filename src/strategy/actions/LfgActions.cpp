@@ -135,6 +135,11 @@ bool LfgJoinAction::JoinLFG()
     // check role for console msg
     std::string _roles = "multiple roles";
     uint32 roleMask = GetRoles();
+
+    // Ensure bots do not have the leader role
+    if (roleMask)
+        roleMask &= ~PLAYER_ROLE_LEADER;
+
     if (roleMask & PLAYER_ROLE_TANK)
         _roles = "TANK";
 
@@ -178,6 +183,9 @@ bool LfgRoleCheckAction::Execute(Event event)
         uint32 newRoles = GetRoles();
         // if (currentRoles == newRoles)
         //     return false;
+
+        // Ensure bots do not have the leader role
+        newRoles &= ~PLAYER_ROLE_LEADER;
 
         sLFGMgr->SetRoles(bot->GetGUID(), newRoles);
 
