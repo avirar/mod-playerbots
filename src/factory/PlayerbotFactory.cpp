@@ -263,10 +263,21 @@ void PlayerbotFactory::Randomize(bool incremental)
 
     LOG_DEBUG("playerbots", "Initializing skills (step 1)...");
     pmo = sPerformanceMonitor->start(PERF_MON_RNDBOT, "PlayerbotFactory_Skills1");
-    InitSkills();
+
+    if (!incremental || !sPlayerbotAIConfig->equipmentPersistence ||
+        bot->GetLevel() < sPlayerbotAIConfig->equipmentPersistenceLevel)
+    {
+        InitSkills();
+    }
+
     InitSpecialSpells();
 
-    // InitTradeSkills();
+    if (!incremental || !sPlayerbotAIConfig->equipmentPersistence ||
+        bot->GetLevel() < sPlayerbotAIConfig->equipmentPersistenceLevel)
+    {
+        InitTradeSkills();
+    }
+
     if (pmo)
         pmo->finish();
 
@@ -2118,7 +2129,7 @@ void PlayerbotFactory::InitTradeSkills()
                 secondSkills.push_back(SKILL_ENCHANTING);
         }
 
-        switch (urand(0, 6))
+        switch (urand(0, 8))
         {
             case 0:
                 firstSkill = SKILL_HERBALISM;
@@ -2135,6 +2146,10 @@ void PlayerbotFactory::InitTradeSkills()
             case 3:
                 firstSkill = SKILL_HERBALISM;
                 secondSkill = SKILL_SKINNING;
+                break;
+            case 4:
+                firstSkill = SKILL_HERBALISM;
+                secondSkill = SKILL_INSCRIPTION;
                 break;
             default:
                 firstSkill = firstSkills[urand(0, firstSkills.size() - 1)];
@@ -2276,6 +2291,7 @@ void PlayerbotFactory::InitSkills()
             SetRandomSkill(SKILL_CROSSBOWS);
             SetRandomSkill(SKILL_FIST_WEAPONS);
             SetRandomSkill(SKILL_THROWN);
+            SetRandomSkill(SKILL_LOCKPICKING);
             bot->SetSkill(SKILL_DUAL_WIELD, 0, 1, 1);
             bot->SetCanDualWield(true);
             break;
@@ -2308,7 +2324,7 @@ void PlayerbotFactory::InitSkills()
     //         break;
     // }
 }
-
+/*
 void PlayerbotFactory::SetRandomSkill(uint16 id)
 {
     uint32 maxValue = level * 5;
@@ -2326,6 +2342,58 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
     uint16 step = bot->GetSkillValue(id) ? bot->GetSkillStep(id) : 1;
 
     // if (!bot->HasSkill(id) || value > curValue)
+    bot->SetSkill(id, step, value, maxValue);
+}
+*/
+
+void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
+{
+    // List of skills that can go up to 450
+    static const std::unordered_set<uint16> highCapSkills = {
+        SKILL_ALCHEMY,
+        SKILL_BLACKSMITHING,
+        SKILL_ENCHANTING,
+        SKILL_ENGINEERING,
+        SKILL_HERBALISM,
+        SKILL_INSCRIPTION,
+        SKILL_JEWELCRAFTING,
+        SKILL_LEATHERWORKING,
+        SKILL_MINING,
+        SKILL_TAILORING,
+        SKILL_SKINNING,
+        SKILL_COOKING,
+        SKILL_FIRST_AID
+    };
+
+    uint32 maxValue;
+
+    // Apply the new skill formula only for the selected skills
+    // Excel formula to test, change A1 to suit cell containg character level
+    // =MAX(A1 *5,7.5 *A1  - 150)
+    // Level	Outcome
+    //    80	450
+    //    70	375
+    //    60	300
+    //    50	250
+    //    45	225
+    //    30	150
+    //    20	100
+    //     1	5
+    if (highCapSkills.find(id) != highCapSkills.end()) 
+    {
+        maxValue = std::max(level * 5, static_cast<uint32>((7.5 * level) - 150));
+    }
+    else 
+    {
+        maxValue = level * 5; // Retain original logic for other skills
+    }
+
+    // Decide whether to set skill at max or use a random value
+    uint32 value = setMax ? maxValue : urand(level, maxValue);
+
+    uint32 curValue = bot->GetSkillValue(id);
+    uint16 step = bot->GetSkillValue(id) ? bot->GetSkillStep(id) : 1;
+
     bot->SetSkill(id, step, value, maxValue);
 }
 
@@ -2369,7 +2437,7 @@ void PlayerbotFactory::InitAvailableSpells()
                 continue;
 
             TrainerSpellState state = bot->GetTrainerSpellState(tSpell);
-            if (state != TRAINER_SPELL_GREEN)
+            if (state != TRAINER_SPELL_GREEN && state != TRAINER_SPELL_GRAY)
                 continue;
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(tSpell->spell);
@@ -2380,8 +2448,8 @@ void PlayerbotFactory::InitAvailableSpells()
                     continue;
 
                 if (spellInfo->Effects[j].Effect == SPELL_EFFECT_PROFICIENCY ||
-                    (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
-                     spellInfo->Effects[j].MiscValue != SKILL_RIDING) ||
+                    (/*spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
+                     spellInfo->Effects[j].MiscValue != SKILL_RIDING) || */
                     spellInfo->Effects[j].Effect == SPELL_EFFECT_DUAL_WIELD)
                 {
                     learn = false;
