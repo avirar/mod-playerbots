@@ -2363,96 +2363,72 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 {
     // List of skills that can go up to 450
     static const std::unordered_set<uint16> highCapSkills = {
-        SKILL_ALCHEMY,
-        SKILL_BLACKSMITHING,
-        SKILL_ENCHANTING,
-        SKILL_ENGINEERING,
-        SKILL_HERBALISM,
-        SKILL_INSCRIPTION,
-        SKILL_JEWELCRAFTING,
-        SKILL_LEATHERWORKING,
-        SKILL_MINING,
-        SKILL_TAILORING,
-        SKILL_SKINNING,
-        SKILL_COOKING,
-        SKILL_FIRST_AID
+        SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_HERBALISM,
+        SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING,
+        SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID
     };
 
-    uint32 maxValue;
+    uint32 maxValue = (highCapSkills.find(id) != highCapSkills.end()) 
+        ? std::max(level * 5, static_cast<uint32>((7.5 * level) - 150))
+        : level * 5;
 
-    // Determine max skill value
-    if (highCapSkills.find(id) != highCapSkills.end()) 
-    {
-        maxValue = std::max(level * 5, static_cast<uint32>((7.5 * level) - 150));
-    }
-    else 
-    {
-        maxValue = level * 5; // Default skill calculation
-    }
-
-    // Decide whether to set skill at max or use a random value
     uint32 value = setMax ? maxValue : urand(level, maxValue);
 
-    uint32 curValue = bot->GetSkillValue(id);
-    uint16 currentStep = bot->GetSkillStep(id);
+    // ✅ Default: Use GetSkillStep(id) for non-high cap skills
+    uint16 step = bot->HasSkill(id) ? bot->GetSkillStep(id) : 1;
 
-    // ✅ Ensure the bot has the skill; otherwise, properly add it with an appropriate step
-    if (!bot->HasSkill(id))
+    // ✅ Special handling for high cap skills: Manually calculate step and assign step spells
+    if (highCapSkills.find(id) != highCapSkills.end())
     {
-        uint16 initialStep = 1;
-        if (value > 75)  initialStep = 2;  // Journeyman
-        if (value > 150) initialStep = 3;  // Expert
-        if (value > 225) initialStep = 4;  // Artisan
-        if (value > 300) initialStep = 5;  // Master
-        if (value > 375) initialStep = 6;  // Grand Master
+        struct SkillStepSpells
+        {
+            uint16 skill;
+            uint32 steps[5]; // Journeyman, Expert, Artisan, Master, Grand Master
+        };
 
-        bot->SetSkill(id, initialStep, 1, 1);  // Initialize skill at correct step
+        static const std::vector<SkillStepSpells> skillStepSpells = {
+            { SKILL_ALCHEMY,       {3101, 3464, 11611, 28596, 51304} },
+            { SKILL_BLACKSMITHING, {3100, 3538, 9785, 29844, 51300} },
+            { SKILL_ENCHANTING,    {7412, 7413, 13920, 28029, 51313} },
+            { SKILL_ENGINEERING,   {4037, 4038, 12656, 30350, 51306} },
+            { SKILL_HERBALISM,     {2368, 3570, 11993, 28695, 50300} },
+            { SKILL_INSCRIPTION,   {45358, 45359, 45360, 45361, 45363} },
+            { SKILL_JEWELCRAFTING, {25230, 28894, 28895, 28897, 51311} },
+            { SKILL_LEATHERWORKING,{3104, 3811, 10662, 32549, 51302} },
+            { SKILL_MINING,        {3104, 3811, 10662, 32549, 51302} },
+            { SKILL_SKINNING,      {8617, 8618, 10768, 32678, 50305} },
+            { SKILL_TAILORING,     {3909, 3910, 12180, 26790, 51309} },
+            { SKILL_COOKING,       {3102, 3413, 18260, 33359, 51296} },
+            { SKILL_FIRST_AID,     {3274, 7924, 10846, 27028, 45542} }
+        };
+
+        // ✅ Calculate step manually based on `value`
+        uint16 calculatedStep = 1;
+        if (value > 75)  calculatedStep = 2;  // Journeyman
+        if (value > 150) calculatedStep = 3;  // Expert
+        if (value > 225) calculatedStep = 4;  // Artisan
+        if (value > 300) calculatedStep = 5;  // Master
+        if (value > 375) calculatedStep = 6;  // Grand Master
+
+        // ✅ Preserve current step if higher than the calculated one
+        step = std::max(step, calculatedStep);
+
+        // ✅ Learn required skill step spells before setting the skill
+        for (const auto& skillData : skillStepSpells)
+        {
+            if (skillData.skill == id)
+            {
+                for (uint16 i = 0; i < step - 1; ++i) // -1 because step 1 (Apprentice) has no spell
+                {
+                    bot->learnSpell(skillData.steps[i], false);
+                }
+                break;
+            }
+        }
     }
-
-    // ✅ Now determine the proper step based on value
-    uint16 newStep = 1;
-    if (value > 75)  newStep = 2;  // Journeyman
-    if (value > 150) newStep = 3;  // Expert
-    if (value > 225) newStep = 4;  // Artisan
-    if (value > 300) newStep = 5;  // Master
-    if (value > 375) newStep = 6;  // Grand Master
-
-    // Ensure the bot is using the highest available step relative to the value being set
-    uint16 step = (newStep > currentStep) ? newStep : currentStep;
 
     // ✅ Now properly set the skill level and step
     bot->SetSkill(id, step, value, maxValue);
-
-    // ✅ Ensure the bot learns the correct profession spell
-    if (highCapSkills.find(id) != highCapSkills.end()) 
-    {
-        switch (id)
-        {
-            case SKILL_ALCHEMY:        bot->learnSpell(2259, false); break;  // Alchemy
-            case SKILL_BLACKSMITHING:  bot->learnSpell(2018, false); break;  // Blacksmithing
-            case SKILL_ENCHANTING:     bot->learnSpell(7411, false); break;  // Enchanting
-            case SKILL_ENGINEERING:    bot->learnSpell(4036, false); break;  // Engineering
-            case SKILL_HERBALISM:      bot->learnSpell(2366, false); break;  // Herbalism
-            case SKILL_INSCRIPTION:    bot->learnSpell(45357, false); break; // Inscription
-            case SKILL_JEWELCRAFTING:  bot->learnSpell(25229, false); break; // Jewelcrafting
-            case SKILL_LEATHERWORKING: bot->learnSpell(2108, false); break;  // Leatherworking
-            case SKILL_MINING:         bot->learnSpell(2575, false); break;  // Mining
-            case SKILL_TAILORING:      bot->learnSpell(3908, false); break;  // Tailoring
-            case SKILL_SKINNING:       bot->learnSpell(8613, false); break;  // Skinning
-            case SKILL_COOKING:        bot->learnSpell(2550, false); break;  // Cooking
-            case SKILL_FIRST_AID:      bot->learnSpell(3273, false); break;  // First Aid
-        }
-    }
-
-    // ✅ Ensure the bot learns crafting recipes (similar to GM command)
-    if (highCapSkills.find(id) != highCapSkills.end()) 
-    {
-        for (SkillLineAbilityEntry const* skillLine : GetSkillLineAbilitiesBySkillLine(id))
-        {
-            if (skillLine->SupercededBySpell) continue;
-            bot->learnSpell(skillLine->Spell);
-        }
-    }
 }
 
 void PlayerbotFactory::InitAvailableSpells()
