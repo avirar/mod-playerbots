@@ -145,7 +145,7 @@ private:
     bool CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item);
     void InitTradeSkills();
     void UpdateTradeSkills();
-    void SetRandomSkill(uint16 id);
+    void SetRandomSkill(uint16 id, bool setMax = false);
     void InitSpells();
     void ClearSpells();
     void ClearSkills();
