@@ -2396,13 +2396,20 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     uint32 curValue = bot->GetSkillValue(id);
     uint16 currentStep = bot->GetSkillStep(id);
 
-    // Ensure the bot has the skill; otherwise, add it first
+    // ✅ Ensure the bot has the skill; otherwise, properly add it with an appropriate step
     if (!bot->HasSkill(id))
     {
-        bot->SetSkill(id, 1, 1, 1); // Initialize the skill at step 1, level 1
+        uint16 initialStep = 1;
+        if (value > 75)  initialStep = 2;  // Journeyman
+        if (value > 150) initialStep = 3;  // Expert
+        if (value > 225) initialStep = 4;  // Artisan
+        if (value > 300) initialStep = 5;  // Master
+        if (value > 375) initialStep = 6;  // Grand Master
+
+        bot->SetSkill(id, initialStep, 1, 1);  // Initialize skill at correct step
     }
 
-    // Determine the correct step based on the *value* being assigned, not maxValue
+    // ✅ Now determine the proper step based on value
     uint16 newStep = 1;
     if (value > 75)  newStep = 2;  // Journeyman
     if (value > 150) newStep = 3;  // Expert
@@ -2415,6 +2422,37 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 
     // ✅ Now properly set the skill level and step
     bot->SetSkill(id, step, value, maxValue);
+
+    // ✅ Ensure the bot learns the correct profession spell
+    if (highCapSkills.find(id) != highCapSkills.end()) 
+    {
+        switch (id)
+        {
+            case SKILL_ALCHEMY:        bot->learnSpell(2259, false); break;  // Alchemy
+            case SKILL_BLACKSMITHING:  bot->learnSpell(2018, false); break;  // Blacksmithing
+            case SKILL_ENCHANTING:     bot->learnSpell(7411, false); break;  // Enchanting
+            case SKILL_ENGINEERING:    bot->learnSpell(4036, false); break;  // Engineering
+            case SKILL_HERBALISM:      bot->learnSpell(2366, false); break;  // Herbalism
+            case SKILL_INSCRIPTION:    bot->learnSpell(45357, false); break; // Inscription
+            case SKILL_JEWELCRAFTING:  bot->learnSpell(25229, false); break; // Jewelcrafting
+            case SKILL_LEATHERWORKING: bot->learnSpell(2108, false); break;  // Leatherworking
+            case SKILL_MINING:         bot->learnSpell(2575, false); break;  // Mining
+            case SKILL_TAILORING:      bot->learnSpell(3908, false); break;  // Tailoring
+            case SKILL_SKINNING:       bot->learnSpell(8613, false); break;  // Skinning
+            case SKILL_COOKING:        bot->learnSpell(2550, false); break;  // Cooking
+            case SKILL_FIRST_AID:      bot->learnSpell(3273, false); break;  // First Aid
+        }
+    }
+
+    // ✅ Ensure the bot learns crafting recipes (similar to GM command)
+    if (highCapSkills.find(id) != highCapSkills.end()) 
+    {
+        for (SkillLineAbilityEntry const* skillLine : GetSkillLineAbilitiesBySkillLine(id))
+        {
+            if (skillLine->SupercededBySpell) continue;
+            bot->learnSpell(skillLine->Spell);
+        }
+    }
 }
 
 void PlayerbotFactory::InitAvailableSpells()
