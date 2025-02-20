@@ -75,6 +75,10 @@ bool TeleportAction::Execute(Event event)
 
         uint32 spellId = goInfo->spellcaster.spellId;
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+
+        if (!spellInfo) // Ensure spellInfo is valid before using it
+            continue;
+
         if (!spellInfo->HasEffect(SPELL_EFFECT_TELEPORT_UNITS))
             continue;
 
