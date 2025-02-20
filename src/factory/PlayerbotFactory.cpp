@@ -2450,7 +2450,7 @@ void PlayerbotFactory::InitAvailableSpells()
                 if (spellInfo->Effects[j].Effect == SPELL_EFFECT_PROFICIENCY ||
                     (/*spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
                      spellInfo->Effects[j].MiscValue != SKILL_RIDING) || */
-                    spellInfo->Effects[j].Effect == SPELL_EFFECT_DUAL_WIELD)
+                    spellInfo->Effects[j].Effect == SPELL_EFFECT_DUAL_WIELD))
                 {
                     learn = false;
                     break;
