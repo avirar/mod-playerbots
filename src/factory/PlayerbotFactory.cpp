@@ -2346,6 +2346,19 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 }
 */
 
+    // Apply the new skill formula only for the selected skills
+    // Excel formula to test, change A1 to suit cell containg character level
+    // =MAX(A1 *5,7.5 *A1  - 150)
+    // Level	Outcome
+    //    80	450
+    //    70	375
+    //    60	300
+    //    50	250
+    //    45	225
+    //    30	150
+    //    20	100
+    //     1	5
+
 void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 {
     // List of skills that can go up to 450
@@ -2367,18 +2380,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 
     uint32 maxValue;
 
-    // Apply the new skill formula only for the selected skills
-    // Excel formula to test, change A1 to suit cell containg character level
-    // =MAX(A1 *5,7.5 *A1  - 150)
-    // Level	Outcome
-    //    80	450
-    //    70	375
-    //    60	300
-    //    50	250
-    //    45	225
-    //    30	150
-    //    20	100
-    //     1	5
+    // Determine max skill value
     if (highCapSkills.find(id) != highCapSkills.end()) 
     {
         maxValue = std::max(level * 5, static_cast<uint32>((7.5 * level) - 150));
@@ -2394,9 +2396,14 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     uint32 curValue = bot->GetSkillValue(id);
     uint16 currentStep = bot->GetSkillStep(id);
 
+    // Ensure the bot has the skill; otherwise, add it first
+    if (!bot->HasSkill(id))
+    {
+        bot->SetSkill(id, 1, 1, 1); // Initialize the skill at step 1, level 1
+    }
+
     // Determine the correct step based on the *value* being assigned, not maxValue
     uint16 newStep = 1;
-
     if (value > 75)  newStep = 2;  // Journeyman
     if (value > 150) newStep = 3;  // Expert
     if (value > 225) newStep = 4;  // Artisan
@@ -2406,6 +2413,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     // Ensure the bot is using the highest available step relative to the value being set
     uint16 step = (newStep > currentStep) ? newStep : currentStep;
 
+    // ✅ Now properly set the skill level and step
     bot->SetSkill(id, step, value, maxValue);
 }
 
