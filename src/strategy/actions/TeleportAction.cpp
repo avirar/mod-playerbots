@@ -63,6 +63,10 @@ bool TeleportAction::Execute(Event event)
     
     // If no portal was found, fallback to spellcaster-type game objects
     GuidVector gos = *context->GetValue<GuidVector>("nearest game objects");
+    
+    GameObject* nearestGo = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
+
     for (ObjectGuid const guid : gos)
     {
         GameObject* go = botAI->GetGameObject(guid);
@@ -76,27 +80,40 @@ bool TeleportAction::Execute(Event event)
         uint32 spellId = goInfo->spellcaster.spellId;
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
 
-        if (!spellInfo) // Ensure spellInfo is valid before using it
+        if (!spellInfo || !spellInfo->HasEffect(SPELL_EFFECT_TELEPORT_UNITS))
             continue;
 
-        if (!spellInfo->HasEffect(SPELL_EFFECT_TELEPORT_UNITS))
-            continue;
+        // Calculate distance from bot to the portal
+        float distance = bot->GetDistance(go);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            nearestGo = go;
+        }
+    }
 
+    // Use the nearest teleportation portal
+    if (nearestGo)
+    {
         std::ostringstream out;
-        out << "Teleporting using " << goInfo->name;
+        out << "Teleporting using " << nearestGo->GetGOInfo()->name;
         botAI->TellMasterNoFacing(out.str());
 
         botAI->ChangeStrategy("-follow,+stay", BOT_STATE_NON_COMBAT);
 
-        Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
-        SpellCastTargets targets;
-        targets.SetUnitTarget(bot);
-        spell->prepare(&targets, nullptr);
-        spell->cast(true);
-        return true;
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(nearestGo->GetGOInfo()->spellcaster.spellId);
+        if (spellInfo)
+        {
+            Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+            SpellCastTargets targets;
+            targets.SetUnitTarget(bot);
+            spell->prepare(&targets, nullptr);
+            spell->cast(true);
+            return true;
+        }
     }
     
-    // If no game objects were found, try using the last area trigger
+    // If no valid game object portal was found, fall back to last area trigger
     LastMovement& movement = context->GetValue<LastMovement&>("last area trigger")->Get();
     if (movement.lastAreaTrigger)
     {
@@ -109,7 +126,7 @@ bool TeleportAction::Execute(Event event)
         return true;
     }
 
-    // If no teleport option is found
+    // If no teleportation method is found
     botAI->TellError("Cannot find any portal to teleport");
     return false;
 }
