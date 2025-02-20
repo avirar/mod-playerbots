@@ -2385,14 +2385,26 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     }
     else 
     {
-        maxValue = level * 5; // Retain original logic for other skills
+        maxValue = level * 5; // Default skill calculation
     }
 
     // Decide whether to set skill at max or use a random value
     uint32 value = setMax ? maxValue : urand(level, maxValue);
 
     uint32 curValue = bot->GetSkillValue(id);
-    uint16 step = bot->GetSkillValue(id) ? bot->GetSkillStep(id) : 1;
+    uint16 currentStep = bot->GetSkillStep(id);
+
+    // Determine the correct step based on the *value* being assigned, not maxValue
+    uint16 newStep = 1;
+
+    if (value > 75)  newStep = 2;  // Journeyman
+    if (value > 150) newStep = 3;  // Expert
+    if (value > 225) newStep = 4;  // Artisan
+    if (value > 300) newStep = 5;  // Master
+    if (value > 375) newStep = 6;  // Grand Master
+
+    // Ensure the bot is using the highest available step relative to the value being set
+    uint16 step = (newStep > currentStep) ? newStep : currentStep;
 
     bot->SetSkill(id, step, value, maxValue);
 }
