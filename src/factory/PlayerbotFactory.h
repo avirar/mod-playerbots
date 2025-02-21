@@ -127,6 +127,7 @@ public:
     void InitAmmo();
     static uint32 CalcMixedGearScore(uint32 gs, uint32 quality);
     void InitPetTalents();
+    void InitTradeSkills();
 
     void InitReagents();
     void InitGlyphs(bool increment = false);
@@ -143,7 +144,6 @@ private:
     // void InitEquipmentNew(bool incremental);
     bool CanEquipItem(ItemTemplate const* proto);
     bool CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item);
-    void InitTradeSkills();
     void UpdateTradeSkills();
     void SetRandomSkill(uint16 id, bool setMax = false);
     void InitSpells();
