@@ -2420,6 +2420,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
             {
                 for (uint16 i = 0; i < step - 1; ++i) // -1 because step 1 (Apprentice) has no spell
                 {
+                    LOG_INFO("playerbots", "Bot {} learned skill step spell {} for skill {}", bot->GetName().c_str(), skillData.steps[i], id);
                     bot->learnSpell(skillData.steps[i], false);
                 }
                 break;
@@ -2428,6 +2429,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     }
 
     // ✅ Now properly set the skill level and step
+    LOG_INFO("playerbots", "Bot {} set skill {} to level {} (max {}) with step {}", bot->GetName().c_str(), id, value, maxValue, step);
     bot->SetSkill(id, step, value, maxValue);
 }
 
