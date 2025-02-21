@@ -2378,7 +2378,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     uint16 step = bot->HasSkill(id) ? bot->GetSkillStep(id) : 1;
 
     // ✅ Special handling for high cap skills: Manually calculate step and assign step spells
-    if (highCapSkills.find(id) != highCapSkills.end() && bot->HasSkill(id)) // ✅ Ensure the bot HAS the skill
+    if (highCapSkills.find(id) != highCapSkills.end()) // ✅ Ensure the bot HAS the skill
     {
         struct SkillStepSpells
         {
