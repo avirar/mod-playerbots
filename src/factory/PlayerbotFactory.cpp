@@ -2383,7 +2383,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
 void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 {
-    LOG_INFO("playerbots", "Bot {}<{}> setting skill {}", bot->GetName().c_str(), level, id);
+    // LOG_INFO("playerbots", "Bot {}<{}> setting skill {}", bot->GetName().c_str(), level, id);
 
     // Check if the skill is a trade skill (replaces highCapSkills)
     bool isTradeSkill = false;
@@ -2451,7 +2451,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
             {
                 for (uint16 i = 0; i < step; ++i)
                 {
-                    LOG_INFO("playerbots", "Bot {} learned skill step spell {} for skill {}", bot->GetName().c_str(), skillData.steps[i], id);
+                    // LOG_INFO("playerbots", "Bot {} learned skill step spell {} for skill {}", bot->GetName().c_str(), skillData.steps[i], id);
                     bot->learnSpell(skillData.steps[i], false);
                 }
                 break;
@@ -2480,7 +2480,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
         value = oldValue;
 
     // Now properly set the skill level and step
-    LOG_INFO("playerbots", "Bot {} set skill {} to level {} (max {}) with step {}", bot->GetName().c_str(), id, value, maxValue, step);
+    // LOG_INFO("playerbots", "Bot {} set skill {} to level {} (max {}) with step {}", bot->GetName().c_str(), id, value, maxValue, step);
     bot->SetSkill(id, step, value, maxValue);
 }
 
