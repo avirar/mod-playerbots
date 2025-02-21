@@ -2361,6 +2361,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
 void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 {
+    LOG_INFO("playerbots", "Bot {} setting skill {}", bot->GetName().c_str(), id);
     // List of skills that can go up to 450
     static const std::unordered_set<uint16> highCapSkills = {
         SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_HERBALISM,
