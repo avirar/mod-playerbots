@@ -2102,7 +2102,7 @@ void PlayerbotFactory::InitTradeSkills()
 {
     uint16 firstSkill = sRandomPlayerbotMgr->GetValue(bot, "firstSkill");
     uint16 secondSkill = sRandomPlayerbotMgr->GetValue(bot, "secondSkill");
-    if (!firstSkill || !secondSkill)
+    if (!firstSkill && !secondSkill)
     {
         std::vector<uint32> firstSkills;
         std::vector<uint32> secondSkills;
@@ -2145,7 +2145,7 @@ void PlayerbotFactory::InitTradeSkills()
                 break;
             case 3:
                 firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_SKINNING;
+                secondSkill = SKILL_MINING;
                 break;
             case 4:
                 firstSkill = SKILL_HERBALISM;
