@@ -2361,25 +2361,31 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
 
 void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 {
-    LOG_INFO("playerbots", "Bot {}<{}> setting skill {}", bot->GetName().c_str(),level, id);
-    // List of skills that can go up to 450
-    static const std::unordered_set<uint16> highCapSkills = {
-        SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_HERBALISM,
-        SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING,
-        SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID, SKILL_FISHING
-    };
+    LOG_INFO("playerbots", "Bot {}<{}> setting skill {}", bot->GetName().c_str(), level, id);
 
-    uint32 maxValue = (highCapSkills.find(id) != highCapSkills.end()) 
+    // Check if the skill is a trade skill (replaces highCapSkills)
+    bool isTradeSkill = false;
+    for (uint32 skill : tradeSkills)
+    {
+        if (skill == id)
+        {
+            isTradeSkill = true;
+            break;
+        }
+    }
+
+    // Max value logic remains unchanged
+    uint32 maxValue = isTradeSkill
         ? std::max(level * 5, static_cast<uint32>(std::max(5, static_cast<int>((75 * level / 10) - 150))))
         : level * 5;
 
     uint32 value = setMax ? maxValue : urand(level, maxValue);
 
-    // Default: Use GetSkillStep(id) for non-high cap skills
+    // Default: Use GetSkillStep(id) for non-trade skills
     uint16 step = bot->HasSkill(id) ? bot->GetSkillStep(id) : 1;
 
-    // Special handling for high cap skills: Manually calculate step and assign step spells
-    if (highCapSkills.find(id) != highCapSkills.end()) // Ensure the bot HAS the skill
+    // Special handling for trade skills: Manually calculate step and assign step spells
+    if (isTradeSkill) 
     {
         struct SkillStepSpells
         {
@@ -2419,7 +2425,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
         // Learn required skill step spells ONLY IF the bot has this profession
         for (const auto& skillData : skillStepSpells)
         {
-            if (skillData.skill == id) // ✅ Only process the specific skill
+            if (skillData.skill == id) // Only process the specific skill
             {
                 for (uint16 i = 0; i < step; ++i)
                 {
@@ -2431,7 +2437,21 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
         }
     }
 
-    // ✅ Now properly set the skill level and step
+    // Override maxValue if it's a trade skill to align with trade skill steps
+    if (isTradeSkill)
+    {
+        static const std::unordered_map<uint16, uint32> tradeSkillMaxValues = {
+            {1, 75}, {2, 150}, {3, 225}, {4, 300}, {5, 375}, {6, 450}
+        };
+
+        auto it = tradeSkillMaxValues.find(step);
+        if (it != tradeSkillMaxValues.end())
+        {
+            maxValue = it->second;
+        }
+    }
+
+    // Now properly set the skill level and step
     LOG_INFO("playerbots", "Bot {} set skill {} to level {} (max {}) with step {}", bot->GetName().c_str(), id, value, maxValue, step);
     bot->SetSkill(id, step, value, maxValue);
 }
