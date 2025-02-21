@@ -2100,81 +2100,93 @@ bool PlayerbotFactory::CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item)
 
 void PlayerbotFactory::InitTradeSkills()
 {
-    // Check the bot directly instead of relying on DB store which doesnt seem to update when removing skills
-    // Check if the bot already has at least one primary trade skill
+    uint16 firstSkill = 0, secondSkill = 0;
+
+    // Find the bot's existing trade skills
     for (uint32 skill : tradeSkills)
     {
         if (skill == SKILL_COOKING || skill == SKILL_FISHING || skill == SKILL_FIRST_AID)
             continue; // Ignore secondary skills
 
         if (bot->HasSkill((SkillType)skill))
-            return; // Bot already has a trade skill, skip assigning new ones
+        {
+            if (!firstSkill)
+                firstSkill = skill;
+            else
+            {
+                secondSkill = skill;
+                break; // Found both, no need to continue
+            }
+        }
     }
 
-    uint16 firstSkill = 0, secondSkill = 0;
-    std::vector<uint32> firstSkills;
-    std::vector<uint32> secondSkills;
-
-    switch (bot->getClass())
+    // If no trade skills exist, assign new ones
+    if (!firstSkill && !secondSkill)
     {
-        case CLASS_WARRIOR:
-        case CLASS_PALADIN:
-        case CLASS_DEATH_KNIGHT:
-            firstSkills.push_back(SKILL_MINING);
-            secondSkills.push_back(SKILL_BLACKSMITHING);
-            secondSkills.push_back(SKILL_ENGINEERING);
-            secondSkills.push_back(SKILL_JEWELCRAFTING);
-            break;
-        case CLASS_SHAMAN:
-        case CLASS_DRUID:
-        case CLASS_HUNTER:
-        case CLASS_ROGUE:
-            firstSkills.push_back(SKILL_SKINNING);
-            secondSkills.push_back(SKILL_LEATHERWORKING);
-            break;
-        default:
-            firstSkills.push_back(SKILL_TAILORING);
-            secondSkills.push_back(SKILL_ENCHANTING);
+        std::vector<uint32> firstSkills;
+        std::vector<uint32> secondSkills;
+
+        switch (bot->getClass())
+        {
+            case CLASS_WARRIOR:
+            case CLASS_PALADIN:
+            case CLASS_DEATH_KNIGHT:
+                firstSkills.push_back(SKILL_MINING);
+                secondSkills.push_back(SKILL_BLACKSMITHING);
+                secondSkills.push_back(SKILL_ENGINEERING);
+                secondSkills.push_back(SKILL_JEWELCRAFTING);
+                break;
+            case CLASS_SHAMAN:
+            case CLASS_DRUID:
+            case CLASS_HUNTER:
+            case CLASS_ROGUE:
+                firstSkills.push_back(SKILL_SKINNING);
+                secondSkills.push_back(SKILL_LEATHERWORKING);
+                break;
+            default:
+                firstSkills.push_back(SKILL_TAILORING);
+                secondSkills.push_back(SKILL_ENCHANTING);
+        }
+
+        switch (urand(0, 8))
+        {
+            case 0:
+                firstSkill = SKILL_HERBALISM;
+                secondSkill = SKILL_ALCHEMY;
+                break;
+            case 1:
+                firstSkill = SKILL_HERBALISM;
+                secondSkill = SKILL_MINING;
+                break;
+            case 2:
+                firstSkill = SKILL_MINING;
+                secondSkill = SKILL_SKINNING;
+                break;
+            case 3:
+                firstSkill = SKILL_HERBALISM;
+                secondSkill = SKILL_MINING;
+                break;
+            case 4:
+                firstSkill = SKILL_HERBALISM;
+                secondSkill = SKILL_INSCRIPTION;
+                break;
+            default:
+                firstSkill = firstSkills[urand(0, firstSkills.size() - 1)];
+                secondSkill = secondSkills[urand(0, secondSkills.size() - 1)];
+                break;
+        }
+
+        // Save the new skills
+        sRandomPlayerbotMgr->SetValue(bot, "firstSkill", firstSkill);
+        sRandomPlayerbotMgr->SetValue(bot, "secondSkill", secondSkill);
     }
 
-    switch (urand(0, 8))
-    {
-        case 0:
-            firstSkill = SKILL_HERBALISM;
-            secondSkill = SKILL_ALCHEMY;
-            break;
-        case 1:
-            firstSkill = SKILL_HERBALISM;
-            secondSkill = SKILL_MINING;
-            break;
-        case 2:
-            firstSkill = SKILL_MINING;
-            secondSkill = SKILL_SKINNING;
-            break;
-        case 3:
-            firstSkill = SKILL_HERBALISM;
-            secondSkill = SKILL_MINING;
-            break;
-        case 4:
-            firstSkill = SKILL_HERBALISM;
-            secondSkill = SKILL_INSCRIPTION;
-            break;
-        default:
-            firstSkill = firstSkills[urand(0, firstSkills.size() - 1)];
-            secondSkill = secondSkills[urand(0, secondSkills.size() - 1)];
-            break;
-    }
-
-    // Save the new skills
-    sRandomPlayerbotMgr->SetValue(bot, "firstSkill", firstSkill);
-    sRandomPlayerbotMgr->SetValue(bot, "secondSkill", secondSkill);
-
-    // Assign secondary skills
+    // Always assign secondary skills
     SetRandomSkill(SKILL_FIRST_AID);
     SetRandomSkill(SKILL_FISHING);
     SetRandomSkill(SKILL_COOKING);
 
-    // Assign selected trade skills
+    // Always apply the bot’s first and second trade skills (existing or newly assigned)
     SetRandomSkill(firstSkill);
     SetRandomSkill(secondSkill);
 }
