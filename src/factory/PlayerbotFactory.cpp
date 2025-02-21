@@ -2451,6 +2451,11 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
         }
     }
 
+    // Only goes up
+    oldValue = bot->GetSkillValue(id);
+    if (oldValue && oldValue > value)
+        value = oldValue;
+
     // Now properly set the skill level and step
     LOG_INFO("playerbots", "Bot {} set skill {} to level {} (max {}) with step {}", bot->GetName().c_str(), id, value, maxValue, step);
     bot->SetSkill(id, step, value, maxValue);
