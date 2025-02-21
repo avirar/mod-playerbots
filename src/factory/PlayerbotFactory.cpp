@@ -2365,7 +2365,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     static const std::unordered_set<uint16> highCapSkills = {
         SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_HERBALISM,
         SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING,
-        SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID
+        SKILL_SKINNING, SKILL_COOKING, SKILL_FIRST_AID, SKILL_FISHING
     };
 
     uint32 maxValue = (highCapSkills.find(id) != highCapSkills.end()) 
@@ -2399,16 +2399,17 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
             { SKILL_SKINNING,      {8617, 8618, 10768, 32678, 50305} },
             { SKILL_TAILORING,     {3909, 3910, 12180, 26790, 51309} },
             { SKILL_COOKING,       {3102, 3413, 18260, 33359, 51296} },
-            { SKILL_FIRST_AID,     {3274, 7924, 10846, 27028, 45542} }
+            { SKILL_FIRST_AID,     {3274, 7924, 10846, 27028, 45542} },
+            { SKILL_FISHING,       {7731, 7732, 18248, 33095, 51294} }
         };
 
         // ✅ Calculate step manually based on `value`
         uint16 calculatedStep = 1;
-        if (value > 75)  calculatedStep = 2;  // Journeyman
-        if (value > 150) calculatedStep = 3;  // Expert
-        if (value > 225) calculatedStep = 4;  // Artisan
-        if (value > 300) calculatedStep = 5;  // Master
-        if (value > 375) calculatedStep = 6;  // Grand Master
+        if (value >= 75)  calculatedStep = 2;  // Journeyman
+        if (value >= 150) calculatedStep = 3;  // Expert
+        if (value >= 225) calculatedStep = 4;  // Artisan
+        if (value >= 300) calculatedStep = 5;  // Master
+        if (value >= 375) calculatedStep = 6;  // Grand Master
 
         // ✅ Preserve current step if higher than the calculated one
         step = std::max(step, calculatedStep);
