@@ -2370,7 +2370,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     };
 
     uint32 maxValue = (highCapSkills.find(id) != highCapSkills.end()) 
-        ? std::max(level * 5, (75 * level / 10) - 150)
+        ? std::max(level * 5, static_cast<uint32>(std::max(5, (75 * level / 10) - 150)))
         : level * 5;
 
     uint32 value = setMax ? maxValue : urand(level, maxValue);
