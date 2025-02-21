@@ -2452,6 +2452,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     }
 
     // Only goes up
+    uint32 oldValue = 0;
     oldValue = bot->GetSkillValue(id);
     if (oldValue && oldValue > value)
         value = oldValue;
