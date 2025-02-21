@@ -43,7 +43,7 @@ const uint64 diveMask = (1LL << 7) | (1LL << 44) | (1LL << 37) | (1LL << 38) | (
 uint32 PlayerbotFactory::tradeSkills[] = {SKILL_ALCHEMY,        SKILL_ENCHANTING,  SKILL_SKINNING,  SKILL_TAILORING,
                                           SKILL_LEATHERWORKING, SKILL_ENGINEERING, SKILL_HERBALISM, SKILL_MINING,
                                           SKILL_BLACKSMITHING,  SKILL_COOKING,     SKILL_FIRST_AID, SKILL_FISHING,
-                                          SKILL_JEWELCRAFTING};
+                                          SKILL_JEWELCRAFTING,  SKILL_INSCRIPTION };
 
 std::list<uint32> PlayerbotFactory::classQuestIds;
 std::list<uint32> PlayerbotFactory::specialQuestIds;
@@ -2375,52 +2375,53 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
 
     uint32 value = setMax ? maxValue : urand(level, maxValue);
 
-    // ✅ Default: Use GetSkillStep(id) for non-high cap skills
+    // Default: Use GetSkillStep(id) for non-high cap skills
     uint16 step = bot->HasSkill(id) ? bot->GetSkillStep(id) : 1;
 
-    // ✅ Special handling for high cap skills: Manually calculate step and assign step spells
-    if (highCapSkills.find(id) != highCapSkills.end()) // ✅ Ensure the bot HAS the skill
+    // Special handling for high cap skills: Manually calculate step and assign step spells
+    if (highCapSkills.find(id) != highCapSkills.end()) // Ensure the bot HAS the skill
     {
         struct SkillStepSpells
         {
             uint16 skill;
-            uint32 steps[5]; // Journeyman, Expert, Artisan, Master, Grand Master
+            uint32 steps[6]; // Journeyman, Expert, Artisan, Master, Grand Master
         };
 
         static const std::vector<SkillStepSpells> skillStepSpells = {
-            { SKILL_ALCHEMY,       {3101, 3464, 11611, 28596, 51304} },
-            { SKILL_BLACKSMITHING, {3100, 3538, 9785, 29844, 51300} },
-            { SKILL_ENCHANTING,    {7412, 7413, 13920, 28029, 51313} },
-            { SKILL_ENGINEERING,   {4037, 4038, 12656, 30350, 51306} },
-            { SKILL_HERBALISM,     {2368, 3570, 11993, 28695, 50300} },
-            { SKILL_INSCRIPTION,   {45358, 45359, 45360, 45361, 45363} },
-            { SKILL_JEWELCRAFTING, {25230, 28894, 28895, 28897, 51311} },
-            { SKILL_LEATHERWORKING,{3104, 3811, 10662, 32549, 51302} },
-            { SKILL_MINING,        {3104, 3811, 10662, 32549, 51302} },
-            { SKILL_SKINNING,      {8617, 8618, 10768, 32678, 50305} },
-            { SKILL_TAILORING,     {3909, 3910, 12180, 26790, 51309} },
-            { SKILL_COOKING,       {3102, 3413, 18260, 33359, 51296} },
-            { SKILL_FIRST_AID,     {3274, 7924, 10846, 27028, 45542} },
-            { SKILL_FISHING,       {7731, 7732, 18248, 33095, 51294} }
+            { SKILL_ALCHEMY,       {2259, 3101, 3464, 11611, 28596, 51304} },
+            { SKILL_BLACKSMITHING, {2018, 3100, 3538, 9785, 29844, 51300} },
+            { SKILL_ENCHANTING,    {7411, 7412, 7413, 13920, 28029, 51313} },
+            { SKILL_ENGINEERING,   {4036, 4037, 4038, 12656, 30350, 51306} },
+            { SKILL_HERBALISM,     {2366, 2368, 3570, 11993, 28695, 50300} },
+            { SKILL_INSCRIPTION,   {45357, 45358, 45359, 45360, 45361, 45363} },
+            { SKILL_JEWELCRAFTING, {25229, 25230, 28894, 28895, 28897, 51311} },
+            { SKILL_LEATHERWORKING,{2108, 3104, 3811, 10662, 32549, 51302} },
+            { SKILL_MINING,        {2575, 3104, 3811, 10662, 32549, 51302} },
+            { SKILL_SKINNING,      {8613, 8617, 8618, 10768, 32678, 50305} },
+            { SKILL_TAILORING,     {3908, 3909, 3910, 12180, 26790, 51309} },
+            { SKILL_COOKING,       {2550, 3102, 3413, 18260, 33359, 51296} },
+            { SKILL_FIRST_AID,     {3273, 3274, 7924, 10846, 27028, 45542} },
+            { SKILL_FISHING,       {7620, 7731, 7732, 18248, 33095, 51294} }
         };
 
-        // ✅ Calculate step manually based on `value`
+        // Calculate step manually based on `value`
         uint16 calculatedStep = 1;
+        if (value >= 1)   calculatedStep = 1;  // Apprentice
         if (value >= 75)  calculatedStep = 2;  // Journeyman
         if (value >= 150) calculatedStep = 3;  // Expert
         if (value >= 225) calculatedStep = 4;  // Artisan
         if (value >= 300) calculatedStep = 5;  // Master
         if (value >= 375) calculatedStep = 6;  // Grand Master
 
-        // ✅ Preserve current step if higher than the calculated one
+        // Preserve current step if higher than the calculated one
         step = std::max(step, calculatedStep);
 
-        // ✅ Learn required skill step spells ONLY IF the bot has this profession
+        // Learn required skill step spells ONLY IF the bot has this profession
         for (const auto& skillData : skillStepSpells)
         {
             if (skillData.skill == id) // ✅ Only process the specific skill
             {
-                for (uint16 i = 0; i < step - 1; ++i) // -1 because step 1 (Apprentice) has no spell
+                for (uint16 i = 0; i < step; ++i)
                 {
                     LOG_INFO("playerbots", "Bot {} learned skill step spell {} for skill {}", bot->GetName().c_str(), skillData.steps[i], id);
                     bot->learnSpell(skillData.steps[i], false);
@@ -2486,12 +2487,23 @@ void PlayerbotFactory::InitAvailableSpells()
                     continue;
 
                 if (spellInfo->Effects[j].Effect == SPELL_EFFECT_PROFICIENCY ||
-                    (/*spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
-                     spellInfo->Effects[j].MiscValue != SKILL_RIDING) || */
-                    spellInfo->Effects[j].Effect == SPELL_EFFECT_DUAL_WIELD))
+                    (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
+                     spellInfo->Effects[j].MiscValue != SKILL_RIDING) ||
+                     spellInfo->Effects[j].Effect == SPELL_EFFECT_DUAL_WIELD)
                 {
                     learn = false;
                     break;
+                }
+
+                // Exclude trade skills as we handle them specifically in InitTradeSkills
+                for (uint32 skill : tradeSkills)
+                {
+                    if (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP &&
+                        spellInfo->Effects[j].MiscValue == skill)
+                    {
+                        learn = false;
+                        break;
+                    }
                 }
             }
             if (!learn)
