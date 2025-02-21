@@ -2378,7 +2378,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
     uint16 step = bot->HasSkill(id) ? bot->GetSkillStep(id) : 1;
 
     // ✅ Special handling for high cap skills: Manually calculate step and assign step spells
-    if (highCapSkills.find(id) != highCapSkills.end())
+    if (highCapSkills.find(id) != highCapSkills.end() && bot->HasSkill(id)) // ✅ Ensure the bot HAS the skill
     {
         struct SkillStepSpells
         {
@@ -2413,10 +2413,10 @@ void PlayerbotFactory::SetRandomSkill(uint16 id, bool setMax)
         // ✅ Preserve current step if higher than the calculated one
         step = std::max(step, calculatedStep);
 
-        // ✅ Learn required skill step spells before setting the skill
+        // ✅ Learn required skill step spells ONLY IF the bot has this profession
         for (const auto& skillData : skillStepSpells)
         {
-            if (skillData.skill == id)
+            if (skillData.skill == id) // ✅ Only process the specific skill
             {
                 for (uint16 i = 0; i < step - 1; ++i) // -1 because step 1 (Apprentice) has no spell
                 {
