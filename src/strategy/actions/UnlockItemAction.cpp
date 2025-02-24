@@ -3,7 +3,7 @@
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
 
-bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
+bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
         return false;
