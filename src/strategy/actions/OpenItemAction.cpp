@@ -161,9 +161,8 @@ bool OpenItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
         Item* keyItem = bot->GetItemByEntry(requiredKeyItem);
         if (keyItem)
         {
-            // Use the item via UseItemAction instead of bot->UseItem()
-            UseItemAction useAction(botAI);
-            if (useAction.UseItem(keyItem, ObjectGuid::Empty, nullptr))
+            // Use the key item correctly
+            if (UseItem(keyItem, ObjectGuid::Empty, item))
             {
                 botAI->TellMaster("Used key to unlock item: " + item->GetTemplate()->Name1);
                 return true;
