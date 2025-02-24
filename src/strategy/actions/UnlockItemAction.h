@@ -17,8 +17,8 @@ class UnlockItemAction : public UseItemAction
 public:
     UnlockItemAction(PlayerbotAI* botAI) : UseItemAction(botAI, "unlock item") { }
 
-    // Attempts to unlock an item before it can be opened
-    bool Execute(Item* item, uint8 bag, uint8 slot);
+    // Rename the function to avoid conflicts
+    bool Unlock(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
