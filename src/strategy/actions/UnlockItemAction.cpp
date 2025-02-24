@@ -20,7 +20,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
     if (itemTemplate->LockID == 0)
     {
         botAI->TellMaster("Item has no lock. Can be opened normally.");
-        return true; // No lock means it is already openable.
+        return true;
     }
 
     LockEntry const* lockInfo = sLockStore.LookupEntry(itemTemplate->LockID);
@@ -43,7 +43,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
     SkillType requiredSkill = SKILL_NONE;
     uint32 requiredSkillValue = 0;
     uint32 requiredKeyItem = 0;
-    bool unlockSuccess = false;
+    bool isCompletelyUnlocked = true; // Assume it's unlocked unless we find a real lock
 
     // Scan for lock requirements
     for (uint8 i = 0; i < 8; ++i)
@@ -52,6 +52,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
         {
             case LOCK_KEY_SKILL:
             {
+                isCompletelyUnlocked = false; // Item requires a skill, so it's locked
                 requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
                 requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
                 uint32 botSkillLevel = bot->GetSkillValue(requiredSkill);
@@ -93,6 +94,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
             }
 
             case LOCK_KEY_ITEM:
+                isCompletelyUnlocked = false; // Item requires a key, so it's locked
                 if (lockInfo->Index[i] > 0)
                 {
                     requiredKeyItem = lockInfo->Index[i];
@@ -101,9 +103,16 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                 break;
 
             case LOCK_KEY_NONE:
-                botAI->TellMaster("Item is not locked.");
-                return true;
+                // Do nothing immediately, we will check this after scanning all locks
+                break;
         }
+    }
+
+    // 🔹 Only say "Item is not locked" if NO lock conditions were found
+    if (isCompletelyUnlocked)
+    {
+        botAI->TellMaster("Item is not locked.");
+        return true;
     }
 
     // If skill unlocking failed, attempt to use a key item
