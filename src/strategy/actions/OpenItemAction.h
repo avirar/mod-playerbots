@@ -15,7 +15,7 @@ class Event;
 class OpenItemAction : public UseItemAction
 {
 public:
-    OpenItemAction(PlayerbotAI* botAI) : Action(botAI, "open item") { }
+    OpenItemAction(PlayerbotAI* botAI) : UseItemAction(botAI, "open item") { }
 
     // The main function that is executed when the action is triggered
     bool Execute(Event event) override;
