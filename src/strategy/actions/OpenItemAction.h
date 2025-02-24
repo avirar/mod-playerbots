@@ -27,7 +27,7 @@ private:
     // Performs the action of opening the item
     void OpenItem(Item* item, uint8 bag, uint8 slot);
     // Performs the action of unlocking the item
-    void UnlockItem(Item* item, uint8 bag, uint8 slot);
+    bool UnlockItem(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
