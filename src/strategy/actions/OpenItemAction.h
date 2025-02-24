@@ -6,16 +6,16 @@
 #ifndef _PLAYERBOT_OPENITEMACTION_H
 #define _PLAYERBOT_OPENITEMACTION_H
 
-#include "UseItemAction.h"
+#include "Action.h"
 
 class Player;
 class Item;
 class Event;
 
-class OpenItemAction : public UseItemAction
+class OpenItemAction : public Action
 {
 public:
-    OpenItemAction(PlayerbotAI* botAI) : UseItemAction(botAI, "open item") { }
+    OpenItemAction(PlayerbotAI* botAI) : Action(botAI, "open item") { }
 
     // The main function that is executed when the action is triggered
     bool Execute(Event event) override;
@@ -26,8 +26,6 @@ private:
 
     // Performs the action of opening the item
     void OpenItem(Item* item, uint8 bag, uint8 slot);
-    // Performs the action of unlocking the item
-    bool UnlockItem(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
