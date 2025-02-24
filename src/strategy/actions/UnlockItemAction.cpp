@@ -30,38 +30,42 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
         {
             case LOCK_KEY_SKILL:
             {
-                // Prioritize skill-based unlocking
+                // Determine skill requirement
                 requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
                 requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-
                 uint32 botSkillLevel = bot->GetSkillValue(requiredSkill);
 
                 std::ostringstream debugMsg;
                 debugMsg << "Checking skill: " << requiredSkill 
-                         << " | Bot skill level: " << botSkillLevel
-                         << " | Required: " << requiredSkillValue;
+                         << " (Should be 633 for Lockpicking) | Bot skill level: " << botSkillLevel
+                         << " | Required: " << requiredSkillValue
+                         << " | Spell ID: " << lockInfo->Index[i];
                 botAI->TellMaster(debugMsg.str());
 
-                if (requiredSkill > 0 && bot->HasSkill(requiredSkill) && botSkillLevel >= requiredSkillValue)
+                // Ensure the detected skill is valid
+                if (requiredSkill == SKILL_LOCKPICKING && botSkillLevel >= requiredSkillValue)
                 {
-                    botAI->TellMaster("Using skill to unlock: " + item->GetTemplate()->Name1);
-                    bot->CastSpell(bot, lockInfo->Index[i], TRIGGERED_NONE);
+                    botAI->TellMaster("Using Lockpicking skill on: " + item->GetTemplate()->Name1);
+                    bot->CastSpell(item->GetGUID(), lockInfo->Index[i], TRIGGERED_NONE);
 
                     // Wait for the unlock to happen
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
-                    // Check if item is now openable
-                    if (!item->GetTemplate()->LockID) 
+                    // Check if the item is now openable
+                    if (botAI->CanOpenItem(item)) 
                     {
                         botAI->TellMaster("Successfully unlocked: " + item->GetTemplate()->Name1);
                         return true;
+                    }
+                    else
+                    {
+                        botAI->TellMaster("Unlock attempt failed, item is still locked: " + item->GetTemplate()->Name1);
                     }
                 }
                 break;
             }
 
             case LOCK_KEY_ITEM:
-                // Store the required key item for later use
                 if (lockInfo->Index[i] > 0)
                     requiredKeyItem = lockInfo->Index[i];
                 break;
@@ -71,17 +75,15 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
         }
     }
 
-    // If skill unlocking was not possible, attempt to use a key item
+    // If skill unlocking failed, attempt to use a key item
     if (requiredKeyItem > 0 && bot->HasItemCount(requiredKeyItem, 1))
     {
         Item* keyItem = bot->GetItemByEntry(requiredKeyItem);
         if (keyItem)
         {
-            // Use the key item correctly
             botAI->TellMaster("Using key to unlock: " + item->GetTemplate()->Name1);
             if (UseItem(keyItem, ObjectGuid::Empty, item))
             {
-                // Wait for the unlock to happen
                 botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                 botAI->TellMaster("Successfully unlocked with key: " + item->GetTemplate()->Name1);
                 return true;
