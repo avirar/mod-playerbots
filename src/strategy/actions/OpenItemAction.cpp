@@ -4,6 +4,7 @@
 #include "WorldPacket.h"
 #include "Player.h"
 #include "ObjectMgr.h"
+#include "UseItemAction.h"
 
 bool OpenItemAction::Execute(Event event)
 {
@@ -160,13 +161,16 @@ bool OpenItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
         Item* keyItem = bot->GetItemByEntry(requiredKeyItem);
         if (keyItem)
         {
-            bot->UseItem(keyItem);
-            botAI->TellMaster("Used key to unlock item: " + item->GetTemplate()->Name1);
-            return true;
+            // Use the item via UseItemAction instead of bot->UseItem()
+            UseItemAction useAction(botAI);
+            if (useAction.UseItem(keyItem, ObjectGuid::Empty, nullptr))
+            {
+                botAI->TellMaster("Used key to unlock item: " + item->GetTemplate()->Name1);
+                return true;
+            }
         }
     }
 
     botAI->TellMaster("Failed to unlock item: " + item->GetTemplate()->Name1);
     return false;
 }
-
