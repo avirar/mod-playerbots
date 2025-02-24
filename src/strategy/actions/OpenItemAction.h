@@ -6,13 +6,13 @@
 #ifndef _PLAYERBOT_OPENITEMACTION_H
 #define _PLAYERBOT_OPENITEMACTION_H
 
-#include "Action.h"
+#include "UseItemAction.h"
 
 class Player;
 class Item;
 class Event;
 
-class OpenItemAction : public Action
+class OpenItemAction : public UseItemAction
 {
 public:
     OpenItemAction(PlayerbotAI* botAI) : Action(botAI, "open item") { }
