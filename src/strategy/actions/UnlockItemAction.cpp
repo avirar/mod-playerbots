@@ -47,8 +47,8 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
                     botAI->TellMaster("Using skill to unlock: " + item->GetTemplate()->Name1);
                     bot->CastSpell(bot, lockInfo->Index[i], TRIGGERED_NONE);
 
-                    // Wait for the unlock to happen (simulate delay)
-                    botAI->WaitForSpellLock(lockInfo->Index[i]);
+                    // Wait for the unlock to happen
+                    botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
                     // Check if item is now openable
                     if (!item->GetTemplate()->LockID) 
@@ -81,6 +81,8 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
             botAI->TellMaster("Using key to unlock: " + item->GetTemplate()->Name1);
             if (UseItem(keyItem, ObjectGuid::Empty, item))
             {
+                // Wait for the unlock to happen
+                botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                 botAI->TellMaster("Successfully unlocked with key: " + item->GetTemplate()->Name1);
                 return true;
             }
