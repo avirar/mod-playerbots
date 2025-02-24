@@ -9,6 +9,7 @@
 bool OpenItemAction::Execute(Event event)
 {
     bool foundOpenable = false;
+    botAI->TellMaster("Checking for openable items...");
 
     // Check items in the bags
     for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
@@ -21,12 +22,24 @@ bool OpenItemAction::Execute(Event event)
         {
             Item* item = bot->GetItemByPos(bag, slot);
 
+            if (item)
+            {
+                botAI->TellMaster("Found item: " + item->GetTemplate()->Name1);
+            }
+
             if (item && CanOpenItem(item))
             {
+                botAI->TellMaster("Item can be opened: " + item->GetTemplate()->Name1);
+
                 if (UnlockItem(item, bag, slot))
                 {
+                    botAI->TellMaster("Unlocking item: " + item->GetTemplate()->Name1);
                     OpenItem(item, bag, slot);
                     foundOpenable = true;
+                }
+                else
+                {
+                    botAI->TellMaster("Failed to unlock: " + item->GetTemplate()->Name1);
                 }
             }
         }
@@ -35,12 +48,11 @@ bool OpenItemAction::Execute(Event event)
     // If no openable items were found
     if (!foundOpenable)
     {
-        botAI->TellError("No openable items in inventory.");
+        botAI->TellMaster("No openable items in inventory.");
     }
 
     return foundOpenable;
 }
-
 
 bool OpenItemAction::CanOpenItem(Item* item)
 {
