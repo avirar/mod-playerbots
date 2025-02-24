@@ -46,14 +46,14 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
                 {
                     botAI->TellMaster("Using Lockpicking skill on: " + item->GetTemplate()->Name1);
 
-                    // 🔹 FIX: Use correct CastSpell function for items
+                    // Cast Pick Lock on the item
                     bot->CastSpell(bot, lockInfo->Index[i], TRIGGERED_NONE, item);
 
                     // Wait for the unlock to happen
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
-                    // Check if the item is now openable
-                    if (botAI->CanOpenItem(item)) 
+                    // 🔹 FIX: Check if LockID is gone
+                    if (!(item->GetTemplate()->LockID))
                     {
                         botAI->TellMaster("Successfully unlocked: " + item->GetTemplate()->Name1);
                         return true;
