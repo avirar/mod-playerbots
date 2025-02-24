@@ -71,6 +71,10 @@ bool OpenItemAction::CanOpenItem(Item* item)
     if (!lockInfo)
         return false;
 
+    // Declare variables outside of the switch block
+    SkillType requiredSkill = SKILL_NONE;
+    uint32 requiredSkillValue = 0;
+
     // Check the lock requirements
     for (uint8 i = 0; i < 8; ++i)
     {
@@ -83,14 +87,12 @@ bool OpenItemAction::CanOpenItem(Item* item)
                 break;
 
             case LOCK_KEY_SKILL:
-                // Check if the bot has the necessary skill (Lockpicking)
-                SkillType requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
-                if (requiredSkill > 0 && bot->HasSkill(requiredSkill))
-                {
-                    uint32 requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-                    if (bot->GetSkillValue(requiredSkill) >= requiredSkillValue)
-                        return true;
-                }
+                // Assign values outside the switch block
+                requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
+                requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
+
+                if (requiredSkill > 0 && bot->HasSkill(requiredSkill) && bot->GetSkillValue(requiredSkill) >= requiredSkillValue)
+                    return true;
                 break;
 
             case LOCK_KEY_NONE:
@@ -102,7 +104,6 @@ bool OpenItemAction::CanOpenItem(Item* item)
     // If none of the conditions were met, the bot cannot open the item
     return false;
 }
-
 
 void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
 {
