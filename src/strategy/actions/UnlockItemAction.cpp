@@ -65,12 +65,20 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                          << " | Spell ID: " << lockInfo->Index[i];
                 botAI->TellMaster(debugMsg.str());
 
+                // **🔹 Fix: Verify spell ID is actually Pick Lock (1804)**
+                if (lockInfo->Index[i] != 1804)
+                {
+                    botAI->TellMaster("❌ ERROR: Retrieved incorrect spell ID for Pick Lock! Spell ID: " +
+                                      std::to_string(lockInfo->Index[i]) + ". Expected: 1804");
+                    return false;
+                }
+
                 if (requiredSkill == SKILL_LOCKPICKING && botSkillLevel >= requiredSkillValue)
                 {
                     botAI->TellMaster("Using Lockpicking skill on: " + itemTemplate->Name1);
 
                     // Cast Pick Lock on the item
-                    bot->CastSpell(bot, lockInfo->Index[i], TRIGGERED_NONE, item);
+                    bot->CastSpell(bot, 1804, TRIGGERED_NONE, item);  // 🔹 Force the correct spell ID (1804)
 
                     // Wait for the unlock to happen
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
