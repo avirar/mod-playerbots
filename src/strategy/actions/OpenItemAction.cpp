@@ -58,9 +58,51 @@ bool OpenItemAction::CanOpenItem(Item* item)
     if (!itemTemplate)
         return false;
 
-    // Check if the item has the openable flag
-    return itemTemplate->Flags & ITEM_FLAG_HAS_LOOT;
+    // Check if the item is openable
+    if (!(itemTemplate->Flags & ITEM_FLAG_HAS_LOOT))
+        return false;
+
+    // If the item has no lock, it can be opened freely
+    if (itemTemplate->LockID == 0)
+        return true;
+
+    // Get the lock entry for the item
+    LockEntry const* lockInfo = sLockStore.LookupEntry(itemTemplate->LockID);
+    if (!lockInfo)
+        return false;
+
+    // Check the lock requirements
+    for (uint8 i = 0; i < 8; ++i)
+    {
+        switch (lockInfo->Type[i])
+        {
+            case LOCK_KEY_ITEM:
+                // Check if the bot has the required key item
+                if (lockInfo->Index[i] > 0 && bot->HasItemCount(lockInfo->Index[i], 1))
+                    return true;
+                break;
+
+            case LOCK_KEY_SKILL:
+                // Check if the bot has the necessary skill (Lockpicking)
+                SkillType requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
+                if (requiredSkill > 0 && bot->HasSkill(requiredSkill))
+                {
+                    uint32 requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
+                    if (bot->GetSkillValue(requiredSkill) >= requiredSkillValue)
+                        return true;
+                }
+                break;
+
+            case LOCK_KEY_NONE:
+                // The item is not locked, it can be opened
+                return true;
+        }
+    }
+
+    // If none of the conditions were met, the bot cannot open the item
+    return false;
 }
+
 
 void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
 {
