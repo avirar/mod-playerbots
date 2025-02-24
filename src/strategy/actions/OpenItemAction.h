@@ -21,11 +21,13 @@ public:
     bool Execute(Event event) override;
 
 private:
-    // Checks if the given item can be opened (i.e., has the openable flag)
+    // Checks if the given item can be opened (i.e. has the openable flag and the bot has the required skill or item)
     bool CanOpenItem(Item* item);
 
     // Performs the action of opening the item
     void OpenItem(Item* item, uint8 bag, uint8 slot);
+    // Performs the action of unlocking the item
+    void UnlockItem(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
