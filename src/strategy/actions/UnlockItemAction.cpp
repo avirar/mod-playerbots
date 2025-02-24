@@ -21,7 +21,6 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
     SkillType requiredSkill = SKILL_NONE;
     uint32 requiredSkillValue = 0;
     uint32 requiredKeyItem = 0;
-    bool unlockSuccess = false;
 
     // Scan for lock requirements
     for (uint8 i = 0; i < 8; ++i)
@@ -46,7 +45,9 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
                 if (requiredSkill == SKILL_LOCKPICKING && botSkillLevel >= requiredSkillValue)
                 {
                     botAI->TellMaster("Using Lockpicking skill on: " + item->GetTemplate()->Name1);
-                    bot->CastSpell(item->GetGUID(), lockInfo->Index[i], TRIGGERED_NONE);
+
+                    // 🔹 FIX: Use correct CastSpell function for items
+                    bot->CastSpell(item, lockInfo->Index[i], TRIGGERED_NONE);
 
                     // Wait for the unlock to happen
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
