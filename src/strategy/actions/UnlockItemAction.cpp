@@ -52,8 +52,8 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                     // Wait for the unlock to happen
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
-                    // 🔹 FIX: Check if LockID is gone
-                    if (!(item->GetTemplate()->LockID))
+                    // 🔹 FIX: Check if item has been unlocked
+                    if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
                     {
                         botAI->TellMaster("Successfully unlocked: " + item->GetTemplate()->Name1);
                         return true;
