@@ -16,9 +16,12 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
     if (!lockInfo)
         return false;
 
+    botAI->TellMaster("Attempting to unlock: " + item->GetTemplate()->Name1);
+
     SkillType requiredSkill = SKILL_NONE;
     uint32 requiredSkillValue = 0;
     uint32 requiredKeyItem = 0;
+    bool unlockSuccess = false;
 
     // Scan for lock requirements
     for (uint8 i = 0; i < 8; ++i)
@@ -26,17 +29,36 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
         switch (lockInfo->Type[i])
         {
             case LOCK_KEY_SKILL:
+            {
                 // Prioritize skill-based unlocking
                 requiredSkill = SkillByLockType(LockType(lockInfo->Index[i]));
                 requiredSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
 
-                if (requiredSkill > 0 && bot->HasSkill(requiredSkill) && bot->GetSkillValue(requiredSkill) >= requiredSkillValue)
+                uint32 botSkillLevel = bot->GetSkillValue(requiredSkill);
+
+                std::ostringstream debugMsg;
+                debugMsg << "Checking skill: " << requiredSkill 
+                         << " | Bot skill level: " << botSkillLevel
+                         << " | Required: " << requiredSkillValue;
+                botAI->TellMaster(debugMsg.str());
+
+                if (requiredSkill > 0 && bot->HasSkill(requiredSkill) && botSkillLevel >= requiredSkillValue)
                 {
+                    botAI->TellMaster("Using skill to unlock: " + item->GetTemplate()->Name1);
                     bot->CastSpell(bot, lockInfo->Index[i], TRIGGERED_NONE);
-                    botAI->TellMaster("Using skill to unlock item: " + item->GetTemplate()->Name1);
-                    return true;
+
+                    // Wait for the unlock to happen (simulate delay)
+                    botAI->WaitForSpellLock(lockInfo->Index[i]);
+
+                    // Check if item is now openable
+                    if (!item->GetTemplate()->LockID) 
+                    {
+                        botAI->TellMaster("Successfully unlocked: " + item->GetTemplate()->Name1);
+                        return true;
+                    }
                 }
                 break;
+            }
 
             case LOCK_KEY_ITEM:
                 // Store the required key item for later use
@@ -56,9 +78,10 @@ bool UnlockItemAction::Execute(Item* item, uint8 bag, uint8 slot)
         if (keyItem)
         {
             // Use the key item correctly
+            botAI->TellMaster("Using key to unlock: " + item->GetTemplate()->Name1);
             if (UseItem(keyItem, ObjectGuid::Empty, item))
             {
-                botAI->TellMaster("Used key to unlock item: " + item->GetTemplate()->Name1);
+                botAI->TellMaster("Successfully unlocked with key: " + item->GetTemplate()->Name1);
                 return true;
             }
         }
