@@ -3126,6 +3126,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
 
     if (spellId == 1804) // Pick Lock
     {
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot)
         botAI->TellMaster("Debug: Pick Lock casting - Item Target: " + 
                           (itemTarget ? chat->FormatItem(itemTarget->GetTemplate()) : "None"));
     }
