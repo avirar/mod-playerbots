@@ -2,7 +2,6 @@
 #include "PlayerbotAI.h"
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
-#include "CastCustomSpellAction.h"
 
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
@@ -78,15 +77,14 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                 {
                     botAI->TellMaster("🛠️ Using Lockpicking skill on: " + itemTemplate->Name1 + " with Spell ID: " + std::to_string(spellId));
 
-                    // 🔹 Format the spell command (like disenchanting)
+                    // 🔹 Format the spell command (following disenchant logic)
                     std::ostringstream spellCommand;
                     spellCommand << spellId << " " << chat->FormatQItem(item->GetEntry());
 
                     botAI->TellMaster("🪄 Casting Pick Lock using: " + spellCommand.str());
 
-                    // **🔹 Create an instance of `CastCustomSpellAction`**
-                    CastCustomSpellAction castAction(botAI, "pick lock");
-                    if (castAction.Execute(Event("unlock item", spellCommand.str())))
+                    // 🔹 Use CastCustomSpellAction like Disenchanting does
+                    if (CastCustomSpellAction(botAI, "pick lock").Execute(Event("unlock item", spellCommand.str())))
                     {
                         botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
