@@ -6,16 +6,16 @@
 #ifndef _PLAYERBOT_UNLOCKITEMACTION_H
 #define _PLAYERBOT_UNLOCKITEMACTION_H
 
-#include "UseItemAction.h"
+#include "CastCustomSpellAction.h"
 
 class Player;
 class Item;
 class Event;
 
-class UnlockItemAction : public UseItemAction
+class UnlockItemAction : public CastCustomSpellAction
 {
 public:
-    UnlockItemAction(PlayerbotAI* botAI) : UseItemAction(botAI, "unlock item") { }
+    UnlockItemAction(PlayerbotAI* botAI) : CastCustomSpellAction(botAI, "unlock item") { }
 
     // Rename the function to avoid conflicts
     bool Unlock(Item* item, uint8 bag, uint8 slot);
