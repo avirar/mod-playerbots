@@ -182,17 +182,17 @@ bool UnlockItemAction::Execute(Event event)
 
         botAI->TellMaster("Debug: Item GUID = " + std::to_string(item->GetGUID().GetRawValue()));
 
-        if (CastCustomSpellAction::Execute(
-                Event("unlock item", "1804 " + std::to_string(item->GetGUID().GetRawValue()))))
-        // if (botAI->CastSpell(1804, nullptr, item))
-        {
-            botAI->TellMaster("Successfully unlocked " + chat->FormatItem(item->GetTemplate()));
-            return true;
-        }
-        else
-        {
-            botAI->TellMaster("I failed to unlock " + chat->FormatItem(item->GetTemplate()));
-        }
+        // Get bag and slot information
+        uint8 bag = item->GetBagSlot();
+        uint8 slot = item->GetSlot();
+
+        botAI->TellMaster("Debug: Bag = " + std::to_string(bag) + ", Slot = " + std::to_string(slot));
+
+        // Call UnlockItem with correct parameters
+        UnlockItem(item, bag, slot);
+
+        botAI->TellMaster("Successfully sent unlock attempt for " + chat->FormatItem(item->GetTemplate()));
+        return true;
     }
 
     botAI->TellMaster("I couldn't unlock any items.");
@@ -223,4 +223,18 @@ bool UnlockItemAction::isUseful()
 
     botAI->TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
     return true;
+}
+
+void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+{
+    WorldPacket packet(CMSG_CAST_SPELL);
+    packet << uint64(item->GetGUID().GetRawValue()); // Target Item GUID
+    packet << uint32(1804); // Pick Lock Spell ID
+    packet << uint8(0); // Cast Flags (default to 0)
+    
+    bot->GetSession()->HandleCastSpellOpcode(packet);
+
+    std::ostringstream out;
+    out << "Attempting to unlock item: " << item->GetTemplate()->Name1;
+    botAI->TellMaster(out.str());
 }
