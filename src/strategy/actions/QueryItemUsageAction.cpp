@@ -12,6 +12,25 @@
 
 bool QueryItemUsageAction::Execute(Event event)
 {
+    std::string param = event.getParam();
+    if (param.empty())
+    {
+        botAI->TellMaster("Please specify an item.");
+        return false;
+    }
+
+    ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(atoi(param.c_str()));
+    if (!itemTemplate)
+    {
+        botAI->TellMaster("Item not found.");
+        return false;
+    }
+
+    uint32 count = GetCount(itemTemplate);
+    uint32 total = bot->GetItemCount(itemTemplate->ItemId, true);
+    std::string itemInfo = QueryItem(itemTemplate, count, total);
+
+    botAI->TellMaster(itemInfo);
     return true;
 }
 
