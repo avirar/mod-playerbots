@@ -4,7 +4,7 @@
 #include "ItemUsageValue.h"
 #include "ObjectMgr.h"
 
-// #include "ChatHelper.h"
+#include "ChatHelper.h"
 //#include "Event.h"
 #include "Playerbots.h"
 //#include "ServerFacade.h"
@@ -164,27 +164,60 @@ bool UnlockItemAction::Execute(Event event)
 {
     std::vector<Item*> items =
         AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_UNLOCK));
-    std::reverse(items.begin(), items.end());
+
+    if (items.empty())
+    {
+        TellMaster("I have no locked items to unlock.");
+        return false;
+    }
+
+    TellMaster("I found " + std::to_string(items.size()) + " locked items.");
 
     for (auto& item : items)
     {
-        /*
-        // don't touch rare+ items if with real player/guild
-        if ((botAI->HasRealPlayerMaster() || botAI->IsInRealGuild()) &&
-            item->GetTemplate()->Quality > ITEM_QUALITY_UNCOMMON)
-            return false;
-        */
+        if (!item)
+            continue;
+
+        TellMaster("Attempting to unlock " + chat->FormatItem(item->GetTemplate()));
 
         if (CastCustomSpellAction::Execute(
                 Event("unlock item", "1804 " + chat->FormatQItem(item->GetEntry()))))
+        {
+            TellMaster("Successfully unlocked " + chat->FormatItem(item->GetTemplate()));
             return true;
+        }
+        else
+        {
+            TellMaster("I failed to unlock " + chat->FormatItem(item->GetTemplate()));
+        }
     }
 
+    TellMaster("I couldn't unlock any items.");
     return false;
 }
 
 bool UnlockItemAction::isUseful()
 {
-    return botAI->HasSkill(SKILL_LOCKPICKING) && !bot->IsInCombat() &&
-           AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_UNLOCK)) > 0;
+    if (!botAI->HasSkill(SKILL_LOCKPICKING))
+    {
+        TellMaster("I don't know how to pick locks.");
+        return false;
+    }
+
+    if (bot->IsInCombat())
+    {
+        TellMaster("I'm too busy fighting to unlock anything!");
+        return false;
+    }
+
+    uint32 lockedItemCount = AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_UNLOCK));
+
+    if (lockedItemCount == 0)
+    {
+        TellMaster("I have no locked items to unlock.");
+        return false;
+    }
+
+    TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
+    return true;
 }
