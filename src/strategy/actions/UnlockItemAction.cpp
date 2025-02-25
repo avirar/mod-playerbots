@@ -244,16 +244,18 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     uint8 castFlags = 0;
     uint32 targetFlags = TARGET_FLAG_ITEM; // Correctly define item target flag
 
-    packet << castCount;                      // Cast count (always 0)
-    packet << spellId;                        // Spell ID (Pick Lock)
-    packet << castFlags;                      // Cast flags
-    packet << targetFlags;                    // Target flag (must be TARGET_FLAG_ITEM)
-    packet << item->GetGUID();                // Explicitly target the locked item (corrected)
+    ObjectGuid itemGuid = item->GetGUID(); // Extract the correct ObjectGuid
+
+    packet << castCount;       // Cast count (always 0)
+    packet << spellId;         // Spell ID (Pick Lock)
+    packet << castFlags;       // Cast flags
+    packet << targetFlags;     // Target flag (must be TARGET_FLAG_ITEM)
+    packet << itemGuid;        // Correctly pass the item GUID
 
     // Step 2: Attach valid `SpellCastTargets`
     SpellCastTargets targets;
-    targets.SetItemTarget(item->GetGUID()); // Explicitly set the locked item GUID
-    targets.Write(packet); // Attach the target data
+    targets.SetItemTarget(itemGuid); // Corrected: explicitly setting the locked item GUID
+    targets.Write(packet);           // Attach the target data
 
     // Step 3: Send the packet
     bot->GetSession()->HandleCastSpellOpcode(packet);
