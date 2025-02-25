@@ -30,7 +30,9 @@ enum ItemUsage : uint32
     ITEM_USAGE_AH = 10,
     ITEM_USAGE_KEEP = 11,
     ITEM_USAGE_VENDOR = 12,
-    ITEM_USAGE_AMMO = 13
+    ITEM_USAGE_AMMO = 13,
+    ITEM_USAGE_OPEN = 14,
+    ITEM_USAGE_UNLOCK = 15
 };
 
 class ItemUsageValue : public CalculatedValue<ItemUsage>, public Qualified
