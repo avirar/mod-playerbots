@@ -113,6 +113,10 @@ std::string const QueryItemUsageAction::QueryItemUsage(ItemTemplate const* item)
             return "Auctionhouse";
         case ITEM_USAGE_AMMO:
             return "Ammunition";
+        case ITEM_USAGE_OPEN:
+            return "Openable";
+        case ITEM_USAGE_UNLOCK:
+            return "Unlockable";
         default:
             break;
     }
