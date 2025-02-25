@@ -3124,6 +3124,12 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     if (!target)
         target = bot;
 
+    if (spellId == 1804) // Pick Lock
+    {
+        botAI->TellMaster("Debug: Pick Lock casting - Item Target: " + 
+                          (itemTarget ? chat->FormatItem(itemTarget->GetTemplate()) : "None"));
+    }
+
     Pet* pet = bot->GetPet();
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (pet && pet->HasSpell(spellId))
