@@ -234,28 +234,22 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
         return;
     }
 
-    // Step 1: Cast Pick Lock (1804)
-    {
-        WorldPacket castPacket(CMSG_CAST_SPELL);
-        castPacket << uint8(0);                      // Cast Count (always 0)
-        castPacket << uint32(1804);                  // Pick Lock Spell ID
-        castPacket << uint8(0);                      // Cast Flags
-        bot->GetSession()->HandleCastSpellOpcode(castPacket);
+    WorldPacket packet(CMSG_CAST_SPELL);
 
-        botAI->TellMaster("Casting Pick Lock...");
-    }
+    uint32 spellId = 1804; // Pick Lock
+    uint8 castCount = 0;
+    uint8 castFlags = 0;
+    uint32 targetFlags = TARGET_FLAG_ITEM;
 
-    // Step 2: Select the locked item as the spell target
-    {
-        WorldPacket itemPacket(CMSG_ITEM_QUERY_SINGLE);
-        itemPacket << uint8(bag);                      // Bag Index
-        itemPacket << uint8(slot);                     // Slot Index
-        itemPacket << uint64(item->GetGUID().GetRawValue()); // Item GUID
-        bot->GetSession()->HandleItemQuerySingleOpcode(itemPacket);
+    packet << castCount;                      // Cast count (always 0)
+    packet << spellId;                        // Spell ID (Pick Lock)
+    packet << castFlags;                      // Cast flags (0 for normal cast)
+    packet << targetFlags;                    // Target flag indicating an item target
+    packet << uint64(item->GetGUID().GetRawValue()); // Item GUID
 
-        std::ostringstream out;
-        out << "Selecting item for Pick Lock: " << item->GetTemplate()->Name1;
-        botAI->TellMaster(out.str());
-    }
+    bot->GetSession()->HandleCastSpellOpcode(packet);
+
+    std::ostringstream out;
+    out << "Attempting to unlock item: " << item->GetTemplate()->Name1;
+    botAI->TellMaster(out.str());
 }
-
