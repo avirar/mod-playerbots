@@ -4,7 +4,10 @@
 #include "ItemUsageValue.h"
 #include "ObjectMgr.h"
 
-#include "ChatHelper.h"
+// #include "ChatHelper.h"
+#include "Event.h"
+#include "Playerbots.h"
+#include "ServerFacade.h"
 /*
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
