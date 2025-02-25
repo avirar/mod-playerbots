@@ -5,7 +5,7 @@
 #include "ObjectMgr.h"
 
 // #include "ChatHelper.h"
-#include "Event.h"
+//#include "Event.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 /*
