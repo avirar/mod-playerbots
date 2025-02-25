@@ -29,6 +29,7 @@ void ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("rep", NextAction::array(0, new NextAction("reputation", relevance), nullptr)));
     triggers.push_back(new TriggerNode("q", NextAction::array(0, new NextAction("query quest", relevance),
                                                               new NextAction("query item usage", relevance), nullptr)));
+    triggers.push_back(new TriggerNode("qi", NextAction::array(0, new NextAction("query item usage", relevance), nullptr)));
     triggers.push_back(new TriggerNode("add all loot", NextAction::array(0, new NextAction("add all loot", relevance),
                                                                          new NextAction("loot", relevance), nullptr)));
     triggers.push_back(new TriggerNode("u", NextAction::array(0, new NextAction("use", relevance), nullptr)));
@@ -168,4 +169,5 @@ ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* botAI) : Pas
     supported.push_back("drink");
     supported.push_back("calc");
     supported.push_back("open items");
+    supported.push_back("qi");
 }
