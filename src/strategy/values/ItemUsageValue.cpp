@@ -25,6 +25,26 @@ ItemUsage ItemUsageValue::Calculate()
     if (!proto)
         return ITEM_USAGE_NONE;
 
+    // Check if the item is openable
+    if (proto->LockID = 0 && proto->Flags & ITEM_FLAG_HAS_LOOT)
+        return ITEM_USAGE_OPEN;
+
+    // Check if the item is unlockable
+    if (proto->LockID > 0)
+    {
+        LockEntry const* lockInfo = sLockStore.LookupEntry(proto->LockID);
+        if (lockInfo)
+        {
+            for (uint8 i = 0; i < 8; ++i)
+            {
+                if (lockInfo->Type[i] == LOCK_KEY_SKILL || lockInfo->Type[i] == LOCK_KEY_ITEM)
+                {
+                    return ITEM_USAGE_UNLOCK; // Requires key or lockpicking
+                }
+            }
+        }
+    }
+
     if (botAI->HasActivePlayerMaster())
     {
         if (IsItemUsefulForSkill(proto) || IsItemNeededForSkill(proto))
