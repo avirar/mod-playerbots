@@ -92,7 +92,9 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 
                     botAI->TellMaster("Casting Pick Lock using: " + spellCommand.str());
 
-                    if (CastCustomSpellAction::Execute(Event("unlock item", spellCommand.str())))
+                    // **🔹 Create an instance of `CastCustomSpellAction`**
+                    CastCustomSpellAction castAction(botAI, "pick lock");
+                    if (castAction.Execute(Event("unlock item", spellCommand.str())))
                     {
                         botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
