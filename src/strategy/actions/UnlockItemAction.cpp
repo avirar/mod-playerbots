@@ -78,7 +78,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                     botAI->TellMaster("Using Lockpicking skill on: " + itemTemplate->Name1 + " with Spell ID: " + std::to_string(spellId));
 
                     // 🔹 Properly cast Pick Lock **on the item**
-                    if (botAI->CastSpell(spellId, nullptr, item))
+                    if (botAI->CastSpell(spellId, bot, item))
                     {
                         botAI->TellMaster("🔄 Waiting for unlock...");
                         botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
