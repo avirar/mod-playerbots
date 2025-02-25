@@ -2,6 +2,7 @@
 #include "PlayerbotAI.h"
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
+#include "CastCustomSpellAction.h"
 
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
@@ -85,31 +86,33 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                 {
                     botAI->TellMaster("Using Lockpicking skill on: " + itemTemplate->Name1 + " with Spell ID: " + std::to_string(spellId));
 
-                    // 🔹 Cast the correct Pick Lock spell
-                    bot->CastSpell(bot, spellId, TRIGGERED_NONE, item);
+                    // 🔹 Properly format the spell command to target the item
+                    std::ostringstream spellCommand;
+                    spellCommand << spellId << " " << chat->FormatQItem(item->GetEntry());
 
-                    // **🔹 Wait for the unlock to process**
-                    botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
+                    botAI->TellMaster("Casting Pick Lock using: " + spellCommand.str());
 
-                    // **🔹 Wait and Re-check if item is unlocked**
-                    for (int j = 0; j < 3; ++j) // Retry 3 times to allow for server delay
+                    if (CastCustomSpellAction::Execute(Event("unlock item", spellCommand.str())))
                     {
-                        botAI->SetNextCheckDelay(500); // Wait 500ms before checking again
-                        if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
-                        {
-                            botAI->TellMaster("Successfully unlocked: " + itemTemplate->Name1);
-                            return true;
-                        }
-                    }
+                        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
-                    botAI->TellMaster("Unlock attempt failed, item is still locked: " + itemTemplate->Name1);
+                        for (int j = 0; j < 3; ++j) // Retry 3 times to allow for server delay
+                        {
+                            botAI->SetNextCheckDelay(500);
+                            if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
+                            {
+                                botAI->TellMaster("Successfully unlocked: " + itemTemplate->Name1);
+                                return true;
+                            }
+                        }
+                        botAI->TellMaster("Unlock attempt failed, item is still locked: " + itemTemplate->Name1);
+                    }
                 }
                 else
                 {
                     botAI->TellMaster("Bot lacks the required Lockpicking skill level.");
                 }
 
-                // **🔹 Ensure no further checks run after Lockpicking**
                 return false;
             }
 
