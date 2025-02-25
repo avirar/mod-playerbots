@@ -167,32 +167,32 @@ bool UnlockItemAction::Execute(Event event)
 
     if (items.empty())
     {
-        TellMaster("I have no locked items to unlock.");
+        botAI->TellMaster("I have no locked items to unlock.");
         return false;
     }
 
-    TellMaster("I found " + std::to_string(items.size()) + " locked items.");
+    botAI->TellMaster("I found " + std::to_string(items.size()) + " locked items.");
 
     for (auto& item : items)
     {
         if (!item)
             continue;
 
-        TellMaster("Attempting to unlock " + chat->FormatItem(item->GetTemplate()));
+        botAI->TellMaster("Attempting to unlock " + chat->FormatItem(item->GetTemplate()));
 
         if (CastCustomSpellAction::Execute(
                 Event("unlock item", "1804 " + chat->FormatQItem(item->GetEntry()))))
         {
-            TellMaster("Successfully unlocked " + chat->FormatItem(item->GetTemplate()));
+            botAI->TellMaster("Successfully unlocked " + chat->FormatItem(item->GetTemplate()));
             return true;
         }
         else
         {
-            TellMaster("I failed to unlock " + chat->FormatItem(item->GetTemplate()));
+            botAI->TellMaster("I failed to unlock " + chat->FormatItem(item->GetTemplate()));
         }
     }
 
-    TellMaster("I couldn't unlock any items.");
+    botAI->TellMaster("I couldn't unlock any items.");
     return false;
 }
 
@@ -200,13 +200,13 @@ bool UnlockItemAction::isUseful()
 {
     if (!botAI->HasSkill(SKILL_LOCKPICKING))
     {
-        TellMaster("I don't know how to pick locks.");
+        botAI->TellMaster("I don't know how to pick locks.");
         return false;
     }
 
     if (bot->IsInCombat())
     {
-        TellMaster("I'm too busy fighting to unlock anything!");
+        botAI->TellMaster("I'm too busy fighting to unlock anything!");
         return false;
     }
 
@@ -214,10 +214,10 @@ bool UnlockItemAction::isUseful()
 
     if (lockedItemCount == 0)
     {
-        TellMaster("I have no locked items to unlock.");
+        botAI->TellMaster("I have no locked items to unlock.");
         return false;
     }
 
-    TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
+    botAI->TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
     return true;
 }
