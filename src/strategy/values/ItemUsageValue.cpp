@@ -108,7 +108,7 @@ ItemUsage ItemUsageValue::Calculate()
             return ITEM_USAGE_NONE; // Not skilled enough to disenchant
 
         // BoE (Bind on Equip) items should NOT be disenchanted unless they are already bound
-        if (proto->Bonding == BIND_WHEN_PICKED_UP || (proto->Bonding == BIND_WHEN_EQUIP && isSoulbound))
+        if (proto->Bonding == BIND_WHEN_PICKED_UP || (proto->Bonding == BIND_WHEN_EQUIPPED && isSoulbound))
             return ITEM_USAGE_DISENCHANT;
     }
 
