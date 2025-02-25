@@ -88,25 +88,29 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                     // 🔹 Cast the correct Pick Lock spell
                     bot->CastSpell(bot, spellId, TRIGGERED_NONE, item);
 
-                    // Wait for the unlock to happen
+                    // **🔹 Wait for the unlock to process**
                     botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
-                    // 🔹 FIX: Check if item has been unlocked
-                    if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
+                    // **🔹 Wait and Re-check if item is unlocked**
+                    for (int j = 0; j < 3; ++j) // Retry 3 times to allow for server delay
                     {
-                        botAI->TellMaster("Successfully unlocked: " + itemTemplate->Name1);
-                        return true;
+                        botAI->SetNextCheckDelay(500); // Wait 500ms before checking again
+                        if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
+                        {
+                            botAI->TellMaster("Successfully unlocked: " + itemTemplate->Name1);
+                            return true;
+                        }
                     }
-                    else
-                    {
-                        botAI->TellMaster("Unlock attempt failed, item is still locked: " + itemTemplate->Name1);
-                    }
+
+                    botAI->TellMaster("Unlock attempt failed, item is still locked: " + itemTemplate->Name1);
                 }
                 else
                 {
                     botAI->TellMaster("Bot lacks the required Lockpicking skill level.");
                 }
-                break;
+
+                // **🔹 Ensure no further checks run after Lockpicking**
+                return false;
             }
 
             case LOCK_KEY_ITEM:
