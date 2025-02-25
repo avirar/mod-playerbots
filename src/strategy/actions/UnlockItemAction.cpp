@@ -180,6 +180,8 @@ bool UnlockItemAction::Execute(Event event)
 
         botAI->TellMaster("Attempting to unlock " + chat->FormatItem(item->GetTemplate()));
 
+        botAI->TellMaster("Debug: Item GUID = " + std::to_string(item->GetGUID().GetRawValue()));
+
         if (CastCustomSpellAction::Execute(
                 Event("unlock item", "1804 " + std::to_string(item->GetGUID().GetRawValue()))))
         // if (botAI->CastSpell(1804, nullptr, item))
