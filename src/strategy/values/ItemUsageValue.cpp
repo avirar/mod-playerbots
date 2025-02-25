@@ -26,7 +26,7 @@ ItemUsage ItemUsageValue::Calculate()
         return ITEM_USAGE_NONE;
 
     // Check if the item is openable
-    if (proto->LockID = 0 && proto->Flags & ITEM_FLAG_HAS_LOOT)
+    if (proto->LockID == 0 && proto->Flags & ITEM_FLAG_HAS_LOOT)
         return ITEM_USAGE_OPEN;
 
     // Check if the item is unlockable
