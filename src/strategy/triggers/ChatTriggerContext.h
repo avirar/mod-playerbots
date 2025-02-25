@@ -29,6 +29,7 @@ public:
         creators["drop"] = &ChatTriggerContext::drop;
         creators["share"] = &ChatTriggerContext::share;
         creators["q"] = &ChatTriggerContext::q;
+        creators["qi"] = &ChatTriggerContext::qi;
         creators["ll"] = &ChatTriggerContext::ll;
         creators["ss"] = &ChatTriggerContext::ss;
         creators["loot all"] = &ChatTriggerContext::loot_all;
@@ -233,6 +234,7 @@ private:
     static Trigger* dps(PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "dps"); }
     static Trigger* disperse(PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "disperse"); }
     static Trigger* calc(PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "calc"); }
+    static Trigger* qi(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qi"); }
 };
 
 #endif
