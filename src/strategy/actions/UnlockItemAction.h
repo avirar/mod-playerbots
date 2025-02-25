@@ -17,8 +17,10 @@ class UnlockItemAction : public CastCustomSpellAction
 public:
     UnlockItemAction(PlayerbotAI* botAI) : CastCustomSpellAction(botAI, "unlock item") { }
 
+    bool isUseful() override;
+    bool Execute(Event event) override;
     // Rename the function to avoid conflicts
-    bool Unlock(Item* item, uint8 bag, uint8 slot);
+    // bool Unlock(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
