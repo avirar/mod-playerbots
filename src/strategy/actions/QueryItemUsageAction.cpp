@@ -19,20 +19,33 @@ bool QueryItemUsageAction::Execute(Event event)
         return false;
     }
 
-    ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(atoi(param.c_str()));
-    if (!itemTemplate)
+    // Use parseItems() to extract item IDs from the input
+    ItemIds itemIds = chat->parseItems(param);
+    if (itemIds.empty())
     {
-        botAI->TellMaster("Item not found.");
+        botAI->TellMaster("Invalid item or item not found.");
         return false;
     }
 
-    uint32 count = GetCount(itemTemplate);
-    uint32 total = bot->GetItemCount(itemTemplate->ItemId, true);
-    std::string itemInfo = QueryItem(itemTemplate, count, total);
+    // Process each extracted item ID (assuming single-item queries for now)
+    for (uint32 itemId : itemIds)
+    {
+        ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(itemId);
+        if (!itemTemplate)
+            continue;
 
-    botAI->TellMaster(itemInfo);
-    return true;
+        uint32 count = GetCount(itemTemplate);
+        uint32 total = bot->GetItemCount(itemTemplate->ItemId, true);
+        std::string itemInfo = QueryItem(itemTemplate, count, total);
+
+        botAI->TellMaster(itemInfo);
+        return true; // Only process the first valid item
+    }
+
+    botAI->TellMaster("Could not determine item usage.");
+    return false;
 }
+
 
 uint32 QueryItemUsageAction::GetCount(ItemTemplate const* item)
 {
