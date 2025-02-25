@@ -27,7 +27,7 @@ bool OpenItemAction::Execute(Event event)
                 UnlockItemAction unlockAction(botAI);
 
                 // Attempt to unlock the item first
-                if (unlockAction.Execute(Event event))
+                if (unlockAction.Execute(event))
                 {
                     OpenItem(item, bag, slot);
                     foundOpenable = true;
