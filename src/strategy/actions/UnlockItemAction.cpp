@@ -228,14 +228,34 @@ bool UnlockItemAction::isUseful()
 
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
-    WorldPacket packet(CMSG_CAST_SPELL);
-    packet << uint64(item->GetGUID().GetRawValue()); // Target Item GUID
-    packet << uint32(1804); // Pick Lock Spell ID
-    packet << uint8(0); // Cast Flags (default to 0)
-    
-    bot->GetSession()->HandleCastSpellOpcode(packet);
+    if (!item)
+    {
+        botAI->TellMaster("Tried to unlock an invalid item.");
+        return;
+    }
 
-    std::ostringstream out;
-    out << "Attempting to unlock item: " << item->GetTemplate()->Name1;
-    botAI->TellMaster(out.str());
+    // Step 1: Cast Pick Lock (1804)
+    {
+        WorldPacket castPacket(CMSG_CAST_SPELL);
+        castPacket << uint8(0);                      // Cast Count (always 0)
+        castPacket << uint32(1804);                  // Pick Lock Spell ID
+        castPacket << uint8(0);                      // Cast Flags
+        bot->GetSession()->HandleCastSpellOpcode(castPacket);
+
+        botAI->TellMaster("Casting Pick Lock...");
+    }
+
+    // Step 2: Select the locked item as the spell target
+    {
+        WorldPacket itemPacket(CMSG_ITEM_QUERY_SINGLE);
+        itemPacket << uint8(bag);                      // Bag Index
+        itemPacket << uint8(slot);                     // Slot Index
+        itemPacket << uint64(item->GetGUID().GetRawValue()); // Item GUID
+        bot->GetSession()->HandleItemQuerySingleOpcode(itemPacket);
+
+        std::ostringstream out;
+        out << "Selecting item for Pick Lock: " << item->GetTemplate()->Name1;
+        botAI->TellMaster(out.str());
+    }
 }
+
