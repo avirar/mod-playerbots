@@ -3,6 +3,8 @@
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "ObjectMgr.h"
+
+#include "ChatHelper.h"
 /*
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
