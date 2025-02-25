@@ -132,6 +132,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
         return true;
     }
 
+    /*
     if (requiredKeyItem > 0 && bot->HasItemCount(requiredKeyItem, 1))
     {
         Item* keyItem = bot->GetItemByEntry(requiredKeyItem);
@@ -146,6 +147,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
             }
         }
     }
+    */
 
     botAI->TellMaster("❌ Failed to unlock item: " + itemTemplate->Name1);
     return false;
