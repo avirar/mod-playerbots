@@ -2,6 +2,7 @@
 #include "PlayerbotAI.h"
 #include "ItemTemplate.h"
 #include "ObjectMgr.h"
+#include "CastCustomSpellAction.h"
 
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
@@ -12,27 +13,27 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
     if (!itemTemplate)
         return false;
 
-    botAI->TellMaster("Attempting to unlock: " + itemTemplate->Name1);
+    botAI->TellMaster("🔓 Attempting to unlock: " + itemTemplate->Name1);
 
     // 🔹 Log the LockID for debugging
-    botAI->TellMaster("LockID: " + std::to_string(itemTemplate->LockID));
+    botAI->TellMaster("🔎 LockID: " + std::to_string(itemTemplate->LockID));
 
     if (itemTemplate->LockID == 0)
     {
-        botAI->TellMaster("Item has no lock. Can be opened normally.");
+        botAI->TellMaster("✅ Item has no lock. Can be opened normally.");
         return true;
     }
 
     LockEntry const* lockInfo = sLockStore.LookupEntry(itemTemplate->LockID);
     if (!lockInfo)
     {
-        botAI->TellMaster("LockEntry not found for LockID: " + std::to_string(itemTemplate->LockID));
+        botAI->TellMaster("❌ LockEntry not found for LockID: " + std::to_string(itemTemplate->LockID));
         return false;
     }
 
     // 🔹 Log detailed lockInfo
     std::ostringstream lockInfoDebug;
-    lockInfoDebug << "Lock Types:";
+    lockInfoDebug << "🔐 Lock Types:";
     for (uint8 i = 0; i < 8; ++i)
     {
         lockInfoDebug << " [Type " << std::to_string(i) << ": " << std::to_string(lockInfo->Type[i])
@@ -58,13 +59,13 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 
                 // 🔹 Log skill check
                 std::ostringstream debugMsg;
-                debugMsg << "Checking skill: " << requiredSkill 
+                debugMsg << "🔍 Checking skill: " << requiredSkill 
                          << " (Should be 633 for Lockpicking) | Bot skill level: " << botSkillLevel
                          << " | Required: " << requiredSkillValue
                          << " | LockType: " << lockInfo->Index[i];
                 botAI->TellMaster(debugMsg.str());
 
-                // **🔹 Ensure the correct Pick Lock spell ID**
+                // **🔹 Ensure we use the correct spell ID (Pick Lock = 1804)**
                 uint32 spellId = (LockType(lockInfo->Index[i]) == LOCKTYPE_PICKLOCK) ? 1804 : lockInfo->Index[i];
 
                 if (spellId == 1) // ❌ If it's "Word of Recall", something is wrong
@@ -75,12 +76,18 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 
                 if (requiredSkill == SKILL_LOCKPICKING && botSkillLevel >= requiredSkillValue)
                 {
-                    botAI->TellMaster("Using Lockpicking skill on: " + itemTemplate->Name1 + " with Spell ID: " + std::to_string(spellId));
+                    botAI->TellMaster("🛠️ Using Lockpicking skill on: " + itemTemplate->Name1 + " with Spell ID: " + std::to_string(spellId));
 
-                    // 🔹 Properly cast Pick Lock **on the item**
-                    if (botAI->CastSpell(spellId, bot, item))
+                    // 🔹 Format the spell command (like disenchanting)
+                    std::ostringstream spellCommand;
+                    spellCommand << spellId << " " << chat->FormatQItem(item->GetEntry());
+
+                    botAI->TellMaster("🪄 Casting Pick Lock using: " + spellCommand.str());
+
+                    // **🔹 Create an instance of `CastCustomSpellAction`**
+                    CastCustomSpellAction castAction(botAI, "pick lock");
+                    if (castAction.Execute(Event("unlock item", spellCommand.str())))
                     {
-                        botAI->TellMaster("🔄 Waiting for unlock...");
                         botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
 
                         for (int j = 0; j < 3; ++j) // Retry checking unlock status
@@ -96,7 +103,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                     }
                     else
                     {
-                        botAI->TellMaster("❌ CastSpell failed for Pick Lock!");
+                        botAI->TellMaster("❌ CastCustomSpellAction failed for Pick Lock!");
                     }
                 }
                 else
@@ -112,7 +119,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
                 if (lockInfo->Index[i] > 0)
                 {
                     requiredKeyItem = lockInfo->Index[i];
-                    botAI->TellMaster("Key required: " + std::to_string(requiredKeyItem));
+                    botAI->TellMaster("🔑 Key required: " + std::to_string(requiredKeyItem));
                 }
                 break;
 
@@ -123,7 +130,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 
     if (isCompletelyUnlocked)
     {
-        botAI->TellMaster("Item is not locked.");
+        botAI->TellMaster("✅ Item is not locked.");
         return true;
     }
 
@@ -132,7 +139,7 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
         Item* keyItem = bot->GetItemByEntry(requiredKeyItem);
         if (keyItem)
         {
-            botAI->TellMaster("Using key to unlock: " + itemTemplate->Name1);
+            botAI->TellMaster("🔑 Using key to unlock: " + itemTemplate->Name1);
             if (UseItem(keyItem, ObjectGuid::Empty, item))
             {
                 botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
