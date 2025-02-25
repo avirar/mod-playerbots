@@ -225,6 +225,7 @@ bool UnlockItemAction::isUseful()
     botAI->TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
     return true;
 }
+
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -235,6 +236,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 
     botAI->TellMaster("Casting Pick Lock on " + chat->FormatItem(item->GetTemplate()));
 
+    // Step 1: Create the spell cast packet
     WorldPacket packet(CMSG_CAST_SPELL);
 
     uint32 spellId = 1804; // Pick Lock
@@ -243,12 +245,18 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     uint32 targetFlags = TARGET_FLAG_ITEM; // Correctly define item target flag
 
     packet << castCount;                      // Cast count (always 0)
-    packet << spellId;                        // Pick Lock Spell ID
-    packet << castFlags;                      // Cast flags (0 for normal cast)
+    packet << spellId;                        // Spell ID (Pick Lock)
+    packet << castFlags;                      // Cast flags
     packet << targetFlags;                    // Target flag (must be TARGET_FLAG_ITEM)
-    packet << uint64(item->GetGUID().GetRawValue()); // Correctly pass item GUID as target
-    packet << uint32(0);                      // Additional target flags (not used but prevents misalignment)
+    packet << uint64(item->GetGUID().GetRawValue()); // Explicitly target the locked item
 
+    // Step 2: Attach valid `SpellCastTargets`
+    SpellCastTargets targets;
+    targets.SetItemTarget(item->GetGUID()); // Explicitly set the locked item as the spell target
+
+    targets.Write(packet); // Attach the target data
+
+    // Step 3: Send the packet
     bot->GetSession()->HandleCastSpellOpcode(packet);
 
     botAI->TellMaster("Pick Lock spell cast with correct target.");
