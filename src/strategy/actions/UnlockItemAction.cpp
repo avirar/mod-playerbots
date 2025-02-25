@@ -180,8 +180,11 @@ bool UnlockItemAction::Execute(Event event)
 
         botAI->TellMaster("Attempting to unlock " + chat->FormatItem(item->GetTemplate()));
 
+        /*
         if (CastCustomSpellAction::Execute(
-                Event("unlock item", "1804 " + chat->FormatItem(item->GetEntry()))))
+                Event("unlock item", "1804 " + chat->FormatQItem(item->GetEntry()))))
+        */
+        if (botAI->CastSpell(1804, nullptr, item))
         {
             botAI->TellMaster("Successfully unlocked " + chat->FormatItem(item->GetTemplate()));
             return true;
