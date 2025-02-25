@@ -3,6 +3,7 @@
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "ObjectMgr.h"
+#include "WorldPacket.h"
 
 #include "ChatHelper.h"
 //#include "Event.h"
