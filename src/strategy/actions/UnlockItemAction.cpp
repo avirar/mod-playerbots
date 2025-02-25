@@ -185,6 +185,6 @@ bool UnlockItemAction::Execute(Event event)
 
 bool UnlockItemAction::isUseful()
 {
-    return botAI->HasSkill(SKILL_ENCHANTING) && !bot->IsInCombat() &&
+    return botAI->HasSkill(SKILL_LOCKPICKING) && !bot->IsInCombat() &&
            AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_UNLOCK)) > 0;
 }
