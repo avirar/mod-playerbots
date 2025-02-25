@@ -14,6 +14,7 @@
 #include "BudgetValues.h"
 #include "ChannelMgr.h"
 #include "CharacterPackets.h"
+#include "ChatHelper.h"
 #include "CreatureAIImpl.h"
 #include "EmoteAction.h"
 #include "Engine.h"
