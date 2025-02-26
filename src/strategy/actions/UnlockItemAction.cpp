@@ -8,28 +8,49 @@
 
 bool UnlockItemAction::Execute(Event event)
 {
-    std::vector<Item*> items =
-        AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_UNLOCK));
-    // std::reverse(items.begin(), items.end());
+    Player* bot = ai->GetBot();
 
-    for (auto& item : items)
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_0; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
     {
-        if (CastCustomSpellAction::Execute(
-                Event("unlock items", "1804 " + chat->FormatQItem(item->GetEntry()))))
-        {
-            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-            botAI->SetNextCheckDelay(5000);
-            // Now call the OpenItem action.
-            OpenItemAction openItemAction(botAI);
-            openItemAction.OpenItem(item);
-            // botAI->SetNextCheckDelay(1000);
+        Bag* bag = bot->GetBagByPos(bagSlot);
+        if (!bag)
+            continue;
 
-            return true;
+        for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+        {
+            Item* item = bag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            ItemTemplate const* proto = item->GetTemplate();
+            if (!proto)
+                continue;
+
+            // Check if the item is unlockable
+            if (proto->LockID > 0 && item->IsLocked())
+            {
+                LockEntry const* lockInfo = sLockStore.LookupEntry(proto->LockID);
+                if (!lockInfo)
+                    continue;
+
+                for (uint8 i = 0; i < 8; ++i)
+                {
+                    if (lockInfo->Type[i] == LOCK_KEY_SKILL || lockInfo->Type[i] == LOCK_KEY_ITEM)
+                    {
+                        // Execute unlock spell
+                        if (CastCustomSpellAction::Execute(Event("unlock items", "1804 " + chat->FormatQItem(item->GetEntry()))))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
     }
 
     return false;
 }
+
 
 bool UnlockItemAction::isUseful()
 {
