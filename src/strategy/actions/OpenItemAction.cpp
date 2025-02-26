@@ -62,10 +62,8 @@ bool OpenItemAction::CanOpenItem(Item* item)
     return (itemTemplate->Flags & ITEM_FLAG_HAS_LOOT);
 }
 */
-void OpenItemAction::OpenItem(Item* item)
+void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
 {
-    uint8 bag = item->GetBagSlot();
-    uint8 slot = item->GetSlot();
     WorldPacket packet(CMSG_OPEN_ITEM);
     packet << bag << slot;
     bot->GetSession()->HandleOpenItemOpcode(packet);
@@ -74,38 +72,32 @@ void OpenItemAction::OpenItem(Item* item)
     out << "Opened item: " << item->GetTemplate()->Name1;
     botAI->TellMaster(out.str());
 }
-
 bool OpenItemAction::Execute(Event event)
 {
-    for (uint8 bagSlot = INVENTORY_SLOT_BAG_0; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+    FindItemUsageVisitor visitor(bot, ITEM_USAGE_OPEN);
+
+    bot->VisitItem(ITERATE_ITEMS_IN_BAGS, visitor);
+
+    std::vector<Item*> items = visitor.GetResult();
+
+    for (auto& item : items)
     {
-        Bag* bag = bot->GetBagByPos(bagSlot);
-        if (!bag)
-            continue;
-
-        for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
-        {
-            Item* item = bag->GetItemByPos(slot);
-            if (!item)
-                continue;
-
-            ItemTemplate const* proto = item->GetTemplate();
-            if (!proto)
-                continue;
-
-            // Check if the item is openable
-            if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
-            {
-                OpenItem(item);
-            }
-        }
+        uint8 bag = item->GetBagSlot();
+        uint8 slot = item->GetSlot();
+        OpenItem(item, bag, slot);
     }
 
     return false;
 }
 
+
 bool OpenItemAction::isUseful()
 {
-    return !bot->IsInCombat() &&
-           AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_OPEN)) > 0;
+    if (bot->IsInCombat())
+        return false;
+
+    FindItemUsageVisitor visitor(bot, ITEM_USAGE_OPEN);
+    bot->VisitItem(ITERATE_ITEMS_IN_BAGS, visitor);
+
+    return !visitor.GetResult().empty(); // Returns true if there are openable items
 }
