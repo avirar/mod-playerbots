@@ -368,7 +368,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 }
 */
 
-void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+void UnlockItemAction::UnlockItem(Item* item)
 {
     if (!item)
     {
@@ -376,33 +376,25 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
         return;
     }
 
-    uint32 spellId = 1804; // Pick Lock spell ID
     botAI->TellMaster("Using Pick Lock on " + chat->FormatItem(item->GetTemplate()));
 
-    // Step 1: Create the spell cast packet
+    // Create use item packet instead of manually casting spell
     WorldPacket packet(CMSG_USE_ITEM);
 
+    uint8 bagIndex = item->GetBagSlot();
+    uint8 slot = item->GetSlot();
     uint8 castCount = 0;
-    uint8 castFlags = 0;
-    uint32 glyphIndex = 0;
-    uint32 targetFlags = TARGET_FLAG_ITEM; // Ensure it's set for an item
-    ObjectGuid itemGuid = item->GetGUID();
+    uint32 spellId = 1804; // Pick Lock spell
 
-    packet << bag;          // Bag index
-    packet << slot;         // Slot index
-    packet << castCount;    // Cast count (0)
-    packet << spellId;      // Pick Lock spell ID
-    packet << itemGuid;     // GUID of the locked item
-    packet << glyphIndex;   // Glyph index (0, unused)
-    packet << castFlags;    // Cast flags (0, default)
-    packet << targetFlags;  // Target flag for item
+    packet << bagIndex;
+    packet << slot;
+    packet << castCount;
+    packet << spellId;
+    packet << item->GetGUID();  // Properly attach the item GUID
+    packet << uint32(0); // glyphIndex
+    packet << uint8(0);  // castFlags
+    packet << uint32(TARGET_FLAG_GAMEOBJECT_ITEM); // Corrected target flag
+    packet << item->GetGUID().WriteAsPacked();
 
-    // Append the item GUID again if required for item targeting
-    if (targetFlags & TARGET_FLAG_ITEM)
-        packet << itemGuid.WriteAsPacked();
-
-    // Step 2: Send the packet
     bot->GetSession()->QueuePacket(&packet);
-
-    botAI->TellMaster("Pick Lock attempt sent via CMSG_USE_ITEM.");
 }
