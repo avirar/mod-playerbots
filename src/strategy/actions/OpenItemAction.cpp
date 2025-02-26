@@ -67,11 +67,11 @@ bool OpenItemAction::CanOpenItem(Item* item)
 void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
 {
     WorldPacket packet(CMSG_OPEN_ITEM);
-    packet << bag << slot;
+    packet << uint8(bag) << uint8(slot); // Ensure correct data types
     bot->GetSession()->HandleOpenItemOpcode(packet);
 
     std::ostringstream out;
-    out << "Opened item: " << item->GetTemplate()->Name1;
+    out << "Opened item: " << item->GetTemplate()->Name1 << " from bag: " << (int)bag << ", slot: " << (int)slot;
     botAI->TellMaster(out.str());
 }
 
@@ -91,7 +91,7 @@ bool OpenItemAction::Execute(Event event)
         // Check if the item is openable
         if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
         {
-            OpenItem(item, INVENTORY_SLOT_BAG_0, slot);
+            OpenItem(item, INVENTORY_SLOT_BAG_0, slot); // Bag is 0 for backpack
         }
     }
 
@@ -115,7 +115,7 @@ bool OpenItemAction::Execute(Event event)
             // Check if the item is openable
             if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
             {
-                OpenItem(item, bagSlot, slot);
+                OpenItem(item, bagSlot, slot); // Pass actual bag slot
             }
         }
     }
