@@ -21,7 +21,7 @@ public:
     bool Execute(Event event) override;
     // Rename the function to avoid conflicts
     // bool Unlock(Item* item, uint8 bag, uint8 slot);
-    void UnlockItem(Item* item, uint8 bag, uint8 slot);
+    bool UnlockItem(Item* item, uint8 bag, uint8 slot);
 };
 
 #endif
