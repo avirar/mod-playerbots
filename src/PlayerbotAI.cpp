@@ -3199,7 +3199,8 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         spell->m_CastItem =
             itemTarget ? itemTarget : aiObjectContext->GetValue<Item*>("item for spell", spellId)->Get();
         targets.SetItemTarget(spell->m_CastItem);
-
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+        botAI->TellMaster("Setting target to item: " + itemTarget->GetTemplate()->Name1);
         if (bot->GetTradeData())
         {
             bot->GetTradeData()->SetSpell(spellId);
@@ -3240,6 +3241,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         }
         else if (itemTarget)
         {
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
             botAI->TellMaster("Setting Pick Lock target to item: " + itemTarget->GetTemplate()->Name1);
             targets.SetItemTarget(itemTarget);
         }
