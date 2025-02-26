@@ -300,12 +300,19 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
         return;
     }
 
-    std::string spellName = "pick lock"; // Use the spell name instead of ID
+    std::string spellName = "pick lock"; // Use spell name instead of ID
+    uint32 spellId = sSpellMgr->GetSpellIdForName(spellName); // Get the spell ID from the name
+
+    if (!spellId)
+    {
+        botAI->TellMaster("Failed to find spell ID for " + spellName);
+        return;
+    }
 
     botAI->TellMaster("Casting " + spellName + " on " + chat->FormatItem(item->GetTemplate()));
 
     // Step 1: Ensure bot can cast the spell
-    if (!botAI->CanCastSpell(spellName, bot, true, item))
+    if (!botAI->CanCastSpell(spellId, bot, true, item))
     {
         botAI->TellMaster("Bot cannot cast " + spellName + " (invalid conditions).");
         return;
