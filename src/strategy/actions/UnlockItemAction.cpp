@@ -10,7 +10,7 @@
 #include "Playerbots.h"
 //#include "ServerFacade.h"
 
-void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
         return false;
@@ -190,10 +190,11 @@ bool UnlockItemAction::Execute(Event event)
         botAI->TellMaster("Debug: Bag = " + std::to_string(bag) + ", Slot = " + std::to_string(slot));
 
         // Call UnlockItem with correct parameters
-        UnlockItem(item, bag, slot);
-
-        botAI->TellMaster("Successfully sent unlock attempt for " + chat->FormatItem(item->GetTemplate()));
-        return true;
+        if (UnlockItem(item, bag, slot))
+        {
+            botAI->TellMaster("Successfully sent unlock attempt for " + chat->FormatItem(item->GetTemplate()));
+            return true;
+        }
     }
 
     botAI->TellMaster("I couldn't unlock any items.");
