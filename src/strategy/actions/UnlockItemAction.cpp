@@ -330,7 +330,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     }
 }
 */
-/*
+
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -366,35 +366,5 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 
     botAI->TellMaster("Pick Lock spell cast with correct target.");
 }
-*/
 
-void UnlockItemAction::UnlockItem(Item* item, uint8 bagIndex, uint8 slot)
-{
-    if (!item)
-    {
-        botAI->TellMaster("Tried to unlock an invalid item.");
-        return;
-    }
 
-    botAI->TellMaster("Using Pick Lock on " + chat->FormatItem(item->GetTemplate()));
-
-    // Create use item packet instead of manually casting spell
-    WorldPacket packet(CMSG_USE_ITEM);
-
-    bagIndex = item->GetBagSlot();
-    slot = item->GetSlot();
-    uint8 castCount = 0;
-    uint32 spellId = 1804; // Pick Lock spell
-
-    packet << bagIndex;
-    packet << slot;
-    packet << castCount;
-    packet << spellId;
-    packet << item->GetGUID();  // Properly attach the item GUID
-    packet << uint32(0); // glyphIndex
-    packet << uint8(0);  // castFlags
-    packet << uint32(TARGET_FLAG_GAMEOBJECT_ITEM); // Corrected target flag
-    packet << item->GetGUID().WriteAsPacked();
-
-    bot->GetSession()->QueuePacket(&packet);
-}
