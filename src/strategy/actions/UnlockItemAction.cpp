@@ -19,10 +19,8 @@ bool UnlockItemAction::Execute(Event event)
         {
             // Now call the OpenItem action.
             OpenItemAction openItemAction(botAI);
-            if (openItemAction.Execute(Event("open item", chat->FormatQItem(item->GetEntry()))))
-            {
-                return true;
-            }
+            openItemAction.OpenItem(item)
+
             return true;
         }
     }
