@@ -343,12 +343,12 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 }
 */
 
-void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
     {
         botAI->TellMaster("Tried to unlock an invalid item.");
-        return;
+        return false;
     }
 
     uint32 spellId = 1804; // Pick Lock spell ID
@@ -377,6 +377,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     bot->GetSession()->HandleCastSpellOpcode(packet);
 
     botAI->TellMaster("Pick Lock spell cast with correct target.");
+    return true;
 }
 
 
