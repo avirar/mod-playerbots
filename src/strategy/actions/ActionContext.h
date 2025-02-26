@@ -188,7 +188,7 @@ public:
         creators["buy tabard"] = &ActionContext::buy_tabard;
         creators["guild manage nearby"] = &ActionContext::guild_manage_nearby;
         creators["clean quest log"] = &ActionContext::clean_quest_log;
-        creators["unlock random item"] = &ActionContext::disenchant_random_item;
+        creators["unlock random item"] = &ActionContext::unlock_random_item;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
