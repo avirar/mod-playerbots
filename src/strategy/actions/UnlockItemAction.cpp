@@ -292,6 +292,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     }
 }
 */
+/*
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -327,4 +328,41 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     {
         botAI->TellMaster(spellName + " cast failed.");
     }
+}
+*/
+
+void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+{
+    if (!item)
+    {
+        botAI->TellMaster("Tried to unlock an invalid item.");
+        return;
+    }
+
+    uint32 spellId = 1804; // Pick Lock spell ID
+
+    botAI->TellMaster("Casting Pick Lock on " + chat->FormatItem(item->GetTemplate()));
+
+    // Step 1: Create the spell cast packet
+    WorldPacket packet(CMSG_CAST_SPELL);
+
+    uint8 castCount = 0;
+    uint8 castFlags = 0;
+    uint32 targetFlags = TARGET_FLAG_GAMEOBJECT_ITEM; // Ensure we're correctly using GAMEOBJECT_ITEM
+
+    packet << castCount;       // Cast count (always 0)
+    packet << spellId;         // Spell ID (Pick Lock)
+    packet << castFlags;       // Cast flags
+    packet << targetFlags;     // Correct target flag for Pick Lock
+    packet << item->GetGUID(); // Pass the locked item GUID
+
+    // Step 2: Ensure PlayerBots Handles This Target Type
+    SpellCastTargets targets;
+    targets.SetItemTarget(item); // Correct method for setting an item target
+    targets.Write(packet);       // Attach target data to packet
+
+    // Step 3: Send the packet
+    bot->GetSession()->HandleCastSpellOpcode(packet);
+
+    botAI->TellMaster("Pick Lock spell cast with correct target.");
 }
