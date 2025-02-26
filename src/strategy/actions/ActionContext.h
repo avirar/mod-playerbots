@@ -188,6 +188,7 @@ public:
         creators["buy tabard"] = &ActionContext::buy_tabard;
         creators["guild manage nearby"] = &ActionContext::guild_manage_nearby;
         creators["clean quest log"] = &ActionContext::clean_quest_log;
+        creators["unlock random item"] = &ActionContext::disenchant_random_item;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
@@ -369,6 +370,7 @@ private:
     static Action* buy_tabard(PlayerbotAI* botAI) { return new BuyTabardAction(botAI); }
     static Action* guild_manage_nearby(PlayerbotAI* botAI) { return new GuildManageNearbyAction(botAI); }
     static Action* clean_quest_log(PlayerbotAI* botAI) { return new CleanQuestLogAction(botAI); }
+    static Action* unlock_random_item(PlayerbotAI* botAI) { return new UnlockRandomItemAction(botAI); }
 
     // BG Tactics
     static Action* bg_tactics(PlayerbotAI* botAI) { return new BGTactics(botAI); }
