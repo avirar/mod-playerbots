@@ -91,25 +91,34 @@ bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
                     botAI->TellMaster("🪄 Casting Pick Lock using: " + spellCommand.str());
 
                     // 🔹 Use CastCustomSpellAction like Disenchanting does
-                    if (CastCustomSpellAction(botAI, "pick lock").Execute(Event("unlock item", spellCommand.str())))
+                    // targets.SetItemTarget(item);
+                    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(1804);
+                    if (!spellInfo)
                     {
-                        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
-
-                        for (int j = 0; j < 3; ++j) // Retry checking unlock status
-                        {
-                            botAI->SetNextCheckDelay(500);
-                            if (item->HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_UNLOCKED))
-                            {
-                                botAI->TellMaster("✅ Successfully unlocked: " + itemTemplate->Name1);
-                                return true;
-                            }
-                        }
-                        botAI->TellMaster("❌ Unlock attempt failed, item is still locked: " + itemTemplate->Name1);
+                        botAI->TellMaster("❌ ERROR: Spell 1804 (Pick Lock) not found!");
+                        return false;
                     }
-                    else
+                    
+                    // Create a new Spell instance
+                    Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+                    SpellCastTargets targets;
+                    targets.SetItemTarget(item); // ✅ Correctly set the item target
+                    
+                    // Ensure the spell checks correctly
+                    SpellCastResult result = spell->CheckCast(true);
+                    if (result != SPELL_CAST_OK)
                     {
-                        botAI->TellMaster("❌ CastCustomSpellAction failed for Pick Lock!");
+                        botAI->TellMaster("❌ Pick Lock cast failed! Error Code: " + std::to_string(result));
+                        delete spell;
+                        return false;
                     }
+                    
+                    // Prepare and cast the spell
+                    botAI->TellMaster("🪄 Casting Pick Lock on item: " + item->GetTemplate()->Name1);
+                    spell->prepare(&targets);
+                    
+                    delete spell;
+                    return true;
                 }
                 else
                 {
