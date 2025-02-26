@@ -18,7 +18,7 @@ public:
     OpenItemAction(PlayerbotAI* botAI) : Action(botAI, "open item") { }
 
     // The main function that is executed when the action is triggered
-    bool isUseful() override;
+    // bool isUseful() override;
     bool Execute(Event event) override;
 
 // private:
