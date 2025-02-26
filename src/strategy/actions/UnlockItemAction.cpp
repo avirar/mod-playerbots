@@ -19,7 +19,7 @@ bool UnlockItemAction::Execute(Event event)
         {
             // Now call the OpenItem action.
             OpenItemAction openItemAction(botAI);
-            openItemAction.OpenItem(item)
+            openItemAction.OpenItem(item);
 
             return true;
         }
