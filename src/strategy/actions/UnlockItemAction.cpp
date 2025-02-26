@@ -5,6 +5,7 @@
 #include "ItemUsageValue.h"
 //#include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "ItemVisitors.h"
 
 bool UnlockItemAction::Execute(Event event)
 {
