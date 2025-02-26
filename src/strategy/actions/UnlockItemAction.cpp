@@ -15,7 +15,7 @@ bool UnlockItemAction::Execute(Event event)
     for (auto& item : items)
     {
         if (CastCustomSpellAction::Execute(
-                Event("unlock random item", "1804 " + chat->FormatQItem(item->GetEntry()))))
+                Event("unlock items", "1804 " + chat->FormatQItem(item->GetEntry()))))
             return true;
     }
 
