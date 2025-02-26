@@ -9,7 +9,7 @@
 //#include "Event.h"
 #include "Playerbots.h"
 //#include "ServerFacade.h"
-/*
+
 bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -154,12 +154,12 @@ bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
             }
         }
     }
-    //
+    */
 
     botAI->TellMaster("❌ Failed to unlock item: " + itemTemplate->Name1);
     return false;
 }
-*/
+
 
 bool UnlockItemAction::Execute(Event event)
 {
@@ -330,7 +330,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     }
 }
 */
-
+/*
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -366,5 +366,5 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 
     botAI->TellMaster("Pick Lock spell cast with correct target.");
 }
-
+*/
 
