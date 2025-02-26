@@ -123,6 +123,7 @@ bool OpenItemAction::Execute(Event event)
     return false;
 }
 
+/*
 bool OpenItemAction::isUseful()
 {
     if (bot->IsInCombat())
@@ -173,3 +174,4 @@ bool OpenItemAction::isUseful()
 
     return false;
 }
+*/
