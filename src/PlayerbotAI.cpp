@@ -3194,7 +3194,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
 
     SpellCastTargets targets;
-    if (spellInfo->Targets & TARGET_FLAG_ITEM)
+    if (spellInfo->Targets & TARGET_FLAG_ITEM || spellInfo->Targets & TARGET_FLAG_GAMEOBJECT_ITEM)
     {
         spell->m_CastItem =
             itemTarget ? itemTarget : aiObjectContext->GetValue<Item*>("item for spell", spellId)->Get();
@@ -3370,7 +3370,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* ite
     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
 
     SpellCastTargets targets;
-    if (spellInfo->Targets & TARGET_FLAG_ITEM)
+    if (spellInfo->Targets & TARGET_FLAG_ITEM || spellInfo->Targets & TARGET_FLAG_GAMEOBJECT_ITEM)
     {
         spell->m_CastItem =
             itemTarget ? itemTarget : aiObjectContext->GetValue<Item*>("item for spell", spellId)->Get();
