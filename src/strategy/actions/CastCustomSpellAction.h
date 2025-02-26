@@ -75,6 +75,15 @@ public:
     bool Execute(Event event) override;
 };
 
+class UnlockRandomItemAction : public CastCustomSpellAction
+{
+public:
+    DisEnchantRandomItemAction(PlayerbotAI* botAI) : UnlockRandomItemAction(botAI, "unlock random item") {}
+
+    bool isUseful() override;
+    bool Execute(Event event) override;
+};
+
 class EnchantRandomItemAction : public CastRandomSpellAction
 {
 public:
