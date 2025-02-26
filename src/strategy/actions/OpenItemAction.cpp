@@ -75,7 +75,7 @@ void OpenItemAction::OpenItem(Item* item)
     botAI->TellMaster(out.str());
 }
 
-bool UnlockItemAction::Execute(Event event)
+bool OpenItemAction::Execute(Event event)
 {
     std::vector<Item*> items =
         AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_OPEN));
@@ -89,7 +89,7 @@ bool UnlockItemAction::Execute(Event event)
     return false;
 }
 
-bool UnlockItemAction::isUseful()
+bool OpenItemAction::isUseful()
 {
     return !bot->IsInCombat() &&
            AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_OPEN)) > 0;
