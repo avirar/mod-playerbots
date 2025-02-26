@@ -30,7 +30,7 @@ ItemUsage ItemUsageValue::Calculate()
     bool isSoulbound = item && item->IsSoulBound();
 
     // Check if the item is openable
-    if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (!item || !item->IsLocked()))
+    if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && ((proto->LockID == 0) || (!item || !item->IsLocked())))
         return ITEM_USAGE_OPEN;
     
     // Check if the item is unlockable
