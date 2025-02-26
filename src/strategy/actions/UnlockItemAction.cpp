@@ -301,7 +301,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     }
 
     std::string spellName = "pick lock"; // Use spell name instead of ID
-    uint32 spellId = sSpellMgr->GetSpellIdForName(spellName); // Get the spell ID from the name
+    uint32 spellId = 1804;
 
     if (!spellId)
     {
