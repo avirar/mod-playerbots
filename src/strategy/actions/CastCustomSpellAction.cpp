@@ -359,6 +359,34 @@ bool DisEnchantRandomItemAction::isUseful()
            AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_DISENCHANT)) > 0;
 }
 
+bool UnlockRandomItemAction::Execute(Event event)
+{
+    std::vector<Item*> items =
+        AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_UNLOCK));
+    std::reverse(items.begin(), items.end());
+
+    for (auto& item : items)
+    {
+        /*
+        // don't touch rare+ items if with real player/guild
+        if ((botAI->HasRealPlayerMaster() || botAI->IsInRealGuild()) &&
+            item->GetTemplate()->Quality > ITEM_QUALITY_UNCOMMON)
+            return false;
+        */
+        if (CastCustomSpellAction::Execute(
+                Event("unlock random item", "1804 " + chat->FormatQItem(item->GetEntry()))))
+            return true;
+    }
+
+    return false;
+}
+
+bool UnlockRandomItemAction::isUseful()
+{
+    return botAI->HasSkill(SKILL_LOCKPICKING) && !bot->IsInCombat() &&
+           AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_UNLOCK)) > 0;
+}
+
 bool EnchantRandomItemAction::isUseful() { return botAI->HasSkill(SKILL_ENCHANTING) && !bot->IsInCombat(); }
 
 bool EnchantRandomItemAction::AcceptSpell(SpellInfo const* spellInfo)
