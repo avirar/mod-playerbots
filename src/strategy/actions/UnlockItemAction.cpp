@@ -102,9 +102,9 @@ bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
                     // Create a new Spell instance
                     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
                     SpellCastTargets targets;
-                    targets.SetItemTarget(item); // ✅ Correctly set the item target
+                    targets.SetItemTarget(item);
+                    targets.m_targetMask |= TARGET_FLAG_GAMEOBJECT_ITEM; // ✅ Fix target type
                     
-                    // Ensure the spell checks correctly
                     SpellCastResult result = spell->CheckCast(true);
                     if (result != SPELL_CAST_OK)
                     {
@@ -113,12 +113,12 @@ bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
                         return false;
                     }
                     
-                    // Prepare and cast the spell
                     botAI->TellMaster("🪄 Casting Pick Lock on item: " + item->GetTemplate()->Name1);
                     spell->prepare(&targets);
                     
                     delete spell;
                     return true;
+
                 }
                 else
                 {
