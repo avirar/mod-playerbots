@@ -74,32 +74,104 @@ void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
     out << "Opened item: " << item->GetTemplate()->Name1;
     botAI->TellMaster(out.str());
 }
+
 bool OpenItemAction::Execute(Event event)
 {
-    FindItemUsageVisitor visitor(bot, ITEM_USAGE_OPEN);
+    Player* bot = ai->GetBot();
 
-    bot->VisitItem(ITERATE_ITEMS_IN_BAGS, visitor);
-
-    std::vector<Item*> items = visitor.GetResult();
-
-    for (auto& item : items)
+    // Check main inventory slots (Backpack)
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
-        uint8 bag = item->GetBagSlot();
-        uint8 slot = item->GetSlot();
-        OpenItem(item, bag, slot);
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            continue;
+
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto)
+            continue;
+
+        // Check if the item is openable
+        if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
+        {
+            OpenItem(item, INVENTORY_SLOT_BAG_0, slot);
+        }
+    }
+
+    // Check additional bags and their contents
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+    {
+        Bag* bag = bot->GetBagByPos(bagSlot);
+        if (!bag)
+            continue;
+
+        for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+        {
+            Item* item = bag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            ItemTemplate const* proto = item->GetTemplate();
+            if (!proto)
+                continue;
+
+            // Check if the item is openable
+            if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
+            {
+                OpenItem(item, bagSlot, slot);
+            }
+        }
     }
 
     return false;
 }
-
 
 bool OpenItemAction::isUseful()
 {
     if (bot->IsInCombat())
         return false;
 
-    FindItemUsageVisitor visitor(bot, ITEM_USAGE_OPEN);
-    bot->VisitItem(ITERATE_ITEMS_IN_BAGS, visitor);
+    // Check main inventory (Backpack, first 16 slots)
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            continue;
 
-    return !visitor.GetResult().empty(); // Returns true if there are openable items
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto)
+            continue;
+
+        // Check if the item is openable
+        if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
+        {
+            return true; // Found an openable item
+        }
+    }
+
+    // Check additional bags and their contents
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+    {
+        Bag* bag = bot->GetBagByPos(bagSlot);
+        if (!bag)
+            continue;
+
+        for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+        {
+            Item* item = bag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            ItemTemplate const* proto = item->GetTemplate();
+            if (!proto)
+                continue;
+
+            // Check if the item is openable
+            if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
+            {
+                return true; // Found an openable item
+            }
+        }
+    }
+
+    return false;
 }
