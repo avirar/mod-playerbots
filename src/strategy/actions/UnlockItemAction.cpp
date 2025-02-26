@@ -17,9 +17,12 @@ bool UnlockItemAction::Execute(Event event)
         if (CastCustomSpellAction::Execute(
                 Event("unlock items", "1804 " + chat->FormatQItem(item->GetEntry()))))
         {
+            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+            botAI->SetNextCheckDelay(5000);
             // Now call the OpenItem action.
             OpenItemAction openItemAction(botAI);
             openItemAction.OpenItem(item);
+            // botAI->SetNextCheckDelay(1000);
 
             return true;
         }
