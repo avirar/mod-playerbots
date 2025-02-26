@@ -103,7 +103,9 @@ bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
                     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
                     SpellCastTargets targets;
                     targets.SetItemTarget(item);
-                    targets.m_targetMask |= TARGET_FLAG_GAMEOBJECT_ITEM; // ✅ Fix target type
+                    botAI->TellMaster("🔎 Item GUID = " + std::to_string(item->GetGUID().GetRawValue()));
+                    botAI->TellMaster("🔐 LockID = " + std::to_string(item->GetTemplate()->LockID()));
+
                     
                     SpellCastResult result = spell->CheckCast(true);
                     if (result != SPELL_CAST_OK)
