@@ -261,7 +261,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     botAI->TellMaster("Pick Lock spell cast with correct target.");
 }
 */
-
+/*
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -289,5 +289,35 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     else
     {
         botAI->TellMaster("Pick Lock cast failed.");
+    }
+}
+*/
+void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+{
+    if (!item)
+    {
+        botAI->TellMaster("Tried to unlock an invalid item.");
+        return;
+    }
+
+    std::string spellName = "pick lock"; // Use the spell name instead of ID
+
+    botAI->TellMaster("Casting " + spellName + " on " + chat->FormatItem(item->GetTemplate()));
+
+    // Step 1: Ensure bot can cast the spell
+    if (!botAI->CanCastSpell(spellName, bot, true, item))
+    {
+        botAI->TellMaster("Bot cannot cast " + spellName + " (invalid conditions).");
+        return;
+    }
+
+    // Step 2: Cast the spell using its name on the item
+    if (botAI->CastSpell(spellName, bot, item))
+    {
+        botAI->TellMaster(spellName + " successfully cast on item.");
+    }
+    else
+    {
+        botAI->TellMaster(spellName + " cast failed.");
     }
 }
