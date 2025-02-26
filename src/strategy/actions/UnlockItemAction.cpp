@@ -225,7 +225,7 @@ bool UnlockItemAction::isUseful()
     botAI->TellMaster("I have " + std::to_string(lockedItemCount) + " locked item(s) I can unlock.");
     return true;
 }
-
+/*
 void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
@@ -259,4 +259,35 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
     bot->GetSession()->HandleCastSpellOpcode(packet);
 
     botAI->TellMaster("Pick Lock spell cast with correct target.");
+}
+*/
+
+void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
+{
+    if (!item)
+    {
+        botAI->TellMaster("Tried to unlock an invalid item.");
+        return;
+    }
+
+    botAI->TellMaster("Casting Pick Lock on " + chat->FormatItem(item->GetTemplate()));
+
+    uint32 spellId = 1804; // Pick Lock
+
+    // Step 1: Ensure bot has the spell and can cast it
+    if (!botAI->CanCastSpell(spellId, bot, true, item))
+    {
+        botAI->TellMaster("Bot cannot cast Pick Lock (invalid conditions).");
+        return;
+    }
+
+    // Step 2: Cast the spell directly on the item
+    if (botAI->CastSpell(spellId, bot, item))
+    {
+        botAI->TellMaster("Pick Lock successfully cast on item.");
+    }
+    else
+    {
+        botAI->TellMaster("Pick Lock cast failed.");
+    }
 }
