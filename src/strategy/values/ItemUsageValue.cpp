@@ -25,12 +25,16 @@ ItemUsage ItemUsageValue::Calculate()
     if (!proto)
         return ITEM_USAGE_NONE;
 
-    // Check if the item is openable
-    if (proto->LockID == 0 && (proto->Flags & ITEM_FLAG_HAS_LOOT))
-        return ITEM_USAGE_OPEN;
+    // Get item instance to check if it's soulbound
+    Item* item = bot->GetItemByEntry(proto->ItemId);
+    bool isSoulbound = item && item->IsSoulBound();
 
+    // Check if the item is openable
+    if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (!item || !item->IsLocked()))
+        return ITEM_USAGE_OPEN;
+    
     // Check if the item is unlockable
-    if (proto->LockID > 0)
+    if (proto->LockID > 0 && item && item->IsLocked()) // No need to check ITEM_FLAG_HAS_LOOT
     {
         LockEntry const* lockInfo = sLockStore.LookupEntry(proto->LockID);
         if (lockInfo)
@@ -112,10 +116,6 @@ ItemUsage ItemUsageValue::Calculate()
     if (equip != ITEM_USAGE_NONE)
         return equip;
 
-    // Get item instance to check if it's soulbound
-    Item* item = bot->GetItemByEntry(proto->ItemId);
-    bool isSoulbound = item && item->IsSoulBound();
-    
     if ((proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
         botAI->HasSkill(SKILL_ENCHANTING) &&
         proto->Quality >= ITEM_QUALITY_UNCOMMON)
