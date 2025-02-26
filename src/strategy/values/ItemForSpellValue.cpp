@@ -65,10 +65,13 @@ Item* ItemForSpellValue::Calculate()
         return nullptr;
     }
 
-    if (!(spellInfo->Targets & TARGET_FLAG_ITEM))
+    if (!(spellInfo->Targets & (TARGET_FLAG_ITEM | TARGET_FLAG_GAMEOBJECT_ITEM)))
         return nullptr;
 
     if (!strcmpi(spellInfo->SpellName[0], "disenchant"))
+        return nullptr;
+
+    if (!strcmpi(spellInfo->SpellName[0], "pick lock"))
         return nullptr;
 
     for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; slot++)
