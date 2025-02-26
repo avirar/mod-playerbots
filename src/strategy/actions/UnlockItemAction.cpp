@@ -368,7 +368,7 @@ void UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 }
 */
 
-void UnlockItemAction::UnlockItem(Item* item)
+void UnlockItemAction::UnlockItem(Item* item, uint8 bagIndex, uint8 slot)
 {
     if (!item)
     {
@@ -381,8 +381,8 @@ void UnlockItemAction::UnlockItem(Item* item)
     // Create use item packet instead of manually casting spell
     WorldPacket packet(CMSG_USE_ITEM);
 
-    uint8 bagIndex = item->GetBagSlot();
-    uint8 slot = item->GetSlot();
+    bagIndex = item->GetBagSlot();
+    slot = item->GetSlot();
     uint8 castCount = 0;
     uint32 spellId = 1804; // Pick Lock spell
 
