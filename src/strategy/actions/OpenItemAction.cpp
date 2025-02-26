@@ -77,8 +77,6 @@ void OpenItemAction::OpenItem(Item* item, uint8 bag, uint8 slot)
 
 bool OpenItemAction::Execute(Event event)
 {
-    Player* bot = ai->GetBot();
-
     // Check main inventory slots (Backpack)
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
