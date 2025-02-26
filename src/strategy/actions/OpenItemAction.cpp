@@ -77,8 +77,6 @@ void OpenItemAction::OpenItem(Item* item)
 
 bool OpenItemAction::Execute(Event event)
 {
-    Player* bot = ai->GetBot();
-
     for (uint8 bagSlot = INVENTORY_SLOT_BAG_0; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
     {
         Bag* bag = bot->GetBagByPos(bagSlot);
