@@ -10,7 +10,7 @@
 #include "Playerbots.h"
 //#include "ServerFacade.h"
 
-bool UnlockItemAction::Unlock(Item* item, uint8 bag, uint8 slot)
+bool UnlockItemAction::UnlockItem(Item* item, uint8 bag, uint8 slot)
 {
     if (!item)
         return false;
