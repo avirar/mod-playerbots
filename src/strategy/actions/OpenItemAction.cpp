@@ -9,6 +9,8 @@
 #include "ChatHelper.h"
 #include "ItemUsageValue.h"
 #include "Playerbots.h"
+
+#include "ItemVisitors.h"
 /*
 bool OpenItemAction::Execute(Event event)
 {
