@@ -1,5 +1,5 @@
 #include "UnlockItemAction.h"
-
+#include "OpenItemAction.h"
 #include "ChatHelper.h"
 // #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
@@ -16,7 +16,15 @@ bool UnlockItemAction::Execute(Event event)
     {
         if (CastCustomSpellAction::Execute(
                 Event("unlock items", "1804 " + chat->FormatQItem(item->GetEntry()))))
+        {
+            // Now call the OpenItem action.
+            OpenItemAction openItemAction(botAI);
+            if (openItemAction.Execute(Event("open item", chat->FormatQItem(item->GetEntry()))))
+            {
+                return true;
+            }
             return true;
+        }
     }
 
     return false;
