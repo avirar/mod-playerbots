@@ -3238,6 +3238,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
             targets.SetGOTarget(go);
             faceTo = go;
         }
+        else if (itemTarget)
+        {
+            botAI->TellMaster("Setting Pick Lock target to item: " + itemTarget->GetTemplate()->Name1);
+            targets.SetItemTarget(itemTarget);
+        }
         else
         {
             if (Unit* creature = GetUnit(loot.guid))
