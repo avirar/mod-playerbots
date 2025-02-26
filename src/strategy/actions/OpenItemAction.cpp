@@ -77,13 +77,30 @@ void OpenItemAction::OpenItem(Item* item)
 
 bool OpenItemAction::Execute(Event event)
 {
-    std::vector<Item*> items =
-        AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_OPEN));
-    // std::reverse(items.begin(), items.end());
+    Player* bot = ai->GetBot();
 
-    for (auto& item : items)
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_0; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
     {
-        OpenItem(item);
+        Bag* bag = bot->GetBagByPos(bagSlot);
+        if (!bag)
+            continue;
+
+        for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+        {
+            Item* item = bag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            ItemTemplate const* proto = item->GetTemplate();
+            if (!proto)
+                continue;
+
+            // Check if the item is openable
+            if ((proto->Flags & ITEM_FLAG_HAS_LOOT) && (proto->LockID == 0 || !item->IsLocked()))
+            {
+                OpenItem(item);
+            }
+        }
     }
 
     return false;
