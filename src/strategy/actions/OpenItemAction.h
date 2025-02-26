@@ -18,14 +18,15 @@ public:
     OpenItemAction(PlayerbotAI* botAI) : Action(botAI, "open item") { }
 
     // The main function that is executed when the action is triggered
+    bool isUseful() override;
     bool Execute(Event event) override;
 
-private:
+// private:
     // Checks if the given item can be opened (i.e. has the openable flag and the bot has the required skill or item)
-    bool CanOpenItem(Item* item);
+    // bool CanOpenItem(Item* item);
 
     // Performs the action of opening the item
-    void OpenItem(Item* item, uint8 bag, uint8 slot);
+    void OpenItem(Item* item);
 };
 
 #endif
