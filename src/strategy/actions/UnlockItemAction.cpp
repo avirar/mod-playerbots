@@ -10,7 +10,7 @@ bool UnlockItemAction::Execute(Event event)
 {
     std::vector<Item*> items =
         AI_VALUE2(std::vector<Item*>, "inventory items", "usage " + std::to_string(ITEM_USAGE_UNLOCK));
-    std::reverse(items.begin(), items.end());
+    // std::reverse(items.begin(), items.end());
 
     for (auto& item : items)
     {
