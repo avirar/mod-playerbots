@@ -83,7 +83,7 @@ bool OpenItemAction::Execute(Event event)
 
     for (auto& item : items)
     {
-        OpenItem(item
+        OpenItem(item);
     }
 
     return false;
