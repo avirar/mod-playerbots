@@ -6,7 +6,7 @@
 #ifndef _PLAYERBOT_UNLOCKITEMACTION_H
 #define _PLAYERBOT_UNLOCKITEMACTION_H
 
-#include "Action.h"
+#include "CastCustomSpellAction.h"
 
 class Player;
 class Item;
