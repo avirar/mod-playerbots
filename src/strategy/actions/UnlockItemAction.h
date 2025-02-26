@@ -12,10 +12,10 @@ class Player;
 class Item;
 class Event;
 
-class UnlockItemAction : public Action
+class UnlockItemAction : public CastCustomSpellAction
 {
 public:
-    UnlockItemAction(PlayerbotAI* botAI) : Action(botAI, "unlock items") { }
+    UnlockItemAction(PlayerbotAI* botAI) : CastCustomSpellAction(botAI, "unlock items") { }
 
     bool isUseful() override;
     bool Execute(Event event) override;
