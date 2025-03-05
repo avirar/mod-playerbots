@@ -139,7 +139,13 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (!spellId)
         return false;
 
-    return botAI->CastSpell(spellId, bot);
+    if (botAI->CastSpell(spellId, bot))
+    {
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
+        return true;
+    }
+
+    return false;
 }
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
