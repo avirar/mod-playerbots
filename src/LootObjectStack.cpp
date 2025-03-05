@@ -9,7 +9,7 @@
 #include "Playerbots.h"
 #include "Unit.h"
 
-#define MAX_LOOT_OBJECT_COUNT 10
+#define MAX_LOOT_OBJECT_COUNT 40
 
 LootTarget::LootTarget(ObjectGuid guid) : guid(guid), asOfTime(time(nullptr)) {}
 
@@ -191,17 +191,30 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     break;
 
                 case LOCK_KEY_SKILL:
-                    if (goId == 13891 || goId == 19535)  // Serpentbloom
+                {
+                    LockType lockType = LockType(lockInfo->Index[i]);
+
+                    if (goId == 13891 || goId == 19535)  // Serpentbloom special case
                     {
                         this->guid = lootGUID;
                     }
-                    else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
+                    else if (SkillByLockType(lockType) > 0)
                     {
-                        skillId = SkillByLockType(LockType(lockInfo->Index[i]));
+                        skillId = SkillByLockType(lockType);
                         reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
                         guid = lootGUID;
                     }
+                    else if (lockType == LOCKTYPE_OPEN || 
+                             lockType == LOCKTYPE_OPEN_TINKERING || 
+                             lockType == LOCKTYPE_OPEN_KNEELING || 
+                             lockType == LOCKTYPE_OPEN_ATTACKING)
+                    {
+                        // These lock types don't require a skill but should be treated as openable
+                        guid = lootGUID;
+                    }
                     break;
+                }
+
 
                 case LOCK_KEY_NONE:
                     guid = lootGUID;
@@ -297,8 +310,15 @@ bool LootObject::IsLootPossible(Player* bot)
             return false;
     }
 
-    if (skillId == SKILL_NONE)
+    // Allow interaction with OPEN, OPEN_TINKERING, OPEN_KNEELING, OPEN_ATTACKING even if skillId is set
+    if (skillId == SKILL_NONE ||
+        skillId == SkillByLockType(LOCKTYPE_OPEN) ||
+        skillId == SkillByLockType(LOCKTYPE_OPEN_TINKERING) ||
+        skillId == SkillByLockType(LOCKTYPE_OPEN_KNEELING) ||
+        skillId == SkillByLockType(LOCKTYPE_OPEN_ATTACKING))
+    {
         return true;
+    }
 
     if (skillId == SKILL_FISHING)
         return false;
