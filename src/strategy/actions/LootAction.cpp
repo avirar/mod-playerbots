@@ -27,15 +27,11 @@ bool LootAction::Execute(Event event)
     LootObject const& lootObject =
         AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig->lootDistance);
 
-    if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
+    if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != guid)
     {
-        Loot* loot = bot->GetLootForGuid(prevLoot.guid);
-        if (loot && loot->isLooted()) // Ensure the loot is completely taken
-        {
-            WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-            packet << prevLoot.guid;
-            bot->GetSession()->HandleLootReleaseOpcode(packet);
-        }
+        WorldPacket packet(CMSG_LOOT_RELEASE, 8);
+        packet << guid;
+        bot->GetSession()->HandleLootReleaseOpcode(packet);
     }
 
     context->GetValue<LootObject>("loot target")->Set(lootObject);
@@ -449,13 +445,13 @@ bool StoreLootAction::Execute(Event event)
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
 
     // release loot
-    Loot* loot = bot->GetLootForGuid(guid);
-    if (loot && loot->isLooted()) // Only release if looting is finished
+    if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != guid)
     {
         WorldPacket packet(CMSG_LOOT_RELEASE, 8);
         packet << guid;
         bot->GetSession()->HandleLootReleaseOpcode(packet);
     }
+
     return true;
 
 }
