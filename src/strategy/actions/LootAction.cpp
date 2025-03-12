@@ -29,9 +29,13 @@ bool LootAction::Execute(Event event)
 
     if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
     {
-        WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-        packet << prevLoot.guid;
-        bot->GetSession()->HandleLootReleaseOpcode(packet);
+        Loot* loot = bot->GetLootForGuid(prevLoot.guid);
+        if (loot && loot->isLooted()) // Ensure the loot is completely taken
+        {
+            WorldPacket packet(CMSG_LOOT_RELEASE, 8);
+            packet << prevLoot.guid;
+            bot->GetSession()->HandleLootReleaseOpcode(packet);
+        }
     }
 
     context->GetValue<LootObject>("loot target")->Set(lootObject);
@@ -445,10 +449,15 @@ bool StoreLootAction::Execute(Event event)
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
 
     // release loot
-    WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-    packet << guid;
-    bot->GetSession()->HandleLootReleaseOpcode(packet);
+    Loot* loot = bot->GetLootForGuid(guid);
+    if (loot && loot->isLooted()) // Only release if looting is finished
+    {
+        WorldPacket packet(CMSG_LOOT_RELEASE, 8);
+        packet << guid;
+        bot->GetSession()->HandleLootReleaseOpcode(packet);
+    }
     return true;
+
 }
 
 bool StoreLootAction::IsLootAllowed(uint32 itemid, PlayerbotAI* botAI)
