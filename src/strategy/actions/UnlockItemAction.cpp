@@ -10,30 +10,27 @@
 
 bool UnlockItemAction::Execute(Event event)
 {
+    botAI->TellMaster("Attempting to find a locked item...");
+
     bool foundLockedItem = false;
-
     Item* item = botAI->FindLockedItem();
-    if (!item)
+
+    if (item)
     {
-        botAI->TellMaster("No locked items found in inventory.");
-        return false;
-    }
+        uint8 bag = item->GetBagSlot();  // Retrieves the bag slot (0 for main inventory)
+        uint8 slot = item->GetSlot();    // Retrieves the actual slot inside the bag
 
-    uint8 bag = item->GetBagSlot();  // Retrieves the bag slot (0 for main inventory)
-    uint8 slot = item->GetSlot();    // Retrieves the actual slot inside the bag
+        std::ostringstream out;
+        out << "Found locked item: " << item->GetTemplate()->Name1
+            << " (Bag: " << static_cast<uint32>(bag) << ", Slot: " << static_cast<uint32>(slot) << ")";
+        botAI->TellMaster(out.str());
 
-    std::ostringstream out;
-    out << "Attempting to unlock: " << item->GetTemplate()->Name1 << " (Bag: " << (int)bag << ", Slot: " << (int)slot << ")";
-    botAI->TellMaster(out.str());
-
-    if (UnlockItem(item, bag, slot))
-    {
-        botAI->TellMaster("Successfully unlocked the item.");
+        UnlockItem(item, bag, slot);
         foundLockedItem = true;
     }
     else
     {
-        botAI->TellMaster("Failed to unlock the item.");
+        botAI->TellMaster("No locked item found.");
     }
 
     return foundLockedItem;
