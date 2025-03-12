@@ -27,11 +27,15 @@ bool LootAction::Execute(Event event)
     LootObject const& lootObject =
         AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig->lootDistance);
 
-    if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != guid)
+    if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
     {
-        WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-        packet << guid;
-        bot->GetSession()->HandleLootReleaseOpcode(packet);
+        // Ensure bot is not actively looting before releasing
+        if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != prevLoot.guid)
+        {
+            WorldPacket packet(CMSG_LOOT_RELEASE, 8);
+            packet << prevLoot.guid;
+            bot->GetSession()->HandleLootReleaseOpcode(packet);
+        }
     }
 
     context->GetValue<LootObject>("loot target")->Set(lootObject);
