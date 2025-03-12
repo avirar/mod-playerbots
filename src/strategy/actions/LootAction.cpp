@@ -27,17 +27,6 @@ bool LootAction::Execute(Event event)
     LootObject const& lootObject =
         AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig->lootDistance);
 
-    if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
-    {
-        // Ensure bot is not actively looting before releasing
-        if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != prevLoot.guid)
-        {
-            WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-            packet << prevLoot.guid;
-            bot->GetSession()->HandleLootReleaseOpcode(packet);
-        }
-    }
-
     context->GetValue<LootObject>("loot target")->Set(lootObject);
     return true;
 }
@@ -74,6 +63,7 @@ bool OpenLootAction::Execute(Event event)
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
 
+    botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
     return result;
 }
 
@@ -143,11 +133,8 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (!spellId)
         return false;
 
-    if (botAI->CastSpell(spellId, bot))
-    {
-        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
-        return true;
-    }
+    botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
+    return botAI->CastSpell(spellId, bot);
 
     return false;
 }
