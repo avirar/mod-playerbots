@@ -113,7 +113,7 @@ ItemUsage ItemUsageValue::Calculate()
     }
 
     // While sync is on, do not loot quest items that are also Useful for master. Master
-    if (!botAI->GetMaster() || !sPlayerbotAIConfig->syncQuestWithPlayer ||
+    if (!botAI->GetMaster() || botAI->GetMaster() == bot || !sPlayerbotAIConfig->syncQuestWithPlayer ||
         !IsItemUsefulForQuest(botAI->GetMaster(), proto))
         if (IsItemUsefulForQuest(bot, proto))
             return ITEM_USAGE_QUEST;
