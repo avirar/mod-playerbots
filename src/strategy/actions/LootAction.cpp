@@ -436,15 +436,11 @@ bool StoreLootAction::Execute(Event event)
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
 
     // release loot
-    if (bot->GetLootGUID().IsEmpty() || bot->GetLootGUID() != guid)
-    {
-        WorldPacket packet(CMSG_LOOT_RELEASE, 8);
-        packet << guid;
-        bot->GetSession()->HandleLootReleaseOpcode(packet);
-    }
+    WorldPacket packet(CMSG_LOOT_RELEASE, 8);
+    packet << guid;
+    bot->GetSession()->HandleLootReleaseOpcode(packet);
 
     return true;
-
 }
 
 bool StoreLootAction::IsLootAllowed(uint32 itemid, PlayerbotAI* botAI)
