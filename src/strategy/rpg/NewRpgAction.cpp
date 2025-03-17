@@ -230,7 +230,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
 
     if (!info.near_npc.npcOrGo)
     {
-        // No NPC or GO found, choose a new target
+        // No NPC can be found, switch to IDLE
         ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract();
         if (npcOrGo.IsEmpty())
         {
@@ -242,63 +242,74 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         return true;
     }
 
-    Object* object = ObjectAccessor::GetObjectByTypeMask(*bot, info.near_npc.npcOrGo, TYPEMASK_UNIT | TYPEMASK_GAMEOBJECT);
-    if (!object)
+    WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.near_npc.npcOrGo);
+
+    if (object && bot->CanInteractWithQuestGiver(object))
     {
+        if (!info.near_npc.lastReach)
+        {
+            info.near_npc.lastReach = getMSTime();
+            InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
+            return true;
+        }
+
+        if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+            return false;
+
+        // Has reached the NPC for more than `npcStayTime`, select the next target
         info.near_npc.npcOrGo = ObjectGuid();
         info.near_npc.lastReach = 0;
-        return true;
     }
-
-    // Check if the bot can interact with the object
-    Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, 
-        UNIT_NPC_FLAG_QUESTGIVER | UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_VENDOR_MASK);
-    GameObject* gameObject = bot->GetGameObjectIfCanInteractWith(info.near_npc.npcOrGo, 
-        GAMEOBJECT_TYPE_QUESTGIVER);
-
-    if (creature || gameObject)
+    else
     {
-        // Handle quest givers
-        if (bot->CanInteractWithQuestGiver(object))
+        Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo,
+            UNIT_NPC_FLAG_QUESTGIVER | UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_VENDOR_MASK);
+
+        if (creature)
         {
-            if (!info.near_npc.lastReach)
+            uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+
+            // Handle trainers
+            if (creature->IsValidTrainerForPlayer(bot))
             {
-                info.near_npc.lastReach = getMSTime();
-                InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
-                return true;
+                if (!info.near_npc.lastReach)
+                {
+                    info.near_npc.lastReach = getMSTime();
+                    return botAI->DoSpecificAction("trainer", event);
+                }
+
+                if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                    return false;
+
+                // Interaction time exceeded, move on
+                info.near_npc.npcOrGo = ObjectGuid();
+                info.near_npc.lastReach = 0;
             }
 
-            if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-                return false;
+            // Handle vendors
+            if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+            {
+                if (!info.near_npc.lastReach)
+                {
+                    info.near_npc.lastReach = getMSTime();
+                    botAI->DoSpecificAction("sell", Event("sell vendor"));
+                    botAI->DoSpecificAction("buy", Event("buy vendor"));
+                    return true;
+                }
+
+                if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                    return false;
+
+                // Interaction time exceeded, move on
+                info.near_npc.npcOrGo = ObjectGuid();
+                info.near_npc.lastReach = 0;
+            }
         }
 
-        // Handle trainers
-        if (creature && creature->HasNpcFlag(UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_TRAINER_CLASS | UNIT_NPC_FLAG_TRAINER_PROFESSION))
-        {
-            if (!info.near_npc.lastReach)
-            {
-                info.near_npc.lastReach = getMSTime();
-                return botAI->DoSpecificAction("trainer", event);
-            }
-            return false;
-        }
-
-        // Handle vendors
-        if (creature && creature->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK))
-        {
-            if (!info.near_npc.lastReach)
-            {
-                info.near_npc.lastReach = getMSTime();
-                botAI->DoSpecificAction("buy", Event("buy vendor"));
-                botAI->DoSpecificAction("sell", Event("sell vendor"));
-                return true;
-            }
-            return false;
-        }
+        return MoveWorldObjectTo(info.near_npc.npcOrGo);
     }
 
-    // Default movement handling
-    return MoveWorldObjectTo(info.near_npc.npcOrGo);
+    return true;
 }
 
 bool NewRpgDoQuestAction::Execute(Event event)
