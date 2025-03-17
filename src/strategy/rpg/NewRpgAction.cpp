@@ -243,12 +243,13 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     }
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.near_npc.npcOrGo);
-    
+
     if (object && bot->CanInteractWithQuestGiver(object))
     {
         if (!info.near_npc.lastReach)
         {
             info.near_npc.lastReach = getMSTime();
+            botAI->TellMaster("Interacting with quest NPC.");
             InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
             return true;
         }
@@ -268,6 +269,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         if (creature)
         {
             uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+            std::string npcName = creature->GetName();
 
             // Handle trainers
             if (creature->IsValidTrainerForPlayer(bot))
@@ -275,6 +277,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
                 if (!info.near_npc.lastReach)
                 {
                     info.near_npc.lastReach = getMSTime();
+                    botAI->TellMaster("Training with " + npcName + ".");
                     return botAI->DoSpecificAction("trainer", event);
                 }
 
@@ -292,6 +295,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
                 if (!info.near_npc.lastReach)
                 {
                     info.near_npc.lastReach = getMSTime();
+                    botAI->TellMaster("Buying and selling at " + npcName + ".");
                     botAI->DoSpecificAction("buy", Event("buy vendor"));
                     botAI->DoSpecificAction("sell", Event("sell vendor"));
                     return true;
@@ -306,6 +310,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             }
         }
 
+        // Notify movement towards NPC or interactable object
+        botAI->TellMaster("Moving to interact with target.");
         return MoveWorldObjectTo(info.near_npc.npcOrGo);
     }
 
