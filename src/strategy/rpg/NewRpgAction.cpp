@@ -270,7 +270,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         {
             uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
             std::string npcName = creature->GetName();
-
+            botAI->TellMaster("Found interactable NPC: " + npcName);
             // Handle trainers
             if (creature->IsValidTrainerForPlayer(bot))
             {
