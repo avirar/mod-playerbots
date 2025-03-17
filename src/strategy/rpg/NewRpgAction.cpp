@@ -243,7 +243,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     }
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.near_npc.npcOrGo);
-
+    
     if (object && bot->CanInteractWithQuestGiver(object))
     {
         if (!info.near_npc.lastReach)
@@ -255,10 +255,14 @@ bool NewRpgMoveNpcAction::Execute(Event event)
 
         if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
             return false;
+
+        // has reached the NPC for more than `npcStayTime`, select the next target
+        info.near_npc.npcOrGo = ObjectGuid();
+        info.near_npc.lastReach = 0;
     }
     else
     {
-        Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo,
+        Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, 
             UNIT_NPC_FLAG_QUESTGIVER | UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_VENDOR_MASK);
 
         if (creature)
@@ -276,6 +280,10 @@ bool NewRpgMoveNpcAction::Execute(Event event)
 
                 if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
                     return false;
+
+                // has reached the trainer for more than `npcStayTime`, select the next target
+                info.near_npc.npcOrGo = ObjectGuid();
+                info.near_npc.lastReach = 0;
             }
 
             // Handle vendors
@@ -291,13 +299,13 @@ bool NewRpgMoveNpcAction::Execute(Event event)
 
                 if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
                     return false;
-            }
 
-            // If interacting with trainer or vendor, **do not reset `npcOrGo`**
-            return true;
+                // has reached the vendor for more than `npcStayTime`, select the next target
+                info.near_npc.npcOrGo = ObjectGuid();
+                info.near_npc.lastReach = 0;
+            }
         }
 
-        // If no valid NPC, move towards the selected NPC
         return MoveWorldObjectTo(info.near_npc.npcOrGo);
     }
 
