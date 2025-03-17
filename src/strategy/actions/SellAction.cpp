@@ -116,93 +116,91 @@ private:
     
         std::ostringstream out;
         GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+        uint32 remainingExcess = excessCount;
     
-        // Get item position
-        uint16 srcSlot = item->GetPos();
-        uint16 freeSlot = INVENTORY_SLOT_BAG_0; // Default to main backpack
-    
-        // Find a free inventory slot
-        bool foundSlot = false;
-        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        while (remainingExcess > 0) // Sell items one by one
         {
-            if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)) // Empty slot found in main bag
+            // Find a stack of the item
+            Item* currentItem = nullptr;
+            for (uint8 bag = INVENTORY_SLOT_BAG_0; bag < INVENTORY_SLOT_BAG_END; ++bag)
             {
-                freeSlot = (INVENTORY_SLOT_BAG_0 << 8) | slot;
-                foundSlot = true;
-                break;
-            }
-        }
-    
-        // If no free slots in main inventory, check bags
-        if (!foundSlot)
-        {
-            for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
-            {
-                if (Bag* pBag = dynamic_cast<Bag*>(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag)))
+                for (uint8 slot = 0; slot < MAX_BAG_SIZE; ++slot)
                 {
-                    if (pBag->GetFreeSlots() > 0) // If the bag has a free slot
+                    Item* stackItem = bot->GetItemByPos(bag, slot);
+                    if (stackItem && stackItem->GetEntry() == item->GetEntry() && stackItem->GetCount() > 1)
                     {
-                        for (uint8 slot = 0; slot < pBag->GetBagSize(); ++slot)
-                        {
-                            if (!bot->GetItemByPos(bag, slot)) // Found empty slot in the bag
-                            {
-                                freeSlot = (bag << 8) | slot;
-                                foundSlot = true;
-                                break;
-                            }
-                        }
+                        currentItem = stackItem;
+                        break;
                     }
                 }
-                if (foundSlot)
+                if (currentItem)
                     break;
             }
-        }
     
-        if (!foundSlot)
-        {
-            botAI->TellMaster("No free slot found to split excess item stack.");
-            return false; // Prevent selling the entire stack
-        }
+            if (!currentItem)
+            {
+                botAI->TellMaster("No more excess stacks found.");
+                break;
+            }
     
-        // If the item count is greater than the excess amount, split it
-        if (item->GetCount() > excessCount)
-        {
-            botAI->TellMaster("Splitting " + std::to_string(excessCount) + " from stack of " + std::to_string(item->GetCount()));
-            bot->SplitItem(srcSlot, freeSlot, excessCount);
+            // Find a free slot for splitting
+            uint16 freeSlot = INVENTORY_SLOT_BAG_0; // Default to main backpack
+            bool foundSlot = false;
+            for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            {
+                if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)) // Empty slot found in main bag
+                {
+                    freeSlot = (INVENTORY_SLOT_BAG_0 << 8) | slot;
+                    foundSlot = true;
+                    break;
+                }
+            }
+    
+            if (!foundSlot)
+            {
+                botAI->TellMaster("No free slot found to split excess item stack.");
+                return false; // Prevent selling the entire stack
+            }
+    
+            // Split off 1 item
+            botAI->TellMaster("Splitting 1 item from stack of " + std::to_string(currentItem->GetCount()));
+            bot->SplitItem(currentItem->GetPos(), freeSlot, 1);
     
             // Get the newly split item
-            item = bot->GetItemByPos(freeSlot >> 8, freeSlot & 255);
-            if (!item)
+            Item* splitItem = bot->GetItemByPos(freeSlot >> 8, freeSlot & 255);
+            if (!splitItem)
             {
                 botAI->TellMaster("Failed to split item, cannot proceed with selling.");
                 return false;
             }
-        }
     
-        for (ObjectGuid const vendorguid : vendors)
-        {
-            Creature* pCreature = bot->GetNPCIfCanInteractWith(vendorguid, UNIT_NPC_FLAG_VENDOR);
-            if (!pCreature)
-                continue;
-    
-            ObjectGuid itemguid = item->GetGUID();
-            uint32 botMoney = bot->GetMoney();
-    
-            // Sell the **split stack**
-            WorldPacket p;
-            p << vendorguid << itemguid << excessCount;
-            bot->GetSession()->HandleSellItemOpcode(p);
-    
-            if (botAI->HasCheat(BotCheatMask::gold))
+            // Sell the single split item
+            for (ObjectGuid const vendorguid : vendors)
             {
-                bot->SetMoney(botMoney);
+                Creature* pCreature = bot->GetNPCIfCanInteractWith(vendorguid, UNIT_NPC_FLAG_VENDOR);
+                if (!pCreature)
+                    continue;
+    
+                ObjectGuid itemguid = splitItem->GetGUID();
+                uint32 botMoney = bot->GetMoney();
+    
+                WorldPacket p;
+                p << vendorguid << itemguid << 1; // Sell 1 item
+                bot->GetSession()->HandleSellItemOpcode(p);
+    
+                if (botAI->HasCheat(BotCheatMask::gold))
+                {
+                    bot->SetMoney(botMoney);
+                }
+    
+                out << "Sold 1 of " << botAI->GetChatHelper()->FormatItem(splitItem->GetTemplate());
+                botAI->TellMaster(out.str());
+    
+                bot->PlayDistanceSound(120);
+    
+                remainingExcess -= 1;
+                break;
             }
-    
-            out << "Sold " << excessCount << " of " << botAI->GetChatHelper()->FormatItem(item->GetTemplate());
-            botAI->TellMaster(out.str());
-    
-            bot->PlayDistanceSound(120);
-            break;
         }
     
         return true;
