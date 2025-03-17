@@ -253,12 +253,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             return true;
         }
 
-        if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+        if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
             return false;
-
-        // Has reached the NPC for more than `npcStayTime`, select the next target
-        info.near_npc.npcOrGo = ObjectGuid();
-        info.near_npc.lastReach = 0;
     }
     else
     {
@@ -278,12 +274,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
                     return botAI->DoSpecificAction("trainer", event);
                 }
 
-                if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
                     return false;
-
-                // Interaction time exceeded, move on
-                info.near_npc.npcOrGo = ObjectGuid();
-                info.near_npc.lastReach = 0;
             }
 
             // Handle vendors
@@ -292,20 +284,20 @@ bool NewRpgMoveNpcAction::Execute(Event event)
                 if (!info.near_npc.lastReach)
                 {
                     info.near_npc.lastReach = getMSTime();
-                    botAI->DoSpecificAction("sell", Event("sell vendor"));
                     botAI->DoSpecificAction("buy", Event("buy vendor"));
+                    botAI->DoSpecificAction("sell", Event("sell vendor"));
                     return true;
                 }
 
-                if (info.near_npc.lastReach && GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
                     return false;
-
-                // Interaction time exceeded, move on
-                info.near_npc.npcOrGo = ObjectGuid();
-                info.near_npc.lastReach = 0;
             }
+
+            // If interacting with trainer or vendor, **do not reset `npcOrGo`**
+            return true;
         }
 
+        // If no valid NPC, move towards the selected NPC
         return MoveWorldObjectTo(info.near_npc.npcOrGo);
     }
 
