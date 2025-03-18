@@ -263,14 +263,23 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     }
     else
     {
+        // Debug: Log that we are about to check for NPC interaction
+        botAI->TellMaster("Checking if bot can interact with NPC...");
+
         Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, 
             UNIT_NPC_FLAG_QUESTGIVER | UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_VENDOR_MASK);
 
-        if (creature)
+        if (!creature)
         {
-            uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+            botAI->TellMaster("No valid NPC found for interaction.");
+        }
+        else
+        {
             std::string npcName = creature->GetName();
             botAI->TellMaster("Found interactable NPC: " + npcName);
+
+            uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+
             // Handle trainers
             if (creature->IsValidTrainerForPlayer(bot))
             {
