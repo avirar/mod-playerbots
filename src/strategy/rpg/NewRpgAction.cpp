@@ -266,60 +266,59 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         // Debug: Log that we are about to check for NPC interaction
         botAI->TellMaster("Checking if bot can interact with NPC...");
 
-        Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, 
-            UNIT_NPC_FLAG_QUESTGIVER | UNIT_NPC_FLAG_TRAINER | UNIT_NPC_FLAG_VENDOR_MASK);
+        // Log the NPC's GUID
+        botAI->TellMaster("Checking NPC GUID: " + info.near_npc.npcOrGo.ToString());
+
+        // Try checking with UNIT_NPC_FLAG_NONE to see if we detect *any* NPC
+        Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
 
         if (!creature)
         {
             botAI->TellMaster("No valid NPC found for interaction.");
+            return MoveWorldObjectTo(info.near_npc.npcOrGo);
         }
-        else
+
+        // Log NPC name and flags
+        std::string npcName = creature->GetName();
+        uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+        botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
+
+        // Handle trainers
+        if (creature->IsValidTrainerForPlayer(bot))
         {
-            std::string npcName = creature->GetName();
-            botAI->TellMaster("Found interactable NPC: " + npcName);
-
-            uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
-
-            // Handle trainers
-            if (creature->IsValidTrainerForPlayer(bot))
+            if (!info.near_npc.lastReach)
             {
-                if (!info.near_npc.lastReach)
-                {
-                    info.near_npc.lastReach = getMSTime();
-                    botAI->TellMaster("Training with " + npcName + ".");
-                    return botAI->DoSpecificAction("trainer", event);
-                }
-
-                if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-                    return false;
-
-                // has reached the trainer for more than `npcStayTime`, select the next target
-                info.near_npc.npcOrGo = ObjectGuid();
-                info.near_npc.lastReach = 0;
+                info.near_npc.lastReach = getMSTime();
+                botAI->TellMaster("Training with " + npcName + ".");
+                return botAI->DoSpecificAction("trainer", event);
             }
 
-            // Handle vendors
-            if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
-            {
-                if (!info.near_npc.lastReach)
-                {
-                    info.near_npc.lastReach = getMSTime();
-                    botAI->TellMaster("Buying and selling at " + npcName + ".");
-                    botAI->DoSpecificAction("buy", Event("buy vendor"));
-                    botAI->DoSpecificAction("sell", Event("sell vendor"));
-                    return true;
-                }
+            if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                return false;
 
-                if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-                    return false;
-
-                // has reached the vendor for more than `npcStayTime`, select the next target
-                info.near_npc.npcOrGo = ObjectGuid();
-                info.near_npc.lastReach = 0;
-            }
+            info.near_npc.npcOrGo = ObjectGuid();
+            info.near_npc.lastReach = 0;
         }
 
-        // Notify movement towards NPC or interactable object
+        // Handle vendors
+        if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+        {
+            if (!info.near_npc.lastReach)
+            {
+                info.near_npc.lastReach = getMSTime();
+                botAI->TellMaster("Buying and selling at " + npcName + ".");
+                botAI->DoSpecificAction("buy", Event("buy vendor"));
+                botAI->DoSpecificAction("sell", Event("sell vendor"));
+                return true;
+            }
+
+            if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+                return false;
+
+            info.near_npc.npcOrGo = ObjectGuid();
+            info.near_npc.lastReach = 0;
+        }
+
         botAI->TellMaster("Moving to interact with target.");
         return MoveWorldObjectTo(info.near_npc.npcOrGo);
     }
