@@ -283,12 +283,15 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     if (creature->IsValidTrainerForPlayer(bot))
     {
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
+        
+        // Ensure the bot correctly targets the trainer
+        bot->SetTarget(info.near_npc.npcOrGo.GetCounter());
+    
         if (!info.near_npc.lastReach)
         {
             info.near_npc.lastReach = getMSTime();
             botAI->TellMaster("Training with " + npcName + ".");
-            botAI->DoSpecificAction("trainer", event);
-            interacted = true;
+            botAI->DoSpecificAction("trainer", Event("trainer", npcName));  // Ensure trainer is passed correctly
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
