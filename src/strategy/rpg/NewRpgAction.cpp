@@ -311,6 +311,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         // Handle trainers separately
         if (creature->IsValidTrainerForPlayer(bot))
         {
+            botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
             if (!info.near_npc.lastReach)
             {
                 info.near_npc.lastReach = getMSTime();
@@ -324,9 +325,18 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             info.near_npc.npcOrGo = ObjectGuid();
             info.near_npc.lastReach = 0;
         }
+        else if (npcFlags & UNIT_NPC_FLAG_TRAINER)
+        {
+            botAI->TellMaster("NPC: " + npcName + " is not a valid trainer for me.");
+        }
+            
 
-        botAI->TellMaster("Moving to interact with target.");
-        return MoveWorldObjectTo(info.near_npc.npcOrGo);
+        // Ensure bot only moves if further than INTERACTION_DISTANCE
+        if (!bot->IsWithinDistInMap(object, INTERACTION_DISTANCE))
+        {
+            botAI->TellMaster("Moving to interact with target.");
+            return MoveWorldObjectTo(info.near_npc.npcOrGo);
+        }
     }
 
     return true;
