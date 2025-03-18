@@ -262,8 +262,26 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         }
     }
     
+    // --- Step 2: Check Other NPC Roles ---
+    botAI->TellMaster("Checking if bot can interact with NPC...");
+    botAI->TellMaster("Checking NPC GUID: " + info.near_npc.npcOrGo.ToString());
+    
+    // ✅ Define `creature` before using it
+    Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
+    
+    if (!creature)
+    {
+        botAI->TellMaster("No valid NPC found for interaction.");
+        return MoveWorldObjectTo(info.near_npc.npcOrGo);
+    }
+    
+    // Log NPC name and flags
+    std::string npcName = creature->GetName();
+    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+    botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
+    
     // --- Step 3: Handle Trainers ---
-    if (creature->IsValidTrainerForPlayer(bot))
+    if (creature->IsValidTrainerForPlayer(bot))  // ✅ Now `creature` is properly declared
     {
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         bot->SetSelection(info.near_npc.npcOrGo);
