@@ -255,23 +255,13 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     // --- Step 2: Handle Quest NPCs ---
     if (bot->CanInteractWithQuestGiver(object))
     {
-        if (!info.near_npc.lastReach)  // ✅ Only set once
-        {
-            info.near_npc.lastReach = getMSTime();
-            botAI->TellMaster("Interacting with quest NPC.");
-            InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
-            interacted = true;
-        }
-        else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-        {
-            botAI->TellMaster("Waiting at quest NPC for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
-            return false;
-        }
+        botAI->TellMaster("Interacting with quest NPC.");
+        InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
+        interacted = true;
     }
 
     // --- Step 3: Detect NPC and Retrieve Details ---
     botAI->TellMaster("Checking NPC GUID: " + info.near_npc.npcOrGo.ToString());
-
     Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
 
     if (!creature)
@@ -289,73 +279,45 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     {
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         bot->SetSelection(info.near_npc.npcOrGo);
-
-        if (!interacted)
-        {
-            botAI->TellMaster("Training with " + npcName + ".");
-            botAI->DoSpecificAction("trainer", Event("trainer", npcName));
-            interacted = true;
-        }
-
-        if (!info.near_npc.lastReach)
-        {
-            info.near_npc.lastReach = getMSTime();
-        }
-        else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-        {
-            botAI->TellMaster("Waiting at trainer " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
-            return false;
-        }
+        botAI->TellMaster("Training with " + npcName + ".");
+        botAI->DoSpecificAction("trainer", Event("trainer"));
+        interacted = true;
     }
 
     // --- Step 5: Handle Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
         botAI->TellMaster("NPC: " + npcName + " is a vendor.");
-
-        if (!interacted)
-        {
-            botAI->TellMaster("Buying and selling at " + npcName + ".");
-            botAI->DoSpecificAction("buy", Event("buy", "vendor"));
-            botAI->DoSpecificAction("sell", Event("sell", "vendor"));
-            interacted = true;
-        }
-
-        if (!info.near_npc.lastReach)
-        {
-            info.near_npc.lastReach = getMSTime();
-        }
-        else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-        {
-            botAI->TellMaster("Waiting at vendor " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
-            return false;
-        }
+        botAI->TellMaster("Buying and selling at " + npcName + ".");
+        botAI->DoSpecificAction("buy", Event("buy", "vendor"));
+        botAI->DoSpecificAction("sell", Event("sell", "vendor"));
+        interacted = true;
     }
 
     // --- Step 6: Handle Repair Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_REPAIR)
     {
         botAI->TellMaster("NPC: " + npcName + " offers repairs.");
-
-        if (!interacted)
-        {
-            botAI->TellMaster("Repairing items at " + npcName + ".");
-            botAI->DoSpecificAction("repair", Event("repair", npcName));
-            interacted = true;
-        }
-
-        if (!info.near_npc.lastReach)
-        {
-            info.near_npc.lastReach = getMSTime();
-        }
-        else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
-        {
-            botAI->TellMaster("Waiting at repair vendor " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
-            return false;
-        }
+        bot->SetSelection(info.near_npc.npcOrGo);
+        botAI->TellMaster("Repairing items at " + npcName + ".");
+        botAI->DoSpecificAction("repair", Event("repair"));
+        interacted = true;
     }
 
-    // --- Step 7: Reset & Move to Next Target ---
+    // --- Step 7: Apply Waiting Logic (EVEN IF NO INTERACTION) ---
+    if (!info.near_npc.lastReach)
+    {
+        info.near_npc.lastReach = getMSTime();  // ✅ Set once for ALL cases
+        botAI->TellMaster("Pausing near " + npcName + " for " + std::to_string(npcStayTime) + "ms.");
+        return false;
+    }
+    else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
+    {
+        botAI->TellMaster("Waiting at " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
+        return false;
+    }
+
+    // --- Step 8: Reset & Move to Next Target ---
     botAI->TellMaster("Finished interacting with " + npcName + ". Moving to next target.");
     info.near_npc.npcOrGo = ObjectGuid();
     info.near_npc.lastReach = 0;
