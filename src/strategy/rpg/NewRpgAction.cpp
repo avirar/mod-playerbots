@@ -291,8 +291,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             {
                 info.near_npc.lastReach = getMSTime();
                 botAI->TellMaster("Buying and selling at " + npcName + ".");
-                botAI->DoSpecificAction("buy", Event("b vendor"));
-                botAI->DoSpecificAction("sell", Event("s vendor"));
+                botAI->DoSpecificAction("buy", Event("vendor"));
+                botAI->DoSpecificAction("sell", Event("vendor"));
                 return true;
             }
             else
