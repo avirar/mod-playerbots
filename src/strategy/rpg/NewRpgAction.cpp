@@ -284,8 +284,9 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
 
         // Handle vendors separately
-        if (npcFlags & UNIT_NPC_FLAG_VENDOR)
+        if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
         {
+            botAI->TellMaster("NPC: " + npcName + " is a vendor.");
             if (!info.near_npc.lastReach)
             {
                 info.near_npc.lastReach = getMSTime();
@@ -293,6 +294,10 @@ bool NewRpgMoveNpcAction::Execute(Event event)
                 botAI->DoSpecificAction("buy", Event("b vendor"));
                 botAI->DoSpecificAction("sell", Event("s vendor"));
                 return true;
+            }
+            else
+            {
+                botAI->TellMaster("lastReach prevented buying/selling");
             }
 
             if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
