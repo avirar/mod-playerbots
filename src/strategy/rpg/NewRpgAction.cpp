@@ -281,23 +281,34 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
     
     // --- Step 3: Handle Trainers ---
-    if (creature->IsValidTrainerForPlayer(bot))  // ✅ Now `creature` is properly declared
+    if (creature->IsValidTrainerForPlayer(bot))
     {
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         bot->SetSelection(info.near_npc.npcOrGo);
     
-        if (info.near_npc.lastReach == 0)  // ✅ Only set once
+        // ✅ Ensure training executes before waiting
+        if (!interacted)  
         {
-            info.near_npc.lastReach = getMSTime();
             botAI->TellMaster("Training with " + npcName + ".");
             botAI->DoSpecificAction("trainer", Event("trainer", npcName));
             interacted = true;
+        }
+    
+        // ✅ Ensure `lastReach` is set AFTER executing training
+        if (info.near_npc.lastReach == 0)  
+        {
+            info.near_npc.lastReach = getMSTime();
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
             botAI->TellMaster("Waiting at trainer " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
             return false;
         }
+    
+        botAI->TellMaster("Finished training. Moving to next target.");
+        info.near_npc.npcOrGo = ObjectGuid();
+        info.near_npc.lastReach = 0;
+        return true;
     }
     
     // --- Step 4: Handle Vendors ---
@@ -305,20 +316,32 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     {
         botAI->TellMaster("NPC: " + npcName + " is a vendor.");
         
-        if (info.near_npc.lastReach == 0)  // ✅ Only set once
+        // ✅ Ensure buying/selling happens even if lastReach is set
+        if (!interacted)  
         {
-            info.near_npc.lastReach = getMSTime();
             botAI->TellMaster("Buying and selling at " + npcName + ".");
             botAI->DoSpecificAction("buy", Event("buy", "vendor"));
             botAI->DoSpecificAction("sell", Event("sell", "vendor"));
-            interacted = true;
+            interacted = true;  // ✅ Ensure we track that vendor interaction occurred
+        }
+    
+        // ✅ Ensure lastReach is set AFTER vendor interaction
+        if (info.near_npc.lastReach == 0)
+        {
+            info.near_npc.lastReach = getMSTime();
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
             botAI->TellMaster("Waiting at vendor " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
             return false;
         }
+    
+        botAI->TellMaster("Finished buying/selling. Moving to next target.");
+        info.near_npc.npcOrGo = ObjectGuid();
+        info.near_npc.lastReach = 0;
+        return true;
     }
+
     
     // --- Step 5: If No Interaction Happened, Move to NPC ---
     if (!interacted)
