@@ -291,7 +291,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         
         // Ensure the bot correctly targets the trainer
         ObjectGuid trainerGuid = info.near_npc.npcOrGo;
-        bot->SetTarget(trainerGuid);
+        bot->SetSelection(trainerGuid);
     
         if (!info.near_npc.lastReach)
         {
