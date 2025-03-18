@@ -252,16 +252,16 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             info.near_npc.lastReach = getMSTime();
             botAI->TellMaster("Interacting with quest NPC.");
             InteractWithNpcOrGameObjectForQuest(info.near_npc.npcOrGo);
+            interacted = true;  // ✅ Mark as interacted
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
-            return false;  // Stay near quest NPC for `npcStayTime`
+            botAI->TellMaster("Waiting at quest NPC for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
+            return false;  // Stay near quest NPC
         }
-
-        botAI->TellMaster("Finished with quest NPC. Moving to next target.");
-        info.near_npc.npcOrGo = ObjectGuid();  // Reset target
-        info.near_npc.lastReach = 0;
-        return true;
+    
+        botAI->TellMaster("Finished with quest NPC. Checking for other interactions.");
+        // ✅ No return here, so the bot will also check if the NPC is a trainer/vendor
     }
 
     // --- Step 2: Check Other NPC Roles ---
