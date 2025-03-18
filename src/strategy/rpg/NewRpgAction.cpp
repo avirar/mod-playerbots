@@ -285,7 +285,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         
         // Ensure the bot correctly targets the trainer
-        bot->SetTarget(info.near_npc.npcOrGo.GetCounter());
+        ObjectGuid trainerGuid = info.near_npc.npcOrGo;
+        bot->SetTarget(trainerGuid);
     
         if (!info.near_npc.lastReach)
         {
