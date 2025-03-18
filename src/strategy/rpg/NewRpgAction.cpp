@@ -350,8 +350,10 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         }
         else
         {
-            botAI->TellMaster("Already within interaction range.");
-            return false;
+            botAI->TellMaster("No valid interaction at " + npcName + ". Choosing a new target.");
+            info.near_npc.npcOrGo = ObjectGuid();  // ✅ Reset NPC so the bot picks a new one
+            info.near_npc.lastReach = 0;
+            return true;
         }
     }
 
