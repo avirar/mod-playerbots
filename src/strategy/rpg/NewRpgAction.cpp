@@ -269,7 +269,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         // Log the NPC's GUID
         botAI->TellMaster("Checking NPC GUID: " + info.near_npc.npcOrGo.ToString());
 
-        // Try checking with UNIT_NPC_FLAG_NONE to see if we detect *any* NPC
+        // First detect if ANY NPC is present
         Creature* creature = bot->GetNPCIfCanInteractWith(info.near_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
 
         if (!creature)
@@ -283,14 +283,16 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
         botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
 
-        // Handle trainers
-        if (creature->IsValidTrainerForPlayer(bot))
+        // Handle vendors separately
+        if (npcFlags & UNIT_NPC_FLAG_VENDOR)
         {
             if (!info.near_npc.lastReach)
             {
                 info.near_npc.lastReach = getMSTime();
-                botAI->TellMaster("Training with " + npcName + ".");
-                return botAI->DoSpecificAction("trainer", event);
+                botAI->TellMaster("Buying and selling at " + npcName + ".");
+                botAI->DoSpecificAction("buy", Event("b vendor"));
+                botAI->DoSpecificAction("sell", Event("s vendor"));
+                return true;
             }
 
             if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
@@ -300,16 +302,14 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             info.near_npc.lastReach = 0;
         }
 
-        // Handle vendors
-        if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+        // Handle trainers separately
+        if (creature->IsValidTrainerForPlayer(bot))
         {
             if (!info.near_npc.lastReach)
             {
                 info.near_npc.lastReach = getMSTime();
-                botAI->TellMaster("Buying and selling at " + npcName + ".");
-                botAI->DoSpecificAction("buy", Event("buy vendor"));
-                botAI->DoSpecificAction("sell", Event("sell vendor"));
-                return true;
+                botAI->TellMaster("Training with " + npcName + ".");
+                return botAI->DoSpecificAction("trainer", event);
             }
 
             if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
