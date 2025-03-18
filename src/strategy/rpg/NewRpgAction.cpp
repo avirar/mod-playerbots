@@ -257,6 +257,11 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         {
             return false;  // Stay near quest NPC for `npcStayTime`
         }
+
+        botAI->TellMaster("Finished with quest NPC. Moving to next target.");
+        info.near_npc.npcOrGo = ObjectGuid();  // Reset target
+        info.near_npc.lastReach = 0;
+        return true;
     }
 
     // --- Step 2: Check Other NPC Roles ---
@@ -293,12 +298,18 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             info.near_npc.lastReach = getMSTime();
             botAI->TellMaster("Training with " + npcName + ".");
             botAI->DoSpecificAction("trainer", Event("trainer", npcName));  // Ensure trainer is passed correctly
+            interacted = true;  // ✅ Fix: Mark interaction so bot can move on
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
             botAI->TellMaster("Waiting at trainer " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
             return false;  // Stay near trainer
         }
+        
+        botAI->TellMaster("Finished training. Moving to next target.");
+        info.near_npc.npcOrGo = ObjectGuid();  // ✅ Reset NPC after training
+        info.near_npc.lastReach = 0;
+        return true;
     }
     else if (npcFlags & UNIT_NPC_FLAG_TRAINER)
     {
@@ -315,13 +326,18 @@ bool NewRpgMoveNpcAction::Execute(Event event)
             botAI->TellMaster("Buying and selling at " + npcName + ".");
             botAI->DoSpecificAction("buy", Event("vendor"));
             botAI->DoSpecificAction("sell", Event("vendor"));
-            interacted = true;
+            interacted = true;  // ✅ Fix: Mark interaction so bot can move on
         }
         else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
             botAI->TellMaster("Waiting at vendor " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
             return false;  // Stay near vendor
         }
+
+        botAI->TellMaster("Finished buying/selling. Moving to next target.");
+        info.near_npc.npcOrGo = ObjectGuid();  // ✅ Reset NPC after vendor interaction
+        info.near_npc.lastReach = 0;
+        return true;
     }
 
     // --- Step 5: If No Interaction Happened, Move to NPC ---
