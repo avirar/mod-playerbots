@@ -343,19 +343,26 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     // --- Step 5: If No Interaction Happened, Move to NPC ---
     if (!interacted)
     {
-        if (!bot->IsWithinDistInMap(object, INTERACTION_DISTANCE))
+        // ✅ Fix: Apply npcStayTime even when bots don't interact
+        if (!info.near_npc.lastReach)
         {
-            botAI->TellMaster("Moving to interact with target.");
-            return MoveWorldObjectTo(info.near_npc.npcOrGo);
+            info.near_npc.lastReach = getMSTime();
+            botAI->TellMaster("Pausing near " + npcName + " for " + std::to_string(npcStayTime) + "ms.");
+            return false;  // Stay near NPC
         }
-        else
+        else if (GetMSTimeDiffToNow(info.near_npc.lastReach) < npcStayTime)
         {
-            botAI->TellMaster("No valid interaction at " + npcName + ". Choosing a new target.");
-            info.near_npc.npcOrGo = ObjectGuid();  // ✅ Reset NPC so the bot picks a new one
-            info.near_npc.lastReach = 0;
-            return true;
+            botAI->TellMaster("Waiting at " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.near_npc.lastReach)) + "ms.");
+            return false;  // Stay near NPC
         }
+    
+        // ✅ Fix: Only reset and move after npcStayTime has passed
+        botAI->TellMaster("No valid interaction at " + npcName + ". Choosing a new target.");
+        info.near_npc.npcOrGo = ObjectGuid();  // ✅ Reset NPC so the bot picks a new one
+        info.near_npc.lastReach = 0;
+        return true;
     }
+
 
     return true;
 }
