@@ -95,7 +95,20 @@ bool BuyAction::Execute(Event event)
                 ItemTemplate const* proto = sObjectMgr->GetItemTemplate(tItem->item);
                 if (!proto)
                     continue;
-            
+
+                // Check stock availability
+                if (tItem->maxcount > 0) // If item has a limited stock
+                {
+                    uint32 currentStock = pCreature->GetVendorItemCurrentCount(tItem);
+                    if (currentStock == 0)
+                    {
+                        std::ostringstream out;
+                        out << "Vendor is out of stock for " << ChatHelper::FormatItem(proto);
+                        botAI->TellMaster(out.str());
+                        continue; // Skip buying this item
+                    }
+                }
+
                 if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_PROJECTILE)
                 {
                     maxPurchases = 10;  // Allow up to 10 purchases if it's a consumable or projectile
