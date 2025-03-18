@@ -351,6 +351,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
         else
         {
             botAI->TellMaster("Already within interaction range.");
+            return false;
         }
     }
 
