@@ -243,7 +243,8 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     }
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.near_npc.npcOrGo);
-
+    bool interacted = false;  // Track if the bot has interacted with the NPC
+    
     // --- Step 1: Handle Quest NPCs ---
     if (object && bot->CanInteractWithQuestGiver(object))
     {
@@ -281,8 +282,6 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     std::string npcName = creature->GetName();
     uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
     botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
-
-    bool interacted = false;  // Track if the bot has interacted with the NPC
 
     // --- Step 3: Handle Trainers ---
     if (creature->IsValidTrainerForPlayer(bot))
