@@ -470,3 +470,78 @@ bool UseRandomQuestItem::Execute(Event event)
 
     return used;
 }
+
+bool UseLootedItemAction::Execute(Event event)
+{
+    std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", "usable");
+
+    for (Item* item : items)
+    {
+        if (IsValidLootedItem(item))
+        {
+            return UseItemAuto(item);
+        }
+    }
+
+    botAI->TellError("No looted items available to use");
+    return false;
+}
+
+bool UseLootedItemAction::IsValidLootedItem(Item* item)
+{
+    if (!item)
+        return false;
+
+    ItemTemplate const* proto = item->GetTemplate();
+    if (!proto)
+        return false;
+
+    // Check if item creates a random item
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        uint32 spellId = proto->Spells[i].SpellId;
+        if (!spellId)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+
+        for (uint8 j = 0; j < MAX_SPELL_EFFECTS; ++j)
+        {
+            if (spellInfo->Effects[j].Effect == SPELL_EFFECT_CREATE_RANDOM_ITEM)
+            {
+                return true;
+            }
+        }
+    }
+
+    // Check if the item starts a quest
+    if (uint32 questId = proto->StartQuest)
+    {
+        if (Quest const* qInfo = sObjectMgr->GetQuestTemplate(questId))
+        {
+            if (bot->CanTakeQuest(qInfo, false))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool UseLootedItemAction::isUseful()
+{
+    std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", "usable");
+
+    for (Item* item : items)
+    {
+        if (IsValidLootedItem(item))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
