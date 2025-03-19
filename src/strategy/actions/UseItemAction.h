@@ -93,4 +93,16 @@ public:
     bool Execute(Event event) override;
 };
 
+class UseLootedItemAction : public UseItemAction
+{
+public:
+    UseLootedItemAction(PlayerbotAI* botAI) : UseItemAction(botAI, "use looted item") {}
+
+    bool isUseful() override;
+    bool Execute(Event event) override;
+
+private:
+    bool IsValidLootedItem(Item* item);
+};
+
 #endif
