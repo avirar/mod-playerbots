@@ -39,7 +39,8 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("area trigger", NextAction::array(0, new NextAction("reach area trigger", relevance), nullptr)));
     triggers.push_back(new TriggerNode("within area trigger", NextAction::array(0, new NextAction("area trigger", relevance), nullptr)));
     triggers.push_back(new TriggerNode("loot response", NextAction::array(0, new NextAction("store loot", relevance), nullptr)));
-    triggers.push_back(new TriggerNode("item push result", NextAction::array(0, new NextAction("unlock items", relevance),
+    triggers.push_back(new TriggerNode("item push result", NextAction::array(0, new NextAction("use looted item", relevance),
+                                                                                new NextAction("unlock items", relevance),
                                                                                 new NextAction("open items", relevance),
                                                                                 new NextAction("query item usage", relevance), 
                                                                                 new NextAction("equip upgrades", relevance), nullptr)));
