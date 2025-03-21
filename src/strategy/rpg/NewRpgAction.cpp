@@ -243,6 +243,7 @@ bool NewRpgMoveNpcAction::Execute(Event event)
     }
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.near_npc.npcOrGo);
+
     bool interacted = false;  // Track if the bot has interacted with the NPC
 
     // --- Step 1: Ensure bot is close enough to interact ---

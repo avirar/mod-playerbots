@@ -392,6 +392,8 @@ public:
     void HandleMasterOutgoingPacket(WorldPacket const& packet);
     void HandleTeleportAck();
     void ChangeEngine(BotState type);
+    void ChangeEngineOnCombat();
+    void ChangeEngineOnNonCombat();
     void DoNextAction(bool minimal = false);
     virtual bool DoSpecificAction(std::string const name, Event event = Event(), bool silent = false,
                                   std::string const qualifier = "");
@@ -467,6 +469,8 @@ public:
     Item* FindPoison() const;
     Item* FindAmmo() const;
     Item* FindBandage() const;
+    Item* FindOpenableItem() const;
+    Item* FindLockedItem() const;
     Item* FindConsumable(uint32 displayId) const;
     Item* FindStoneFor(Item* weapon) const;
     Item* FindOilFor(Item* weapon) const;
