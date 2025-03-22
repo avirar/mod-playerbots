@@ -418,22 +418,18 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
     uint32 startItemId = quest->GetSrcItemId();
     
-    if (!startItemId)
-        return false;
-    
     // Use item on required NPC
-    if (npcOrGo < 0)
+    if (startItemId && npcOrGo < 0)
     {
         uint32 creatureEntry = -npcOrGo;
         GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
     
-        for (ObjectGuid const& guid : npcs)
+        for (auto i = npcs.begin(); i != npcs.end(); ++i)
         {
-            Unit* unit = bot->GetUnit(guid);
+            Unit* unit = botAI->GetUnit(*i);
             if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
                 continue;
     
-            // Confirm unit matches this exact quest objective
             if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
                 continue;
     
@@ -450,18 +446,17 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
     
     // Use item on required GameObject
-    else if (npcOrGo > 0)
+    else if (startItemId && npcOrGo > 0)
     {
         uint32 goEntry = npcOrGo;
         GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
     
-        for (ObjectGuid const& guid : gos)
+        for (auto i = gos.begin(); i != gos.end(); ++i)
         {
-            GameObject* go = bot->GetGameObject(guid);
+            GameObject* go = botAI->GetGameObject(*i);
             if (!go || go->GetEntry() != goEntry)
                 continue;
     
-            // Confirm GO matches this exact quest objective
             if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
                 continue;
     
