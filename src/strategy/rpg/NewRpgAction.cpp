@@ -418,57 +418,92 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
     uint32 startItemId = quest->GetSrcItemId();
     
-    // Use item on required NPC
-    if (startItemId && npcOrGo < 0)
+    // No StartItem for this quest — continue with other logic
+    if (!startItemId)
     {
-        uint32 creatureEntry = -npcOrGo;
-        GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
-    
-        for (auto i = npcs.begin(); i != npcs.end(); ++i)
-        {
-            Unit* unit = botAI->GetUnit(*i);
-            if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
-                continue;
-    
-            if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
-                continue;
-    
-            Item* item = bot->GetItemByEntry(startItemId);
-            if (item)
-            {
-                bot->SetSelection(unit->GetGUID());
-                Event useEvent("use", chat->FormatItem(item->GetTemplate()));
-                botAI->TellMaster("Using quest item " + chat->FormatItem(item->GetTemplate()) + " on unit " + unit->GetName());
-                botAI->DoSpecificAction("use", useEvent);
-                return true;
-            }
-        }
+        botAI->TellMaster("Quest [" + std::to_string(questId) + "] has no StartItem for objective #" + std::to_string(objectiveIdx));
     }
-    
-    // Use item on required GameObject
-    else if (startItemId && npcOrGo > 0)
+    else
     {
-        uint32 goEntry = npcOrGo;
-        GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
-    
-        for (auto i = gos.begin(); i != gos.end(); ++i)
+        Item* item = bot->GetItemByEntry(startItemId);
+        if (!item)
         {
-            GameObject* go = botAI->GetGameObject(*i);
-            if (!go || go->GetEntry() != goEntry)
-                continue;
+            botAI->TellMaster("Quest [" + std::to_string(questId) + "] requires StartItem [" + std::to_string(startItemId) +
+                              "], but it is not in my inventory. Continuing without it.");
+        }
+        else
+        {
+            std::string itemLink = chat->FormatItem(item->GetTemplate());
     
-            if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
-                continue;
-    
-            Item* item = bot->GetItemByEntry(startItemId);
-            if (item)
+            // === Use on required NPC ===
+            if (npcOrGo < 0)
             {
-                bot->SetSelection(go->GetGUID());
-                Event useEvent("use", chat->FormatItem(item->GetTemplate()));
-                botAI->TellMaster
-                    ("Using quest item " + chat->FormatItem(item->GetTemplate()) + " on object " + go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()));
-                botAI->DoSpecificAction("use", useEvent);
-                return true;
+                uint32 creatureEntry = -npcOrGo;
+                GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+    
+                for (auto i = npcs.begin(); i != npcs.end(); ++i)
+                {
+                    Unit* unit = botAI->GetUnit(*i);
+                    if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
+                        continue;
+    
+                    if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
+                        continue;
+    
+                    bot->SetSelection(unit->GetGUID());
+    
+                    std::ostringstream msg;
+                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                        << ": using " << itemLink
+                        << " on NPC [" << unit->GetName() << "] (Entry: " << creatureEntry << ")"
+                        << " at distance: " << round(bot->GetDistance(unit)) << " yards";
+    
+                    botAI->TellMaster(msg.str());
+    
+                    Event useEvent("use", itemLink);
+                    botAI->DoSpecificAction("use", useEvent);
+                    return true;
+                }
+    
+                botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                                  ": could not find target NPC (Entry: " + std::to_string(creatureEntry) +
+                                  ") nearby to use " + itemLink);
+            }
+    
+            // === Use on required GameObject ===
+            else if (npcOrGo > 0)
+            {
+                uint32 goEntry = npcOrGo;
+                GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
+    
+                for (auto i = gos.begin(); i != gos.end(); ++i)
+                {
+                    GameObject* go = botAI->GetGameObject(*i);
+                    if (!go || go->GetEntry() != goEntry)
+                        continue;
+    
+                    if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
+                        continue;
+    
+                    bot->SetSelection(go->GetGUID());
+    
+                    std::ostringstream msg;
+                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                        << ": using " << itemLink
+                        << " on GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                        << " (Entry: " << goEntry << ")"
+                        << " at distance: " << round(bot->GetDistance(go)) << " yards";
+    
+                    botAI->TellMaster(msg.str());
+    
+                    Event useEvent("use", itemLink);
+                    botAI->DoSpecificAction("use", useEvent);
+                    return true;
+                }
+    
+                botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                                  ": could not find target GameObject (Entry: " + std::to_string(goEntry) +
+                                  ") nearby to use " + itemLink);
             }
         }
     }
