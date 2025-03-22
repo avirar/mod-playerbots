@@ -474,7 +474,60 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                               ": could not find target GameObject (Entry: " + std::to_string(goEntry) + ") nearby to interact directly.");
         }
     
-        // Optional: fallback to return false or continue other logic
+        botAI->TellMaster("Also checking for direct interaction with friendly NPCs for Quest [" + std::to_string(questId) + "].");
+        
+        for (int32 objectiveIdx = 0; objectiveIdx < QUEST_OBJECTIVES_COUNT; ++objectiveIdx)
+        {
+            int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+            if (!npcOrGo || npcOrGo < 0) // Only NPCs here
+                continue;
+        
+            uint32 creatureEntry = uint32(npcOrGo);
+            GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+        
+            for (ObjectGuid const& guid : npcs)
+            {
+                Unit* unit = botAI->GetUnit(guid);
+                if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
+                    continue;
+        
+                float distance = bot->GetDistance(unit);
+                if (distance > INTERACTION_DISTANCE - 2.0f)
+                {
+                    std::ostringstream msg;
+                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                        << ": found NPC [" << unit->GetName() << "]"
+                        << " (Entry: " << creatureEntry << ")"
+                        << " but it's too far to interact directly: " << round(distance) << " yards";
+                    botAI->TellMaster(msg.str());
+                    continue;
+                }
+        
+                bot->SetSelection(unit->GetGUID());
+        
+                std::string npcLink = chat->FormatCreature(unit);
+        
+                std::ostringstream msg;
+                msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                    << ": directly interacting with friendly NPC " << npcLink
+                    << " (Entry: " << creatureEntry << ")"
+                    << " at distance: " << round(distance) << " yards";
+        
+                botAI->TellMaster(msg.str());
+        
+                WorldPacket emptyPacket;
+                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                SetNextMovementDelay(500);
+        
+                botAI->DoSpecificAction("talk");
+        
+                return true;
+            }
+        
+            botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                              ": could not find friendly NPC (Entry: " + std::to_string(creatureEntry) +
+                              ") nearby to interact directly.");
+        }
     }
     else
     {
