@@ -478,44 +478,53 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 {
                     uint32 creatureEntry = uint32(npcOrGo);
                     GuidVector units;
+                
                     if (botAI && botAI->GetAiObjectContext())
                     {
-                        auto val = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest units");
-                        if (val)
-                            units = val->Get();
+                        auto friendly = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs");
+                        auto hostile = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest hostile npcs");
+                        if (friendly)
+                            units.insert(units.end(), friendly->Get().begin(), friendly->Get().end());
+                        if (hostile)
+                            units.insert(units.end(), hostile->Get().begin(), hostile->Get().end());
                     }
-
-    
+                
+                    botAI->TellMaster("Scanning nearby friendly and hostile NPCs for Entry: " + std::to_string(creatureEntry));
+                
                     for (ObjectGuid const& guid : units)
                     {
                         Unit* unit = botAI->GetUnit(guid);
-
                         if (unit)
-                            botAI->TellMaster(" - " + unit->GetName() + " (Entry: " + std::to_string(unit->GetEntry()) + ")");
-
+                        {
+                            float dist = round(bot->GetDistance(unit));
+                            botAI->TellMaster(" - Found [" + unit->GetName() + "] (Entry: " + std::to_string(unit->GetEntry()) +
+                                              ", Dist: " + std::to_string(dist) + " yards)");
+                        }
+                
                         if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
                             continue;
-    
+                
                         bot->SetSelection(unit->GetGUID());
-    
+                
                         std::ostringstream msg;
                         msg << "Quest [" << questId << "] objective #" << objectiveIdx
                             << ": using " << itemLink
                             << " on NPC [" << unit->GetName() << "]"
                             << " (Entry: " << creatureEntry << ")"
                             << " at distance: " << round(bot->GetDistance(unit)) << " yards";
-    
+                
                         botAI->TellMaster(msg.str());
-    
+                
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
                         return true;
                     }
-    
+                
                     botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
                                       ": could not find target NPC (Entry: " + std::to_string(creatureEntry) +
                                       ") nearby to use " + itemLink);
                 }
+
             }
         }
     }
