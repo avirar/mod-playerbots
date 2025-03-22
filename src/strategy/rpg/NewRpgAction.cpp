@@ -462,6 +462,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             << " at distance: " << round(bot->GetDistance(go)) << " yards";
     
                         botAI->TellMaster(msg.str());
+
+                        WorldPacket emptyPacket;
+                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
     
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
@@ -515,6 +518,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             << " at distance: " << round(bot->GetDistance(unit)) << " yards";
                 
                         botAI->TellMaster(msg.str());
+
+                        WorldPacket emptyPacket;
+                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
                 
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
