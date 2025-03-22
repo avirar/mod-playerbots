@@ -460,9 +460,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         
             WorldPacket emptyPacket;
             bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+            SetNextMovementDelay(500);
+            // botAI->SetNextCheckDelay(5);
         
             Event useEvent("use", "gameobject");
             botAI->DoSpecificAction("use", useEvent);
+            
             return true;
         }
     
