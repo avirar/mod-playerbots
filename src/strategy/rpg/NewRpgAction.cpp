@@ -437,8 +437,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             if (item)
             {
                 bot->SetSelection(unit->GetGUID());
-                Event useEvent("use", item->GetName());
-                botAI->TellMaster("Using quest item " + item->GetName() + " on unit " + unit->GetName());
+                Event useEvent("use", chat->FormatItem(item->GetTemplate()));
+                botAI->TellMaster("Using quest item " + chat->FormatItem(item->GetTemplate()) + " on unit " + unit->GetName());
                 botAI->DoSpecificAction("use", useEvent);
                 return true;
             }
@@ -464,8 +464,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             if (item)
             {
                 bot->SetSelection(go->GetGUID());
-                Event useEvent("use", item->GetName());
-                botAI->TellMaster("Using quest item " + item->GetName() + " on object " + go->GetName());
+                Event useEvent("use", chat->FormatItem(item->GetTemplate()));
+                botAI->TellMaster
+                    ("Using quest item " + chat->FormatItem(item->GetTemplate()) + " on object " + go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()));
                 botAI->DoSpecificAction("use", useEvent);
                 return true;
             }
