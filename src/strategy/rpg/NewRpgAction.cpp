@@ -430,44 +430,45 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             uint32 goEntry = uint32(-npcOrGo);
             GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
     
-        for (ObjectGuid const& guid : gos)
-        {
-            GameObject* go = botAI->GetGameObject(guid);
-            if (!go || go->GetEntry() != goEntry)
-                continue;
-        
-            float distance = bot->GetDistance(go);
-            if (distance > INTERACTION_DISTANCE - 2.0f)
+            for (ObjectGuid const& guid : gos)
             {
+                GameObject* go = botAI->GetGameObject(guid);
+                if (!go || go->GetEntry() != goEntry)
+                    continue;
+    
+                float distance = bot->GetDistance(go);
+                if (distance > INTERACTION_DISTANCE - 2.0f)
+                {
+                    std::ostringstream msg;
+                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                        << ": found GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                        << " (Entry: " << goEntry << ")"
+                        << " but it's too far to interact directly: " << round(distance) << " yards";
+                    botAI->TellMaster(msg.str());
+                    continue;
+                }
+    
+                bot->SetSelection(go->GetGUID());
+    
+                std::string goLink = chat->FormatGameobject(go);
+    
                 std::ostringstream msg;
                 msg << "Quest [" << questId << "] objective #" << objectiveIdx
-                    << ": found GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                    << ": directly interacting with GameObject " << goLink
                     << " (Entry: " << goEntry << ")"
-                    << " but it's too far to interact directly: " << round(distance) << " yards";
+                    << " at distance: " << round(distance) << " yards";
+    
                 botAI->TellMaster(msg.str());
-                continue;
+    
+                WorldPacket emptyPacket;
+                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                SetNextMovementDelay(500);
+    
+                Event useEvent("use", goLink);
+                botAI->DoSpecificAction("use", useEvent);
+    
+                return true;
             }
-        
-            bot->SetSelection(go->GetGUID());
-        
-            std::ostringstream msg;
-            msg << "Quest [" << questId << "] objective #" << objectiveIdx
-                << ": directly interacting with GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
-                << " (Entry: " << goEntry << ")"
-                << " at distance: " << round(distance) << " yards";
-        
-            botAI->TellMaster(msg.str());
-        
-            WorldPacket emptyPacket;
-            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
-            SetNextMovementDelay(500);
-            // botAI->SetNextCheckDelay(5);
-        
-            Event useEvent("use", "gameobject");
-            botAI->DoSpecificAction("use", useEvent);
-            
-            return true;
-        }
     
             botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
                               ": could not find target GameObject (Entry: " + std::to_string(goEntry) + ") nearby to interact directly.");
