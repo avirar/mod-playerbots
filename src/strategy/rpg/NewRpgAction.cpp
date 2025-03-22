@@ -477,11 +477,22 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 else if (npcOrGo > 0)
                 {
                     uint32 creatureEntry = uint32(npcOrGo);
-                    GuidVector units = AI_VALUE(GuidVector, "nearest units");
+                    GuidVector units;
+                    if (botAI && botAI->GetAiObjectContext())
+                    {
+                        auto val = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest units");
+                        if (val)
+                            units = val->Get();
+                    }
+
     
                     for (ObjectGuid const& guid : units)
                     {
                         Unit* unit = botAI->GetUnit(guid);
+
+                        if (unit)
+                            botAI->TellMaster(" - " + unit->GetName() + " (Entry: " + std::to_string(unit->GetEntry()) + ")");
+
                         if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
                             continue;
     
