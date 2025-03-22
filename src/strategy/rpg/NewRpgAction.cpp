@@ -413,6 +413,57 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     // Now we are near the quest objective
     // kill mobs and looting quest should be done automatically by grind strategy
 
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    int32 objectiveIdx = botAI->rpgInfo.do_quest.objectiveIdx;
+    int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+    
+    // Use item on NPC
+    if (npcOrGo < 0 && quest->GetStartItem())
+    {
+        uint32 creatureEntry = -npcOrGo;
+        GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+    
+        for (ObjectGuid const& guid : npcs)
+        {
+            Unit* unit = bot->GetUnit(guid);
+            if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
+                continue;
+    
+            Item* item = bot->GetItemByEntry(quest->GetStartItem());
+            if (item)
+            {
+                bot->SetSelection(unit->GetGUID());
+                Event useEvent("use", item->GetName());
+                botAI->DoSpecificAction("use", useEvent);
+                return true;
+            }
+        }
+    }
+    
+    // Use item on GameObject
+    else if (npcOrGo > 0 && quest->GetStartItem())
+    {
+        uint32 goEntry = npcOrGo;
+        GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
+    
+        for (ObjectGuid const& guid : gos)
+        {
+            GameObject* go = bot->GetGameObject(guid);
+            if (!go || go->GetEntry() != goEntry)
+                continue;
+    
+            Item* item = bot->GetItemByEntry(quest->GetStartItem());
+            if (item)
+            {
+                bot->SetSelection(go->GetGUID());
+                Event useEvent("use", item->GetName());
+                botAI->TellMaster("Using quest item " + item->GetName() + " on object " + go->GetName());
+                botAI->DoSpecificAction("use", useEvent);
+                return true;
+            }
+        }
+    }
+
     if (!botAI->rpgInfo.do_quest.lastReachPOI)
     {
         botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
