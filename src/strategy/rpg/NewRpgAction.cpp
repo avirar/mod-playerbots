@@ -416,10 +416,49 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     uint32 startItemId = quest->GetSrcItemId();
     
-    // No StartItem for this quest — continue with other logic
+    // No StartItem for this quest
     if (!startItemId)
     {
-        botAI->TellMaster("Quest [" + std::to_string(questId) + "] has no StartItem to use on objectives.");
+        botAI->TellMaster("Quest [" + std::to_string(questId) + "] has no StartItem — checking for direct GameObject interaction objectives.");
+    
+        for (int32 objectiveIdx = 0; objectiveIdx < QUEST_OBJECTIVES_COUNT; ++objectiveIdx)
+        {
+            int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+            if (!npcOrGo || npcOrGo > 0) // Only care about GameObjects here
+                continue;
+    
+            uint32 goEntry = uint32(-npcOrGo);
+            GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
+    
+            for (ObjectGuid const& guid : gos)
+            {
+                GameObject* go = botAI->GetGameObject(guid);
+                if (!go || go->GetEntry() != goEntry)
+                    continue;
+    
+                bot->SetSelection(go->GetGUID());
+    
+                std::ostringstream msg;
+                msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                    << ": directly interacting with GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                    << " (Entry: " << goEntry << ")"
+                    << " at distance: " << round(bot->GetDistance(go)) << " yards";
+    
+                botAI->TellMaster(msg.str());
+    
+                WorldPacket emptyPacket;
+                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+    
+                Event useEvent("use", "gameobject");
+                botAI->DoSpecificAction("use", useEvent);
+                return true;
+            }
+    
+            botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                              ": could not find target GameObject (Entry: " + std::to_string(goEntry) + ") nearby to interact directly.");
+        }
+    
+        // Optional: fallback to return false or continue other logic
     }
     else
     {
