@@ -434,6 +434,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             {
                 bot->SetSelection(unit->GetGUID());
                 Event useEvent("use", item->GetName());
+                botAI->TellMaster("Using quest item " + item->GetName() + " on unit " + unit->GetName());
                 botAI->DoSpecificAction("use", useEvent);
                 return true;
             }
