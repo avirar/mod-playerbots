@@ -26,7 +26,7 @@ bool AddAllLootAction::Execute(Event event)
 {
     bool added = false;
 
-    GuidVector gos = context->GetValue<GuidVector>("nearest game objects")->Get();
+    GuidVector gos = context->GetValue<GuidVector>("nearest game objects no los")->Get();
     for (GuidVector::iterator i = gos.begin(); i != gos.end(); i++)
         added |= AddLoot(*i);
 
