@@ -414,14 +414,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     // kill mobs and looting quest should be done automatically by grind strategy
     
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-    int32 objectiveIdx = botAI->rpgInfo.do_quest.objectiveIdx;
-    int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
     uint32 startItemId = quest->GetSrcItemId();
     
     // No StartItem for this quest — continue with other logic
     if (!startItemId)
     {
-        botAI->TellMaster("Quest [" + std::to_string(questId) + "] has no StartItem for objective #" + std::to_string(objectiveIdx));
+        botAI->TellMaster("Quest [" + std::to_string(questId) + "] has no StartItem to use on objectives.");
     }
     else
     {
@@ -435,75 +433,83 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         {
             std::string itemLink = chat->FormatItem(item->GetTemplate());
     
-            // === Use on required NPC ===
-            if (npcOrGo < 0)
+            // Loop through all possible objectives (up to 4)
+            for (int32 objectiveIdx = 0; objectiveIdx < QUEST_OBJECTIVES_COUNT; ++objectiveIdx)
             {
-                uint32 creatureEntry = -npcOrGo;
-                GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+                int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+                if (!npcOrGo)
+                    continue;
     
-                for (auto i = npcs.begin(); i != npcs.end(); ++i)
+                // === Use on required NPC ===
+                if (npcOrGo < 0)
                 {
-                    Unit* unit = botAI->GetUnit(*i);
-                    if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
-                        continue;
+                    uint32 creatureEntry = -npcOrGo;
+                    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
     
-                    if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
-                        continue;
+                    for (auto i = npcs.begin(); i != npcs.end(); ++i)
+                    {
+                        Unit* unit = botAI->GetUnit(*i);
+                        if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
+                            continue;
     
-                    bot->SetSelection(unit->GetGUID());
+                        if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
+                            continue;
     
-                    std::ostringstream msg;
-                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
-                        << ": using " << itemLink
-                        << " on NPC [" << unit->GetName() << "] (Entry: " << creatureEntry << ")"
-                        << " at distance: " << round(bot->GetDistance(unit)) << " yards";
+                        bot->SetSelection(unit->GetGUID());
     
-                    botAI->TellMaster(msg.str());
+                        std::ostringstream msg;
+                        msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                            << ": using " << itemLink
+                            << " on NPC [" << unit->GetName() << "] (Entry: " << creatureEntry << ")"
+                            << " at distance: " << round(bot->GetDistance(unit)) << " yards";
     
-                    Event useEvent("use", itemLink);
-                    botAI->DoSpecificAction("use", useEvent);
-                    return true;
+                        botAI->TellMaster(msg.str());
+    
+                        Event useEvent("use", itemLink);
+                        botAI->DoSpecificAction("use", useEvent);
+                        return true;
+                    }
+    
+                    botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                                      ": could not find target NPC (Entry: " + std::to_string(creatureEntry) +
+                                      ") nearby to use " + itemLink);
                 }
     
-                botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
-                                  ": could not find target NPC (Entry: " + std::to_string(creatureEntry) +
-                                  ") nearby to use " + itemLink);
-            }
-    
-            // === Use on required GameObject ===
-            else if (npcOrGo > 0)
-            {
-                uint32 goEntry = npcOrGo;
-                GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
-    
-                for (auto i = gos.begin(); i != gos.end(); ++i)
+                // === Use on required GameObject ===
+                else if (npcOrGo > 0)
                 {
-                    GameObject* go = botAI->GetGameObject(*i);
-                    if (!go || go->GetEntry() != goEntry)
-                        continue;
+                    uint32 goEntry = npcOrGo;
+                    GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
     
-                    if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
-                        continue;
+                    for (auto i = gos.begin(); i != gos.end(); ++i)
+                    {
+                        GameObject* go = botAI->GetGameObject(*i);
+                        if (!go || go->GetEntry() != goEntry)
+                            continue;
     
-                    bot->SetSelection(go->GetGUID());
+                        if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
+                            continue;
     
-                    std::ostringstream msg;
-                    msg << "Quest [" << questId << "] objective #" << objectiveIdx
-                        << ": using " << itemLink
-                        << " on GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
-                        << " (Entry: " << goEntry << ")"
-                        << " at distance: " << round(bot->GetDistance(go)) << " yards";
+                        bot->SetSelection(go->GetGUID());
     
-                    botAI->TellMaster(msg.str());
+                        std::ostringstream msg;
+                        msg << "Quest [" << questId << "] objective #" << objectiveIdx
+                            << ": using " << itemLink
+                            << " on GameObject [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                            << " (Entry: " << goEntry << ")"
+                            << " at distance: " << round(bot->GetDistance(go)) << " yards";
     
-                    Event useEvent("use", itemLink);
-                    botAI->DoSpecificAction("use", useEvent);
-                    return true;
+                        botAI->TellMaster(msg.str());
+    
+                        Event useEvent("use", itemLink);
+                        botAI->DoSpecificAction("use", useEvent);
+                        return true;
+                    }
+    
+                    botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
+                                      ": could not find target GameObject (Entry: " + std::to_string(goEntry) +
+                                      ") nearby to use " + itemLink);
                 }
-    
-                botAI->TellMaster("Quest [" + std::to_string(questId) + "] objective #" + std::to_string(objectiveIdx) +
-                                  ": could not find target GameObject (Entry: " + std::to_string(goEntry) +
-                                  ") nearby to use " + itemLink);
             }
         }
     }
