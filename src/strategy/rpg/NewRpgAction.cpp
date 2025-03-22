@@ -477,9 +477,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 else if (npcOrGo > 0)
                 {
                     uint32 creatureEntry = uint32(npcOrGo);
-                    GuidVector units = botAI->GetAiObjectContext()->GetValue<GuidVector>
-                        ("nearest units", std::to_string(sPlayerbotAIConfig->sightDistance) + " true")->Get();
-
+                    GuidVector units = AI_VALUE(GuidVector, "nearest units");
     
                     for (ObjectGuid const& guid : units)
                     {
