@@ -412,13 +412,17 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
     // Now we are near the quest objective
     // kill mobs and looting quest should be done automatically by grind strategy
-
+    
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     int32 objectiveIdx = botAI->rpgInfo.do_quest.objectiveIdx;
     int32 npcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+    uint32 startItemId = quest->GetSrcItemId();
     
-    // Use item on NPC
-    if (npcOrGo < 0 && quest->GetStartItem())
+    if (!startItemId)
+        return false;
+    
+    // Use item on required NPC
+    if (npcOrGo < 0)
     {
         uint32 creatureEntry = -npcOrGo;
         GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
@@ -429,7 +433,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
                 continue;
     
-            Item* item = bot->GetItemByEntry(quest->GetStartItem());
+            // Confirm unit matches this exact quest objective
+            if (quest->RequiredNpcOrGo[objectiveIdx] != -int32(unit->GetEntry()))
+                continue;
+    
+            Item* item = bot->GetItemByEntry(startItemId);
             if (item)
             {
                 bot->SetSelection(unit->GetGUID());
@@ -441,8 +449,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         }
     }
     
-    // Use item on GameObject
-    else if (npcOrGo > 0 && quest->GetStartItem())
+    // Use item on required GameObject
+    else if (npcOrGo > 0)
     {
         uint32 goEntry = npcOrGo;
         GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
@@ -453,7 +461,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             if (!go || go->GetEntry() != goEntry)
                 continue;
     
-            Item* item = bot->GetItemByEntry(quest->GetStartItem());
+            // Confirm GO matches this exact quest objective
+            if (quest->RequiredNpcOrGo[objectiveIdx] != int32(go->GetEntry()))
+                continue;
+    
+            Item* item = bot->GetItemByEntry(startItemId);
             if (item)
             {
                 bot->SetSelection(go->GetGUID());
