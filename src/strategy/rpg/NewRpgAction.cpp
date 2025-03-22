@@ -481,12 +481,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 
                     if (botAI && botAI->GetAiObjectContext())
                     {
-                        auto friendly = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs");
-                        auto hostile = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest hostile npcs");
-                        if (friendly)
-                            units.insert(units.end(), friendly->Get().begin(), friendly->Get().end());
-                        if (hostile)
-                            units.insert(units.end(), hostile->Get().begin(), hostile->Get().end());
+                        GuidVector friendly = AI_VALUE(GuidVector, "nearest npcs");
+                        if (!friendly.empty())
+                            units.insert(units.end(), friendly.begin(), friendly.end());
+
+                        GuidVector hostile = AI_VALUE(GuidVector, "nearest hostile npcs");
+                        if (!hostile.empty())
+                            units.insert(units.end(), hostile.begin(), hostile.end());
                     }
                 
                     botAI->TellMaster("Scanning nearby friendly and hostile NPCs for Entry: " + std::to_string(creatureEntry));
