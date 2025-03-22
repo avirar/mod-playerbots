@@ -444,7 +444,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 if (npcOrGo < 0)
                 {
                     uint32 goEntry = uint32(-npcOrGo);
-                    GuidVector gos = AI_VALUE(GuidVector, "nearest game objects");
+                    GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
     
                     for (ObjectGuid const& guid : gos)
                     {
@@ -477,9 +477,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 else if (npcOrGo > 0)
                 {
                     uint32 creatureEntry = uint32(npcOrGo);
-                    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+                    GuidVector units = AI_VALUE(GuidVector, "nearest units", sPlayerbotAIConfig->sightDistance, true);
     
-                    for (ObjectGuid const& guid : npcs)
+                    for (ObjectGuid const& guid : units)
                     {
                         Unit* unit = botAI->GetUnit(guid);
                         if (!unit || unit->GetEntry() != creatureEntry || !unit->IsAlive())
