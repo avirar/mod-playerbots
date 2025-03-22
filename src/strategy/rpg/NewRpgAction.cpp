@@ -505,21 +505,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         
                 bot->SetSelection(unit->GetGUID());
         
-                std::string npcLink = chat->FormatCreature(unit);
-        
                 std::ostringstream msg;
                 msg << "Quest [" << questId << "] objective #" << objectiveIdx
-                    << ": directly interacting with friendly NPC " << npcLink
+                    << ": directly interacting with friendly NPC [" << unit->GetName() << "]"
                     << " (Entry: " << creatureEntry << ")"
                     << " at distance: " << round(distance) << " yards";
         
                 botAI->TellMaster(msg.str());
-        
-                WorldPacket emptyPacket;
-                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
-                SetNextMovementDelay(500);
-        
-                botAI->DoSpecificAction("talk");
         
                 return true;
             }
