@@ -465,19 +465,137 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
     // 1) First, see if we can produce any missing quest items from inventory "playercast" items while close to the objective
     //    (like "Empty Tainted Ooze Jar" or anything else that creates quest objectives).
+    // 
     {
-        // Gather how many quest items we still need
-        std::map<uint32,int32> missingItems = GetMissingQuestItems(bot, quest);
-
-        // Gather all items in bot's bags flagged as "playercast"
-        // (the user said: "std::vector<Item*> playercastItems= AI_VALUE2(...)")
+        std::map<uint32, int32> missingItems;
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            uint32 requiredItemId = quest->RequiredItemId[i];
+            if (!requiredItemId)
+                continue;
+    
+            uint32 requiredCount = quest->RequiredItemCount[i];
+            if (!requiredCount)
+                continue;
+    
+            uint32 currentCount = context->GetValue<uint32>("item count", std::to_string(requiredItemId))->Get();
+            if (currentCount < requiredCount)
+            {
+                int32 shortfall = int32(requiredCount) - int32(currentCount);
+                missingItems[requiredItemId] += shortfall;
+            }
+        }
+    
         std::vector<Item*> playercastItems = AI_VALUE2(std::vector<Item*>, "inventory items", "playercast");
-
-        // Attempt to use one of them on a valid corpse/object to produce the quest item
-        bool usedSomething = TryUseQuestProductionItems(bot, botAI, quest, missingItems, playercastItems);
-        SetNextMovementDelay(500);
-        if (usedSomething)
-            return true; // We used an item; next bot update tick can see if we got the item.
+    
+        for (auto const& kv : missingItems)
+        {
+            uint32 neededItemId = kv.first;
+            int32 neededCount   = kv.second;
+            if (neededCount <= 0)
+                continue;
+    
+            for (Item* invItem : playercastItems)
+            {
+                if (!invItem)
+                    continue;
+    
+                ItemTemplate const* proto = invItem->GetTemplate();
+                if (!proto)
+                    continue;
+    
+                for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+                {
+                    uint32 spellId = proto->Spells[i].SpellId;
+                    if (!spellId)
+                        continue;
+    
+                    if (proto->Spells[i].SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+                        continue;
+    
+                    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                    if (!spellInfo)
+                        continue;
+    
+                    bool createsOurItem = false;
+                    for (uint8 effIndex = 0; effIndex < MAX_SPELL_EFFECTS; ++effIndex)
+                    {
+                        if (spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_CREATE_ITEM ||
+                            spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_CREATE_ITEM_2)
+                        {
+                            if (spellInfo->Effects[effIndex].ItemType == neededItemId)
+                            {
+                                createsOurItem = true;
+                                break;
+                            }
+                        }
+                    }
+    
+                    if (!createsOurItem)
+                        continue;
+    
+                    ConditionList const& conditions =
+                        sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+    
+                    if (conditions.empty())
+                    {
+                        bot->SetSelection(bot->GetGUID());
+                        botAI->TellMaster("Using " + ChatHelper::FormatItem(proto) + " (no conditions needed).");
+    
+                        WorldPacket emptyPacket;
+                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+    
+                        SetNextMovementDelay(500);
+                        Event useEvent("use", ChatHelper::FormatItem(proto));
+                        botAI->DoSpecificAction("use", useEvent);
+                        return true;
+                    }
+                    else
+                    {
+                        GuidVector nearNpcs     = AI_VALUE(GuidVector, "nearest npcs");
+                        GuidVector nearHostiles = AI_VALUE(GuidVector, "nearest hostile npcs");
+                        GuidVector nearCorpses  = AI_VALUE(GuidVector, "nearest corpses");
+    
+                        GuidVector allUnits;
+                        allUnits.insert(allUnits.end(), nearNpcs.begin(), nearNpcs.end());
+                        allUnits.insert(allUnits.end(), nearHostiles.begin(), nearHostiles.end());
+                        allUnits.insert(allUnits.end(), nearCorpses.begin(), nearCorpses.end());
+    
+                        for (ObjectGuid const& guid : allUnits)
+                        {
+                            Unit* unit = botAI->GetUnit(guid);
+                            if (!unit)
+                                continue;
+    
+                            float dist = bot->GetDistance(unit);
+                            if (dist > INTERACTION_DISTANCE - 1.5f)
+                                continue;
+    
+                            ConditionSourceInfo cinfo(bot, unit);
+                            if (!sConditionMgr->IsObjectMeetToConditions(cinfo, conditions))
+                                continue;
+    
+                            bot->SetSelection(unit->GetGUID());
+    
+                            std::ostringstream msg;
+                            msg << "Using " << ChatHelper::FormatItem(proto)
+                                << " to create needed item [" << neededItemId << "]"
+                                << " on " << unit->GetName()
+                                << " (SpellId=" << spellId << ", Dist=" << dist << ")";
+                            botAI->TellMaster(msg.str());
+    
+                            WorldPacket emptyPacket;
+                            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+    
+                            SetNextMovementDelay(500);
+                            Event useEvent("use", ChatHelper::FormatItem(proto));
+                            botAI->DoSpecificAction("use", useEvent);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     uint32 startItemId = quest->GetSrcItemId();
@@ -875,184 +993,5 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         botAI->rpgInfo.ChangeToIdle();
         return true;
     }
-    return false;
-}
-
-// Return a map of [ItemId -> how many more the bot needs]
-std::map<uint32, int32> GetMissingQuestItems(Player* bot, Quest const* quest)
-{
-    std::map<uint32, int32> missingItems;
-
-    for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
-    {
-        uint32 requiredItemId = quest->RequiredItemId[i];
-        if (!requiredItemId)
-            continue; // no item objective in this slot
-
-        uint32 requiredCount = quest->RequiredItemCount[i];
-        if (!requiredCount)
-            continue;
-
-        // How many does the bot already have in inventory?
-        // "item count" is a typical playerbots named value or you can do your own 
-        // inventory count logic directly. This is just an example:
-        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-        uint32 currentCount = botAI->GetAiObjectContext()->GetValue<uint32>("item count", std::to_string(requiredItemId))->Get();
-        if (currentCount < requiredCount)
-        {
-            int32 shortfall = int32(requiredCount) - int32(currentCount);
-            missingItems[requiredItemId] += shortfall;
-        }
-    }
-
-    return missingItems;
-}
-
-bool TryUseQuestProductionItems(
-    Player* bot,
-    PlayerbotAI* botAI,
-    Quest const* quest,
-    std::map<uint32,int32> const& missingQuestItems,
-    std::vector<Item*> const& playercastItems)
-{
-    // We'll iterate over each missing quest item & see if we can produce it
-    // by using one of the player's "playercast" items.
-
-    for (auto const& kv : missingQuestItems)
-    {
-        uint32 neededItemId = kv.first;  // e.g. 11949
-        int32 neededCount   = kv.second; // e.g. 6 still needed
-        if (neededCount <= 0)
-            continue; // not actually missing
-
-        // Now see if any "playercast" item can CREATE that needed item.
-        for (Item* invItem : playercastItems)
-        {
-            if (!invItem)
-                continue;
-
-            ItemTemplate const* proto = invItem->GetTemplate();
-            if (!proto)
-                continue;
-
-            // Check each possible item spell
-            for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
-            {
-                uint32 spellId = proto->Spells[i].SpellId;
-                if (!spellId)
-                    continue;
-
-                // Must be an On-Use trigger
-                if (proto->Spells[i].SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
-                    continue;
-
-                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                if (!spellInfo)
-                    continue;
-
-                // Does this spell create the item we need?
-                // Typically we look at each effect, and if it's CREATE_ITEM => that item is our needed item
-                bool createsOurItem = false;
-                for (uint8 effIndex = 0; effIndex < MAX_SPELL_EFFECTS; ++effIndex)
-                {
-                    if (spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_CREATE_ITEM ||
-                        spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_CREATE_ITEM_2)
-                    {
-                        if (spellInfo->Effects[effIndex].ItemType == neededItemId)
-                        {
-                            createsOurItem = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!createsOurItem)
-                    continue; // next spell
-
-                // If we get here, "invItem" has a spell that can produce "neededItemId".
-                // Next step: see if that spell has conditions (e.g. must target a specific dead creature).
-                ConditionList const& conditions =
-                    sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
-
-                // We'll search for a valid target that meets the conditions
-                if (conditions.empty())
-                {
-                    // If there are no conditions, maybe it’s an item we can just cast on self or no-target.
-                    // Usually "fill jar" spells DO have conditions, but let's handle the “no condition” case:
-                    // Try to simply use it on self. If your “use” action requires a selection, that’s your call:
-                    // We'll do it the same way you do in "use" action.
-                    bot->SetSelection(bot->GetGUID());
-                    botAI->TellMaster("Using " + ChatHelper::FormatItem(proto) + " (no conditions needed).");
-
-                    // Cancel mount, etc.
-                    WorldPacket emptyPacket;
-                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
-
-                    Event useEvent("use", ChatHelper::FormatItem(proto));
-                    botAI->DoSpecificAction("use", useEvent);
-
-                    return true;
-                }
-                else
-                {
-                    // Usually we want to find a local creature that meets the conditions (e.g. "must be Tainted Ooze, must be dead")
-                    // We'll gather nearest corpses, nearest hostile NPCs, etc.
-                    GuidVector nearNpcs      = AI_VALUE(GuidVector, "nearest npcs");
-                    GuidVector nearHostiles  = AI_VALUE(GuidVector, "nearest hostile npcs");
-                    GuidVector nearCorpses   = AI_VALUE(GuidVector, "nearest corpses"); 
-                    // (If you don't have "nearest corpses," you can either code your own or merge hostiles that are dead, etc.)
-
-                    // Combine them all into one container
-                    GuidVector allUnits;
-                    allUnits.insert(allUnits.end(), nearNpcs.begin(), nearNpcs.end());
-                    allUnits.insert(allUnits.end(), nearHostiles.begin(), nearHostiles.end());
-                    allUnits.insert(allUnits.end(), nearCorpses.begin(), nearCorpses.end());
-
-                    // Attempt usage on each candidate
-                    for (ObjectGuid const& guid : allUnits)
-                    {
-                        Unit* unit = botAI->GetUnit(guid);
-                        if (!unit)
-                            continue;
-
-                        // Check distance
-                        float dist = bot->GetDistance(unit);
-                        if (dist > INTERACTION_DISTANCE - 1.5f)
-                            continue;
-
-                        // Construct ConditionSourceInfo => [0]=bot(caster), [1]=this unit(target)
-                        ConditionSourceInfo cinfo(bot, unit);
-
-                        // Evaluate conditions. If they pass, we can use this item on that target
-                        if (!sConditionMgr->IsObjectMeetToConditions(cinfo, conditions))
-                            continue;
-
-                        // It's valid. Let's do it.
-                        bot->SetSelection(unit->GetGUID());
-
-                        std::ostringstream msg;
-                        msg << "Using " << ChatHelper::FormatItem(proto)
-                            << " to create needed item [" << neededItemId << "]"
-                            << " on " << unit->GetName()
-                            << " (SpellId=" << spellId << ", Dist=" << dist << ")";
-                        botAI->TellMaster(msg.str());
-
-                        // Cancel mount if any
-                        WorldPacket emptyPacket;
-                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
-
-                        Event useEvent("use", ChatHelper::FormatItem(proto));
-                        botAI->DoSpecificAction("use", useEvent);
-
-                        return true; // done for now
-                    }
-                }
-
-                // If we tried all nearest units but no valid target was found, we skip to the next item
-            } // end for each item spell
-        } // end for each playercast item
-    } // end for each missing quest item
-
-    // If we never found an item+target combination, return false
     return false;
 }
