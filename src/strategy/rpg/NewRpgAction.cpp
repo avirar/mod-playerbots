@@ -536,18 +536,17 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     
                     ConditionList const& conditions =
                         sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
-    
+                    std::string itemLink = chat->FormatItem(proto);
                     if (conditions.empty())
                     {
                         bot->SetSelection(bot->GetGUID());
-                        botAI->TellMaster("Using " + ChatHelper::FormatItem(proto) + " (no conditions needed).");
+                        botAI->TellMaster("Using " + itemLink + " (no conditions needed).");
     
                         WorldPacket emptyPacket;
                         bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
     
                         SetNextMovementDelay(500);
-                        Event useEvent("use", ChatHelper::FormatItem(proto));
-                        botAI->DoSpecificAction("use", useEvent);
+                        botAI->DoSpecificAction("use", itemLink);
                         return true;
                     }
                     else
@@ -578,7 +577,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             bot->SetSelection(unit->GetGUID());
     
                             std::ostringstream msg;
-                            msg << "Using " << ChatHelper::FormatItem(proto)
+                            msg << "Using " << chat->FormatItem(proto)
                                 << " to create needed item [" << neededItemId << "]"
                                 << " on " << unit->GetName()
                                 << " (SpellId=" << spellId << ", Dist=" << dist << ")";
@@ -588,8 +587,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
     
                             SetNextMovementDelay(500);
-                            Event useEvent("use", ChatHelper::FormatItem(proto));
-                            botAI->DoSpecificAction("use", useEvent);
+                            botAI->DoSpecificAction("use", itemLink);
                             return true;
                         }
                     }
@@ -648,8 +646,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
                 SetNextMovementDelay(500);
     
-                Event useEvent("use", goLink);
-                botAI->DoSpecificAction("use", useEvent);
+                botAI->DoSpecificAction("use", goLink);
     
                 return true;
             }
