@@ -76,4 +76,20 @@ protected:
     bool AcceptUnit(Unit* unit) override;
 };
 
+class NearestQuestNpcsValue : public NearestUnitsValue
+{
+public:
+    NearestQuestNpcsValue(PlayerbotAI* botAI, float range = 80.0f)
+        : NearestUnitsValue(botAI, "nearest quest npcs", range, true) // true = ignore LOS
+    {
+    }
+
+protected:
+    void FindUnits(std::list<Unit*>& targets) override;
+    bool AcceptUnit(Unit* unit) override;
+
+private:
+    std::unordered_set<uint32> GetRequiredNpcEntries();
+};
+
 #endif
