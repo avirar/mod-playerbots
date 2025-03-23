@@ -583,6 +583,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                                 bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
                     
                                 SetNextMovementDelay(500);
+                                std::string itemLink = chat->FormatItem(proto);
                                 botAI->DoSpecificAction("use", itemLink);
                                 return true;
                             }
