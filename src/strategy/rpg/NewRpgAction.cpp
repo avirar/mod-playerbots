@@ -474,7 +474,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         std::vector<Item*> playercastItems = AI_VALUE2(std::vector<Item*>, "inventory items", "playercast");
 
         // Attempt to use one of them on a valid corpse/object to produce the quest item
-        bool usedSomething = TryUseQuestProductionItems(bot, botAI, quest, missingItems, playercastItems);
+        bool usedSomething = TryUseQuestProductionItems(bot, botAI, action, quest, missingItems, playercastItems);
         if (usedSomething)
             return true; // We used an item; next bot update tick can see if we got the item.
     }
@@ -910,6 +910,7 @@ std::map<uint32, int32> GetMissingQuestItems(Player* bot, Quest const* quest)
 bool TryUseQuestProductionItems(
     Player* bot,
     PlayerbotAI* botAI,
+    Action* action,
     Quest const* quest,
     std::map<uint32,int32> const& missingQuestItems,
     std::vector<Item*> const& playercastItems)
