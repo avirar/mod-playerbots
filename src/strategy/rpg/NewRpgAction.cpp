@@ -895,6 +895,7 @@ std::map<uint32, int32> GetMissingQuestItems(Player* bot, Quest const* quest)
         // How many does the bot already have in inventory?
         // "item count" is a typical playerbots named value or you can do your own 
         // inventory count logic directly. This is just an example:
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
         uint32 currentCount = botAI->GetAiObjectContext()->GetValue<uint32>("item count", std::to_string(requiredItemId))->Get();
         if (currentCount < requiredCount)
         {
