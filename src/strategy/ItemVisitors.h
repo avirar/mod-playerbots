@@ -415,4 +415,16 @@ public:
 private:
     std::string name;
 };
+
+class FindPlayerCastItemVisitor : public FindItemVisitor
+{
+public:
+    FindPlayerCastItemVisitor() : FindItemVisitor() {}
+
+    bool Accept(ItemTemplate const* proto) override
+    {
+        return proto && (proto->Flags & ITEM_FLAG_PLAYERCAST);
+    }
+};
+
 #endif
