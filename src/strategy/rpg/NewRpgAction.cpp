@@ -539,57 +539,43 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     
                     if (!createsOurItem)
                     {
-                        // 🔍 Check if this spell helps complete any objective by using it on an NPC
                         for (uint8 objIndex = 0; objIndex < QUEST_OBJECTIVES_COUNT; ++objIndex)
                         {
-                            uint32 objEntry = quest->RequiredNpcOrGo[objIndex];
-                            if (!objEntry || quest->RequiredNpcOrGoCount[objIndex] == 0)
+                            uint32 entry = quest->RequiredNpcOrGo[objIndex];
+                            if (!entry || quest->RequiredNpcOrGoCount[objIndex] == 0)
                                 continue;
                     
-                            bool isCreature = quest->RequiredNpcOrGoFlags[objIndex] & 0x1;
+                            CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(entry);
+                            GameObjectTemplate const* goInfo = sObjectMgr->GetGameObjectTemplate(entry);
                     
-                            GuidVector nearbyUnits;
-                            if (isCreature)
-                                nearbyUnits = AI_VALUE(GuidVector, "nearest npcs");
-                            else
-                                nearbyUnits = AI_VALUE(GuidVector, "nearest game objects");
+                            if (!creatureInfo && !goInfo)
+                                continue; // Invalid quest objective target
                     
-                            for (ObjectGuid const& guid : nearbyUnits)
+                            bool isCreature = (creatureInfo != nullptr);
+                    
+                            GuidVector nearbyTargets = isCreature
+                                ? AI_VALUE(GuidVector, "nearest npcs")
+                                : AI_VALUE(GuidVector, "nearest game objects");
+                    
+                            for (ObjectGuid const& guid : nearbyTargets)
                             {
-                                Unit* targetUnit = isCreature ? botAI->GetUnit(guid) : nullptr;
-                                GameObject* targetGo = !isCreature ? botAI->GetGameObject(guid) : nullptr;
-                                WorldObject* target = targetUnit ? (WorldObject*)targetUnit : (WorldObject*)targetGo;
+                                WorldObject* target = isCreature
+                                    ? (WorldObject*)botAI->GetUnit(guid)
+                                    : (WorldObject*)botAI->GetGameObject(guid);
                     
-                                if (!target || target->GetEntry() != objEntry)
+                                if (!target || target->GetEntry() != entry)
                                     continue;
                     
                                 float dist = bot->GetDistance(target);
                                 if (dist > INTERACTION_DISTANCE - 1.5f)
                                     continue;
                     
-                                // 🧠 Optional: Check if this spell is known to complete objectives (if quest requires a cast)
-                                bool spellLikelyMatches = false;
-                                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
-                                {
-                                    // Could compare this spell ID against known required spell casts
-                                    // Or just allow usage if the NPC/GO matches
-                                    if (quest->RequiredNpcOrGo[i] == objEntry)
-                                    {
-                                        spellLikelyMatches = true;
-                                        break;
-                                    }
-                                }
-                    
-                                if (!spellLikelyMatches)
-                                    continue;
-                    
-                                // ✅ Proceed to use item on target
                                 bot->SetSelection(target->GetGUID());
                                 bot->SetTarget(target->GetGUID());
                     
                                 std::ostringstream msg;
                                 msg << "Using " << chat->FormatItem(proto)
-                                    << " on quest objective target [" << objEntry << "]"
+                                    << " on quest objective target [" << entry << "]"
                                     << " (SpellId=" << spellId << ", Dist=" << dist << ")";
                                 botAI->TellMaster(msg.str());
                     
@@ -602,6 +588,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             }
                         }
                     }
+
     
                     ConditionList const& conditions =
                         sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
