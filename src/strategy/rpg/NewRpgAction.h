@@ -99,7 +99,7 @@ protected:
 std::map<uint32, int32> GetMissingQuestItems(Player* bot, Quest const* quest);
 bool TryUseQuestProductionItems(
     Player* bot,
-    BotAI* botAI,
+    PlayerbotAI* botAI,
     Quest const* quest,
     std::map<uint32,int32> const& missingQuestItems,
     std::vector<Item*> const& playercastItems
