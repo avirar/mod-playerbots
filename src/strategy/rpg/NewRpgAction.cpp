@@ -412,8 +412,57 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
     // Now we are near the quest objective
     // kill mobs and looting quest should be done automatically by grind strategy
+    // We are close enough to the POI XY, now try to refine the Z by scanning nearby units or GOs matching quest objectives
+    const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        int32 npcOrGo = quest->RequiredNpcOrGo[i];
+        if (!npcOrGo)
+            continue;
     
-    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (npcOrGo > 0) // NPC
+        {
+            GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+            for (ObjectGuid const& guid : npcs)
+            {
+                Unit* unit = botAI->GetUnit(guid);
+                if (!unit || unit->GetEntry() != uint32(npcOrGo) || !unit->IsAlive())
+                    continue;
+    
+                // Repath to NPC's true position
+                Position const& realPos = unit->GetPosition();
+                WorldPosition newPos(bot->GetMapId(), realPos.GetPositionX(), realPos.GetPositionY(), realPos.GetPositionZ());
+    
+                if (bot->GetExactDist(newPos) > INTERACTION_DISTANCE - 2.0f)
+                {
+                    botAI->TellMaster("Refining objective position to actual NPC " + unit->GetName() + " at Z=" + std::to_string(realPos.GetPositionZ()));
+                    botAI->rpgInfo.do_quest.pos = newPos;
+                    return MoveFarTo(newPos);
+                }
+            }
+        }
+        else if (npcOrGo < 0) // GameObject
+        {
+            GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
+            for (ObjectGuid const& guid : gos)
+            {
+                GameObject* go = botAI->GetGameObject(guid);
+                if (!go || go->GetEntry() != uint32(-npcOrGo))
+                    continue;
+    
+                Position const& realPos = go->GetPosition();
+                WorldPosition newPos(bot->GetMapId(), realPos.GetPositionX(), realPos.GetPositionY(), realPos.GetPositionZ());
+    
+                if (bot->GetExactDist(newPos) > INTERACTION_DISTANCE - 2.0f)
+                {
+                    botAI->TellMaster("Refining objective position to actual GameObject " + go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) + " at Z=" + std::to_string(realPos.GetPositionZ()));
+                    botAI->rpgInfo.do_quest.pos = newPos;
+                    return MoveFarTo(newPos);
+                }
+            }
+        }
+    }
+
     uint32 startItemId = quest->GetSrcItemId();
     
     // No StartItem for this quest
