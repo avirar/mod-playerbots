@@ -422,7 +422,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     
         if (npcOrGo > 0) // NPC
         {
-            GuidVector npcs = AI_VALUE(GuidVector, "nearest quest npcs");
+            Value<GuidVector>* value = context->GetValue<GuidVector>("nearest quest npcs");
+            if (!value)
+            {
+                botAI->TellMaster("Error: Unable to retrieve nearest quest npcs.");
+                return false;
+            }
+            GuidVector npcs = value->Get();
             for (ObjectGuid const& guid : npcs)
             {
                 Unit* unit = botAI->GetUnit(guid);
