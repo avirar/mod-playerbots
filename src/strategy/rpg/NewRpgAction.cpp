@@ -579,8 +579,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                                     << " (SpellId=" << spellId << ", Dist=" << dist << ")";
                                 botAI->TellMaster(msg.str());
                     
-                                WorldPacket emptyPacket;
-                                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                                if (bot->IsMounted())
+                                {
+                                    WorldPacket emptyPacket;
+                                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                                }
                     
                                 SetNextMovementDelay(500);
                                 std::string itemLink = chat->FormatItem(proto);
@@ -599,11 +602,15 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                         bot->SetSelection(bot->GetGUID());
                         botAI->TellMaster("Using " + itemLink + " (no conditions needed).");
     
-                        WorldPacket emptyPacket;
-                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        if (bot->IsMounted())
+                        {
+                            WorldPacket emptyPacket;
+                            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        }
     
                         SetNextMovementDelay(500);
                         botAI->DoSpecificAction("use", itemLink);
+                        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                         return true;
                     }
                     else
@@ -641,11 +648,15 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                                 << " (SpellId=" << spellId << ", Dist=" << dist << ")";
                             botAI->TellMaster(msg.str());
     
-                            WorldPacket emptyPacket;
-                            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                            if (bot->IsMounted())
+                            {
+                                WorldPacket emptyPacket;
+                                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                            }
     
                             SetNextMovementDelay(500);
                             botAI->DoSpecificAction("use", itemLink);
+                            botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                             return true;
                         }
                     }
@@ -699,12 +710,17 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     << " at distance: " << round(distance) << " yards";
     
                 botAI->TellMaster(msg.str());
-    
-                WorldPacket emptyPacket;
-                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+
+                if (bot->IsMounted())
+                {
+                    WorldPacket emptyPacket;
+                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                }
                 SetNextMovementDelay(500);
-    
-                botAI->DoSpecificAction("use", goLink);
+
+                Event useEvent("use", itemLink);
+                botAI->DoSpecificAction("use", useEvent);
+                botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
     
                 return true;
             }
@@ -751,8 +767,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     << " (Entry: " << creatureEntry << ")"
                     << " at distance: " << round(distance) << " yards";
                 
-                WorldPacket emptyPacket;
-                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                if (bot->IsMounted())
+                {
+                    WorldPacket emptyPacket;
+                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                }
                 SetNextMovementDelay(500);
                 
                 botAI->TellMaster(msg.str());
@@ -764,6 +783,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 {
                     botAI->DoSpecificAction("use");
                 }
+                botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                 return true;
             }
         
@@ -826,13 +846,17 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     msg << "Using " << itemLink << " near required Spell Focus [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
                         << " (Entry: " << go->GetEntry() << ", FocusId: " << focusId << ") at " << round(distance) << " yards.";
                     botAI->TellMaster(msg.str());
-
-                    WorldPacket emptyPacket;
-                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+    
+                    if (bot->IsMounted())
+                    {
+                        WorldPacket emptyPacket;
+                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                    }
                     SetNextMovementDelay(500);
 
                     Event useEvent("use", itemLink);
                     botAI->DoSpecificAction("use", useEvent);
+                    botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                     return true;
                 }
         
@@ -872,12 +896,16 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     
                         botAI->TellMaster(msg.str());
 
-                        WorldPacket emptyPacket;
-                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        if (bot->IsMounted())
+                        {
+                            WorldPacket emptyPacket;
+                            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        }
                         SetNextMovementDelay(500);
     
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
+                        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                         return true;
                     }
     
@@ -928,13 +956,16 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             << " at distance: " << round(bot->GetDistance(unit)) << " yards";
                 
                         botAI->TellMaster(msg.str());
-
-                        WorldPacket emptyPacket;
-                        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        if (bot->IsMounted())
+                        {
+                            WorldPacket emptyPacket;
+                            bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        }
                         SetNextMovementDelay(500);
                 
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
+                        botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                         return true;
                     }
                 
