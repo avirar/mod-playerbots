@@ -581,7 +581,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 SetNextMovementDelay(500);
                 
                 botAI->TellMaster(msg.str());
-                if (unit->HasFlag(UNIT_NPC_FLAG_GOSSIP)
+                if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP)
                     botAI->DoSpecificAction("talk");
                 else
                     botAI->DoSpecificAction("use");
