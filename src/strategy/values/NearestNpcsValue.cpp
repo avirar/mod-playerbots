@@ -78,7 +78,7 @@ bool NearestQuestNpcsValue::AcceptUnit(Unit* unit)
     if (!unit || unit->IsPlayer() || !unit->IsAlive())
         return false;
 
-    static std::unordered_set<uint32> questNpcEntries = GetRequiredNpcEntries();
+    std::unordered_set<uint32> questNpcEntries = GetRequiredNpcEntries();
     return questNpcEntries.find(unit->GetEntry()) != questNpcEntries.end();
 }
 
