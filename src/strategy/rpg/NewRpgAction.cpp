@@ -422,7 +422,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     
         if (npcOrGo > 0) // NPC
         {
-            GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+            GuidVector npcs = AI_VALUE(GuidVector, "nearest quest npcs");
             for (ObjectGuid const& guid : npcs)
             {
                 Unit* unit = botAI->GetUnit(guid);
