@@ -285,6 +285,13 @@ std::vector<Item*> InventoryAction::parseItems(std::string const text, IterateIt
         found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
     }
 
+    if (text == "playercast")
+    {
+        FindPlayerCastItemVisitor visitor;
+        IterateItems(&visitor, mask);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+    }
+
     if (text.find("usage ") != std::string::npos)
     {
         FindItemUsageVisitor visitor(bot, ItemUsage(stoi(text.substr(6))));
