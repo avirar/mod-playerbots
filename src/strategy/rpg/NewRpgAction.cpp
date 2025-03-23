@@ -531,8 +531,61 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         }
         else
         {
-            std::string itemLink = chat->FormatItem(item->GetTemplate());
+            ItemTemplate const* proto = item->GetTemplate();
+            std::string itemLink = chat->FormatItem(proto);
     
+            // === Check if item spell requires a SpellFocus and validate it's nearby ===
+            for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+            {
+                if (!proto->Spells[i].SpellId || proto->Spells[i].SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+                    continue;
+        
+                SpellInfo const* spell = sSpellMgr->GetSpellInfo(proto->Spells[i].SpellId);
+                if (!spell)
+                    continue;
+        
+                uint32 focusId = spell->RequiresSpellFocus;
+                if (!focusId)
+                    continue;
+        
+                // Now we need to be near a GameObject with type 8 and Data0 == focusId
+                GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects no los");
+                bool nearFocus = false;
+        
+                for (ObjectGuid const& guid : nearbyGOs)
+                {
+                    GameObject* go = botAI->GetGameObject(guid);
+                    if (!go)
+                        continue;
+        
+                    GameObjectTemplate const* goInfo = go->GetGOInfo();
+                    if (!goInfo || goInfo->type != GAMEOBJECT_TYPE_SPELL_FOCUS)
+                        continue;
+        
+                    if (goInfo->spellFocus.focusId != focusId)
+                        continue;
+        
+                    float distance = bot->GetDistance(go);
+                    if (distance > INTERACTION_DISTANCE - 2.0f)
+                        continue;
+        
+                    nearFocus = true;
+        
+                    std::ostringstream msg;
+                    msg << "Using " << itemLink << " near required Spell Focus [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
+                        << " (Entry: " << go->GetEntry() << ", FocusId: " << focusId << ") at " << round(distance) << " yards.";
+                    botAI->TellMaster(msg.str());
+                    Event useEvent("use", itemLink);
+                    botAI->DoSpecificAction("use", useEvent);
+                    return true;
+                }
+        
+                if (!nearFocus)
+                {
+                    botAI->TellMaster("Item " + itemLink + " requires Spell Focus ID [" + std::to_string(focusId) + "], but none found nearby.");
+                }
+            }
+
             // Loop through all possible objectives (up to 4)
             for (int32 objectiveIdx = 0; objectiveIdx < QUEST_OBJECTIVES_COUNT; ++objectiveIdx)
             {
