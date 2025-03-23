@@ -987,7 +987,7 @@ bool TryUseQuestProductionItems(
                     WorldPacket emptyPacket;
                     bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
 
-                    botAI->SetNextMovementDelay(500);
+                    SetNextMovementDelay(500);
                     Event useEvent("use", ChatHelper::FormatItem(proto));
                     botAI->DoSpecificAction("use", useEvent);
 
@@ -1041,7 +1041,7 @@ bool TryUseQuestProductionItems(
                         WorldPacket emptyPacket;
                         bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
 
-                        botAI->SetNextMovementDelay(500);
+                        SetNextMovementDelay(500);
 
                         Event useEvent("use", ChatHelper::FormatItem(proto));
                         botAI->DoSpecificAction("use", useEvent);
