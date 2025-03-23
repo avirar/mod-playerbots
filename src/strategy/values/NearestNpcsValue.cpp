@@ -65,3 +65,44 @@ void NearestTotemsValue::FindUnits(std::list<Unit*>& targets)
 }
 
 bool NearestTotemsValue::AcceptUnit(Unit* unit) { return unit->IsTotem(); }
+
+void NearestQuestNpcsValue::FindUnits(std::list<Unit*>& targets)
+{
+    Acore::AnyUnitInObjectRangeCheck u_check(bot, range);
+    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, targets, u_check);
+    Cell::VisitAllObjects(bot, searcher, range);
+}
+
+bool NearestQuestNpcsValue::AcceptUnit(Unit* unit)
+{
+    if (!unit || unit->IsPlayer() || !unit->IsAlive())
+        return false;
+
+    static std::unordered_set<uint32> questNpcEntries = GetRequiredNpcEntries();
+    return questNpcEntries.find(unit->GetEntry()) != questNpcEntries.end();
+}
+
+std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
+{
+    std::unordered_set<uint32> entries;
+
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+
+        const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            int32 npcOrGo = quest->RequiredNpcOrGo[i];
+            if (npcOrGo > 0)  // Only NPCs
+                entries.insert(uint32(npcOrGo));
+        }
+    }
+
+    return entries;
+}
