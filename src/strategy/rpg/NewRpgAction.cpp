@@ -575,6 +575,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     msg << "Using " << itemLink << " near required Spell Focus [" << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) << "]"
                         << " (Entry: " << go->GetEntry() << ", FocusId: " << focusId << ") at " << round(distance) << " yards.";
                     botAI->TellMaster(msg.str());
+
+                    WorldPacket emptyPacket;
+                    bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                    SetNextMovementDelay(500);
+
                     Event useEvent("use", itemLink);
                     botAI->DoSpecificAction("use", useEvent);
                     return true;
@@ -618,6 +623,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
                         WorldPacket emptyPacket;
                         bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        SetNextMovementDelay(500);
     
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
@@ -674,6 +680,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
                         WorldPacket emptyPacket;
                         bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                        SetNextMovementDelay(500);
                 
                         Event useEvent("use", itemLink);
                         botAI->DoSpecificAction("use", useEvent);
