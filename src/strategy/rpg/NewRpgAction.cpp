@@ -981,14 +981,14 @@ bool TryUseQuestProductionItems(
                     // Try to simply use it on self. If your “use” action requires a selection, that’s your call:
                     // We'll do it the same way you do in "use" action.
                     bot->SetSelection(bot->GetGUID());
-                    botAI->TellMaster("Using " + chat->FormatItem(proto) + " (no conditions needed).");
+                    botAI->TellMaster("Using " + ChatHelper::FormatItem(proto) + " (no conditions needed).");
 
                     // Cancel mount, etc.
                     WorldPacket emptyPacket;
                     bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
 
                     botAI->SetNextMovementDelay(500);
-                    Event useEvent("use", chat->FormatItem(proto));
+                    Event useEvent("use", ChatHelper::FormatItem(proto));
                     botAI->DoSpecificAction("use", useEvent);
 
                     return true;
@@ -1031,7 +1031,7 @@ bool TryUseQuestProductionItems(
                         bot->SetSelection(unit->GetGUID());
 
                         std::ostringstream msg;
-                        msg << "Using " << chat->FormatItem(proto)
+                        msg << "Using " << ChatHelper::FormatItem(proto)
                             << " to create needed item [" << neededItemId << "]"
                             << " on " << unit->GetName()
                             << " (SpellId=" << spellId << ", Dist=" << dist << ")";
@@ -1043,7 +1043,7 @@ bool TryUseQuestProductionItems(
 
                         botAI->SetNextMovementDelay(500);
 
-                        Event useEvent("use", chat->FormatItem(proto));
+                        Event useEvent("use", ChatHelper::FormatItem(proto));
                         botAI->DoSpecificAction("use", useEvent);
 
                         return true; // done for now
