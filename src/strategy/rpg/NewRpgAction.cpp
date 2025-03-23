@@ -538,7 +538,70 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     }
     
                     if (!createsOurItem)
-                        continue;
+                    {
+                        // 🔍 Check if this spell helps complete any objective by using it on an NPC
+                        for (uint8 objIndex = 0; objIndex < QUEST_OBJECTIVES_COUNT; ++objIndex)
+                        {
+                            uint32 objEntry = quest->RequiredNpcOrGo[objIndex];
+                            if (!objEntry || quest->RequiredNpcOrGoCount[objIndex] == 0)
+                                continue;
+                    
+                            bool isCreature = quest->RequiredNpcOrGoFlags[objIndex] & 0x1;
+                    
+                            GuidVector nearbyUnits;
+                            if (isCreature)
+                                nearbyUnits = AI_VALUE(GuidVector, "nearest npcs");
+                            else
+                                nearbyUnits = AI_VALUE(GuidVector, "nearest game objects");
+                    
+                            for (ObjectGuid const& guid : nearbyUnits)
+                            {
+                                Unit* targetUnit = isCreature ? botAI->GetUnit(guid) : nullptr;
+                                GameObject* targetGo = !isCreature ? botAI->GetGameObject(guid) : nullptr;
+                                WorldObject* target = targetUnit ? (WorldObject*)targetUnit : (WorldObject*)targetGo;
+                    
+                                if (!target || target->GetEntry() != objEntry)
+                                    continue;
+                    
+                                float dist = bot->GetDistance(target);
+                                if (dist > INTERACTION_DISTANCE - 1.5f)
+                                    continue;
+                    
+                                // 🧠 Optional: Check if this spell is known to complete objectives (if quest requires a cast)
+                                bool spellLikelyMatches = false;
+                                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                                {
+                                    // Could compare this spell ID against known required spell casts
+                                    // Or just allow usage if the NPC/GO matches
+                                    if (quest->RequiredNpcOrGo[i] == objEntry)
+                                    {
+                                        spellLikelyMatches = true;
+                                        break;
+                                    }
+                                }
+                    
+                                if (!spellLikelyMatches)
+                                    continue;
+                    
+                                // ✅ Proceed to use item on target
+                                bot->SetSelection(target->GetGUID());
+                                bot->SetTarget(target->GetGUID());
+                    
+                                std::ostringstream msg;
+                                msg << "Using " << chat->FormatItem(proto)
+                                    << " on quest objective target [" << objEntry << "]"
+                                    << " (SpellId=" << spellId << ", Dist=" << dist << ")";
+                                botAI->TellMaster(msg.str());
+                    
+                                WorldPacket emptyPacket;
+                                bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+                    
+                                SetNextMovementDelay(500);
+                                botAI->DoSpecificAction("use", itemLink);
+                                return true;
+                            }
+                        }
+                    }
     
                     ConditionList const& conditions =
                         sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
