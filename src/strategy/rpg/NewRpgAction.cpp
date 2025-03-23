@@ -718,8 +718,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 }
                 SetNextMovementDelay(500);
 
-                // Event useEvent("use", goLink);
-                botAI->DoSpecificAction("use", goLink);
+                Event useEvent("use", goLink);
+                botAI->DoSpecificAction("use", useEvent);
                 botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
     
                 return true;
