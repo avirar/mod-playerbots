@@ -95,4 +95,14 @@ protected:
     const uint32 poiStayTime = 5 * 60 * 1000;
 };
 
+// Helpers
+std::map<uint32, int32> GetMissingQuestItems(Player* bot, Quest const* quest);
+bool TryUseQuestProductionItems(
+    Player* bot,
+    BotAI* botAI,
+    Quest const* quest,
+    std::map<uint32,int32> const& missingQuestItems,
+    std::vector<Item*> const& playercastItems
+);
+
 #endif
