@@ -575,6 +575,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                                 continue;
     
                             bot->SetSelection(unit->GetGUID());
+                            bot->SetTarget(unit->GetGUID());
     
                             std::ostringstream msg;
                             msg << "Using " << chat->FormatItem(proto)
@@ -685,6 +686,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 }
         
                 bot->SetSelection(unit->GetGUID());
+                bot->SetTarget(unit->GetGUID());
         
                 std::ostringstream msg;
                 msg << "Quest [" << questId << "] objective #" << objectiveIdx
