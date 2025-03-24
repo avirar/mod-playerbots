@@ -82,11 +82,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
-        std::ostringstream goInfo;
-        goInfo << "Evaluating GO: " << go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale())
-               << " [Entry: " << go->GetEntry() << "], State: " << go->GetGoState();
-        botAI->TellMaster(goInfo.str());
-    
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
     
@@ -104,150 +99,86 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto)
-            {
-                botAI->TellMaster("Quest item ID " + std::to_string(itemId) + " has no item template.");
                 continue;
-            }
-    
-            std::ostringstream msg;
-            msg << "GO registered quest item: " << proto->Name1 << " [" << itemId << "]";
-            botAI->TellMaster(msg.str());
     
             if (IsNeededForQuest(bot, itemId))
             {
-                botAI->TellMaster("Bot needs quest item: " + proto->Name1 + " [" + std::to_string(itemId) + "]");
                 this->guid = lootGUID;
                 return;
             }
-            else
-            {
-                botAI->TellMaster("Quest item not needed: " + proto->Name1 + " [" + std::to_string(itemId) + "]");
-            }
-/*    
-            if (proto->Class != ITEM_CLASS_QUEST)
-            {
-                botAI->TellMaster("GO quest item is not a quest class item.");
-                onlyHasQuestItems = false;
-            }
-*/
         }
     
-        // Retrieve the correct loot table entry
         uint32 lootEntry = go->GetGOInfo()->GetLootId();
         if (lootEntry == 0)
-        {
-            botAI->TellMaster("GO has no loot entry. Skipping.");
             return;
-        }
     
         const LootTemplate* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry);
         if (!lootTemplate)
-        {
-            botAI->TellMaster("Loot template not found for lootEntry: " + std::to_string(lootEntry));
             return;
-        }
     
         Loot loot;
         lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
-        botAI->TellMaster("Processing GO loot template with " + std::to_string(loot.items.size()) + " items.");
     
+        bool foundUsefulItem = false;
+        
         for (const LootItem& item : loot.items)
         {
             uint32 itemId = item.itemid;
             if (!itemId)
                 continue;
-    
+        
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto)
-            {
-                botAI->TellMaster("Loot item ID " + std::to_string(itemId) + " has no item template.");
                 continue;
-            }
-    
-            AiObjectContext* context = botAI->GetAiObjectContext();
+        
             std::ostringstream out;
             out << itemId;
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
-    
-            std::ostringstream msg;
-            msg << "Loot item: " << proto->Name1 << " [" << itemId << "], usage: " << usage
-                << ", class: " << proto->Class;
-            botAI->TellMaster(msg.str());
-    
-            if (usage == ITEM_USAGE_NONE)
+        
+            if (usage != ITEM_USAGE_NONE)
             {
-                botAI->TellMaster("Item is not useful to bot.");
-                onlyHasQuestItems = false;
-                continue;
-            }
-    
-            if (proto->Class != ITEM_CLASS_QUEST)
-            {
-                botAI->TellMaster("Item is not a quest item.");
-                onlyHasQuestItems = false;
+                foundUsefulItem = true;
                 break;
             }
-    
-            // Check reference loot template
+        
             if (const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
             {
                 Loot refLoot;
                 refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
-                botAI->TellMaster("Processing referenced loot template for item: " + std::to_string(itemId));
-    
+        
                 for (const LootItem& refItem : refLoot.items)
                 {
                     uint32 refItemId = refItem.itemid;
                     if (!refItemId)
                         continue;
-    
+        
                     const ItemTemplate* refProto = sObjectMgr->GetItemTemplate(refItemId);
                     if (!refProto)
-                    {
-                        botAI->TellMaster("Referenced item ID " + std::to_string(refItemId) + " has no template.");
                         continue;
-                    }
-    
+        
                     std::ostringstream refOut;
                     refOut << refItemId;
                     ItemUsage refUsage = AI_VALUE2(ItemUsage, "item usage", refOut.str());
-    
-                    std::ostringstream refMsg;
-                    refMsg << "Referenced loot item: " << refProto->Name1 << " [" << refItemId << "], usage: "
-                           << refUsage << ", class: " << refProto->Class;
-                    botAI->TellMaster(refMsg.str());
-    
-                    if (refUsage == ITEM_USAGE_NONE)
+        
+                    if (refUsage != ITEM_USAGE_NONE)
                     {
-                        botAI->TellMaster("Referenced item is not useful to bot.");
-                        onlyHasQuestItems = false;
-                        continue;
-                    }
-    
-                    if (refProto->Class != ITEM_CLASS_QUEST)
-                    {
-                        botAI->TellMaster("Referenced item is not a quest item.");
-                        onlyHasQuestItems = false;
+                        foundUsefulItem = true;
                         break;
                     }
                 }
+        
+                if (foundUsefulItem)
+                    break;
             }
         }
+        
+        if (foundUsefulItem)
+            onlyHasQuestItems = false;
+
     
         if (hasAnyQuestItems && onlyHasQuestItems)
-        {
-            botAI->TellMaster("GO has only quest items, none needed. Skipping.");
             return;
-        }
     
-        botAI->TellMaster("GO is lootable. Assigning guid.");
-        guid = lootGUID;
-
-        // If gameobject has only quest items that bot doesn’t need, skip it.
-        if (hasAnyQuestItems && onlyHasQuestItems)
-            return;
-
-        // Otherwise, loot it.
         guid = lootGUID;
 
         uint32 goId = go->GetEntry();
