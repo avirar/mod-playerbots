@@ -104,5 +104,47 @@ std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
         }
     }
 
+    // Optional: Add debug print
+    // botAI->TellMaster("Looking for NPCs that drop any of " + std::to_string(requiredItems.size()) + " quest items");
+
+    // Check all creature templates in the game
+    CreatureTemplateContainer const* creatures = sObjectMgr->GetCreatureTemplates();
+    for (auto const& [entry, creatureTemplate] : *creatures)
+    {
+        if (!creatureTemplate.lootid)
+            continue;
+
+        const LootTemplate* lootTemplate = LootTemplates_Creature.GetLootFor(creatureTemplate.lootid);
+        if (!lootTemplate)
+            continue;
+
+        Loot loot;
+        lootTemplate->Process(loot, LootTemplates_Creature, 1, bot);
+
+        for (const LootItem& item : loot.items)
+        {
+            if (requiredItems.count(item.itemid))
+            {
+                entries.insert(entry);
+                break;
+            }
+
+            const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(item.itemid);
+            if (refLootTemplate)
+            {
+                Loot refLoot;
+                refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+                for (const LootItem& refItem : refLoot.items)
+                {
+                    if (requiredItems.count(refItem.itemid))
+                    {
+                        entries.insert(entry);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     return entries;
 }
