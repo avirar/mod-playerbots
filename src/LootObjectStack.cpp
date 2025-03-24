@@ -133,6 +133,16 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (!proto)
                     continue;
 
+                std::ostringstream out;
+                out << proto->ItemId;
+                ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
+                
+                if (usage == ITEM_USAGE_NONE)
+                {
+                    onlyHasQuestItems = false;
+                    continue;
+                }
+
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
