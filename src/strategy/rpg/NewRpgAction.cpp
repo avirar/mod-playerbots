@@ -68,6 +68,17 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
     {
         case RPG_IDLE:
         {
+            // PRIORITY: Go near NPC if bags are almost full
+            if (AI_VALUE(uint8, "bag space") > 80)
+            {
+                GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
+                if (!possibleTargets.empty())
+                {
+                    info.ChangeToNearNpc();
+                    return true;
+                }
+            }
+
             uint32 roll = urand(1, 100);
             // IDLE -> NEAR_NPC
             if (roll <= 30)
