@@ -475,32 +475,53 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         if (!itemId)
             continue;
     
+        botAI->TellMaster("Checking for nearby NPCs that may drop quest item " + std::to_string(itemId));
+    
         // --- Check nearby NPCs ---
         Value<GuidVector>* npcValue = context->GetValue<GuidVector>("nearest quest npcs");
         if (npcValue)
         {
             GuidVector npcs = npcValue->Get();
+            botAI->TellMaster("Found " + std::to_string(npcs.size()) + " nearby quest NPCs to scan for loot.");
+    
             for (ObjectGuid const& guid : npcs)
             {
                 Unit* unit = botAI->GetUnit(guid);
                 if (!unit)
+                {
+                    botAI->TellMaster("Skipping null unit.");
                     continue;
+                }
     
                 if (!unit->ToCreature())
+                {
+                    botAI->TellMaster("Skipping unit that is not a creature.");
                     continue;
-                
+                }
+    
                 CreatureTemplate const* creatureTemplate = unit->ToCreature()->GetCreatureTemplate();
-                if (!creatureTemplate || !creatureTemplate->lootid)
+                if (!creatureTemplate)
+                {
+                    botAI->TellMaster("Creature has no template.");
                     continue;
-
+                }
+    
+                if (!creatureTemplate->lootid)
+                {
+                    botAI->TellMaster("Creature " + unit->GetName() + " has no loot table.");
+                    continue;
+                }
     
                 uint32 lootId = creatureTemplate->lootid;
-                if (!lootId)
-                    continue;
     
                 const LootTemplate* lootTemplate = LootTemplates_Creature.GetLootFor(lootId);
                 if (!lootTemplate)
+                {
+                    botAI->TellMaster("LootTemplate not found for lootId " + std::to_string(lootId));
                     continue;
+                }
+    
+                botAI->TellMaster("Scanning loot from creature " + unit->GetName());
     
                 Loot loot;
                 lootTemplate->Process(loot, LootTemplates_Creature, 1, bot);
@@ -511,10 +532,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     if (lootItem.itemid == itemId)
                     {
                         found = true;
+                        botAI->TellMaster("Direct drop found for item " + std::to_string(itemId));
                         break;
                     }
     
-                    // Check reference loot
                     const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(lootItem.itemid);
                     if (refLootTemplate)
                     {
@@ -525,6 +546,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                             if (refItem.itemid == itemId)
                             {
                                 found = true;
+                                botAI->TellMaster("Referenced drop found for item " + std::to_string(itemId));
                                 break;
                             }
                         }
@@ -535,7 +557,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 }
     
                 if (!found)
+                {
+                    botAI->TellMaster("Creature " + unit->GetName() + " does not drop item " + std::to_string(itemId));
                     continue;
+                }
     
                 Position const& pos = unit->GetPosition();
                 WorldPosition newPos(bot->GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
@@ -546,9 +571,18 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     botAI->rpgInfo.do_quest.pos = newPos;
                     return MoveFarTo(newPos);
                 }
+                else
+                {
+                    botAI->TellMaster("Already close to " + unit->GetName() + ", no need to move.");
+                }
             }
         }
-    
+        else
+        {
+            botAI->TellMaster("No 'nearest quest npcs' value found.");
+        }
+    }
+   
         // --- Check nearby GameObjects ---
         GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
         for (ObjectGuid const& guid : gos)
