@@ -86,7 +86,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         bool hasAnyQuestItems = false;
 
         GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
-        for (int i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
+        for (size_t i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
         {
             if (!items || i >= items->size())
                 break;
@@ -398,6 +398,7 @@ LootObject LootObjectStack::GetLoot(float maxDistance)
     std::vector<LootObject> ordered = OrderByDistance(maxDistance);
     return ordered.empty() ? LootObject() : *ordered.begin();
 }
+
 std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
