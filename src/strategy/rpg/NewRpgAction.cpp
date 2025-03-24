@@ -597,7 +597,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     ConditionList const& conditions =
                         sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
                     std::string itemLink = chat->FormatItem(proto);
-                    if (conditions.empty())
+                    if (conditions.empty() && createsOurItem)
                     {
                         bot->SetSelection(bot->GetGUID());
                         botAI->TellMaster("Using " + itemLink + " (no conditions needed).");
