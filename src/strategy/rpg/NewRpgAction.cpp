@@ -486,9 +486,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 if (!unit)
                     continue;
     
-                CreatureTemplate const* creatureTemplate = unit->GetCreatureTemplate();
-                if (!creatureTemplate)
+                if (!unit->ToCreature())
                     continue;
+                
+                CreatureTemplate const* creatureTemplate = unit->ToCreature()->GetCreatureTemplate();
+                if (!creatureTemplate || !creatureTemplate->lootid)
+                    continue;
+
     
                 uint32 lootId = creatureTemplate->LootId;
                 if (!lootId)
