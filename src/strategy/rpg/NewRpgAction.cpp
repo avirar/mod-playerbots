@@ -468,6 +468,150 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             }
         }
     }
+    // Now check for NPCs or GOs that drop quest-required items
+    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        uint32 itemId = quest->RequiredItemId[i];
+        if (!itemId)
+            continue;
+    
+        // --- Check nearby NPCs ---
+        Value<GuidVector>* npcValue = context->GetValue<GuidVector>("nearest quest npcs");
+        if (npcValue)
+        {
+            GuidVector npcs = npcValue->Get();
+            for (ObjectGuid const& guid : npcs)
+            {
+                Unit* unit = botAI->GetUnit(guid);
+                if (!unit)
+                    continue;
+    
+                CreatureTemplate const* creatureTemplate = unit->GetCreatureTemplate();
+                if (!creatureTemplate)
+                    continue;
+    
+                uint32 lootId = creatureTemplate->LootId;
+                if (!lootId)
+                    continue;
+    
+                const LootTemplate* lootTemplate = LootTemplates_Creature.GetLootFor(lootId);
+                if (!lootTemplate)
+                    continue;
+    
+                Loot loot;
+                lootTemplate->Process(loot, LootTemplates_Creature, 1, bot);
+    
+                bool found = false;
+                for (const LootItem& lootItem : loot.items)
+                {
+                    if (lootItem.itemid == itemId)
+                    {
+                        found = true;
+                        break;
+                    }
+    
+                    // Check reference loot
+                    const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(lootItem.itemid);
+                    if (refLootTemplate)
+                    {
+                        Loot refLoot;
+                        refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+                        for (const LootItem& refItem : refLoot.items)
+                        {
+                            if (refItem.itemid == itemId)
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+    
+                    if (found)
+                        break;
+                }
+    
+                if (!found)
+                    continue;
+    
+                Position const& pos = unit->GetPosition();
+                WorldPosition newPos(bot->GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
+    
+                if (bot->GetExactDist(newPos) > INTERACTION_DISTANCE - 2.0f)
+                {
+                    botAI->TellMaster("Moving to NPC " + unit->GetName() + " that drops quest item " + std::to_string(itemId));
+                    botAI->rpgInfo.do_quest.pos = newPos;
+                    return MoveFarTo(newPos);
+                }
+            }
+        }
+    
+        // --- Check nearby GameObjects ---
+        GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
+        for (ObjectGuid const& guid : gos)
+        {
+            GameObject* go = botAI->GetGameObject(guid);
+            if (!go)
+                continue;
+    
+            GameObjectInfo const* goInfo = go->GetGOInfo();
+            if (!goInfo)
+                continue;
+    
+            uint32 lootId = goInfo->GetLootId();
+            if (!lootId)
+                continue;
+    
+            const LootTemplate* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootId);
+            if (!lootTemplate)
+                continue;
+    
+            Loot loot;
+            lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
+    
+            bool found = false;
+            for (const LootItem& lootItem : loot.items)
+            {
+                if (lootItem.itemid == itemId)
+                {
+                    found = true;
+                    break;
+                }
+    
+                // Check reference loot
+                const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(lootItem.itemid);
+                if (refLootTemplate)
+                {
+                    Loot refLoot;
+                    refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+                    for (const LootItem& refItem : refLoot.items)
+                    {
+                        if (refItem.itemid == itemId)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+    
+                if (found)
+                    break;
+            }
+    
+            if (!found)
+                continue;
+    
+            Position const& pos = go->GetPosition();
+            WorldPosition newPos(bot->GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
+    
+            if (bot->GetExactDist(newPos) > INTERACTION_DISTANCE - 2.0f)
+            {
+                botAI->TellMaster("Moving to GO " + go->GetNameForLocaleIdx(sWorld->GetDefaultDbcLocale()) + " that drops quest item " + std::to_string(itemId));
+                botAI->rpgInfo.do_quest.pos = newPos;
+                return MoveFarTo(newPos);
+            }
+        }
+    }
+
 
     // 1) First, see if we can produce any missing quest items from inventory "playercast" items while close to the objective
     //    (like "Empty Tainted Ooze Jar" or anything else that creates quest objectives).
