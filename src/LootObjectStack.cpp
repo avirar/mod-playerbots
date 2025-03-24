@@ -134,12 +134,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (!proto)
                     continue;
             
-                PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-                if (!botAI)
-                    return;
-            
                 AiObjectContext* context = botAI->GetAiObjectContext();
-            
+                botAI->TellMaster("Checking item usage for LootObjectStack");
                 std::ostringstream out;
                 out << itemId;
                 ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
