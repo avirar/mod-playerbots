@@ -119,43 +119,16 @@ std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
         }
     }
 
-    // Scan all known creature templates for matching loot
-    CreatureTemplateContainer const* creatures = sObjectMgr->GetCreatureTemplates();
-    for (auto const& [entry, creatureTemplate] : *creatures)
+    // Add any NPCs that drop required quest items (from creature quest item map)
+    CreatureQuestItemMap const* map = sObjectMgr->GetCreatureQuestItemMap();
+    for (auto const& [creatureId, itemList] : *map)
     {
-        if (!creatureTemplate.lootid)
-            continue;
-
-        const LootTemplate* lootTemplate = LootTemplates_Creature.GetLootFor(creatureTemplate.lootid);
-        if (!lootTemplate)
-            continue;
-
-        Loot loot;
-        lootTemplate->Process(loot, LootTemplates_Creature, 1, bot);
-
-        for (const LootItem& item : loot.items)
+        for (uint32 itemId : itemList)
         {
-            if (requiredItems.count(item.itemid))
+            if (requiredItems.count(itemId))
             {
-                entries.insert(entry);
+                entries.insert(creatureId);
                 break;
-            }
-
-            // Check reference loot tables
-            const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(item.itemid);
-            if (refLootTemplate)
-            {
-                Loot refLoot;
-                refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
-
-                for (const LootItem& refItem : refLoot.items)
-                {
-                    if (requiredItems.count(refItem.itemid))
-                    {
-                        entries.insert(entry);
-                        break;
-                    }
-                }
             }
         }
     }
