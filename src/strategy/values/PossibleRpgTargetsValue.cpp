@@ -92,7 +92,7 @@ PossibleNewRpgTargetsValue::PossibleNewRpgTargetsValue(PlayerbotAI* botAI, float
     if (allowedNpcFlags.empty())
     {
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_INNKEEPER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
+        // allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_QUESTGIVER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_BANKER);
