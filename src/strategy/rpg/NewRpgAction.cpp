@@ -494,7 +494,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     continue;
 
     
-                uint32 lootId = creatureTemplate->LootId;
+                uint32 lootId = creatureTemplate->lootid;
                 if (!lootId)
                     continue;
     
