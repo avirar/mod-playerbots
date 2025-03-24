@@ -61,6 +61,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     {
         return;
     }
+    AiObjectContext* context = botAI->GetAiObjectContext();
+    
     Creature* creature = botAI->GetCreature(lootGUID);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
@@ -130,7 +132,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto)
                 continue;
-        
+
             std::ostringstream out;
             out << itemId;
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
