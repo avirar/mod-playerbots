@@ -5,6 +5,7 @@
 
 #include "LootObjectStack.h"
 
+#include "ItemUsageValue.h"
 #include "LootMgr.h"
 #include "Playerbots.h"
 #include "Unit.h"
@@ -135,6 +136,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
                 std::ostringstream out;
                 out << proto->ItemId;
+                PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+                if (!botAI)
+                    return;
+                
+                // This is the missing piece:
+                AiObjectContext* context = botAI->GetAiObjectContext();
+
                 ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
                 
                 if (usage == ITEM_USAGE_NONE)
