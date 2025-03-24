@@ -613,7 +613,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                         botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
                         return true;
                     }
-                    else
+                    else if (createsOurItem)
                     {
                         GuidVector nearNpcs     = AI_VALUE(GuidVector, "nearest npcs");
                         GuidVector nearHostiles = AI_VALUE(GuidVector, "nearest hostile npcs");
