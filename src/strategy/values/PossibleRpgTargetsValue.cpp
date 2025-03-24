@@ -22,7 +22,7 @@ PossibleRpgTargetsValue::PossibleRpgTargetsValue(PlayerbotAI* botAI, float range
     if (allowedNpcFlags.empty())
     {
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_INNKEEPER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
+        // allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_QUESTGIVER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_BANKER);
@@ -38,6 +38,7 @@ PossibleRpgTargetsValue::PossibleRpgTargetsValue(PlayerbotAI* botAI, float range
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_PETITIONER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_TABARDDESIGNER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_BATTLEMASTER);
+        allowedNpcFlags.push_back(UNIT_NPC_FLAG_MAILBOX);
 
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER);
         allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR);
