@@ -129,50 +129,69 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 uint32 itemId = item.itemid;
                 if (!itemId)
                     continue;
-
+            
                 const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
                 if (!proto)
                     continue;
-
-                std::ostringstream out;
-                out << proto->ItemId;
+            
                 PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
                 if (!botAI)
                     return;
-                
-                // This is the missing piece:
+            
                 AiObjectContext* context = botAI->GetAiObjectContext();
-
+            
+                std::ostringstream out;
+                out << itemId;
                 ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
-                
+            
+                std::ostringstream msg;
+                msg << "Loot item: " << proto->Name1 << " [" << itemId << "], usage: " << usage
+                    << ", class: " << proto->Class;
+                botAI->TellMaster(msg.str());
+            
                 if (usage == ITEM_USAGE_NONE)
                 {
                     onlyHasQuestItems = false;
                     continue;
                 }
-
+            
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
                     break;
                 }
-
-                // If this item references another loot table, process it
+            
+                // Check reference loot template
                 if (const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
                 {
                     Loot refLoot;
                     refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
-
+            
                     for (const LootItem& refItem : refLoot.items)
                     {
                         uint32 refItemId = refItem.itemid;
                         if (!refItemId)
                             continue;
-
+            
                         const ItemTemplate* refProto = sObjectMgr->GetItemTemplate(refItemId);
                         if (!refProto)
                             continue;
-
+            
+                        std::ostringstream refOut;
+                        refOut << refItemId;
+                        ItemUsage refUsage = AI_VALUE2(ItemUsage, "item usage", refOut.str());
+            
+                        std::ostringstream refMsg;
+                        refMsg << "Referenced loot item: " << refProto->Name1 << " [" << refItemId << "], usage: "
+                               << refUsage << ", class: " << refProto->Class;
+                        botAI->TellMaster(refMsg.str());
+            
+                        if (refUsage == ITEM_USAGE_NONE)
+                        {
+                            onlyHasQuestItems = false;
+                            continue;
+                        }
+            
                         if (refProto->Class != ITEM_CLASS_QUEST)
                         {
                             onlyHasQuestItems = false;
