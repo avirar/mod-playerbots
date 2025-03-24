@@ -76,7 +76,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
         if (!bot->isHonorOrXPTarget(unit))
         {
-            continue;
+            if (needForQuestMap.find(unit->GetEntry()) == needForQuestMap.end())
+                needForQuestMap[unit->GetEntry()] = needForQuest(unit);
+        
+            if (!needForQuestMap[unit->GetEntry()])
+                continue;
         }
 
         if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > INTERACTION_DISTANCE)
