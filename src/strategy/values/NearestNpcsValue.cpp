@@ -78,8 +78,17 @@ bool NearestQuestNpcsValue::AcceptUnit(Unit* unit)
     if (!unit || unit->IsPlayer() || !unit->IsAlive())
         return false;
 
+    uint32 entry = unit->GetEntry();
     std::unordered_set<uint32> questNpcEntries = GetRequiredNpcEntries();
-    return questNpcEntries.find(unit->GetEntry()) != questNpcEntries.end();
+
+    if (questNpcEntries.find(entry) != questNpcEntries.end())
+    {
+        botAI->TellMaster("Accepting unit " + unit->GetName() + " (" + std::to_string(entry) + ") as a quest NPC.");
+        return true;
+    }
+
+    botAI->TellMaster("Skipping unit " + unit->GetName() + " (" + std::to_string(entry) + ")");
+    return false;
 }
 
 std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
