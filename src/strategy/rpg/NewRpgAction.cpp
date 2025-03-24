@@ -557,11 +557,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             if (!go)
                 continue;
     
-            GameObjectInfo const* goInfo = go->GetGOInfo();
-            if (!goInfo)
+            if (!go->GetGOInfo())
                 continue;
-    
-            uint32 lootId = goInfo->GetLootId();
+            
+            uint32 lootId = go->GetGOInfo()->GetLootId();
             if (!lootId)
                 continue;
     
