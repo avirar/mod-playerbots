@@ -581,8 +581,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         {
             botAI->TellMaster("No 'nearest quest npcs' value found.");
         }
-    }
-   
+
         // --- Check nearby GameObjects ---
         GuidVector gos = AI_VALUE(GuidVector, "nearest game objects no los");
         for (ObjectGuid const& guid : gos)
