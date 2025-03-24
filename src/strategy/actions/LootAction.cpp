@@ -388,25 +388,37 @@ bool StoreLootAction::Execute(Event event)
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
+            std::ostringstream out;
+            out << itemid;
+            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
+        
             uint32 maxStack = proto->GetMaxStackSize();
             if (maxStack == 1)
-                continue;
-
-            std::vector<Item*> found = parseItems(chat->FormatItem(proto));
-
-            bool hasFreeStack = false;
-
-            for (auto stack : found)
             {
-                if (stack->GetCount() + itemcount < maxStack)
+                if (usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
+                    continue;  // Not stackable and not useful
+            }
+            else
+            {
+                std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+        
+                bool hasFreeStack = false;
+        
+                for (auto stack : found)
                 {
-                    hasFreeStack = true;
-                    break;
+                    if (stack->GetCount() + itemcount < maxStack)
+                    {
+                        hasFreeStack = true;
+                        break;
+                    }
+                }
+        
+                if (!hasFreeStack)
+                {
+                    if (usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
+                        continue;  // No stack space and not useful
                 }
             }
-
-            if (!hasFreeStack)
-                continue;
         }
 
         Player* master = botAI->GetMaster();
