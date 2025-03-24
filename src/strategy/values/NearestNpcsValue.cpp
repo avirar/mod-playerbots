@@ -85,7 +85,9 @@ bool NearestQuestNpcsValue::AcceptUnit(Unit* unit)
 std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
 {
     std::unordered_set<uint32> entries;
+    std::unordered_set<uint32> requiredItems;
 
+    // Gather all RequiredNpcOrGo and RequiredItemId from active quests
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 questId = bot->GetQuestSlotQuestId(slot);
@@ -101,13 +103,14 @@ std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
             int32 npcOrGo = quest->RequiredNpcOrGo[i];
             if (npcOrGo > 0)  // Only NPCs
                 entries.insert(uint32(npcOrGo));
+
+            uint32 itemId = quest->RequiredItemId[i];
+            if (itemId)
+                requiredItems.insert(itemId);
         }
     }
 
-    // Optional: Add debug print
-    // botAI->TellMaster("Looking for NPCs that drop any of " + std::to_string(requiredItems.size()) + " quest items");
-
-    // Check all creature templates in the game
+    // Scan all known creature templates for matching loot
     CreatureTemplateContainer const* creatures = sObjectMgr->GetCreatureTemplates();
     for (auto const& [entry, creatureTemplate] : *creatures)
     {
@@ -129,11 +132,13 @@ std::unordered_set<uint32> NearestQuestNpcsValue::GetRequiredNpcEntries()
                 break;
             }
 
+            // Check reference loot tables
             const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(item.itemid);
             if (refLootTemplate)
             {
                 Loot refLoot;
                 refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
+
                 for (const LootItem& refItem : refLoot.items)
                 {
                     if (requiredItems.count(refItem.itemid))
