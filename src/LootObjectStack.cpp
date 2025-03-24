@@ -123,12 +123,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             {
                 botAI->TellMaster("Quest item not needed: " + proto->Name1 + " [" + std::to_string(itemId) + "]");
             }
-    
+/*    
             if (proto->Class != ITEM_CLASS_QUEST)
             {
                 botAI->TellMaster("GO quest item is not a quest class item.");
                 onlyHasQuestItems = false;
             }
+*/
         }
     
         // Retrieve the correct loot table entry
