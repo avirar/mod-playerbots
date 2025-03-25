@@ -336,6 +336,10 @@ proto->Name1.c_str(), 1, bidPrice, buyoutPrice);
 
 bool StoreLootAction::Execute(Event event)
 {
+    // Early exit if bot is in combat
+    if (bot->IsInCombat())
+        return false;
+
     WorldPacket p(event.getPacket());  // (8+1+4+1+1+4+4+4+4+4+1)
     ObjectGuid guid;
     uint8 loot_type;
@@ -362,6 +366,10 @@ bool StoreLootAction::Execute(Event event)
 
     for (uint8 i = 0; i < items; ++i)
     {
+        // Early exit if bot is in combat
+        if (bot->IsInCombat())
+            return false;
+
         uint32 itemid;
         uint32 itemcount;
         uint8 lootslot_type;
@@ -402,7 +410,7 @@ bool StoreLootAction::Execute(Event event)
             {
                 std::vector<Item*> found = parseItems(chat->FormatItem(proto));
         
-                bool hasFreeStack = false;
+                bool hasFreeStack = false;m
         
                 for (auto stack : found)
                 {
