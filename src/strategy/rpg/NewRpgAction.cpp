@@ -395,6 +395,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
             // can't find a poi pos to go, stop doing quest for now
+            botAI->TellMaster("Can't find a POI pos to go, stop doing quest for now");
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
