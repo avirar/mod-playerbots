@@ -393,38 +393,46 @@ bool StoreLootAction::Execute(Event event)
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemid);
         if (!proto)
             continue;
-
+        
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
             std::ostringstream out;
             out << itemid;
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", out.str());
         
-            uint32 maxStack = proto->GetMaxStackSize();
-            if (maxStack == 1)
+            // Always allow looting quest items
+            if (usage == ITEM_USAGE_QUEST)
             {
-                if (usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
-                    continue;  // Not stackable and not useful
+                // Skip bag logic entirely
             }
             else
             {
-                std::vector<Item*> found = parseItems(chat->FormatItem(proto));
-        
-                bool hasFreeStack = false;m
-        
-                for (auto stack : found)
-                {
-                    if (stack->GetCount() + itemcount < maxStack)
-                    {
-                        hasFreeStack = true;
-                        break;
-                    }
-                }
-        
-                if (!hasFreeStack)
+                uint32 maxStack = proto->GetMaxStackSize();
+                if (maxStack == 1)
                 {
                     if (usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
-                        continue;  // No stack space and not useful
+                        continue;  // Not stackable and not useful
+                }
+                else
+                {
+                    std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+        
+                    bool hasFreeStack = false;
+        
+                    for (auto stack : found)
+                    {
+                        if (stack->GetCount() + itemcount < maxStack)
+                        {
+                            hasFreeStack = true;
+                            break;
+                        }
+                    }
+        
+                    if (!hasFreeStack)
+                    {
+                        if (usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH)
+                            continue;  // No stack space and not useful
+                    }
                 }
             }
         }
