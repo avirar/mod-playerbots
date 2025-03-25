@@ -476,7 +476,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         return ObjectGuid();
 
     WorldObject* nearestObject = nullptr;
-    for (ObjectGuid& guid: possibleTargets)
+
+    // Priority 1: Questgivers
+    for (ObjectGuid& guid : possibleTargets)
     {
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
@@ -485,7 +487,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
-        
+
         if (HasQuestToAcceptOrReward(object))
         {
             if (!nearestObject || bot->GetExactDist(nearestObject) > bot->GetExactDist(object))
@@ -494,7 +496,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         }
     }
 
-    for (ObjectGuid& guid: possibleGameObjects)
+    for (ObjectGuid& guid : possibleGameObjects)
     {
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
@@ -503,7 +505,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
-        
+
         if (HasQuestToAcceptOrReward(object))
         {
             if (!nearestObject || bot->GetExactDist(nearestObject) > bot->GetExactDist(object))
@@ -515,13 +517,62 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (nearestObject)
         return nearestObject->GetGUID();
 
-    // No questgiver to accept or reward
+    // No questgiver found
     if (questgiverOnly)
         return ObjectGuid();
 
+    // Priority 2–5: Trainers, Vendors, Repairs
+    for (ObjectGuid& guid : possibleTargets)
+    {
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld())
+            continue;
+
+        if (distanceLimit && bot->GetDistance(creature) > distanceLimit)
+            continue;
+
+        // Class trainer with GREEN spells
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                        return creature->GetGUID();
+                }
+            }
+        }
+
+        // Profession trainer with GREEN spells (must know the profession spell)
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                        return creature->GetGUID();
+                }
+            }
+        }
+
+        // Vendor if bags > 50% full
+        if (AI_VALUE(uint8, "bag space") > 80 && creature->IsVendor())
+            return creature->GetGUID();
+
+        // Repair if any item < 50% durability
+        if (AI_VALUE(uint8, "durability") < 50 &&
+            creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_REPAIR))
+            return creature->GetGUID();
+    }
+
+    // Priority 6: Random fallback
     if (possibleTargets.empty())
         return ObjectGuid();
-    
+
     int idx = urand(0, possibleTargets.size() - 1);
     ObjectGuid guid = possibleTargets[idx];
     WorldObject* object = ObjectAccessor::GetCreatureOrPetOrVehicle(*bot, guid);
@@ -529,9 +580,8 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         object = ObjectAccessor::GetGameObject(*bot, guid);
 
     if (object && object->IsInWorld())
-    {
         return object->GetGUID();
-    }
+
     return ObjectGuid();
 }
 
