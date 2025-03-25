@@ -479,6 +479,33 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             }
         }
     }
+    
+    // 📍 NEW: Handle Exploration Quests via AreaTrigger
+    if (quest->GetFlags() & QUEST_FLAGS_EXPLORATION)
+    {
+        // Find areatrigger ID from areatrigger_involvedrelation
+        for (uint32 triggerId = 0; triggerId < sAreaTriggerStore.GetNumRows(); ++triggerId)
+        {
+            AreaTriggerEntry const* trigger = sAreaTriggerStore.LookupEntry(triggerId);
+            if (!trigger)
+                continue;
+    
+            if (QuestRelationBounds range = sAreaTriggerInvolvedRelation.equal_range(triggerId);
+                std::any_of(range.first, range.second, [quest](std::pair<const uint32, uint32> const& p) { return p.second == quest->GetQuestId(); }))
+            {
+                WorldPosition newPos(trigger->mapId, trigger->x, trigger->y, trigger->z);
+                float dist = bot->GetDistance(trigger->x, trigger->y, trigger->z);
+    
+                if (dist > trigger->radius - 1.0f)
+                {
+                    botAI->TellMaster("Refining objective to exploration trigger zone at Z=" + std::to_string(trigger->z));
+                    botAI->rpgInfo.do_quest.pos = newPos;
+                    return MoveFarTo(newPos);
+                }
+            }
+        }
+    }
+
     // Now check for NPCs or GOs that drop quest-required items
     for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
     {
