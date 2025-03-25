@@ -483,6 +483,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     // Handle Exploration Quests via AreaTrigger
     if (quest->GetFlags() & QUEST_FLAGS_EXPLORATION)
     {
+        botAI->TellMaster("Quest has exploration flag, checking for associated area trigger");
         const uint32 questId = quest->GetQuestId();
         static const uint32 MAX_TRIGGER_ID = 2000;
     
@@ -505,6 +506,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 return MoveFarTo(newPos);
             }
         }
+        botAI->TellMaster("Quest has exploration flag, but we couldn't find the associated area trigger");
     }
 
     // Now check for NPCs or GOs that drop quest-required items
