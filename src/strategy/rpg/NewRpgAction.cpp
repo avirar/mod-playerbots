@@ -484,27 +484,21 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     if (quest->GetFlags() & QUEST_FLAGS_EXPLORATION)
     {
         const uint32 questId = quest->GetQuestId();
-    
-        // AreaTrigger IDs are not guaranteed to be contiguous, so we scan up to a reasonable ID range
-        static const uint32 MAX_TRIGGER_ID = 2000; // Increase if needed
+        static const uint32 MAX_TRIGGER_ID = 2000;
     
         for (uint32 triggerId = 0; triggerId < MAX_TRIGGER_ID; ++triggerId)
         {
-            // Lookup the trigger object
             AreaTrigger const* trigger = sObjectMgr->GetAreaTrigger(triggerId);
             if (!trigger)
                 continue;
     
-            // Check if this trigger is linked to the current quest
             if (sObjectMgr->GetQuestForAreaTrigger(triggerId) != questId)
                 continue;
     
-            // Prepare position to move to
-            WorldPosition newPos(trigger->mapId, trigger->x, trigger->y, trigger->z);
+            WorldPosition newPos(trigger->map, trigger->x, trigger->y, trigger->z);
             float dist = bot->GetDistance(trigger->x, trigger->y, trigger->z);
     
-            // Only move if bot is outside the trigger radius
-            if (dist > trigger->radius - 2.0f)
+            if (dist > trigger->radius - 1.0f)
             {
                 botAI->TellMaster("Refining objective to exploration trigger at Z=" + std::to_string(trigger->z));
                 botAI->rpgInfo.do_quest.pos = newPos;
@@ -512,7 +506,6 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             }
         }
     }
-
 
     // Now check for NPCs or GOs that drop quest-required items
     for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
