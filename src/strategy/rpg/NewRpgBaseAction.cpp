@@ -727,12 +727,20 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         }
     
         bool inComplete = false;
-        for (uint32 objective : incompleteObjectiveIdx)
+        
+        if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
-            if (qPoi.ObjectiveIndex == objective || qPoi.ObjectiveIndex == 16)
+            inComplete = true;
+        }
+        else
+        {
+            for (uint32 objective : incompleteObjectiveIdx)
             {
-                inComplete = true;
-                break;
+                if (qPoi.ObjectiveIndex == objective)
+                {
+                    inComplete = true;
+                    break;
+                }
             }
         }
     
