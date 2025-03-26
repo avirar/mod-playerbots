@@ -117,15 +117,24 @@ bool CheckMountStateAction::isUseful()
     }
 
     // Don't mount while looting
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI || !bot)
+        return false;  // Prevent crash if AI or bot isn't ready
+    
+    AiObjectContext* context = botAI->GetAiObjectContext();
+    if (!context)
+        return false;  // Still initializing
+    
     if (AI_VALUE(bool, "has available loot"))
     {
         Unit* lootTarget = AI_VALUE2(Unit*, "loot target", "available loot");
-        if (lootTarget && bot && lootTarget->IsInWorld() && bot->IsInWorld())
+        if (lootTarget && lootTarget->IsInWorld())
         {
-            if (bot->GetDistance(lootTarget) <= 30.0f)
-                return false;
+            if (bot->GetDistance(lootTarget) <= 48.0f)
+                return false;  // Too close to loot to mount
         }
     }
+
 
     return true;
 }
