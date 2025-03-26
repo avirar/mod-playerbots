@@ -6,6 +6,7 @@
 #include "LootObjectStack.h"
 
 #include "ItemUsageValue.h"
+#include "IVMapMgr.h"
 #include "LootMgr.h"
 #include "Playerbots.h"
 #include "Unit.h"
