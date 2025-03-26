@@ -116,6 +116,14 @@ bool CheckMountStateAction::isUseful()
         }
     }
 
+    // Don't mount while looting
+    if (AI_VALUE(bool, "has available loot"))
+    {
+        Unit* lootTarget = AI_VALUE(Unit*, "loot target");
+        if (lootTarget && bot->GetDistance(lootTarget) <= 30.0f)
+            return false;
+    }
+
     return true;
 }
 
