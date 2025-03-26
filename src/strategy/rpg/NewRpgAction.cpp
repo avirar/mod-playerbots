@@ -404,13 +404,41 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         int32 objectiveIdx = poiInfo[rndIdx].objectiveIdx;
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
-
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
-
-        // double check for GetQuestPOIPosAndObjectiveIdx
+        
+        float groundZ = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT);                   // top surface
+        float floorZ  = bot->GetMap()->GetHeight(dx, dy, bot->GetPositionZ());          // geometry near current level (e.g. cave)
+        float waterZ  = bot->GetMap()->GetWaterLevel(dx, dy);                           // lake layer
+        
+        float dz = INVALID_HEIGHT;
+        
+        // Prefer floorZ if it's a distinct level (e.g. inside a cave)
+        if (floorZ != INVALID_HEIGHT && groundZ != INVALID_HEIGHT && std::abs(floorZ - groundZ) > 1.0f)
+        {
+            dz = floorZ;
+            botAI->TellMaster("Using floorZ (cave level) as it differs from groundZ.");
+        }
+        else if (groundZ != INVALID_HEIGHT)
+        {
+            dz = groundZ;
+            botAI->TellMaster("Using groundZ (surface level).");
+        }
+        else if (waterZ != INVALID_HEIGHT)
+        {
+            dz = waterZ;
+            botAI->TellMaster("Using waterZ (lake level) as fallback.");
+        }
+        
+        botAI->TellMaster("Z check at (" + std::to_string(dx) + ", " + std::to_string(dy) + "): "
+            "groundZ=" + std::to_string(groundZ) +
+            ", floorZ=" + std::to_string(floorZ) +
+            ", waterZ=" + std::to_string(waterZ) +
+            " → chosen dz=" + std::to_string(dz));
+        
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        {
+            botAI->TellMaster("Final Z height is invalid. Cannot move to POI.");
             return false;
+        }
 
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);
         botAI->rpgInfo.do_quest.lastReachPOI = 0;
