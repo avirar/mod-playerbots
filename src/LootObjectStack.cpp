@@ -298,7 +298,7 @@ bool LootObject::IsLootPossible(Player* bot)
     }
     if (reqItem && !bot->HasItemCount(reqItem, 1))
         return false;
-
+/*
     // Use loot object's X/Y for Z reference
     float lootX = worldObj->GetPositionX();
     float lootY = worldObj->GetPositionY();
@@ -333,7 +333,7 @@ bool LootObject::IsLootPossible(Player* bot)
         botAI->TellMaster("Too far from loot Z level. resolvedZ=" + std::to_string(resolvedZ));
         return false;
     }
-
+*/
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
