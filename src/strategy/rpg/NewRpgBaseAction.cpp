@@ -730,6 +730,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
+            botAI->TellMaster("POI ObjectiveIndex 16 accepted because quest is flagged as exploration.");
             inComplete = true;
         }
         else
@@ -738,12 +739,14 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             {
                 if (qPoi.ObjectiveIndex == objective)
                 {
+                    botAI->TellMaster("POI ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) +
+                                      " matched an incomplete objective.");
                     inComplete = true;
                     break;
                 }
             }
         }
-    
+   
         if (!inComplete)
         {
             botAI->TellMaster("POI rejected: ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) + " not in incomplete list");
