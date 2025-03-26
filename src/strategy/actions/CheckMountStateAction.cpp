@@ -124,17 +124,15 @@ bool CheckMountStateAction::isUseful()
     AiObjectContext* context = botAI->GetAiObjectContext();
     if (!context)
         return false;  // Still initializing
-    
+
+    // Assuming an epic mount (~100% @ 3s cast time), below 48yds it is always better to run to the target instead of mounting
+    // Druids are instant cast so are technically better always, we still place 10yds on them
     if (AI_VALUE(bool, "has available loot"))
     {
-        Unit* lootTarget = AI_VALUE2(Unit*, "loot target", "available loot");
-        if (lootTarget && lootTarget->IsInWorld())
-        {
-            if (bot->GetDistance(lootTarget) <= 48.0f)
-                return false;  // Too close to loot to mount
-        }
+        float distance = AI_VALUE2(float, "distance", "loot target");
+        float mountThreshold = bot->getClass() == CLASS_DRUID ? 10.0f : 48.0f;
+        return !sServerFacade->IsDistanceLessOrEqualThan(distance, mountThreshold);
     }
-
 
     return true;
 }
