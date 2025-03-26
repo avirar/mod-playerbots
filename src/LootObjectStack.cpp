@@ -298,8 +298,40 @@ bool LootObject::IsLootPossible(Player* bot)
     if (reqItem && !bot->HasItemCount(reqItem, 1))
         return false;
 
-    if (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE -2.0f)
+    // Use loot object's X/Y for Z reference
+    float lootX = worldObj->GetPositionX();
+    float lootY = worldObj->GetPositionY();
+    float lootZ = worldObj->GetPositionZ();
+    
+    // Try to resolve "real" Z at that position
+    float groundZ = bot->GetMap()->GetHeight(lootX, lootY, MAX_HEIGHT);
+    float floorZ  = bot->GetMap()->GetHeight(bot->GetPhaseMask(), lootX, lootY, lootZ, true);
+    float waterZ  = bot->GetMap()->GetWaterLevel(lootX, lootY);
+    
+    // Pick best available Z value
+    float resolvedZ = INVALID_HEIGHT;
+    if (floorZ != INVALID_HEIGHT &&
+        floorZ != VMAP_INVALID_HEIGHT_VALUE &&
+        groundZ != INVALID_HEIGHT &&
+        fabs(floorZ - groundZ) > 1.0f)
+    {
+        resolvedZ = floorZ;
+    }
+    else if (groundZ != INVALID_HEIGHT)
+    {
+        resolvedZ = groundZ;
+    }
+    else if (waterZ != INVALID_HEIGHT)
+    {
+        resolvedZ = waterZ;
+    }
+    
+    // Final Z check
+    if (resolvedZ != INVALID_HEIGHT && fabs(resolvedZ - bot->GetPositionZ()) > INTERACTION_DISTANCE)
+    {
+        botAI->TellMaster("Too far from loot Z level. resolvedZ=" + std::to_string(resolvedZ));
         return false;
+    }
 
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
