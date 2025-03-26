@@ -355,19 +355,32 @@ bool LootObject::IsLootPossible(Player* bot)
 
 bool LootObjectStack::Add(ObjectGuid guid)
 {
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return false;
+
+    // Step 1: Try shrinking old loot if list is full
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
     {
         availableLoot.shrink(time(nullptr) - 30);
+        botAI->TellMaster("Loot stack is full, removing old loot targets.");
     }
 
+    // Step 2: Still full? Clear the entire list
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
     {
         availableLoot.clear();
+        botAI->TellMaster("Loot stack is still full, clearing all loot targets.");
     }
 
+    // Step 3: Try to insert the new loot
     if (!availableLoot.insert(guid).second)
+    {
+        botAI->TellMaster("Loot target already known.");
         return false;
+    }
 
+    botAI->TellMaster("Added new loot target.");
     return true;
 }
 
