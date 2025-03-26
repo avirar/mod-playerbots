@@ -721,8 +721,11 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     for (const QuestPOI &qPoi : *poiVector)
     {
         if (qPoi.MapId != bot->GetMapId())
+        {
+            botAI->TellMaster("POI rejected: map mismatch (Bot=" + std::to_string(bot->GetMapId()) + ", POI=" + std::to_string(qPoi.MapId) + ")");
             continue;
-
+        }
+    
         bool inComplete = false;
         for (uint32 objective : incompleteObjectiveIdx)
         {
@@ -732,33 +735,48 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 break;
             }
         }
-
+    
         if (!inComplete)
+        {
+            botAI->TellMaster("POI rejected: ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) + " not in incomplete list");
             continue;
-        if (qPoi.points.size() == 0)
+        }
+    
+        if (qPoi.points.empty())
+        {
+            botAI->TellMaster("POI rejected: no polygon points");
             continue;
+        }
+    
         float dx = 0, dy = 0;
         std::vector<float> weights = GenerateRandomWeights(qPoi.points.size());
         for (size_t i = 0; i < qPoi.points.size(); i++)
         {
-            const QuestPOIPoint &point = qPoi.points[i];
-            dx += point.x * weights[i];
-            dy += point.y * weights[i];
+            dx += qPoi.points[i].x * weights[i];
+            dy += qPoi.points[i].y * weights[i];
         }
-
-        if (bot->GetDistance2d(dx, dy) >= 1500.0f)
-            continue;
-        
+    
         float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
-        
+    
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        {
+            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(dx) + ", " + std::to_string(dy) + ")");
             continue;
-
-        if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
+        }
+    
+        uint32 botZone = bot->GetZoneId();
+        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz);
+    
+        if (botZone != poiZone)
+        {
+            botAI->TellMaster("POI rejected: zone mismatch (Bot=" + std::to_string(botZone) + ", POI=" + std::to_string(poiZone) + ")");
             continue;
-
+        }
+    
+        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(dx) + ", " + std::to_string(dy) + ", " + std::to_string(dz) + ")");
         poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
     }
+
 
     if (poiInfo.size() == 0) {
         // LOG_DEBUG("playerbots", "[New rpg] {}: No available poi can be found for quest {}", bot->GetName(), questId);
