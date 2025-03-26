@@ -405,14 +405,16 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
         
-        float groundZ = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT);                   // top surface
-        float floorZ  = bot->GetMap()->GetHeight(dx, dy, bot->GetPositionZ());          // geometry near current level (e.g. cave)
-        float waterZ  = bot->GetMap()->GetWaterLevel(dx, dy);                           // lake layer
+        float groundZ = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT);
+        float floorZ  = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, bot->GetPositionZ(), true);
+        float waterZ  = bot->GetMap()->GetWaterLevel(dx, dy);
         
         float dz = INVALID_HEIGHT;
         
-        // Prefer floorZ if it's a distinct level (e.g. inside a cave)
-        if (floorZ != INVALID_HEIGHT && groundZ != INVALID_HEIGHT && std::abs(floorZ - groundZ) > 1.0f)
+        if (floorZ != INVALID_HEIGHT &&
+            floorZ != VMAP_INVALID_HEIGHT_VALUE &&
+            groundZ != INVALID_HEIGHT &&
+            std::abs(floorZ - groundZ) > 1.0f)
         {
             dz = floorZ;
             botAI->TellMaster("Using floorZ (cave level) as it differs from groundZ.");
