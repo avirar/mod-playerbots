@@ -23,6 +23,7 @@ public:
         creators["cannot equip"] = &WorldPacketTriggerContext::cannot_equip;
         creators["use game object"] = &WorldPacketTriggerContext::use_game_object;
         creators["loot roll"] = &WorldPacketTriggerContext::loot_roll;
+        creators["master loot roll"] = &WorldPacketTriggerContext::master_loot_roll;
         creators["resurrect request"] = &WorldPacketTriggerContext::resurrect_request;
         creators["area trigger"] = &WorldPacketTriggerContext::area_trigger;
         creators["within area trigger"] = &WorldPacketTriggerContext::within_area_trigger;
@@ -122,6 +123,7 @@ private:
     static Trigger* no_reputation(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "not enough reputation"); }
     static Trigger* use_game_object(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "use game object"); }
     static Trigger* loot_roll(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "loot roll"); }
+    static Trigger* master_loot_roll(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "master loot roll"); }
     static Trigger* taxi(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "activate taxi"); }
     static Trigger* bg_status(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "bg status"); }
     static Trigger* levelup(PlayerbotAI* botAI) { return new WorldPacketTrigger(botAI, "levelup"); }
