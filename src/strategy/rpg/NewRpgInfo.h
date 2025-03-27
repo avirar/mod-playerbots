@@ -48,6 +48,7 @@ struct NewRpgInfo
         NearNpc() = default;
         ObjectGuid npcOrGo{};
         uint32 lastReach{0};
+        std::unordered_map<ObjectGuid, uint32> recentNpcVisits;
     };
     // RPG_NEAR_RANDOM
     struct NearRandom {
