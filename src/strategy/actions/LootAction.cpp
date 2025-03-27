@@ -34,7 +34,6 @@ bool LootAction::Execute(Event event)
         bot->GetSession()->HandleLootReleaseOpcode(packet);
     }
 
-    botAI->ChangeStrategy("-mount", BOT_STATE_NON_COMBAT); // Prevent mounting for the moment
     context->GetValue<LootObject>("loot target")->Set(lootObject);
     return true;
 }
@@ -71,6 +70,8 @@ bool OpenLootAction::Execute(Event event)
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
 
+    botAI->ChangeStrategy("+mount", BOT_STATE_NON_COMBAT); // Allow mounting again after looting
+
     return result;
 }
 
@@ -83,7 +84,8 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
         return false;
 
-    // Dismount if the bot is mounted
+    // Dismount and prevent remounting
+    botAI->ChangeStrategy("-mount", BOT_STATE_NON_COMBAT); // Prevent mounting for the moment
     if (bot->IsMounted())
     {
         bot->Dismount();
