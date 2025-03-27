@@ -673,7 +673,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 dy += point.y * weights[i];
             }
     
-            if (bot->GetDistance2d(dx, dy) >= 1500.0f)
+            if (bot->GetDistance2d(dx, dy) >= 2500.0f)
                 continue;
             
             float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
