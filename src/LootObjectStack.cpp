@@ -304,46 +304,48 @@ bool LootObject::IsLootPossible(Player* bot)
     float lootY = worldObj->GetPositionY();
     float lootZ = worldObj->GetPositionZ();
     
-    // Try to get valid ground/floor height at that position
-    float groundZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), lootX, lootY, lootZ, true);
-    if (groundZ == INVALID_HEIGHT || groundZ == VMAP_INVALID_HEIGHT_VALUE)
+    float groundZ = bot->GetMap()->GetHeight(lootX, lootY, MAX_HEIGHT); // terrain-level
+    float floorZ  = bot->GetMap()->GetHeight(bot->GetPhaseMask(), lootX, lootY, lootZ, true); // indoor level
+    float waterZ  = bot->GetMap()->GetWaterLevel(lootX, lootY);
+    
+    float dz = INVALID_HEIGHT;
+    
+    // Prefer floorZ if it's valid and significantly different from groundZ
+    if (floorZ != INVALID_HEIGHT &&
+        floorZ != VMAP_INVALID_HEIGHT_VALUE &&
+        groundZ != INVALID_HEIGHT &&
+        std::abs(floorZ - groundZ) > 1.0f)
     {
-        groundZ = bot->GetMap()->GetHeight(lootX, lootY, MAX_HEIGHT); // fallback
+        dz = floorZ;
+        botAI->TellMaster("Using floorZ (indoor/cave level) for loot positioning.");
+    }
+    else if (groundZ != INVALID_HEIGHT)
+    {
+        dz = groundZ;
+        botAI->TellMaster("Using groundZ (outdoor terrain) for loot positioning.");
+    }
+    else if (waterZ != INVALID_HEIGHT)
+    {
+        dz = waterZ;
+        botAI->TellMaster("Using waterZ as fallback.");
     }
     
-    // If we still can't resolve valid ground, abort
-    if (groundZ == INVALID_HEIGHT || groundZ == VMAP_INVALID_HEIGHT_VALUE)
+    // Final check
+    if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
     {
-        botAI->TellMaster("Cannot resolve ground height under loot.");
+        botAI->TellMaster("Cannot resolve valid height under loot.");
         return false;
     }
     
-    float waterZ = bot->GetMap()->GetWaterLevel(lootX, lootY);
-    
-    // If we have valid ground and water levels, allow loot that's between them
-    if (groundZ != INVALID_HEIGHT && waterZ != INVALID_HEIGHT)
+    // Validate loot placement
+    bool heightMismatch = std::fabs(lootZ - dz) > 5.0f;
+    if (heightMismatch)
     {
-        bool inWaterRange = lootZ >= groundZ - 1.0f && lootZ <= waterZ + 1.0f;
-        bool tooFarFromGround = fabs(lootZ - groundZ) > 5.0f;
-    
-        if (!inWaterRange && tooFarFromGround)
-        {
-            botAI->TellMaster("Loot may not be grounded or in valid water range. lootZ=" + std::to_string(lootZ) +
-                              ", groundZ=" + std::to_string(groundZ) + ", waterZ=" + std::to_string(waterZ));
-            return false;
-        }
+        botAI->TellMaster("Loot Z mismatch. lootZ=" + std::to_string(lootZ) +
+                          ", chosenZ=" + std::to_string(dz));
+        return false;
     }
-    else
-    {
-        // Fallback: ground only
-        if (fabs(lootZ - groundZ) > 5.0f)
-        {
-            botAI->TellMaster("Loot may not be properly placed. lootZ=" + std::to_string(lootZ) +
-                              ", groundZ=" + std::to_string(groundZ));
-            return false;
-        }
-    }
-    
+
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
