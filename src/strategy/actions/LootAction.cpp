@@ -64,7 +64,7 @@ bool OpenLootAction::Execute(Event event)
 {
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
     bool result = DoLoot(lootObject);
-    if (result)
+    if (result && lootObject.IsEmpty())  // Only remove if loot is fully consumed
     {
         AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
@@ -464,7 +464,10 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
-    AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    if (lootObject.IsEmpty())
+    {
+        AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    }
 
     // release loot
     WorldPacket packet(CMSG_LOOT_RELEASE, 8);
