@@ -477,9 +477,14 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
     WorldObject* nearestObject = nullptr;
 
+    botAI->rpgInfo.PruneOldVisits(30 * 60 * 1000); // 30 minutes
+    
     // Priority 1: Questgivers
     for (ObjectGuid& guid : possibleTargets)
     {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+        continue;  // Skip recently visited
+
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
         if (!object || !object->IsInWorld())
