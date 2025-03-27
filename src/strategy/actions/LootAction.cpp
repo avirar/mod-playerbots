@@ -81,7 +81,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     Creature* creature = botAI->GetCreature(lootObject.guid);
-    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
+    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE)
         return false;
 
     // Dismount and prevent remounting
