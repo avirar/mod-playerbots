@@ -464,6 +464,10 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
+    // check if loot is now empty and remove if needed
+    LootObject lootObject(bot, guid);
+    lootObject.Refresh(bot, guid);
+    
     if (lootObject.IsEmpty())
     {
         AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
