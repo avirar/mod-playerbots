@@ -182,7 +182,7 @@ RollVote LootRollAction::CalculateRollVote(ItemTemplate const* proto)
     return StoreLootAction::IsLootAllowed(proto->ItemId, GET_PLAYERBOT_AI(bot)) ? needVote : PASS;
 }
 
-bool MasterLootRollAction::isUseful() { return !botAI->HasActivePlayerMaster(); }
+bool MasterLootRollAction::isUseful() { return true /*!botAI->HasActivePlayerMaster()*/; }
 
 bool MasterLootRollAction::Execute(Event event)
 {
