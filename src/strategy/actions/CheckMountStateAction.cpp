@@ -60,6 +60,12 @@ bool CheckMountStateAction::isUseful()
         !bot->IsOutdoors() || bot->InArena())
         return false;
 
+    // Do not mount while casting
+    if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL) != nullptr)
+    {
+        return false;
+    }
+
     master = GetMaster();
     if (master == bot)
         master = nullptr;
