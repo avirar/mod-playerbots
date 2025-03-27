@@ -298,7 +298,7 @@ bool LootObject::IsLootPossible(Player* bot)
     }
     if (reqItem && !bot->HasItemCount(reqItem, 1))
         return false;
-
+/*
     // Get loot position
     float lootX = worldObj->GetPositionX();
     float lootY = worldObj->GetPositionY();
@@ -345,6 +345,10 @@ bool LootObject::IsLootPossible(Player* bot)
                           ", chosenZ=" + std::to_string(dz));
         return false;
     }
+*/
+    // Don't run deep into caves/up spires for loot
+    if (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > 20.0f)
+        return false;
 
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
