@@ -6,6 +6,7 @@
 #include "CheckMountStateAction.h"
 #include "BattlegroundWS.h"
 #include "Event.h"
+#include "LootObjectStack.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
