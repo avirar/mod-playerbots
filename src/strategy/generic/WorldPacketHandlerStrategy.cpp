@@ -74,6 +74,7 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
 WorldPacketHandlerStrategy::WorldPacketHandlerStrategy(PlayerbotAI* botAI) : PassTroughStrategy(botAI)
 {
     supported.push_back("loot roll");
+    supported.push_back("master loot roll");
     supported.push_back("check mount state");
     supported.push_back("party command");
     supported.push_back("ready check");
