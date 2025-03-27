@@ -72,6 +72,18 @@ void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
     moveFarPos = pos;
 }
 
+void NewRpgInfo::PruneOldVisits(uint32 expirationTimeMs)
+{
+    uint32 now = getMSTime();
+    for (auto it = recentNpcVisits.begin(); it != recentNpcVisits.end(); )
+    {
+        if (GetMSTimeDiff(it->second, now) > expirationTimeMs)
+            it = recentNpcVisits.erase(it);
+        else
+            ++it;
+    }
+}
+
 std::string NewRpgInfo::ToString()
 {
     std::stringstream out;
