@@ -127,12 +127,20 @@ bool CheckMountStateAction::isUseful()
 
     // Assuming an epic mount (7yds/s vs +100% @ 1.5s cast time), below 21yds it is always better to run to the target instead of mounting
     // Druids are instant cast so are technically better always, we still place 10yds on them
+    LootObject lootObject = AI_VALUE(LootObject, "loot target");
+    lootObject.Refresh(bot, lootObject.guid);  // Refresh to get latest state
     
-    if (AI_VALUE(bool, "has available loot"))
+    if (!lootObject.IsEmpty())
     {
-        float distance = AI_VALUE2(float, "distance", "loot target");
-        float mountThreshold = bot->getClass() == CLASS_DRUID ? 10.0f : 21.0f;
-        return !sServerFacade->IsDistanceLessOrEqualThan(distance, mountThreshold);
+        WorldObject* lootWorldObj = lootObject.GetWorldObject(bot);
+        if (lootWorldObj)
+        {
+            float distance = bot->GetDistance(lootWorldObj);
+            float mountThreshold = bot->getClass() == CLASS_DRUID ? 10.0f : 21.0f;
+    
+            if (distance <= mountThreshold)
+                return false;  // Do not mount near loot target
+        }
     }
 
     return true;
