@@ -34,6 +34,7 @@ bool LootAction::Execute(Event event)
         bot->GetSession()->HandleLootReleaseOpcode(packet);
     }
 
+    botAI->ChangeStrategy("-mount", BOT_STATE_NON_COMBAT); // Prevent mounting for the moment
     context->GetValue<LootObject>("loot target")->Set(lootObject);
     return true;
 }
@@ -477,6 +478,7 @@ bool StoreLootAction::Execute(Event event)
     WorldPacket packet(CMSG_LOOT_RELEASE, 8);
     packet << guid;
     bot->GetSession()->HandleLootReleaseOpcode(packet);
+    botAI->ChangeStrategy("+mount", BOT_STATE_NON_COMBAT); // Allow mounting again
     return true;
 }
 
