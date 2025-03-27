@@ -63,8 +63,8 @@ void WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("see spell", NextAction::array(0, new NextAction("see spell", relevance), nullptr)));
     triggers.push_back(new TriggerNode("release spirit", NextAction::array(0, new NextAction("release", relevance), nullptr)));
     triggers.push_back(new TriggerNode("revive from corpse", NextAction::array(0, new NextAction("revive from corpse", relevance), nullptr)));
-    triggers.push_back(new TriggerNode("master loot roll", NextAction::array(0, new NextAction("master loot roll", relevance),
-                                                                                new NextAction("loot roll", relevance), nullptr)));
+    triggers.push_back(new TriggerNode("master loot roll", NextAction::array(0, new NextAction("master loot roll", relevance + 3),
+                                                                                new NextAction("loot roll", relevance + 2), nullptr)));
 
     // quest ?
     //triggers.push_back(new TriggerNode("quest confirm", NextAction::array(0, new NextAction("quest confirm", relevance), nullptr)));
