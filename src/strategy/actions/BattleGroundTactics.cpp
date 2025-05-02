@@ -2527,27 +2527,23 @@ bool BGTactics::moveToStart(bool force)
         if (isAttacker)
         {
             // Attackers start on boats or beach after landing
-            if (!sotaBG->ShipsStarted) // Still on boats
+            if (bg->GetStartDelayTime() > 0) // Still on boats
             {
-                // Stay roughly near spawn points on boats (need accurate boat coords)
-                 if (urand(0, 1)) // Randomly pick a boat side/spawn
-                    MoveTo(bg->GetMapId(), 2682.9f + frand(-5.0f, 5.0f), -830.3f + frand(-5.0f, 5.0f), 15.0f);
-                 else
-                    MoveTo(bg->GetMapId(), 2577.0f + frand(-5.0f, 5.0f), 980.2f + frand(-5.0f, 5.0f), 15.0f);
+                return true;
             }
             else // Boats have landed
             {
-                // Move to beach near dock
-                 if (urand(0, 1))
-                    MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionZ());
-                 else
-                    MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionZ());
+                return true;
             }
         }
         else // Defenders
         {
             // Defenders start inside the keep courtyard
-            MoveTo(bg->GetMapId(), SA_DEFENDER_SPAWN.GetPositionX() + frand(-10.0f, 10.0f), SA_DEFENDER_SPAWN.GetPositionY() + frand(-10.0f, 10.0f), SA_DEFENDER_SPAWN.GetPositionZ());
+            // Move to beach near dock
+             if (urand(0, 1))
+                MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionZ());
+             else
+                MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionZ());
         }
     }
 
