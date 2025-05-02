@@ -2511,8 +2511,14 @@ bool BGTactics::moveToStart(bool force)
              return false; // Should not happen
 
         TeamId playerTeam = bot->GetTeamId();
-        TeamId attackerTeam = sotaBG->GetTeam(0); // Adjust as needed
-        bool isAttacker = (playerTeam == attackerTeam);
+
+        // Determine attacker team using world states
+        bool isAttacker = false;
+        if (bg->GetWorldState(BG_SA_ALLY_ATTACKS) > 0) {
+            isAttacker = (playerTeam == TEAM_ALLIANCE);
+        } else if (bg->GetWorldState(BG_SA_HORDE_ATTACKS) > 0) {
+            isAttacker = (playerTeam == TEAM_HORDE);
+        }
 
         if (isAttacker)
         {
