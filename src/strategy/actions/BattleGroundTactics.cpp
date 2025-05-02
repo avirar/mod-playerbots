@@ -2511,13 +2511,23 @@ bool BGTactics::moveToStart(bool force)
              return false; // Should not happen
 
         TeamId playerTeam = bot->GetTeamId();
-
-        // Determine attacker team using world states
+        
+        // Get the Titan Relic GameObject
+        GameObject* relic = bg->GetBGObject(BG_SA_TITAN_RELIC);
+        if (!relic) {
+            // Fallback: Use default behavior or log an error
+            return false;
+        }
+        
+        // Check its faction
+        uint32 relicFaction = relic->GetUInt32Value(GAMEOBJECT_FACTION);
+        
+        // Determine if the bot is on the attacker team
         bool isAttacker = false;
-        if (bg->GetWorldState(BG_SA_ALLY_ATTACKS) > 0) {
-            isAttacker = (playerTeam == TEAM_ALLIANCE);
-        } else if (bg->GetWorldState(BG_SA_HORDE_ATTACKS) > 0) {
-            isAttacker = (playerTeam == TEAM_HORDE);
+        if (relicFaction == FACTION_ALLIANCE && playerTeam == TEAM_ALLIANCE) {
+            isAttacker = true;
+        } else if (relicFaction == FACTION_HORDE && playerTeam == TEAM_HORDE) {
+            isAttacker = true;
         }
 
         if (isAttacker)
