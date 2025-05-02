@@ -84,6 +84,37 @@ Position const IC_CANNON_POS_ALLIANCE2 = {425.525f, -779.538f, 87.717f, 5.88f};
 Position const IC_GATE_ATTACK_POS_HORDE = {506.782f, -828.594f, 24.313f, 0.0f};
 Position const IC_GATE_ATTACK_POS_ALLIANCE = {1091.273f, -763.619f, 42.352f, 0.0f};
 
+// SotA consts/etc
+// (Using enums/constants directly from BattlegroundSA.h is preferred where possible)
+// Object IDs (Example subset - get important ones from BattlegroundSA.h)
+const uint32 BG_SA_GO_GREEN_GATE = 190722;
+const uint32 BG_SA_GO_BLUE_GATE = 190724;
+const uint32 BG_SA_GO_RED_GATE = 190726;
+const uint32 BG_SA_GO_PURPLE_GATE = 190723;
+const uint32 BG_SA_GO_YELLOW_GATE = 190727;
+const uint32 BG_SA_GO_ANCIENT_GATE = 192549;
+const uint32 BG_SA_GO_TITAN_RELIC = 192834;
+const uint32 BG_SA_GO_BOMB = 190753;
+// ... Add GY flag object IDs (e.g., 191308, 191306, 191310 and Horde equivalents)
+
+// NPC IDs
+const uint32 BG_SA_NPC_DEMOLISHER = 28781;
+const uint32 BG_SA_NPC_CANNON = 27894;
+// ... Add workshop NPC IDs if needed (NPC_RIGGER_SPARKLIGHT, NPC_GORGRIL_RIGSPARK)
+
+// Positions (Define key locations)
+Position const SA_DOCK_WEST_A = { 1618.0f, 61.4f, 7.2f };      // Example Attacker West Dock
+Position const SA_DOCK_EAST_A = { 1611.5f, -117.2f, 8.7f };     // Example Attacker East Dock
+Position const SA_GREEN_GATE_POS = { 1411.5f, 108.1f, 28.6f };  // Approx Green Gate
+Position const SA_BLUE_GATE_POS = { 1431.3f, -219.4f, 30.8f }; // Approx Blue Gate
+Position const SA_COURTYARD_GY_POS = { 1215.1f, -65.7f, 70.0f }; // Approx Central GY Flagpole
+Position const SA_RELIC_POS = { 836.5f, -108.8f, 120.2f };     // Titan Relic
+Position const SA_DEFENDER_SPAWN = { 1209.7f, -65.1f, 70.1f };  // Defender Start
+Position const SA_WORKSHOP_WEST = { 1353.1f, 223.7f, 35.2f };   // West Workshop Area
+Position const SA_WORKSHOP_EAST = { 1371.0f, -317.0f, 35.0f };  // East Workshop Area
+// ... Add more positions for GYs, other gates, key chokepoints
+
+
 enum BattleBotWsgWaitSpot
 {
     BB_WSG_WAIT_SPOT_SPAWN,
@@ -1417,6 +1448,45 @@ BattleBotPath vPath_IC_Hanger_to_Workshop = {
     {790.787f, -809.678f, 6.450f, nullptr},
 };
 
+//SotA
+// Example Path: West Dock to Green Gate approach
+BattleBotPath vPath_SA_DockWest_To_GreenGateApproach = {
+    { 1618.0f, 61.4f, 7.2f, nullptr },    // West Dock
+    { 1575.1f, 98.8f, 2.8f, nullptr },     // Beach near west ramp
+    { 1490.0f, 125.0f, 15.0f, nullptr },    // Mid beach west
+    { 1430.0f, 115.0f, 25.0f, nullptr },    // Approaching Green Gate ramp
+    { 1415.0f, 110.0f, 28.0f, nullptr }     // Near Green Gate
+};
+
+// Example Path: Green Gate to Purple Gate approach
+BattleBotPath vPath_SA_GreenGate_To_PurpleGateApproach = {
+    { 1411.5f, 108.1f, 28.6f, nullptr }, // Green Gate
+    { 1377.0f, 97.0f, 30.8f, nullptr },  // GY Area
+    { 1310.0f, 85.0f, 30.0f, nullptr },  // Courtyard entrance west
+    { 1250.0f, 82.0f, 50.0f, nullptr },  // Approaching Purple Gate ramp
+    { 1220.0f, 80.0f, 53.0f, nullptr }   // Near Purple Gate
+};
+
+// ... Define many more paths ...
+// Docks -> Workshops
+// Workshops -> Gates
+// Beach GYs -> Workshops
+// Beach GYs -> Gates
+// Gates -> Next Gates
+// Gates -> GYs
+// GYs -> Gates
+// Courtyard GY -> Yellow Gate
+// Yellow Gate -> Keep GY
+// Keep GY -> Ancient Gate
+// Ancient Gate -> Relic
+
+
+// --- Register SotA Paths ---
+// Add near other vPaths definitions
+std::vector<BattleBotPath*> const vPaths_SA = {
+    &vPath_SA_DockWest_To_GreenGateApproach,        &vPath_SA_GreenGate_To_PurpleGateApproach,
+    // ... Add ALL defined SotA paths here ...
+};
 
 std::vector<BattleBotPath*> const vPaths_WS = {
     &vPath_WSG_HordeFlagRoom_to_HordeGraveyard,     &vPath_WSG_HordeGraveyard_to_HordeTunnel,
@@ -2218,6 +2288,19 @@ bool BGTactics::Execute(Event event)
             vFlagIds = &vFlagsIC;
             break;
         }
+        case BATTLEGROUND_SA:
+        {
+            vPaths = &vPaths_SA;
+            // SotA doesn't have traditional flags like AB/WSG for capture points,
+            // but GY flags can be captured. Gates and Relic are main objectives.
+            // Decide how to represent objectives. Maybe a custom list or repurpose vFlagIds?
+            // For now, let's assume GY flags are the main "capturable" similar items.
+            // Need to define vFlagsSA containing the GY flag object IDs.
+            // static std::vector<uint32> const vFlagsSA = { /* GY Flag IDs */ };
+            // vFlagIds = &vFlagsSA;
+            vFlagIds = nullptr; // Or handle objectives differently in selectObjective
+            break;
+        }
         default:
             // can't use this in this BG - no vPaths/vFlagIds (will crash server)
             botAI->ResetStrategies();
@@ -2419,6 +2502,41 @@ bool BGTactics::moveToStart(bool force)
                 MoveTo(bg->GetMapId(), IC_WAITING_POS_ALLIANCE.GetPositionX() + frand(-5.0f, 5.0f),
                        IC_WAITING_POS_ALLIANCE.GetPositionY() + frand(-5.0f, 5.0f),
                        IC_WAITING_POS_ALLIANCE.GetPositionZ());
+        }
+    }
+    else if (bgType == BATTLEGROUND_SA)
+    {
+        BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
+        if (!sotaBG)
+             return false; // Should not happen
+
+        TeamId playerTeam = bot->GetTeamId();
+        bool isAttacker = (playerTeam == sotaBG->Attackers);
+
+        if (isAttacker)
+        {
+            // Attackers start on boats or beach after landing
+            if (!sotaBG->ShipsStarted) // Still on boats
+            {
+                // Stay roughly near spawn points on boats (need accurate boat coords)
+                 if (urand(0, 1)) // Randomly pick a boat side/spawn
+                    MoveTo(bg->GetMapId(), 2682.9f + frand(-5.0f, 5.0f), -830.3f + frand(-5.0f, 5.0f), 15.0f);
+                 else
+                    MoveTo(bg->GetMapId(), 2577.0f + frand(-5.0f, 5.0f), 980.2f + frand(-5.0f, 5.0f), 15.0f);
+            }
+            else // Boats have landed
+            {
+                // Move to beach near dock
+                 if (urand(0, 1))
+                    MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionZ());
+                 else
+                    MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionZ());
+            }
+        }
+        else // Defenders
+        {
+            // Defenders start inside the keep courtyard
+            MoveTo(bg->GetMapId(), SA_DEFENDER_SPAWN.GetPositionX() + frand(-10.0f, 10.0f), SA_DEFENDER_SPAWN.GetPositionY() + frand(-10.0f, 10.0f), SA_DEFENDER_SPAWN.GetPositionZ());
         }
     }
 
@@ -3687,6 +3805,155 @@ bool BGTactics::selectObjective(bool reset)
             }
             break;
         }
+        case BATTLEGROUND_SA:
+        {
+            BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
+            if (!sotaBG)
+                break; // Should not happen
+
+            TeamId playerTeam = bot->GetTeamId();
+            bool isAttacker = (playerTeam == sotaBG->Attackers);
+            uint32 role = context->GetValue<uint32>("bg role")->Get(); // 0-9 role
+
+            // --- Attacker Logic ---
+            if (isAttacker)
+            {
+                // Priority 1: Use Demolisher to attack gates
+                // Check if workshops captured, if demolisher available, if bot close enough
+                // If yes, target demolisher NPC/GO to enter
+                // If already IN demolisher, target next gate
+
+                // Priority 2: Destroy Gates (on foot)
+                // Find the *closest* gate in the *foremost* line that isn't destroyed
+                int lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Sentinel value
+                uint32 targetGateObjId = 0;
+                Position targetGatePos;
+
+                // Check beach gates first
+                if (sotaBG->GateStatus[BG_SA_GREEN_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_GREEN_GATE]; targetGateObjId = BG_SA_GO_GREEN_GATE; targetGatePos = SA_GREEN_GATE_POS; }
+                if (sotaBG->GateStatus[BG_SA_BLUE_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_BLUE_GATE]; targetGateObjId = BG_SA_GO_BLUE_GATE; targetGatePos = SA_BLUE_GATE_POS; }
+
+                // If beach gates destroyed, check courtyard gates
+                if (lowestGateStatus == BG_SA_GATE_DESTROYED)
+                {
+                    lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
+                    if (sotaBG->GateStatus[BG_SA_RED_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_RED_GATE]; /* Get Red Gate ID/Pos */ }
+                    if (sotaBG->GateStatus[BG_SA_PURPLE_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_PURPLE_GATE]; /* Get Purple Gate ID/Pos */ }
+
+                     // If courtyard gates destroyed, check keep gates
+                    if (lowestGateStatus == BG_SA_GATE_DESTROYED)
+                    {
+                         lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
+                        if (sotaBG->GateStatus[BG_SA_YELLOW_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_YELLOW_GATE]; /* Get Yellow Gate ID/Pos */ }
+
+                        if (lowestGateStatus == BG_SA_GATE_DESTROYED)
+                        {
+                            lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
+                            if (sotaBG->GateStatus[BG_SA_ANCIENT_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_ANCIENT_GATE]; /* Get Ancient Gate ID/Pos */ }
+                        }
+                    }
+                }
+
+                // If a gate needs destroying
+                if (lowestGateStatus < BG_SA_GATE_DESTROYED && targetGateObjId != 0)
+                {
+                    // Check if near workshop for bombs
+                    bool needBombs = true; // Check if bot has bombs already?
+                    float distWorkshopWest = bot->GetDistance(SA_WORKSHOP_WEST);
+                    float distWorkshopEast = bot->GetDistance(SA_WORKSHOP_EAST);
+
+                    if (needBombs && (distWorkshopWest < 50.0f || distWorkshopEast < 50.0f))
+                    {
+                        // Target bomb location if closer than gate
+                        Position workshopPos = (distWorkshopWest < distWorkshopEast) ? SA_WORKSHOP_WEST : SA_WORKSHOP_EAST;
+                        if (bot->GetDistance(workshopPos) < bot->GetDistance(targetGatePos))
+                        {
+                             pos.Set(workshopPos.GetPositionX(), workshopPos.GetPositionY(), workshopPos.GetPositionZ(), bot->GetMapId());
+                             BgObjective = nullptr; // Indicate position target, not object target
+                             // TODO: Add logic to actually USE bombs once acquired
+                        }
+                        else {
+                             BgObjective = bg->GetBGObject(targetGateObjId); // Target the gate itself
+                             if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                        }
+                    }
+                     else // Not near workshop or don't need bombs, target gate
+                    {
+                        BgObjective = bg->GetBGObject(targetGateObjId);
+                        if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                    }
+                }
+                // Priority 3: Capture Relic
+                else if (sotaBG->GateStatus[BG_SA_ANCIENT_GATE] == BG_SA_GATE_DESTROYED)
+                {
+                    BgObjective = bg->GetBGObject(BG_SA_GO_TITAN_RELIC);
+                     if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                }
+                // Priority 4: Capture Graveyards
+                else
+                {
+                    // Find closest reachable GY not owned by attackers
+                    float closestGyDist = FLT_MAX;
+                    uint32 targetGyFlagId = 0;
+
+                    // Check capturable GYs based on gate status
+                    if (sotaBG->GateStatus[BG_SA_GREEN_GATE] == BG_SA_GATE_DESTROYED || sotaBG->GateStatus[BG_SA_BLUE_GATE] == BG_SA_GATE_DESTROYED)
+                    {
+                         // Check Left/Right GYs (IDs: 191308/191307, 191306/191305)
+                         // Check Central GY (IDs: 191310/191309)
+                         // ... Check sotaBG->GraveyardStatus[...] != playerTeam
+                         // ... Calculate distance, find closest
+                    }
+                     if (sotaBG->GateStatus[BG_SA_YELLOW_GATE] == BG_SA_GATE_DESTROYED)
+                    {
+                        // Check Defender Last GY (Need its flag ID)
+                         // ... Check sotaBG->GraveyardStatus[...] != playerTeam
+                         // ... Calculate distance, find closest
+                    }
+
+                    if (targetGyFlagId != 0)
+                    {
+                        BgObjective = bg->GetBGObject(targetGyFlagId);
+                         if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                    }
+                }
+                 // Fallback: Attack nearby defenders or move towards next objective area
+                 if (!BgObjective && !pos.isSet())
+                 {
+                      // Move towards general area of next objective (e.g., courtyard if beach gates down)
+                 }
+            }
+            // --- Defender Logic ---
+            else // isDefender
+            {
+                 // Priority 1: Use Cannons (check if near, if available, target demolishers/players)
+
+                 // Priority 2: Defend Gates
+                 // Find the *foremost* intact gate line that has attackers nearby
+                 // Target enemy players/demolishers near that gate line
+
+                 // Priority 3: Defend/Recap Graveyards
+                 // Check if any controlled GYs are contested or lost, target them
+
+                 // Priority 4: Defend Relic Chamber (if Ancient Gate is down)
+
+                 // Fallback: Patrol between active defense points or attack nearby attackers
+            }
+
+            // Set the final objective position if an object was targeted
+            if (BgObjective && !pos.isSet()) // Ensure pos isn't already set by vehicle/bomb logic
+            {
+                 pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+            }
+
+            // Store the objective
+            if (pos.isSet())
+            {
+                posMap["bg objective"] = pos;
+                return true;
+            }
+            break; // End BATTLEGROUND_SA case
+        }
         default:
             break;
     }
@@ -4121,6 +4388,90 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
             closePlayers = *context->GetValue<GuidVector>("closest friendly players");
             flagRange = 25.0f;
             break;
+        }
+        case BATTLEGROUND_SA:
+        {
+            BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
+             if (!sotaBG) return false; // Should not happen
+
+             GameObject* interactTarget = nullptr;
+             float interactRange = INTERACTION_DISTANCE;
+
+             // Find nearby GY flags or the Relic
+            for (ObjectGuid const guid : closeObjects)
+            {
+                GameObject* go = botAI->GetGameObject(guid);
+                 if (!go || !go->isSpawned()) continue;
+
+                 // Check if it's a GY Flag (Need the list of IDs)
+                // static std::vector<uint32> const gyFlagIds = { /* GY Flag IDs */ };
+                // if (std::find(gyFlagIds.begin(), gyFlagIds.end(), go->GetEntry()) != gyFlagIds.end())
+                // {
+                //     if (sotaBG->CanInteractWithObject(go->GetEntry())) { // Check reachability
+                //         interactTarget = go;
+                //         break;
+                //     }
+                // }
+
+                 // Check if it's the Titan Relic
+                 if (go->GetEntry() == BG_SA_GO_TITAN_RELIC)
+                 {
+                      if (sotaBG->CanInteractWithObject(BG_SA_GO_TITAN_RELIC)) {
+                        interactTarget = go;
+                        break;
+                      }
+                 }
+            }
+
+             if (!interactTarget) return false; // No interactable objective nearby
+
+             // Check for nearby enemies first (similar to existing logic)
+            Unit* enemyPlayer = AI_VALUE(Unit*, "enemy player target");
+             if (enemyPlayer && enemyPlayer->IsAlive() && enemyPlayer->GetDistance(interactTarget) < 20.0f)
+             {
+                 context->GetValue<Unit*>("current target")->Set(enemyPlayer);
+                 return false; // Engage enemy first
+             }
+
+             // Check if friendly is already interacting (capturing GY flag)
+            // ... (similar logic using SPELL_CAPTURE_BANNER check) ...
+            // if (numCapturing > 0 && capturingPlayer) return true; // Let friendlies capture
+
+            float dist = bot->GetDistance(interactTarget);
+             if (dist < interactRange)
+             {
+                 if (bot->IsMounted()) bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
+                 if (bot->IsInDisallowedMountForm()) bot->RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
+
+                 // Interact with Relic
+                 if (interactTarget->GetEntry() == BG_SA_GO_TITAN_RELIC)
+                 {
+                     WorldPacket data(CMSG_GAMEOBJ_USE);
+                     data << interactTarget->GetGUID();
+                     bot->GetSession()->HandleGameObjectUseOpcode(data);
+                     resetObjective(); // Find new objective after interaction
+                     return true;
+                 }
+                 // Capture GY Flag (Assuming it uses SPELL_CAPTURE_BANNER)
+                 else // Must be a GY flag if not the relic
+                 {
+                     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_CAPTURE_BANNER);
+                     if (!spellInfo) return false;
+
+                     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+                     spell->m_targets.SetGOTarget(interactTarget);
+                     spell->prepare(&spell->m_targets);
+                     botAI->WaitForSpellCast(spell);
+                     resetObjective();
+                     return true;
+                 }
+             }
+             else
+             {
+                 // Move closer if not in range
+                 return MoveTo(bot->GetMapId(), interactTarget->GetPositionX(), interactTarget->GetPositionY(), interactTarget->GetPositionZ());
+             }
+             break; // End BATTLEGROUND_SA case
         }
         default:
             break;
