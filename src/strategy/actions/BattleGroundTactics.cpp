@@ -2511,7 +2511,8 @@ bool BGTactics::moveToStart(bool force)
              return false; // Should not happen
 
         TeamId playerTeam = bot->GetTeamId();
-        bool isAttacker = (playerTeam == sotaBG->Attackers);
+        TeamId attackerTeam = sotaBG->GetTeam(0); // Adjust as needed
+        bool isAttacker = (playerTeam == attackerTeam);
 
         if (isAttacker)
         {
