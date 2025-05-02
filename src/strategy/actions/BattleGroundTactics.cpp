@@ -2514,19 +2514,13 @@ bool BGTactics::moveToStart(bool force)
         
         // Get the Titan Relic GameObject
         GameObject* relic = bg->GetBGObject(BG_SA_TITAN_RELIC);
-        if (!relic) {
-            // Fallback: Use default behavior or log an error
-            return false;
-        }
+        if (!relic) return false;
         
-        // Check its faction
         uint32 relicFaction = relic->GetUInt32Value(GAMEOBJECT_FACTION);
         
-        // Determine if the bot is on the attacker team
         bool isAttacker = false;
-        if (relicFaction == FACTION_ALLIANCE && playerTeam == TEAM_ALLIANCE) {
-            isAttacker = true;
-        } else if (relicFaction == FACTION_HORDE && playerTeam == TEAM_HORDE) {
+        if ((relicFaction == BG_SA_Factions[0] && playerTeam == TEAM_ALLIANCE) ||
+            (relicFaction == BG_SA_Factions[1] && playerTeam == TEAM_HORDE)) {
             isAttacker = true;
         }
 
