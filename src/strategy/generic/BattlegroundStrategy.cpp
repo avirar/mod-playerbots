@@ -108,6 +108,24 @@ void IsleStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("in vehicle", NextAction::array(0, new NextAction("glaive throw", 70.0f), nullptr)));
 }
 
+void StrandStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
+{
+    triggers.push_back(
+        new TriggerNode("bg active", NextAction::array(0, new NextAction("bg check flag", 70.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("timer", NextAction::array(0, new NextAction("enter vehicle", 85.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("random", NextAction::array(0, new NextAction("leave vehicle", 80.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("in vehicle", NextAction::array(0, new NextAction("hurl boulder", 70.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("in vehicle", NextAction::array(0, new NextAction("ram", 70.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("enemy is close", NextAction::array(0, new NextAction("ram", 79.0f), nullptr)));
+    triggers.push_back(
+        new TriggerNode("in vehicle", NextAction::array(0, new NextAction("rocket blast", 70.0f), nullptr)));
+}
+
 void ArenaStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(
