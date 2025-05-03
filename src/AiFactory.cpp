@@ -485,6 +485,9 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
         if (bgType == BATTLEGROUND_IC)
             engine->addStrategy("isle", false);
 
+        if (bgType == BATTLEGROUND_SA)
+            engine->addStrategy("strand", false);
+
         if (player->InArena())
         {
             engine->addStrategy("arena", false);
