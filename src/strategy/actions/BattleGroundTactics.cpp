@@ -87,13 +87,18 @@ Position const IC_GATE_ATTACK_POS_ALLIANCE = {1091.273f, -763.619f, 42.352f, 0.0
 // SotA consts/etc
 // (Using enums/constants directly from BattlegroundSA.h is preferred where possible)
 // Object IDs (Example subset - get important ones from BattlegroundSA.h)
+// Gates
+/*
 const uint32 BG_SA_GO_GREEN_GATE = 190722;
 const uint32 BG_SA_GO_BLUE_GATE = 190724;
 const uint32 BG_SA_GO_RED_GATE = 190726;
 const uint32 BG_SA_GO_PURPLE_GATE = 190723;
 const uint32 BG_SA_GO_YELLOW_GATE = 190727;
 const uint32 BG_SA_GO_ANCIENT_GATE = 192549;
+*/
+// Relic
 const uint32 BG_SA_GO_TITAN_RELIC = 192834;
+// Bombs
 const uint32 BG_SA_GO_BOMB = 190753;
 // GY Flags (Alliance & Horde Banner versions - from BattlegroundSA.h ObjEntries)
 // Indices correspond to BG_SA_Objects enum: CENTRAL_FLAG=18, RIGHT_FLAG=19, LEFT_FLAG=20
@@ -3856,12 +3861,12 @@ bool BGTactics::selectObjective(bool reset)
                 bool inDemolisher = controlsVehicle && (vehicleId == BG_SA_NPC_DEMOLISHER); // Check if driving a Demolisher
 
                 // Get gate objects
-                GameObject* greenGate = bg->GetBGObject(BG_SA_GO_GREEN_GATE);
-                GameObject* blueGate = bg->GetBGObject(BG_SA_GO_BLUE_GATE);
-                GameObject* redGate = bg->GetBGObject(BG_SA_GO_RED_GATE);
-                GameObject* purpleGate = bg->GetBGObject(BG_SA_GO_PURPLE_GATE);
-                GameObject* yellowGate = bg->GetBGObject(BG_SA_GO_YELLOW_GATE);
-                GameObject* ancientGate = bg->GetBGObject(BG_SA_GO_ANCIENT_GATE);
+                GameObject* greenGate = bg->GetBGObject(BG_SA_GREEN_GATE);
+                GameObject* blueGate = bg->GetBGObject(BG_SA_BLUE_GATE);
+                GameObject* redGate = bg->GetBGObject(BG_SA_RED_GATE);
+                GameObject* purpleGate = bg->GetBGObject(BG_SA_PURPLE_GATE);
+                GameObject* yellowGate = bg->GetBGObject(BG_SA_YELLOW_GATE);
+                GameObject* ancientGate = bg->GetBGObject(BG_SA_ANCIENT_GATE);
 
                 // Inline check for gate destruction status
                 bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || (greenGate->getLootState() == GO_ACTIVATED));
