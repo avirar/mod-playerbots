@@ -102,7 +102,14 @@ bool IccGunshipCannonNearTrigger::IsActive()
 {
     if (bot->GetVehicle())
         return false;
-    
+
+    Unit* mount1 = bot->FindNearestCreature(36838, 100.0f);
+
+    Unit* mount2 = bot->FindNearestCreature(36839, 100.0f);
+
+    if (!mount1 && !mount2)
+        return false;
+
     if (!botAI->IsDps(bot))
         return false;
     // Player* master = botAI->GetMaster();
@@ -117,16 +124,23 @@ bool IccGunshipCannonNearTrigger::IsActive()
 
 bool IccGunshipTeleportAllyTrigger::IsActive()
 {
-    Unit* boss = AI_VALUE2(Unit*, "find target", "kor'kron battle-mage");
-    if (!boss) { return false; }
+    Unit* boss = bot->FindNearestCreature(36939, 100.0f);
+    if (!boss)
+        return false;
+
+    if (!boss->IsHostileTo(bot))
+        return false;
 
     return true;
 }
 
 bool IccGunshipTeleportHordeTrigger::IsActive()
 {
-    Unit* boss = AI_VALUE2(Unit*, "find target", "skybreaker sorcerer");
+    Unit* boss = bot->FindNearestCreature(36948, 100.0f);
     if (!boss)
+        return false;
+
+    if (!boss->IsHostileTo(bot))
         return false;
 
     return true;
