@@ -108,8 +108,8 @@ const uint32 BG_SA_NPC_DEMOLISHER = 28781;
 const uint32 BG_SA_NPC_CANNON = 27894;
 // ... Add workshop NPC IDs? (NPC_RIGGER_SPARKLIGHT, NPC_GORGRIL_RIGSPARK)
 // Positions (Define key locations)
-Position const SA_DOCK_WEST_A = { 1618.0f, 61.4f, 7.2f };      // West Dock
-Position const SA_DOCK_EAST_A = { 1611.5f, -117.2f, 8.7f };     // East Dock
+Position const SA_DOCK_WEST_A = { 1591.8f, 65.9f, 7.8f };      // West Dock
+Position const SA_DOCK_EAST_A = { 1583.1f, -126.1f, 9.4f };     // East Dock
 Position const SA_GREEN_GATE_POS = { 1411.5f, 108.1f, 28.6f };  // Approx Green Gate
 Position const SA_BLUE_GATE_POS = { 1431.3f, -219.4f, 30.8f }; // Approx Blue Gate
 Position const SA_COURTYARD_GY_POS = { 1215.1f, -65.7f, 70.0f }; // Approx Central GY Flagpole
