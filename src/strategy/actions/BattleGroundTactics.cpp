@@ -3869,12 +3869,12 @@ bool BGTactics::selectObjective(bool reset)
                 GameObject* ancientGate = bg->GetBGObject(BG_SA_ANCIENT_GATE);
 
                 // Inline check for gate destruction status
-                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || (greenGate->getLootState() == GO_ACTIVATED));
-                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || (blueGate->getLootState() == GO_ACTIVATED));
-                bool redDestroyed = (!redGate || !redGate->isSpawned() || (redGate->getLootState() == GO_ACTIVATED));
-                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || (purpleGate->getLootState() == GO_ACTIVATED));
-                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || (yellowGate->getLootState() == GO_ACTIVATED));
-                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || (ancientGate->getLootState() == GO_ACTIVATED));
+                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || greenGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || blueGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool redDestroyed = (!redGate || !redGate->isSpawned() || redGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || purpleGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || yellowGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || ancientGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
                 LOG_INFO("playerbots", "Bot {}: SA Attacker - Gate Status: G={}, B={}, R={}, P={}, Y={}, A={}",
                          bot->GetName(), greenDestroyed, blueDestroyed, redDestroyed, purpleDestroyed, yellowDestroyed, ancientDestroyed);
 
