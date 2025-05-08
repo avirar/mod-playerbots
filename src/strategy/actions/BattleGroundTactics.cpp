@@ -2547,7 +2547,6 @@ bool BGTactics::moveToStart(bool force)
             else // Boats have landed
             {
                 // Move to beach near dock
-                
                 if (bot->GetPositionY() < 0.0f)
                 {
                     LOG_INFO("playerbots", "Bot {}: SotA Attacker - Moving to East Dock", bot->GetName());
@@ -2562,7 +2561,6 @@ bool BGTactics::moveToStart(bool force)
                                            SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f),
                                             SA_DOCK_WEST_A.GetPositionZ());
                 }
-                else
 
                 return true;
             }
