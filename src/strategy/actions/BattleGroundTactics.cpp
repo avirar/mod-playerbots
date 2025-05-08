@@ -3870,6 +3870,8 @@ bool BGTactics::selectObjective(bool reset)
                 bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || (purpleGate->getLootState() == GO_ACTIVATED));
                 bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || (yellowGate->getLootState() == GO_ACTIVATED));
                 bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || (ancientGate->getLootState() == GO_ACTIVATED));
+                LOG_INFO("playerbots", "Bot {}: SA Attacker - Gate Status: G={}, B={}, R={}, P={}, Y={}, A={}",
+                         bot->GetName(), greenDestroyed, blueDestroyed, redDestroyed, purpleDestroyed, yellowDestroyed, ancientDestroyed);
 
                 GameObject* targetGate = nullptr;
                 Position targetPos; // Use this for non-object targets like workshops
