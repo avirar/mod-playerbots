@@ -2511,10 +2511,6 @@ bool BGTactics::moveToStart(bool force)
     }
     else if (bgType == BATTLEGROUND_SA)
     {
-        BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
-        if (!sotaBG)
-             return false; // Should not happen
-
         TeamId playerTeam = bot->GetTeamId();
         
         // Get the Titan Relic GameObject
@@ -3819,10 +3815,6 @@ bool BGTactics::selectObjective(bool reset)
         }
         case BATTLEGROUND_SA:
         {
-            BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
-            if (!sotaBG)
-                break; // Should not happen
-
             TeamId playerTeam = bot->GetTeamId();
 
             // Get the Titan Relic GameObject
