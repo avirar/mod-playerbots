@@ -4731,10 +4731,10 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
                 }
                 case BATTLEGROUND_SA: // SotA
                 {
-                    if (targetObjective->GetEntry() == BG_SA_GO_TITAN_RELIC) // Click the Relic
+                    if (go->GetEntry() == BG_SA_GO_TITAN_RELIC) // Click the Relic
                     {
                         WorldPacket data(CMSG_GAMEOBJ_USE);
-                        data << targetObjective->GetGUID();
+                        data << go->GetGUID();
                         bot->GetSession()->HandleGameObjectUseOpcode(data);
                         // Don't reset objective immediately, let the BG script handle the win/round end
                         botAI->SetNextCheckDelay(2000); // Wait a bit before potentially selecting new objective if round continues
@@ -4750,13 +4750,12 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
                             return false;
                         
                         Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
-                        spell->m_targets.SetGOTarget(targetObjective);
+                        spell->m_targets.SetGOTarget(go);
                         spell->prepare(&spell->m_targets);
                         botAI->WaitForSpellCast(spell);
                         resetObjective();
                         return true;
                     }
-                    break; // Should not reach here if targetObjective was valid SotA object
                 }
                 else
                 {
