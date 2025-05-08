@@ -3857,12 +3857,12 @@ bool BGTactics::selectObjective(bool reset)
                 GameObject* ancientGate = bg->GetBGObject(BG_SA_GO_ANCIENT_GATE);
 
                 // Inline check for gate destruction status
-                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || greenGate->GetGOValue()->Building.Health == 0);
-                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || blueGate->GetGOValue()->Building.Health == 0);
-                bool redDestroyed = (!redGate || !redGate->isSpawned() || redGate->GetGOValue()->Building.Health == 0);
-                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || purpleGate->GetGOValue()->Building.Health == 0);
-                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || yellowGate->GetGOValue()->Building.Health == 0);
-                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || ancientGate->GetGOValue()->Building.Health == 0);
+                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || (greenGate->getLootState() == GO_ACTIVATED));
+                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || (blueGate->getLootState() == GO_ACTIVATED));
+                bool redDestroyed = (!redGate || !redGate->isSpawned() || (redGate->getLootState() == GO_ACTIVATED));
+                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || (purpleGate->getLootState() == GO_ACTIVATED));
+                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || (yellowGate->getLootState() == GO_ACTIVATED));
+                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || (ancientGate->getLootState() == GO_ACTIVATED));
 
                 GameObject* targetGate = nullptr;
                 Position targetPos; // Use this for non-object targets like workshops
