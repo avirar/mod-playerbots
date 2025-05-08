@@ -2539,21 +2539,31 @@ bool BGTactics::moveToStart(bool force)
         if (isAttacker)
         {
             // Attackers start on boats or beach after landing
-            if (bg->GetStartDelayTime() > 3) // Boats docked
+            if (bg->GetStartDelayTime() > 5) // Boats docked
             {
+                LOG_INFO("playerbots", "Bot {}: SotA Attacker - StartDelayTime > 3, staying still", bot->GetName());
                 return true;
             }
             else // Boats have landed
             {
                 // Move to beach near dock
-                if (urand(0, 1))
-                    MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f),
-                                            SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f),
-                                            SA_DOCK_WEST_A.GetPositionZ());
-                else
+                
+                if (bot->GetPositionY() < 0.0f)
+                {
+                    LOG_INFO("playerbots", "Bot {}: SotA Attacker - Moving to East Dock", bot->GetName());
                     MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), 
                                             SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), 
                                             SA_DOCK_EAST_A.GetPositionZ());
+                }
+                else
+                {
+                    LOG_INFO("playerbots", "Bot {}: SotA Attacker - Moving to West Dock", bot->GetName());
+                    MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f),
+                                           SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f),
+                                            SA_DOCK_WEST_A.GetPositionZ());
+                }
+                else
+
                 return true;
             }
         }
@@ -2562,8 +2572,11 @@ bool BGTactics::moveToStart(bool force)
             // Defenders start inside the keep courtyard
             // Move to beach near dock
              if (urand(0, 1))
+                LOG_INFO("playerbots", "Bot {}: SotA Defender - Moving to East Dock", bot->GetName());
                 MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionZ());
              else
+            {
+                LOG_INFO("playerbots", "Bot {}: SotA Defender - Moving to West Dock", bot->GetName());
                 MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionZ());
         }
     }
