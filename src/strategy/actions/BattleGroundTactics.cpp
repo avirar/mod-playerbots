@@ -95,16 +95,21 @@ const uint32 BG_SA_GO_YELLOW_GATE = 190727;
 const uint32 BG_SA_GO_ANCIENT_GATE = 192549;
 const uint32 BG_SA_GO_TITAN_RELIC = 192834;
 const uint32 BG_SA_GO_BOMB = 190753;
-// ... Add GY flag object IDs (e.g., 191308, 191306, 191310 and Horde equivalents)
-
+// GY Flags (Alliance & Horde Banner versions - from BattlegroundSA.h ObjEntries)
+// Indices correspond to BG_SA_Objects enum: CENTRAL_FLAG=18, RIGHT_FLAG=19, LEFT_FLAG=20
+const uint32 BG_SA_GO_CENTRAL_FLAG_A = 191310; // BG_SA_ObjEntries[18] - Alliance version
+const uint32 BG_SA_GO_CENTRAL_FLAG_H = 191309; // BG_SA_ObjEntries[18] - Horde version (Entry - 1)
+const uint32 BG_SA_GO_RIGHT_FLAG_A = 191306;   // BG_SA_ObjEntries[19] - Alliance version
+const uint32 BG_SA_GO_RIGHT_FLAG_H = 191305;   // BG_SA_ObjEntries[19] - Horde version (Entry - 1)
+const uint32 BG_SA_GO_LEFT_FLAG_A = 191308;    // BG_SA_ObjEntries[20] - Alliance version
+const uint32 BG_SA_GO_LEFT_FLAG_H = 191307;    // BG_SA_ObjEntries[20] - Horde version (Entry - 1)
 // NPC IDs
 const uint32 BG_SA_NPC_DEMOLISHER = 28781;
 const uint32 BG_SA_NPC_CANNON = 27894;
-// ... Add workshop NPC IDs if needed (NPC_RIGGER_SPARKLIGHT, NPC_GORGRIL_RIGSPARK)
-
+// ... Add workshop NPC IDs? (NPC_RIGGER_SPARKLIGHT, NPC_GORGRIL_RIGSPARK)
 // Positions (Define key locations)
-Position const SA_DOCK_WEST_A = { 1618.0f, 61.4f, 7.2f };      // Example Attacker West Dock
-Position const SA_DOCK_EAST_A = { 1611.5f, -117.2f, 8.7f };     // Example Attacker East Dock
+Position const SA_DOCK_WEST_A = { 1618.0f, 61.4f, 7.2f };      // West Dock
+Position const SA_DOCK_EAST_A = { 1611.5f, -117.2f, 8.7f };     // East Dock
 Position const SA_GREEN_GATE_POS = { 1411.5f, 108.1f, 28.6f };  // Approx Green Gate
 Position const SA_BLUE_GATE_POS = { 1431.3f, -219.4f, 30.8f }; // Approx Blue Gate
 Position const SA_COURTYARD_GY_POS = { 1215.1f, -65.7f, 70.0f }; // Approx Central GY Flagpole
@@ -173,6 +178,13 @@ std::vector<uint32> const vFlagsIC = {GO_HORDE_BANNER,
                                       GO_HORDE_BANNER_GRAVEYARD_H,
                                       GO_HORDE_BANNER_GRAVEYARD_H_CONT};
 
+std::vector<uint32> const vFlagsSA = {BG_SA_GO_CENTRAL_FLAG_A,
+                                        BG_SA_GO_CENTRAL_FLAG_H,
+                                        BG_SA_GO_RIGHT_FLAG_A,
+                                        BG_SA_GO_RIGHT_FLAG_H,
+                                        BG_SA_GO_LEFT_FLAG_A,
+                                        BG_SA_GO_LEFT_FLAG_H,
+                                        BG_SA_GO_TITAN_RELIC};
 // BG Waypoints (vmangos)
 
 // Horde Flag Room to Horde Graveyard
@@ -2291,14 +2303,7 @@ bool BGTactics::Execute(Event event)
         case BATTLEGROUND_SA:
         {
             vPaths = &vPaths_SA;
-            // SotA doesn't have traditional flags like AB/WSG for capture points,
-            // but GY flags can be captured. Gates and Relic are main objectives.
-            // Decide how to represent objectives. Maybe a custom list or repurpose vFlagIds?
-            // For now, let's assume GY flags are the main "capturable" similar items.
-            // Need to define vFlagsSA containing the GY flag object IDs.
-            // static std::vector<uint32> const vFlagsSA = { /* GY Flag IDs */ };
-            // vFlagIds = &vFlagsSA;
-            vFlagIds = nullptr; // Or handle objectives differently in selectObjective
+            vFlagIds = &vFlagsSA;
             break;
         }
         default:
@@ -4467,6 +4472,7 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
         case BATTLEGROUND_AV:
         case BATTLEGROUND_AB:
         case BATTLEGROUND_IC:
+        case BATTLEGROUND_SA:
         {
             // For territory control BGs, use standard interaction range
             closeObjects = *context->GetValue<GuidVector>("closest game objects");
@@ -4482,90 +4488,6 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
             closePlayers = *context->GetValue<GuidVector>("closest friendly players");
             flagRange = 25.0f;
             break;
-        }
-        case BATTLEGROUND_SA:
-        {
-            BattlegroundSA* sotaBG = dynamic_cast<BattlegroundSA*>(bg);
-             if (!sotaBG) return false; // Should not happen
-
-             GameObject* interactTarget = nullptr;
-             float interactRange = INTERACTION_DISTANCE;
-
-             // Find nearby GY flags or the Relic
-            for (ObjectGuid const guid : closeObjects)
-            {
-                GameObject* go = botAI->GetGameObject(guid);
-                 if (!go || !go->isSpawned()) continue;
-
-                 // Check if it's a GY Flag (Need the list of IDs)
-                // static std::vector<uint32> const gyFlagIds = { /* GY Flag IDs */ };
-                // if (std::find(gyFlagIds.begin(), gyFlagIds.end(), go->GetEntry()) != gyFlagIds.end())
-                // {
-                //     if (sotaBG->CanInteractWithObject(go->GetEntry())) { // Check reachability
-                //         interactTarget = go;
-                //         break;
-                //     }
-                // }
-
-                 // Check if it's the Titan Relic
-                 if (go->GetEntry() == BG_SA_GO_TITAN_RELIC)
-                 {
-                      if (sotaBG->CanInteractWithObject(BG_SA_GO_TITAN_RELIC)) {
-                        interactTarget = go;
-                        break;
-                      }
-                 }
-            }
-
-             if (!interactTarget) return false; // No interactable objective nearby
-
-             // Check for nearby enemies first (similar to existing logic)
-            Unit* enemyPlayer = AI_VALUE(Unit*, "enemy player target");
-             if (enemyPlayer && enemyPlayer->IsAlive() && enemyPlayer->GetDistance(interactTarget) < 20.0f)
-             {
-                 context->GetValue<Unit*>("current target")->Set(enemyPlayer);
-                 return false; // Engage enemy first
-             }
-
-             // Check if friendly is already interacting (capturing GY flag)
-            // ... (similar logic using SPELL_CAPTURE_BANNER check) ...
-            // if (numCapturing > 0 && capturingPlayer) return true; // Let friendlies capture
-
-            float dist = bot->GetDistance(interactTarget);
-             if (dist < interactRange)
-             {
-                 if (bot->IsMounted()) bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
-                 if (bot->IsInDisallowedMountForm()) bot->RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
-
-                 // Interact with Relic
-                 if (interactTarget->GetEntry() == BG_SA_GO_TITAN_RELIC)
-                 {
-                     WorldPacket data(CMSG_GAMEOBJ_USE);
-                     data << interactTarget->GetGUID();
-                     bot->GetSession()->HandleGameObjectUseOpcode(data);
-                     resetObjective(); // Find new objective after interaction
-                     return true;
-                 }
-                 // Capture GY Flag (Assuming it uses SPELL_CAPTURE_BANNER)
-                 else // Must be a GY flag if not the relic
-                 {
-                     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_CAPTURE_BANNER);
-                     if (!spellInfo) return false;
-
-                     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
-                     spell->m_targets.SetGOTarget(interactTarget);
-                     spell->prepare(&spell->m_targets);
-                     botAI->WaitForSpellCast(spell);
-                     resetObjective();
-                     return true;
-                 }
-             }
-             else
-             {
-                 // Move closer if not in range
-                 return MoveTo(bot->GetMapId(), interactTarget->GetPositionX(), interactTarget->GetPositionY(), interactTarget->GetPositionZ());
-             }
-             break; // End BATTLEGROUND_SA case
         }
         default:
             break;
@@ -4806,6 +4728,35 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
 
                     resetObjective();
                     return true;
+                }
+                case BATTLEGROUND_SA: // SotA
+                {
+                    if (targetObjective->GetEntry() == BG_SA_GO_TITAN_RELIC) // Click the Relic
+                    {
+                        WorldPacket data(CMSG_GAMEOBJ_USE);
+                        data << targetObjective->GetGUID();
+                        bot->GetSession()->HandleGameObjectUseOpcode(data);
+                        // Don't reset objective immediately, let the BG script handle the win/round end
+                        botAI->SetNextCheckDelay(2000); // Wait a bit before potentially selecting new objective if round continues
+                        return true;
+                    }
+                    else // GY flag
+                    {
+                        // Prevent capturing from inside flag pole? (Check if needed for SotA flags)
+                        // if (dist == 0.0f) { ... move away ... }
+                        
+                        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_CAPTURE_BANNER);
+                        if (!spellInfo) 
+                            return false;
+                        
+                        Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+                        spell->m_targets.SetGOTarget(targetObjective);
+                        spell->prepare(&spell->m_targets);
+                        botAI->WaitForSpellCast(spell);
+                        resetObjective();
+                        return true;
+                    }
+                    break; // Should not reach here if targetObjective was valid SotA object
                 }
                 else
                 {
