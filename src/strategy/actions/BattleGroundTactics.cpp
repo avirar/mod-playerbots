@@ -3880,6 +3880,7 @@ bool BGTactics::selectObjective(bool reset)
 
                 GameObject* targetGate = nullptr;
                 Position targetPos; // Use this for non-object targets like workshops
+                float minDist = FLT_MAX;
 
                 // --- Logic if Controlling a Demolisher ---
                 if (inDemolisher)
