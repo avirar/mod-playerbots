@@ -2569,13 +2569,16 @@ bool BGTactics::moveToStart(bool force)
         {
             // Defenders start inside the keep courtyard
             // Move to beach near dock
-             if (urand(0, 1))
+            if (urand(0, 1))
+            {
                 LOG_INFO("playerbots", "Bot {}: SotA Defender - Moving to East Dock", bot->GetName());
                 MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_WEST_A.GetPositionZ());
-             else
+            }
+            else
             {
                 LOG_INFO("playerbots", "Bot {}: SotA Defender - Moving to West Dock", bot->GetName());
                 MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), SA_DOCK_EAST_A.GetPositionZ());
+            }
         }
     }
 
