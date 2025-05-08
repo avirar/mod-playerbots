@@ -3865,6 +3865,37 @@ bool BGTactics::selectObjective(bool reset)
 
             uint32 role = context->GetValue<uint32>("bg role")->Get(); // 0-9 role
 
+            // --- Attacker Logic ---
+            if (isAttacker)
+            {
+                // Check Vehicle Status
+                bool inVehicle = botAI->IsInVehicle();
+                bool controlsVehicle = botAI->IsInVehicle(true); // Check if driver
+                uint32 vehicleId = inVehicle ? bot->GetVehicleBase()->GetEntry() : 0;
+                bool inDemolisher = controlsVehicle && (vehicleId == BG_SA_NPC_DEMOLISHER); // Check if driving a Demolisher
+
+                // Get gate objects
+                GameObject* greenGate = bg->GetBGObject(BG_SA_GREEN_GATE);
+                GameObject* blueGate = bg->GetBGObject(BG_SA_BLUE_GATE);
+                GameObject* redGate = bg->GetBGObject(BG_SA_RED_GATE);
+                GameObject* purpleGate = bg->GetBGObject(BG_SA_PURPLE_GATE);
+                GameObject* yellowGate = bg->GetBGObject(BG_SA_YELLOW_GATE);
+                GameObject* ancientGate = bg->GetBGObject(BG_SA_ANCIENT_GATE);
+
+                // Inline check for gate destruction status
+                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || greenGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || blueGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool redDestroyed = (!redGate || !redGate->isSpawned() || redGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || purpleGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || yellowGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || ancientGate->GetDestructibleState() == GO_DESTRUCTIBLE_DESTROYED);
+                LOG_INFO("playerbots", "Bot {}: SA Attacker - Gate Status: G={}, B={}, R={}, P={}, Y={}, A={}",
+                         bot->GetName(), greenDestroyed, blueDestroyed, redDestroyed, purpleDestroyed, yellowDestroyed, ancientDestroyed);
+
+                GameObject* targetGate = nullptr;
+                Position targetPos; // Use this for non-object targets like workshops
+                float minDist = FLT_MAX;
+
                 // --- Logic if Controlling a Demolisher ---
                 if (inDemolisher)
                 {
