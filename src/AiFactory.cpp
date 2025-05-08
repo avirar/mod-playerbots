@@ -745,6 +745,9 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         if (bgType == BATTLEGROUND_IC)
             nonCombatEngine->addStrategy("isle", false);
 
+        if (bgType == BATTLEGROUND_SA)
+            nonCombatEngine->addStrategy("strand", false);
+
         if (player->InArena())
         {
             nonCombatEngine->addStrategy("arena", false);
