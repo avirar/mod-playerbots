@@ -726,7 +726,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         if (bgType == BATTLEGROUND_RB)
             bgType = player->GetBattleground()->GetBgTypeID(true);
 
-        if ((bgType <= BATTLEGROUND_EY || bgType == BATTLEGROUND_IC) &&
+        if ((bgType <= BATTLEGROUND_EY || bgType == BATTLEGROUND_IC || bgType == BATTLEGROUND_SA) &&
             !player->InArena())  // do not add for not supported bg or arena
             nonCombatEngine->addStrategy("battleground", false);
 
