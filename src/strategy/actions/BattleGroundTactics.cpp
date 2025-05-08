@@ -2528,12 +2528,21 @@ bool BGTactics::moveToStart(bool force)
         if (isAttacker)
         {
             // Attackers start on boats or beach after landing
-            if (bg->GetStartDelayTime() > 0) // Still on boats
+            if (bg->GetStartDelayTime() > 3) // Boats docked
             {
                 return true;
             }
             else // Boats have landed
             {
+                // Move to beach near dock
+                if (urand(0, 1))
+                    MoveTo(bg->GetMapId(), SA_DOCK_WEST_A.GetPositionX() + frand(-10.0f, 10.0f),
+                                            SA_DOCK_WEST_A.GetPositionY() + frand(-10.0f, 10.0f),
+                                            SA_DOCK_WEST_A.GetPositionZ());
+                else
+                    MoveTo(bg->GetMapId(), SA_DOCK_EAST_A.GetPositionX() + frand(-10.0f, 10.0f), 
+                                            SA_DOCK_EAST_A.GetPositionY() + frand(-10.0f, 10.0f), 
+                                            SA_DOCK_EAST_A.GetPositionZ());
                 return true;
             }
         }
