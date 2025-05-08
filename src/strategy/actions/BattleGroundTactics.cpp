@@ -3819,117 +3819,204 @@ bool BGTactics::selectObjective(bool reset)
                 break; // Should not happen
 
             TeamId playerTeam = bot->GetTeamId();
-            bool isAttacker = (playerTeam == sotaBG->Attackers);
+
+            // Get the Titan Relic GameObject
+            GameObject* relic = bg->GetBGObject(BG_SA_TITAN_RELIC);
+            if (!relic) return false;
+
+            uint32 relicFaction = relic->GetUInt32Value(GAMEOBJECT_FACTION);
+
+            bool isAttacker = false;
+            if ((relicFaction == BG_SA_Factions[0] && playerTeam == TEAM_ALLIANCE) ||
+                (relicFaction == BG_SA_Factions[1] && playerTeam == TEAM_HORDE)) {
+                isAttacker = true;
+            }
+
             uint32 role = context->GetValue<uint32>("bg role")->Get(); // 0-9 role
 
             // --- Attacker Logic ---
             if (isAttacker)
             {
-                // Priority 1: Use Demolisher to attack gates
-                // Check if workshops captured, if demolisher available, if bot close enough
-                // If yes, target demolisher NPC/GO to enter
-                // If already IN demolisher, target next gate
+                // Check Vehicle Status
+                bool inVehicle = botAI->IsInVehicle();
+                bool controlsVehicle = botAI->IsInVehicle(true); // Check if driver
+                uint32 vehicleId = inVehicle ? bot->GetVehicleBase()->GetEntry() : 0;
+                bool inDemolisher = controlsVehicle && (vehicleId == BG_SA_NPC_DEMOLISHER); // Check if driving a Demolisher
 
-                // Priority 2: Destroy Gates (on foot)
-                // Find the *closest* gate in the *foremost* line that isn't destroyed
-                int lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Sentinel value
-                uint32 targetGateObjId = 0;
-                Position targetGatePos;
+                // Get gate objects
+                GameObject* greenGate = bg->GetBGObject(BG_SA_GO_GREEN_GATE);
+                GameObject* blueGate = bg->GetBGObject(BG_SA_GO_BLUE_GATE);
+                GameObject* redGate = bg->GetBGObject(BG_SA_GO_RED_GATE);
+                GameObject* purpleGate = bg->GetBGObject(BG_SA_GO_PURPLE_GATE);
+                GameObject* yellowGate = bg->GetBGObject(BG_SA_GO_YELLOW_GATE);
+                GameObject* ancientGate = bg->GetBGObject(BG_SA_GO_ANCIENT_GATE);
 
-                // Check beach gates first
-                if (sotaBG->GateStatus[BG_SA_GREEN_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_GREEN_GATE]; targetGateObjId = BG_SA_GO_GREEN_GATE; targetGatePos = SA_GREEN_GATE_POS; }
-                if (sotaBG->GateStatus[BG_SA_BLUE_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_BLUE_GATE]; targetGateObjId = BG_SA_GO_BLUE_GATE; targetGatePos = SA_BLUE_GATE_POS; }
+                // Inline check for gate destruction status
+                bool greenDestroyed = (!greenGate || !greenGate->isSpawned() || greenGate->GetGOValue()->Building.Health == 0);
+                bool blueDestroyed = (!blueGate || !blueGate->isSpawned() || blueGate->GetGOValue()->Building.Health == 0);
+                bool redDestroyed = (!redGate || !redGate->isSpawned() || redGate->GetGOValue()->Building.Health == 0);
+                bool purpleDestroyed = (!purpleGate || !purpleGate->isSpawned() || purpleGate->GetGOValue()->Building.Health == 0);
+                bool yellowDestroyed = (!yellowGate || !yellowGate->isSpawned() || yellowGate->GetGOValue()->Building.Health == 0);
+                bool ancientDestroyed = (!ancientGate || !ancientGate->isSpawned() || ancientGate->GetGOValue()->Building.Health == 0);
 
-                // If beach gates destroyed, check courtyard gates
-                if (lowestGateStatus == BG_SA_GATE_DESTROYED)
+                GameObject* targetGate = nullptr;
+                Position targetPos; // Use this for non-object targets like workshops
+
+                // --- Logic if Controlling a Demolisher ---
+                if (inDemolisher)
                 {
-                    lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
-                    if (sotaBG->GateStatus[BG_SA_RED_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_RED_GATE]; /* Get Red Gate ID/Pos */ }
-                    if (sotaBG->GateStatus[BG_SA_PURPLE_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_PURPLE_GATE]; /* Get Purple Gate ID/Pos */ }
+                    // Find the closest relevant, non-destroyed gate to attack
+                    float minDist = FLT_MAX;
 
-                     // If courtyard gates destroyed, check keep gates
-                    if (lowestGateStatus == BG_SA_GATE_DESTROYED)
-                    {
-                         lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
-                        if (sotaBG->GateStatus[BG_SA_YELLOW_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_YELLOW_GATE]; /* Get Yellow Gate ID/Pos */ }
-
-                        if (lowestGateStatus == BG_SA_GATE_DESTROYED)
-                        {
-                            lowestGateStatus = BG_SA_GATE_DESTROYED + 1; // Reset sentinel
-                            if (sotaBG->GateStatus[BG_SA_ANCIENT_GATE] < lowestGateStatus) { lowestGateStatus = sotaBG->GateStatus[BG_SA_ANCIENT_GATE]; /* Get Ancient Gate ID/Pos */ }
+                    // Lambda to check and set target if gate is valid and closer
+                    auto checkAndSetDemoTarget = [&](GameObject* gate) {
+                        bool destroyed = (!gate || !gate->isSpawned() || gate->GetGOValue()->Building.Health == 0);
+                        if (!destroyed) {
+                            float dist = bot->GetDistance(gate); // Distance from vehicle
+                            if (dist < minDist) {
+                                minDist = dist;
+                                targetGate = gate;
+                            }
                         }
+                    };
+
+                    // Determine relevant gates based on progression
+                    if (!greenDestroyed || !blueDestroyed) { // Beach tier
+                        minDist = FLT_MAX;
+                        checkAndSetDemoTarget(greenGate);
+                        checkAndSetDemoTarget(blueGate);
+                    } else if (!redDestroyed || !purpleDestroyed) { // Courtyard tier (requires Beach breach)
+                        minDist = FLT_MAX;
+                        checkAndSetDemoTarget(redGate);
+                        checkAndSetDemoTarget(purpleGate);
+                    } else if (!yellowDestroyed) { // Keep tier 1 (requires Courtyard breach)
+                        targetGate = yellowGate;
+                    } else if (!ancientDestroyed) { // Keep tier 2 (requires Yellow breach)
+                        targetGate = ancientGate;
+                    }
+                    // If all gates down, demolisher has no primary target (maybe attack players?)
+                    // Fallback handled later if targetGate remains null
+
+                    if (targetGate) {
+                        BgObjective = targetGate; // Target the gate object directly for the vehicle
+                        pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
+                    }
+                    // Add fallback for demolisher if no gates left? Attack players near relic?
+                    else if (ancientDestroyed) {
+                         // Move towards relic or attack nearby enemies
+                         Unit* enemy = AI_VALUE(Unit*, "enemy player target");
+                         if (enemy && enemy->IsAlive() && bot->GetDistance(enemy) < 100.0f) // Range check suitable for demolisher
+                         {
+                             BgObjective = enemy;
+                             pos.Set(enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ(), bot->GetMapId());
+                         } else {
+                            pos.Set(SA_RELIC_POS.GetPositionX(), SA_RELIC_POS.GetPositionY(), SA_RELIC_POS.GetPositionZ(), bot->GetMapId());
+                         }
                     }
                 }
-
-                // If a gate needs destroying
-                if (lowestGateStatus < BG_SA_GATE_DESTROYED && targetGateObjId != 0)
-                {
-                    // Check if near workshop for bombs
-                    bool needBombs = true; // Check if bot has bombs already?
-                    float distWorkshopWest = bot->GetDistance(SA_WORKSHOP_WEST);
-                    float distWorkshopEast = bot->GetDistance(SA_WORKSHOP_EAST);
-
-                    if (needBombs && (distWorkshopWest < 50.0f || distWorkshopEast < 50.0f))
-                    {
-                        // Target bomb location if closer than gate
-                        Position workshopPos = (distWorkshopWest < distWorkshopEast) ? SA_WORKSHOP_WEST : SA_WORKSHOP_EAST;
-                        if (bot->GetDistance(workshopPos) < bot->GetDistance(targetGatePos))
-                        {
-                             pos.Set(workshopPos.GetPositionX(), workshopPos.GetPositionY(), workshopPos.GetPositionZ(), bot->GetMapId());
-                             BgObjective = nullptr; // Indicate position target, not object target
-                             // TODO: Add logic to actually USE bombs once acquired
-                        }
-                        else {
-                             BgObjective = bg->GetBGObject(targetGateObjId); // Target the gate itself
-                             if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
-                        }
-                    }
-                     else // Not near workshop or don't need bombs, target gate
-                    {
-                        BgObjective = bg->GetBGObject(targetGateObjId);
-                        if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
-                    }
-                }
-                // Priority 3: Capture Relic
-                else if (sotaBG->GateStatus[BG_SA_ANCIENT_GATE] == BG_SA_GATE_DESTROYED)
-                {
-                    BgObjective = bg->GetBGObject(BG_SA_GO_TITAN_RELIC);
-                     if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
-                }
-                // Priority 4: Capture Graveyards
+                // --- Logic if NOT Controlling a Demolisher ---
                 else
                 {
-                    // Find closest reachable GY not owned by attackers
-                    float closestGyDist = FLT_MAX;
-                    uint32 targetGyFlagId = 0;
+                    // Priority 1: Target Gates (if not all destroyed)
+                    if (!ancientDestroyed)
+                    {
+                        float minDist = FLT_MAX;
+                        // Determine which tier is the current focus
+                        if (!greenDestroyed || !blueDestroyed) { // Beach tier
+                             minDist = FLT_MAX;
+                             if (!greenDestroyed && bot->GetDistance(greenGate) < minDist) { minDist = bot->GetDistance(greenGate); targetGate = greenGate; }
+                             if (!blueDestroyed && bot->GetDistance(blueGate) < minDist) { targetGate = blueGate; }
+                        } else if (!redDestroyed || !purpleDestroyed) { // Courtyard tier
+                             minDist = FLT_MAX;
+                             if (!redDestroyed && bot->GetDistance(redGate) < minDist) { minDist = bot->GetDistance(redGate); targetGate = redGate; }
+                             if (!purpleDestroyed && bot->GetDistance(purpleGate) < minDist) { targetGate = purpleGate; }
+                        } else if (!yellowDestroyed) { // Keep tier 1
+                            targetGate = yellowGate;
+                        } else { // Must be Ancient Gate (since !ancientDestroyed check passed)
+                            targetGate = ancientGate;
+                        }
 
-                    // Check capturable GYs based on gate status
-                    if (sotaBG->GateStatus[BG_SA_GREEN_GATE] == BG_SA_GATE_DESTROYED || sotaBG->GateStatus[BG_SA_BLUE_GATE] == BG_SA_GATE_DESTROYED)
-                    {
-                         // Check Left/Right GYs (IDs: 191308/191307, 191306/191305)
-                         // Check Central GY (IDs: 191310/191309)
-                         // ... Check sotaBG->GraveyardStatus[...] != playerTeam
-                         // ... Calculate distance, find closest
-                    }
-                     if (sotaBG->GateStatus[BG_SA_YELLOW_GATE] == BG_SA_GATE_DESTROYED)
-                    {
-                        // Check Defender Last GY (Need its flag ID)
-                         // ... Check sotaBG->GraveyardStatus[...] != playerTeam
-                         // ... Calculate distance, find closest
+                        // If a gate is targeted, consider workshops/bombs
+                        if (targetGate)
+                        {
+                            // TODO: Implement Bomb logic more thoroughly (checking inventory, proximity to workshop vs gate)
+                            // bool hasBombs = false; // Check inventory/aura
+                            bool nearWorkshop = false;
+                            Position workshopPos;
+                            float distWorkshopWest = bot->GetDistance(SA_WORKSHOP_WEST);
+                            float distWorkshopEast = bot->GetDistance(SA_WORKSHOP_EAST);
+
+                             // Only consider workshops if beach or courtyard gates are the target
+                             bool workshopRelevant = (!greenDestroyed || !blueDestroyed || !redDestroyed || !purpleDestroyed);
+
+                            if (workshopRelevant && (distWorkshopWest < 50.0f || distWorkshopEast < 50.0f))
+                            {
+                                 nearWorkshop = true;
+                                 workshopPos = (distWorkshopWest < distWorkshopEast) ? SA_WORKSHOP_WEST : SA_WORKSHOP_EAST;
+                            }
+
+                            // Basic logic: If near workshop, go there first unless already have bombs?
+                            // if (nearWorkshop /* && !hasBombs */ && bot->GetDistance(workshopPos) < bot->GetDistance(targetGate))
+                            // {
+                            //     targetPos = workshopPos;
+                            //     BgObjective = nullptr;
+                            // }
+                            // else
+                            {
+                                 BgObjective = targetGate;
+                                 pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
+                            }
+                        }
                     }
 
-                    if (targetGyFlagId != 0)
+                    // Priority 2: Capture Relic (only if Ancient Gate is down)
+                    if (!targetGate && !pos.isSet() && ancientDestroyed)
                     {
-                        BgObjective = bg->GetBGObject(targetGyFlagId);
-                         if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                        BgObjective = relic;
+                        if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
                     }
-                }
-                 // Fallback: Attack nearby defenders or move towards next objective area
-                 if (!BgObjective && !pos.isSet())
-                 {
-                      // Move towards general area of next objective (e.g., courtyard if beach gates down)
-                 }
-            }
+
+                    // Priority 3: Capture Graveyards (only if no primary gate/relic target)
+                    if (!BgObjective && !pos.isSet())
+                    {
+                        // TODO: Implement GY capture logic based on reachability (gate status) and ownership
+                        // Example structure:
+                        // float closestGyDist = FLT_MAX;
+                        // uint32 targetGyFlagId = 0;
+                        // Check reachability based on green/blue destroyed for Left/Right/Central GYs
+                        // Check reachability based on yellow destroyed for Defender Last GY
+                        // If reachable and not friendly team controlled, check distance and update targetGyFlagId/closestGyDist
+                        // if (targetGyFlagId != 0) {
+                        //    BgObjective = bg->GetBGObject(targetGyFlagId);
+                        //    if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                        // }
+                    }
+
+                    // Priority 4: Attack Enemies/Default Move
+                    if (!BgObjective && !pos.isSet())
+                    {
+                        Unit* enemy = AI_VALUE(Unit*, "enemy player target");
+                        if (enemy && enemy->IsAlive()) {
+                            BgObjective = enemy;
+                            pos.Set(enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ(), bot->GetMapId());
+                        } else {
+                            // Default move: towards the determined target gate, or relic if all gates down
+                            if (targetGate) // If we identified a gate earlier but didn't set it as objective (e.g., workshop override)
+                                pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
+                            else if (ancientDestroyed)
+                                pos.Set(SA_RELIC_POS.GetPositionX(), SA_RELIC_POS.GetPositionY(), SA_RELIC_POS.GetPositionZ(), bot->GetMapId());
+                            else // Default to a beach gate pos if nothing else found
+                            {
+                                Position fallbackPos = SA_GREEN_GATE_POS;
+                                if (blueGate && (!greenGate || bot->GetDistance(blueGate) < bot->GetDistance(greenGate)))
+                                    fallbackPos = SA_BLUE_GATE_POS;
+                                pos.Set(fallbackPos.GetPositionX(), fallbackPos.GetPositionY(), fallbackPos.GetPositionZ(), bot->GetMapId());
+                            }
+                        }
+                    }
+                } // End of !inDemolisher logic
+
+            } // End of Attacker Logic
             // --- Defender Logic ---
             else // isDefender
             {
