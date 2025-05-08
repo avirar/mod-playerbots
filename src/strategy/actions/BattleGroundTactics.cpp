@@ -2515,16 +2515,22 @@ bool BGTactics::moveToStart(bool force)
         
         // Get the Titan Relic GameObject
         GameObject* relic = bg->GetBGObject(BG_SA_TITAN_RELIC);
-        if (!relic) return false;
+        if (!relic) 
+        {
+            LOG_ERROR("playerbots", "Bot {}: Could not find Titan Relic object in SA.", bot->GetName());
+            return false;
+        }
         
         uint32 relicFaction = relic->GetUInt32Value(GAMEOBJECT_FACTION);
+        LOG_INFO("playerbots", "Bot {}: SA Relic Faction is {}.", bot->GetName(), relicFaction);
         
         bool isAttacker = false;
         if ((relicFaction == BG_SA_Factions[0] && playerTeam == TEAM_ALLIANCE) ||
             (relicFaction == BG_SA_Factions[1] && playerTeam == TEAM_HORDE)) {
             isAttacker = true;
         }
-
+        LOG_INFO("playerbots", "Bot {}: Determined role in SA: {}", bot->GetName(), isAttacker ? "Attacker" : "Defender");
+        
         if (isAttacker)
         {
             // Attackers start on boats or beach after landing
