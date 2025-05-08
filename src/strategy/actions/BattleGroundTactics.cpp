@@ -3884,157 +3884,228 @@ bool BGTactics::selectObjective(bool reset)
                 // --- Logic if Controlling a Demolisher ---
                 if (inDemolisher)
                 {
-                    // Find the closest relevant, non-destroyed gate to attack
-                    float minDist = FLT_MAX;
+                    LOG_INFO("playerbots", "Bot {}: SA Attacker - In Demolisher logic.", bot->GetName());
+                    // --- Determine Target Gate for Demolisher ---
+                    if (!greenDestroyed || !blueDestroyed) // Beach tier
+                    {
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - Targeting Beach Tier.", bot->GetName());
+                        minDist = FLT_MAX; // Reset min distance for this tier
+                        targetGate = nullptr; // Reset target for this tier
 
-                    // Lambda to check and set target if gate is valid and closer
-                    auto checkAndSetDemoTarget = [&](GameObject* gate) {
-                        bool destroyed = (!gate || !gate->isSpawned() || gate->GetGOValue()->Building.Health == 0);
-                        if (!destroyed) {
-                            float dist = bot->GetDistance(gate); // Distance from vehicle
-                            if (dist < minDist) {
-                                minDist = dist;
-                                targetGate = gate;
+                        // Check Green
+                        if (!greenDestroyed && greenGate) {
+                            float distG = bot->GetDistance(greenGate);
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Beach Tier - Green Gate Dist: {:.2f}", bot->GetName(), distG);
+                            if (distG < minDist) {
+                                minDist = distG;
+                                targetGate = greenGate;
                             }
                         }
-                    };
+                        // Check Blue, compare against current minDist (which might be Green's dist)
+                        if (!blueDestroyed && blueGate) {
+                            float distB = bot->GetDistance(blueGate);
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Beach Tier - Blue Gate Dist: {:.2f} (Current Min: {:.2f})", bot->GetName(), distB, minDist);
+                            if (distB < minDist) {
+                                // minDist = distB; // Update minDist if needed elsewhere
+                                targetGate = blueGate; // Blue is closer than current best
+                            }
+                        }
+                        if (targetGate) LOG_INFO("playerbots", "Bot {}: SA Demolisher - Beach Tier - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry()); else LOG_INFO("playerbots", "Bot {}: SA Demolisher - Beach Tier - No valid target found!", bot->GetName());
 
-                    // Determine relevant gates based on progression
-                    if (!greenDestroyed || !blueDestroyed) { // Beach tier
-                        minDist = FLT_MAX;
-                        checkAndSetDemoTarget(greenGate);
-                        checkAndSetDemoTarget(blueGate);
-                    } else if (!redDestroyed || !purpleDestroyed) { // Courtyard tier (requires Beach breach)
-                        minDist = FLT_MAX;
-                        checkAndSetDemoTarget(redGate);
-                        checkAndSetDemoTarget(purpleGate);
-                    } else if (!yellowDestroyed) { // Keep tier 1 (requires Courtyard breach)
-                        targetGate = yellowGate;
-                    } else if (!ancientDestroyed) { // Keep tier 2 (requires Yellow breach)
-                        targetGate = ancientGate;
+                    } else if (!redDestroyed || !purpleDestroyed) { // Courtyard tier
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - Targeting Courtyard Tier.", bot->GetName());
+                        minDist = FLT_MAX; // Reset min distance
+                        targetGate = nullptr; // Reset target
+
+                        // Check Red
+                        if (!redDestroyed && redGate) {
+                             float distR = bot->GetDistance(redGate);
+                             LOG_INFO("playerbots", "Bot {}: SA Demolisher - Courtyard Tier - Red Gate Dist: {:.2f}", bot->GetName(), distR);
+                             if (distR < minDist) {
+                                 minDist = distR;
+                                 targetGate = redGate;
+                             }
+                        }
+                        // Check Purple
+                        if (!purpleDestroyed && purpleGate) {
+                            float distP = bot->GetDistance(purpleGate);
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Courtyard Tier - Purple Gate Dist: {:.2f} (Current Min: {:.2f})", bot->GetName(), distP, minDist);
+                            if (distP < minDist) {
+                                // minDist = distP;
+                                targetGate = purpleGate;
+                            }
+                        }
+                        if (targetGate) LOG_INFO("playerbots", "Bot {}: SA Demolisher - Courtyard Tier - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry()); else LOG_INFO("playerbots", "Bot {}: SA Demolisher - Courtyard Tier - No valid target found!", bot->GetName());
+
+                    } else if (!yellowDestroyed) { // Keep tier 1
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - Targeting Yellow Gate.", bot->GetName());
+                        if (yellowGate && yellowGate->isSpawned() && yellowGate->GetDestructibleState() != GO_DESTRUCTIBLE_DESTROYED) {
+                            targetGate = yellowGate;
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Keep Tier 1 - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry());
+                        } else {
+                             LOG_INFO("playerbots", "Bot {}: SA Demolisher - Keep Tier 1 - Yellow Gate invalid!", bot->GetName());
+                             targetGate = nullptr; // Ensure it's null if invalid
+                        }
+                    } else if (!ancientDestroyed) { // Keep tier 2
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - Targeting Ancient Gate.", bot->GetName());
+                         if (ancientGate && ancientGate->isSpawned() && ancientGate->GetDestructibleState() != GO_DESTRUCTIBLE_DESTROYED) {
+                            targetGate = ancientGate;
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Keep Tier 2 - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry());
+                        } else {
+                             LOG_INFO("playerbots", "Bot {}: SA Demolisher - Keep Tier 2 - Ancient Gate invalid!", bot->GetName());
+                             targetGate = nullptr; // Ensure it's null if invalid
+                        }
                     }
-                    // If all gates down, demolisher has no primary target (maybe attack players?)
-                    // Fallback handled later if targetGate remains null
-
+                    // --- Set Objective for Demolisher ---
                     if (targetGate) {
                         BgObjective = targetGate; // Target the gate object directly for the vehicle
                         pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
-                    }
-                    // Add fallback for demolisher if no gates left? Attack players near relic?
-                    else if (ancientDestroyed) {
-                         // Move towards relic or attack nearby enemies
-                         Unit* enemy = AI_VALUE(Unit*, "enemy player target");
-                         if (enemy && enemy->IsAlive() && bot->GetDistance(enemy) < 100.0f) // Range check suitable for demolisher
-                         {
-                             BgObjective = enemy;
-                             pos.Set(enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ(), bot->GetMapId());
-                         } else {
+                    } else if (ancientDestroyed) { // Fallback if all gates destroyed
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - All gates destroyed, checking fallback.", bot->GetName());
+                        Unit* enemy = AI_VALUE(Unit*, "enemy player target");
+                        if (enemy && enemy->IsAlive() && bot->GetDistance(enemy) < 100.0f) // Range check suitable for demolisher
+                        {
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Fallback: Targeting enemy {}", bot->GetName(), enemy->GetName());
+                            BgObjective = enemy;
+                            pos.Set(enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ(), bot->GetMapId());
+                        } else {
+                            LOG_INFO("playerbots", "Bot {}: SA Demolisher - Fallback: Moving to Relic position.", bot->GetName());
                             pos.Set(SA_RELIC_POS.GetPositionX(), SA_RELIC_POS.GetPositionY(), SA_RELIC_POS.GetPositionZ(), bot->GetMapId());
-                         }
+                            BgObjective = nullptr;
+                        }
+                    } else {
+                        LOG_INFO("playerbots", "Bot {}: SA Demolisher - No target gate determined after checks.", bot->GetName());
+                        // Decide on a default action if no gate is targetable, e.g., attack nearest enemy or move to a central point.
+                        // For now, it will fall through and likely do nothing specific this tick.
                     }
                 }
                 // --- Logic if NOT Controlling a Demolisher ---
                 else
                 {
+                    LOG_INFO("playerbots", "Bot {}: SA Attacker - Not in Demolisher logic.", bot->GetName());
                     // Priority 1: Target Gates (if not all destroyed)
                     if (!ancientDestroyed)
                     {
-                        float minDist = FLT_MAX;
+                        LOG_INFO("playerbots", "Bot {}: SA Attacker - Gates remaining, selecting target gate.", bot->GetName());
+                        minDist = FLT_MAX; // Reset min distance
+                        targetGate = nullptr; // Reset target
+
                         // Determine which tier is the current focus
                         if (!greenDestroyed || !blueDestroyed) { // Beach tier
-                             minDist = FLT_MAX;
-                             if (!greenDestroyed && bot->GetDistance(greenGate) < minDist) { minDist = bot->GetDistance(greenGate); targetGate = greenGate; }
-                             if (!blueDestroyed && bot->GetDistance(blueGate) < minDist) { targetGate = blueGate; }
+                            LOG_INFO("playerbots", "Bot {}: SA Attacker - Evaluating Beach Tier.", bot->GetName());
+                            if (!greenDestroyed && greenGate) {
+                                float distG = bot->GetDistance(greenGate);
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Beach Tier - Green Gate Dist: {:.2f}", bot->GetName(), distG);
+                                if (distG < minDist) { minDist = distG; targetGate = greenGate; }
+                            }
+                            if (!blueDestroyed && blueGate) {
+                                float distB = bot->GetDistance(blueGate);
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Beach Tier - Blue Gate Dist: {:.2f} (Current Min: {:.2f})", bot->GetName(), distB, minDist);
+                                if (distB < minDist) { targetGate = blueGate; }
+                            }
+                            if (targetGate) LOG_INFO("playerbots", "Bot {}: SA Attacker - Beach Tier - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry()); else LOG_INFO("playerbots", "Bot {}: SA Attacker - Beach Tier - No valid target found!", bot->GetName());
+
                         } else if (!redDestroyed || !purpleDestroyed) { // Courtyard tier
-                             minDist = FLT_MAX;
-                             if (!redDestroyed && bot->GetDistance(redGate) < minDist) { minDist = bot->GetDistance(redGate); targetGate = redGate; }
-                             if (!purpleDestroyed && bot->GetDistance(purpleGate) < minDist) { targetGate = purpleGate; }
+                             LOG_INFO("playerbots", "Bot {}: SA Attacker - Evaluating Courtyard Tier.", bot->GetName());
+                            minDist = FLT_MAX; // Reset min distance
+                            targetGate = nullptr; // Reset target
+                            if (!redDestroyed && redGate) {
+                                 float distR = bot->GetDistance(redGate);
+                                 LOG_INFO("playerbots", "Bot {}: SA Attacker - Courtyard Tier - Red Gate Dist: {:.2f}", bot->GetName(), distR);
+                                 if (distR < minDist) { minDist = distR; targetGate = redGate; }
+                            }
+                            if (!purpleDestroyed && purpleGate) {
+                                float distP = bot->GetDistance(purpleGate);
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Courtyard Tier - Purple Gate Dist: {:.2f} (Current Min: {:.2f})", bot->GetName(), distP, minDist);
+                                if (distP < minDist) { targetGate = purpleGate; }
+                            }
+                            if (targetGate) LOG_INFO("playerbots", "Bot {}: SA Attacker - Courtyard Tier - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry()); else LOG_INFO("playerbots", "Bot {}: SA Attacker - Courtyard Tier - No valid target found!", bot->GetName());
+
                         } else if (!yellowDestroyed) { // Keep tier 1
-                            targetGate = yellowGate;
-                        } else { // Must be Ancient Gate (since !ancientDestroyed check passed)
-                            targetGate = ancientGate;
+                            LOG_INFO("playerbots", "Bot {}: SA Attacker - Evaluating Yellow Gate.", bot->GetName());
+                            if (yellowGate && yellowGate->isSpawned() && yellowGate->GetDestructibleState() != GO_DESTRUCTIBLE_DESTROYED) {
+                                targetGate = yellowGate;
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Keep Tier 1 - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry());
+                            } else {
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Keep Tier 1 - Yellow Gate invalid!", bot->GetName());
+                                targetGate = nullptr;
+                            }
+                        } else { // Must be Ancient Gate
+                            LOG_INFO("playerbots", "Bot {}: SA Attacker - Evaluating Ancient Gate.", bot->GetName());
+                             if (ancientGate && ancientGate->isSpawned() && ancientGate->GetDestructibleState() != GO_DESTRUCTIBLE_DESTROYED) {
+                                targetGate = ancientGate;
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Keep Tier 2 - Final Target: {} (Entry: {})", bot->GetName(), targetGate->GetName(), targetGate->GetEntry());
+                            } else {
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Keep Tier 2 - Ancient Gate invalid!", bot->GetName());
+                                targetGate = nullptr;
+                            }
                         }
 
-                        // If a gate is targeted, consider workshops/bombs
+                        // If a gate is targeted, consider workshops/bombs (Logic mostly commented out in original)
                         if (targetGate)
                         {
-                            // TODO: Implement Bomb logic more thoroughly (checking inventory, proximity to workshop vs gate)
-                            // bool hasBombs = false; // Check inventory/aura
-                            bool nearWorkshop = false;
-                            Position workshopPos;
-                            float distWorkshopWest = bot->GetDistance(SA_WORKSHOP_WEST);
-                            float distWorkshopEast = bot->GetDistance(SA_WORKSHOP_EAST);
-
-                             // Only consider workshops if beach or courtyard gates are the target
-                             bool workshopRelevant = (!greenDestroyed || !blueDestroyed || !redDestroyed || !purpleDestroyed);
-
-                            if (workshopRelevant && (distWorkshopWest < 50.0f || distWorkshopEast < 50.0f))
-                            {
-                                 nearWorkshop = true;
-                                 workshopPos = (distWorkshopWest < distWorkshopEast) ? SA_WORKSHOP_WEST : SA_WORKSHOP_EAST;
-                            }
-
-                            // Basic logic: If near workshop, go there first unless already have bombs?
-                            // if (nearWorkshop /* && !hasBombs */ && bot->GetDistance(workshopPos) < bot->GetDistance(targetGate))
-                            // {
-                            //     targetPos = workshopPos;
-                            //     BgObjective = nullptr;
-                            // }
-                            // else
-                            {
-                                 BgObjective = targetGate;
-                                 pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
-                            }
+                            // bool nearWorkshop = false; // Logic for workshop check can go here if needed
+                            // ... workshop checks ...
+                            // if (nearWorkshop ... ) { ... set targetPos ... } else { ... set BgObjective ... }
+                            LOG_INFO("playerbots", "Bot {}: SA Attacker - Objective set to targetGate: {}", bot->GetName(), targetGate->GetName());
+                            BgObjective = targetGate; // Defaulting to targeting the gate
+                            pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
                         }
                     }
 
-                    // Priority 2: Capture Relic (only if Ancient Gate is down)
-                    if (!targetGate && !pos.isSet() && ancientDestroyed)
+                    // Priority 2: Capture Relic (only if Ancient Gate is down and no gate targetted)
+                    if (!BgObjective && !pos.isSet() && ancientDestroyed)
                     {
-                        BgObjective = relic;
+                        LOG_INFO("playerbots", "Bot {}: SA Attacker - All gates destroyed, targeting Relic.", bot->GetName());
+                        BgObjective = relic; // relic should be valid from earlier check
                         if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
+                        else LOG_ERROR("playerbots", "Bot {}: SA Attacker - Relic pointer became invalid?!", bot->GetName());
                     }
 
-                    // Priority 3: Capture Graveyards (only if no primary gate/relic target)
+                    // Priority 3: Capture Graveyards (Placeholder)
                     if (!BgObjective && !pos.isSet())
                     {
-                        // TODO: Implement GY capture logic based on reachability (gate status) and ownership
-                        // Example structure:
-                        // float closestGyDist = FLT_MAX;
-                        // uint32 targetGyFlagId = 0;
-                        // Check reachability based on green/blue destroyed for Left/Right/Central GYs
-                        // Check reachability based on yellow destroyed for Defender Last GY
-                        // If reachable and not friendly team controlled, check distance and update targetGyFlagId/closestGyDist
-                        // if (targetGyFlagId != 0) {
-                        //    BgObjective = bg->GetBGObject(targetGyFlagId);
-                        //    if (BgObjective) pos.Set(BgObjective->GetPositionX(), BgObjective->GetPositionY(), BgObjective->GetPositionZ(), bot->GetMapId());
-                        // }
+                        LOG_INFO("playerbots", "Bot {}: SA Attacker - No Gate/Relic target, considering GYs (Not Implemented).", bot->GetName());
+                        // TODO: Implement GY capture logic
                     }
 
                     // Priority 4: Attack Enemies/Default Move
                     if (!BgObjective && !pos.isSet())
                     {
+                        LOG_INFO("playerbots", "Bot {}: SA Attacker - No primary objective, checking fallback (Enemy/Default).", bot->GetName());
                         Unit* enemy = AI_VALUE(Unit*, "enemy player target");
                         if (enemy && enemy->IsAlive()) {
+                            LOG_INFO("playerbots", "Bot {}: SA Attacker - Fallback: Targeting enemy {}", bot->GetName(), enemy->GetName());
                             BgObjective = enemy;
                             pos.Set(enemy->GetPositionX(), enemy->GetPositionY(), enemy->GetPositionZ(), bot->GetMapId());
                         } else {
-                            // Default move: towards the determined target gate, or relic if all gates down
-                            if (targetGate) // If we identified a gate earlier but didn't set it as objective (e.g., workshop override)
+                            // Default move: towards the determined target gate (if identified earlier), or relic if all gates down
+                            if (targetGate)
+                            {
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Fallback: Moving to previously identified target gate position: {}", bot->GetName(), targetGate->GetName());
                                 pos.Set(targetGate->GetPositionX(), targetGate->GetPositionY(), targetGate->GetPositionZ(), bot->GetMapId());
+                            }
                             else if (ancientDestroyed)
+                            {
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Fallback: Moving to Relic position.", bot->GetName());
                                 pos.Set(SA_RELIC_POS.GetPositionX(), SA_RELIC_POS.GetPositionY(), SA_RELIC_POS.GetPositionZ(), bot->GetMapId());
+                            }
                             else // Default to a beach gate pos if nothing else found
                             {
+                                LOG_INFO("playerbots", "Bot {}: SA Attacker - Fallback: Moving to default Beach Gate position.", bot->GetName());
                                 Position fallbackPos = SA_GREEN_GATE_POS;
-                                if (blueGate && (!greenGate || bot->GetDistance(blueGate) < bot->GetDistance(greenGate)))
+                                // Check blue gate exists before trying to get distance
+                                if (blueGate && greenGate && bot->GetDistance(blueGate) < bot->GetDistance(greenGate))
                                     fallbackPos = SA_BLUE_GATE_POS;
+                                else if(blueGate && !greenGate) // If only blue exists
+                                     fallbackPos = SA_BLUE_GATE_POS;
+
                                 pos.Set(fallbackPos.GetPositionX(), fallbackPos.GetPositionY(), fallbackPos.GetPositionZ(), bot->GetMapId());
                             }
+                            BgObjective = nullptr; // Ensure we target the position, not an object unless it's an enemy
                         }
                     }
                 } // End of !inDemolisher logic
-
             } // End of Attacker Logic
             // --- Defender Logic ---
             else // isDefender
