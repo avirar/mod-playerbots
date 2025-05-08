@@ -4729,10 +4729,25 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
                     resetObjective();
                     return true;
                 }
-                case BATTLEGROUND_SA: // SotA
+                else
+                {
+                    // Move to flag if not in range
+                    return MoveTo(bot->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+                }
+            }
+            case BATTLEGROUND_SA: // SotA
+            {
+                if (dist < INTERACTION_DISTANCE)
                 {
                     if (go->GetEntry() == BG_SA_GO_TITAN_RELIC) // Click the Relic
                     {
+                        // Dismount before capturing
+                        if (bot->IsMounted())
+                            bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
+        
+                        if (bot->IsInDisallowedMountForm())
+                            bot->RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
+                        
                         WorldPacket data(CMSG_GAMEOBJ_USE);
                         data << go->GetGUID();
                         bot->GetSession()->HandleGameObjectUseOpcode(data);
@@ -4742,8 +4757,12 @@ bool BGTactics::atFlag(std::vector<BattleBotPath*> const& vPaths, std::vector<ui
                     }
                     else // GY flag
                     {
-                        // Prevent capturing from inside flag pole? (Check if needed for SotA flags)
-                        // if (dist == 0.0f) { ... move away ... }
+                        // Dismount before capturing
+                        if (bot->IsMounted())
+                            bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
+        
+                        if (bot->IsInDisallowedMountForm())
+                            bot->RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
                         
                         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_CAPTURE_BANNER);
                         if (!spellInfo) 
