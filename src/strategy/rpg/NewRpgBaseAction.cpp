@@ -630,6 +630,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
     for (ObjectGuid& guid: possibleGameObjects)
     {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            continue;  // Skip recently visited
+
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
         if (!object || !object->IsInWorld())
@@ -656,6 +659,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     // Priority 2–5: Trainers, Vendors, Repairs
     for (ObjectGuid& guid : possibleTargets)
     {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            continue;  // Skip recently visited
+
         Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
         if (!creature || !creature->IsInWorld())
             continue;
