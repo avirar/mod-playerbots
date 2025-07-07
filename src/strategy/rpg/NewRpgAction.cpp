@@ -68,14 +68,25 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
     {
         case RPG_IDLE:
         {
-            // PRIORITY: Go near NPC if bags are almost full to prevent looting issues
+            // PRIORITY: Go near Vendor NPC if bags are almost full to prevent looting issues
             if (AI_VALUE(uint8, "bag space") > 80)
             {
                 GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
                 if (!possibleTargets.empty())
                 {
-                    info.ChangeToNearNpc();
-                    return true;
+                    for (ObjectGuid& guid : possibleTargets)
+                    {
+                        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+                        
+                        if (!creature || !creature->IsInWorld())
+                            continue;
+
+                        if (creature->IsVendor())
+                        {
+                            info.ChangeToNearNpc();
+                            return true;
+                        }
+                    }
                 }
             }
 
