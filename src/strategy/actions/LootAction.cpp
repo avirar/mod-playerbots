@@ -140,12 +140,41 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     // This prevents dungeon chests like Tribunal Chest (Halls of Stone) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND))
-        return false;
-
     // This prevents raid chests like Gunship Armory (ICC) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE))
-        return false;
+    // Allows quest objects
+    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+    {
+        bool canLootForQuest = false;
+    
+        // Only check for chest/goober types!
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST || go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            uint32 questId = 0;
+            uint32 lootId = 0;
+    
+            if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+            {
+                questId = go->GetGOInfo()->chest.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+            else if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+            {
+                questId = go->GetGOInfo()->goober.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+    
+            if ((questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE) ||
+                LootTemplates_Gameobject.HaveQuestLootForPlayer(lootId, bot))
+            {
+                canLootForQuest = true;
+            }
+        }
+    
+        if (!canLootForQuest)
+        {
+            return false;
+        }
+    }
 
     if (lootObject.skillId == SKILL_MINING)
         return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
