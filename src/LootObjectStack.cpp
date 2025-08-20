@@ -131,7 +131,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 std::ostringstream stream;
                 stream << "LootObject::Refresh - GameObject has quest item needed by bot: " << go->GetName();
                 botAI->TellMaster(stream);
-                return;
+                break;
             }
 
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
