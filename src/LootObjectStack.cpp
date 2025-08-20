@@ -110,6 +110,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     {
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
+        bool hasNeededQuestItem = false;
 
         GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
         for (size_t i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
@@ -125,11 +126,12 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
             if (IsNeededForQuest(bot, itemId))
             {
+                hasNeededQuestItem = true;
                 this->guid = lootGUID;
                 std::ostringstream stream;
                 stream << "LootObject::Refresh - GameObject has quest item needed by bot: " << go->GetName();
                 botAI->TellMaster(stream);
-                break;
+                return;
             }
 
             const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -140,6 +142,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             {
                 onlyHasQuestItems = false;
             }
+        }
+
+        // If gameobject has only quest items that bot doesn't need, skip it.
+        if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
+        {
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - GameObject has only quest items bot doesn't need: " << go->GetName();
+            botAI->TellMaster(stream);
+            return;
         }
 
         // Retrieve the correct loot table entry
@@ -171,7 +182,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
-                    break;
                 }
 
                 // If this item references another loot table, process it
@@ -193,15 +203,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         if (refProto->Class != ITEM_CLASS_QUEST)
                         {
                             onlyHasQuestItems = false;
-                            break;
                         }
                     }
                 }
             }
         }
 
-        // If gameobject has only quest items that bot doesn’t need, skip it.
-        if (hasAnyQuestItems && onlyHasQuestItems)
+        // If gameobject has only quest items that bot doesn't need, skip it.
+        if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
         {
             std::ostringstream stream;
             stream << "LootObject::Refresh - GameObject has only quest items bot doesn't need: " << go->GetName();
