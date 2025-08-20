@@ -43,6 +43,10 @@ bool AttackAnythingAction::isUseful()
     if (bot->IsInCombat())
         return false;
 
+    // Prevent attacking if loot is available
+    if (AI_VALUE(bool, "has available loot"))
+        return false;
+
     Unit* target = GetTarget();
     if (!target || !target->IsInWorld())  // Checks if the target is valid and in the world
         return false;
