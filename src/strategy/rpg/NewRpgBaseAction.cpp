@@ -93,6 +93,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dx = x + cos(angle) * dis;
         float dy = y + sin(angle) * dis;
         float dz = z + 0.5f;
+        // Use Floor Z instead of Ground Z for better exploration quest handling
+        float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
+        if (floorZ != INVALID_HEIGHT)
+        {
+            dz = floorZ;
+        }
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
         PathType type = path.GetPathType();
@@ -170,6 +176,12 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
         float dx = x + distance * cos(angle);
         float dy = y + distance * sin(angle);
         float dz = z;
+        // Use Floor Z instead of Ground Z for better exploration quest handling
+        float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
+        if (floorZ != INVALID_HEIGHT)
+        {
+            dz = floorZ;
+        }
 
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
