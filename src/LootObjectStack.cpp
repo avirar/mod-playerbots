@@ -62,11 +62,21 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     {
         return;
     }
+
+    // Debug: Log what object we're checking
     Creature* creature = botAI->GetCreature(lootGUID);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
         if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
+        {
             guid = lootGUID;
+            botAI->TellMaster("LootObject::Refresh - Creature is lootable: {}", creature->GetName());
+        }
+        else
+        {
+            botAI->TellMaster("LootObject::Refresh - Creature not lootable: {}", creature->GetName());
+            return;
+        }
 
         if (creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))
         {
@@ -74,7 +84,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             uint32 targetLevel = creature->GetLevel();
             reqSkillValue = targetLevel < 10 ? 1 : targetLevel < 20 ? (targetLevel - 10) * 10 : targetLevel * 5;
             if (botAI->HasSkill((SkillType)skillId) && bot->GetSkillValue(skillId) >= reqSkillValue)
+            {
                 guid = lootGUID;
+                botAI->TellMaster("LootObject::Refresh - Creature skinnable and bot has skill: {}", creature->GetName());
+            }
+            else
+            {
+                botAI->TellMaster("LootObject::Refresh - Creature skinnable but bot lacks skill or value: {}", creature->GetName());
+            }
         }
 
         return;
@@ -101,6 +118,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (IsNeededForQuest(bot, itemId))
             {
                 this->guid = lootGUID;
+                botAI->TellMaster("LootObject::Refresh - GameObject has quest item needed by bot: {}", go->GetName());
                 return;
             }
 
@@ -117,7 +135,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // Retrieve the correct loot table entry
         uint32 lootEntry = go->GetGOInfo()->GetLootId();
         if (lootEntry == 0)
+        {
+            botAI->TellMaster("LootObject::Refresh - GameObject has no loot template: {}", go->GetName());
             return;
+        }
 
         // Check the main loot template
         if (const LootTemplate* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
@@ -169,16 +190,23 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
         // If gameobject has only quest items that bot doesn’t need, skip it.
         if (hasAnyQuestItems && onlyHasQuestItems)
+        {
+            botAI->TellMaster("LootObject::Refresh - GameObject has only quest items bot doesn't need: {}", go->GetName());
             return;
+        }
 
         // Otherwise, loot it.
         guid = lootGUID;
+        botAI->TellMaster("LootObject::Refresh - GameObject is lootable: {}", go->GetName());
 
         uint32 goId = go->GetEntry();
         uint32 lockId = go->GetGOInfo()->GetLockId();
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
+        {
+            botAI->TellMaster("LootObject::Refresh - GameObject has no lock info: {}", go->GetName());
             return;
+        }
 
         for (uint8 i = 0; i < 8; ++i)
         {
@@ -189,6 +217,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     {
                         reqItem = lockInfo->Index[i];
                         guid = lootGUID;
+                        botAI->TellMaster("LootObject::Refresh - GameObject requires item key: {}", go->GetName());
                     }
                     break;
 
@@ -196,20 +225,27 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     if (goId == 13891 || goId == 19535)  // Serpentbloom
                     {
                         this->guid = lootGUID;
+                        botAI->TellMaster("LootObject::Refresh - GameObject is Serpentbloom, no lock needed: {}", go->GetName());
                     }
                     else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
                     {
                         skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                         reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
                         guid = lootGUID;
+                        botAI->TellMaster("LootObject::Refresh - GameObject requires skill lock: {}", go->GetName());
                     }
                     break;
 
                 case LOCK_KEY_NONE:
                     guid = lootGUID;
+                    botAI->TellMaster("LootObject::Refresh - GameObject has no lock: {}", go->GetName());
                     break;
             }
         }
+    }
+    else
+    {
+        botAI->TellMaster("LootObject::Refresh - GameObject not valid or not ready: {}", lootGUID.ToString());
     }
 }
 
