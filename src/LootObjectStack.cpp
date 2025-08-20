@@ -350,54 +350,99 @@ bool LootObject::IsLootPossible(Player* bot)
     {
         return false;
     }
+    
+    // Debug: Log when checking if loot is possible
+    std::ostringstream stream;
     if (reqItem && !bot->HasItemCount(reqItem, 1))
+    {
+        stream << "LootObject::IsLootPossible - Missing required item: " << reqItem;
+        botAI->TellMaster(stream);
         return false;
+    }
 
     if (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f)
+    {
+        stream << "LootObject::IsLootPossible - Too far vertically from object";
+        botAI->TellMaster(stream);
         return false;
+    }
 
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
         if (!bot->isAllowedToLoot(creature) && skillId != SKILL_SKINNING)
+        {
+            stream << "LootObject::IsLootPossible - Bot not allowed to loot creature: " << creature->GetName();
+            botAI->TellMaster(stream);
             return false;
+        }
     }
 
     // Prevent bot from running to chests that are unlootable (e.g. Gunship Armory before completing the event)
     GameObject* go = botAI->GetGameObject(guid);
     if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+    {
+        stream << "LootObject::IsLootPossible - GameObject is unlootable (interact condition): " << go->GetName();
+        botAI->TellMaster(stream);
         return false;
+    }
 
     if (skillId == SKILL_NONE)
+    {
+        stream << "LootObject::IsLootPossible - No skill required, lootable";
+        botAI->TellMaster(stream);
         return true;
+    }
 
     if (skillId == SKILL_FISHING)
+    {
+        stream << "LootObject::IsLootPossible - Fishing skill not allowed for loot";
+        botAI->TellMaster(stream);
         return false;
+    }
 
     if (!botAI->HasSkill((SkillType)skillId))
+    {
+        stream << "LootObject::IsLootPossible - Bot lacks required skill: " << skillId;
+        botAI->TellMaster(stream);
         return false;
+    }
 
     if (!reqSkillValue)
+    {
+        stream << "LootObject::IsLootPossible - No skill value required, lootable";
+        botAI->TellMaster(stream);
         return true;
+    }
 
     uint32 skillValue = uint32(bot->GetSkillValue(skillId));
     if (reqSkillValue > skillValue)
+    {
+        stream << "LootObject::IsLootPossible - Bot's skill too low for required value: " << reqSkillValue << " vs " << skillValue;
+        botAI->TellMaster(stream);
         return false;
+    }
 
     if (skillId == SKILL_MINING && !bot->HasItemCount(756, 1) && !bot->HasItemCount(778, 1) &&
         !bot->HasItemCount(1819, 1) && !bot->HasItemCount(1893, 1) && !bot->HasItemCount(1959, 1) &&
         !bot->HasItemCount(2901, 1) && !bot->HasItemCount(9465, 1) && !bot->HasItemCount(20723, 1) &&
         !bot->HasItemCount(40772, 1) && !bot->HasItemCount(40892, 1) && !bot->HasItemCount(40893, 1))
     {
+        stream << "LootObject::IsLootPossible - Missing mining pick for skill: " << skillId;
+        botAI->TellMaster(stream);
         return false;  // Bot is missing a mining pick
     }
 
     if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1) && !bot->HasItemCount(40772, 1) &&
         !bot->HasItemCount(40893, 1) && !bot->HasItemCount(12709, 1) && !bot->HasItemCount(19901, 1))
     {
+        stream << "LootObject::IsLootPossible - Missing skinning knife for skill: " << skillId;
+        botAI->TellMaster(stream);
         return false;  // Bot is missing a skinning knife
     }
 
+    stream << "LootObject::IsLootPossible - All checks passed, lootable";
+    botAI->TellMaster(stream);
     return true;
 }
 
