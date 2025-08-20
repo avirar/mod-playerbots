@@ -382,26 +382,43 @@ bool LootObject::IsLootPossible(Player* bot)
     GameObject* go = botAI->GetGameObject(guid);
     if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
     {
-        // Check if object is already activated for this bot (via dynamic flags)
-        bool isActivated = (go->GetDynamicFlags() & GO_DYNFLAG_LO_ACTIVATE) || 
-                          (go->GetDynamicFlags() & GO_DYNFLAG_LO_SPARKLE);
-        
+        bool canLootForQuest = false;
+    
+        // Only check for chest/goober types!
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST || go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            uint32 questId = 0;
+            uint32 lootId = 0;
+    
+            if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+            {
+                questId = go->GetGOInfo()->chest.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+            else if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+            {
+                questId = go->GetGOInfo()->goober.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+    
+            if ((questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE) ||
+                LootTemplates_Gameobject.HaveQuestLootForPlayer(lootId, bot))
+            {
+                canLootForQuest = true;
+            }
+        }
+    
         // Log debug information
         std::ostringstream debugStream;
         debugStream << "LootObject::IsLootPossible - GameObject flags check for: " << go->GetName()
-                   << " | INTERACT_COND: " << (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) ? "true" : "false")
-                   << " | NOT_SELECTABLE: " << (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE) ? "true" : "false")
-                   << " | LO_ACTIVATE: " << (go->GetDynamicFlags() & GO_DYNFLAG_LO_ACTIVATE ? "true" : "false")
-                   << " | LO_SPARKLE: " << (go->GetDynamicFlags() & GO_DYNFLAG_LO_SPARKLE ? "true" : "false");
+                    << " | INTERACT_COND: " << (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) ? "true" : "false")
+                    << " | NOT_SELECTABLE: " << (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE) ? "true" : "false")
+                    << " | CanLootForQuest: " << (canLootForQuest ? "true" : "false");
         botAI->TellMaster(debugStream.str());
-        
-        // If the object is not activated, it's likely not lootable yet
-        // However, some special cases might still allow looting
-        if (!isActivated)
+    
+        if (!canLootForQuest)
         {
-            // Allow loot for objects that are sparkling or activated
-            // This is a more permissive check that might be needed for certain quest objects
-            stream << "LootObject::IsLootPossible - GameObject is unlootable (interact condition): " << go->GetName();
+            stream << "LootObject::IsLootPossible - GameObject is unlootable for bot (interact condition): " << go->GetName();
             botAI->TellMaster(stream);
             return false;
         }
