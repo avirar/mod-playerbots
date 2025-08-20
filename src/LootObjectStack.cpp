@@ -382,12 +382,10 @@ bool LootObject::IsLootPossible(Player* bot)
     GameObject* go = botAI->GetGameObject(guid);
     if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
     {
-        // Check if gameobject is already activated for this bot (via dynamic flags)
-        // This allows quest-related gameobjects to be looted even with INTERACT_COND flag
-        // GO_DYNFLAG_LO_ACTIVATE means it's activated for interaction
-        // GO_DYNFLAG_LO_SPARKLE means it's visually active (sparkling)
-        if (!(go->GetGOInfo()->DynamicFlags & GO_DYNFLAG_LO_ACTIVATE) && 
-            !(go->GetGOInfo()->DynamicFlags & GO_DYNFLAG_LO_SPARKLE))
+        // Allow specific quest-related objects to be looted even when they have INTERACT_COND flag
+        // Check if object is already activated for this bot (via dynamic flags)
+        if (!(go->GetDynamicFlags() & GO_DYNFLAG_LO_ACTIVATE) && 
+            !(go->GetDynamicFlags() & GO_DYNFLAG_LO_SPARKLE))
         {
             stream << "LootObject::IsLootPossible - GameObject is unlootable (interact condition): " << go->GetName();
             botAI->TellMaster(stream);
