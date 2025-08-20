@@ -8,7 +8,6 @@
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
-#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "Unit.h"
 
@@ -71,11 +70,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
         {
             guid = lootGUID;
-            botAI->TellMaster("LootObject::Refresh - Creature is lootable: {}", creature->GetName());
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - Creature is lootable: " << creature->GetName();
+            botAI->TellMaster(stream);
         }
         else
         {
-            botAI->TellMaster("LootObject::Refresh - Creature not lootable: {}", creature->GetName());
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - Creature not lootable: " << creature->GetName();
+            botAI->TellMaster(stream);
             return;
         }
 
@@ -87,11 +90,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (botAI->HasSkill((SkillType)skillId) && bot->GetSkillValue(skillId) >= reqSkillValue)
             {
                 guid = lootGUID;
-                botAI->TellMaster("LootObject::Refresh - Creature skinnable and bot has skill: {}", creature->GetName());
+                std::ostringstream stream;
+                stream << "LootObject::Refresh - Creature skinnable and bot has skill: " << creature->GetName();
+                botAI->TellMaster(stream);
             }
             else
             {
-                botAI->TellMaster("LootObject::Refresh - Creature skinnable but bot lacks skill or value: {}", creature->GetName());
+                std::ostringstream stream;
+                stream << "LootObject::Refresh - Creature skinnable but bot lacks skill or value: " << creature->GetName();
+                botAI->TellMaster(stream);
             }
         }
 
@@ -119,7 +126,9 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (IsNeededForQuest(bot, itemId))
             {
                 this->guid = lootGUID;
-                botAI->TellMaster("LootObject::Refresh - GameObject has quest item needed by bot: {}", go->GetName());
+                std::ostringstream stream;
+                stream << "LootObject::Refresh - GameObject has quest item needed by bot: " << go->GetName();
+                botAI->TellMaster(stream);
                 return;
             }
 
@@ -137,7 +146,9 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         uint32 lootEntry = go->GetGOInfo()->GetLootId();
         if (lootEntry == 0)
         {
-            botAI->TellMaster("LootObject::Refresh - GameObject has no loot template: {}", go->GetName());
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - GameObject has no loot template: " << go->GetName();
+            botAI->TellMaster(stream);
             return;
         }
 
@@ -192,20 +203,26 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // If gameobject has only quest items that bot doesn’t need, skip it.
         if (hasAnyQuestItems && onlyHasQuestItems)
         {
-            botAI->TellMaster("LootObject::Refresh - GameObject has only quest items bot doesn't need: {}", go->GetName());
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - GameObject has only quest items bot doesn't need: " << go->GetName();
+            botAI->TellMaster(stream);
             return;
         }
 
         // Otherwise, loot it.
         guid = lootGUID;
-        botAI->TellMaster("LootObject::Refresh - GameObject is lootable: {}", go->GetName());
+        std::ostringstream stream;
+        stream << "LootObject::Refresh - GameObject is lootable: " << go->GetName();
+        botAI->TellMaster(stream);
 
         uint32 goId = go->GetEntry();
         uint32 lockId = go->GetGOInfo()->GetLockId();
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
         {
-            botAI->TellMaster("LootObject::Refresh - GameObject has no lock info: {}", go->GetName());
+            std::ostringstream stream;
+            stream << "LootObject::Refresh - GameObject has no lock info: " << go->GetName();
+            botAI->TellMaster(stream);
             return;
         }
 
@@ -218,7 +235,9 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     {
                         reqItem = lockInfo->Index[i];
                         guid = lootGUID;
-                        botAI->TellMaster("LootObject::Refresh - GameObject requires item key: {}", go->GetName());
+                        std::ostringstream stream;
+                        stream << "LootObject::Refresh - GameObject requires item key: " << go->GetName();
+                        botAI->TellMaster(stream);
                     }
                     break;
 
@@ -226,27 +245,35 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     if (goId == 13891 || goId == 19535)  // Serpentbloom
                     {
                         this->guid = lootGUID;
-                        botAI->TellMaster("LootObject::Refresh - GameObject is Serpentbloom, no lock needed: {}", go->GetName());
+                        std::ostringstream stream;
+                        stream << "LootObject::Refresh - GameObject is Serpentbloom, no lock needed: " << go->GetName();
+                        botAI->TellMaster(stream);
                     }
                     else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
                     {
                         skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                         reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
                         guid = lootGUID;
-                        botAI->TellMaster("LootObject::Refresh - GameObject requires skill lock: {}", go->GetName());
+                        std::ostringstream stream;
+                        stream << "LootObject::Refresh - GameObject requires skill lock: " << go->GetName();
+                        botAI->TellMaster(stream);
                     }
                     break;
 
                 case LOCK_KEY_NONE:
                     guid = lootGUID;
-                    botAI->TellMaster("LootObject::Refresh - GameObject has no lock: {}", go->GetName());
+                    std::ostringstream stream;
+                    stream << "LootObject::Refresh - GameObject has no lock: " << go->GetName();
+                    botAI->TellMaster(stream);
                     break;
             }
         }
     }
     else
     {
-        botAI->TellMaster("LootObject::Refresh - GameObject not valid or not ready: {}", lootGUID.ToString());
+        std::ostringstream stream;
+        stream << "LootObject::Refresh - GameObject not valid or not ready: " << lootGUID.ToString();
+        botAI->TellMaster(stream);
     }
 }
 
