@@ -95,7 +95,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dz = z + 0.5f;
         // Use Floor Z instead of Ground Z for better exploration quest handling
         float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
-        if (floorZ <= INVALID_HEIGHT)
+        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
         }
@@ -178,7 +178,7 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
         float dz = z;
         // Use Floor Z instead of Ground Z for better exploration quest handling
         float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
-        if (floorZ <= INVALID_HEIGHT)
+        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
         }
