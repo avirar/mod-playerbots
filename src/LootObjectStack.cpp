@@ -8,6 +8,7 @@
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
+#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "Unit.h"
 
