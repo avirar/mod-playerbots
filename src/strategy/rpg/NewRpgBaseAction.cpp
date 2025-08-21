@@ -1300,6 +1300,13 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
 
             botAI->TellMasterNoFacing("Search step " + std::to_string(i) + ": Z=" + std::to_string(searchZ) + ", VMAP Height=" + std::to_string(vmapHeight));
 
+            // Early exit if we detect invalid height
+            if (vmapHeight <= INVALID_HEIGHT || vmapHeight == VMAP_INVALID_HEIGHT_VALUE)
+            {
+                botAI->TellMasterNoFacing("Invalid VMAP height detected, breaking early.");
+                break;
+            }
+
             if (vmapHeight > INVALID_HEIGHT && vmapHeight != MAX_HEIGHT)
             {
                 if (vmapHeight < lowestVmapHeight)
