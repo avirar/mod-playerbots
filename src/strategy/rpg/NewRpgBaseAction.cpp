@@ -871,7 +871,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             dy += qPoi.points[i].y * weights[i];
         }
     
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        float dz = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
     
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
