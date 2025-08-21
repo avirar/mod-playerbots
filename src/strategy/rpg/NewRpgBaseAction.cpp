@@ -893,6 +893,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
+            botAI->TellMaster("Exploration quest objective detected, checking for Area Triggers");
             // Query areatrigger_involvedrelation to get the trigger ID
             QueryResult result = WorldDatabase.Query("SELECT id FROM areatrigger_involvedrelation WHERE quest = {}", questId);
             if (!result)
@@ -1392,11 +1393,11 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
 
         // Check progressively lower heights to find the actual floor level
         float searchZ = groundHeight +150.0f;
-        float searchStep = 10.0f;
+        float searchStep = 20.0f;
 
         int i = 0;
         // Keep searching downward to find the lowest valid floor (for caves)
-        for (; i < 30 && searchZ > -MAX_HEIGHT; ++i)
+        for (; i < 25 && searchZ > -MAX_HEIGHT; ++i)
         {
             float vmapHeight = bot->GetMap()->GetHeight(dx, dy, searchZ, true, 1000.0f);
 
