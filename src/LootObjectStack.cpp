@@ -436,7 +436,18 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (skillId == SKILL_NONE)
     {
-        stream << "LootObject::IsLootPossible - No skill required, lootable: " << go->GetName();
+        if (go)
+        {
+            stream << "LootObject::IsLootPossible - No skill required, lootable: " << go->GetName();
+        }
+        else if (creature)
+        {
+            stream << "LootObject::IsLootPossible - No skill required, lootable: " << creature->GetName();
+        }
+        else
+        {
+            stream << "LootObject::IsLootPossible - No skill required, lootable";
+        }
         botAI->TellMaster(stream);
         return true;
     }
@@ -450,7 +461,15 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (!botAI->HasSkill((SkillType)skillId))
     {
-        stream << "LootObject::IsLootPossible - Bot lacks required skill: " << skillId << " for " << go->GetName();
+        stream << "LootObject::IsLootPossible - Bot lacks required skill: " << skillId << " for ";
+        if (go)
+        {
+            stream << go->GetName();
+        }
+        else if (creature)
+        {
+            stream << creature->GetName();
+        }
         botAI->TellMaster(stream);
         return false;
     }
@@ -488,7 +507,15 @@ bool LootObject::IsLootPossible(Player* bot)
         return false;  // Bot is missing a skinning knife
     }
 
-    stream << "LootObject::IsLootPossible - All checks passed, lootable: " << go->GetName();
+    stream << "LootObject::IsLootPossible - All checks passed, lootable: ";
+    if (go)
+    {
+        stream << go->GetName();
+    }
+    else if (creature)
+    {
+        stream << creature->GetName();
+    }
     botAI->TellMaster(stream);
     return true;
 }
