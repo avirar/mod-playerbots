@@ -83,7 +83,7 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
 
                         if (creature->IsVendor())
                         {
-                            info.ChangeToWanderNpc()();
+                            info.ChangeToWanderNpc();
                             return true;
                         }
                     }
