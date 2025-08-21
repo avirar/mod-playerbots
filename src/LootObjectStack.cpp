@@ -364,7 +364,7 @@ bool LootObject::IsLootPossible(Player* bot)
     std::ostringstream stream;
     if (reqItem && !bot->HasItemCount(reqItem, 1))
     {
-        stream << "LootObject::IsLootPossible - Missing required item: " << reqItem << " for " << go->GetName();
+        stream << "LootObject::IsLootPossible - Missing required item: " << reqItem;
         botAI->TellMaster(stream);
         return false;
     }
@@ -372,7 +372,7 @@ bool LootObject::IsLootPossible(Player* bot)
     
     if (!bot->IsInWater() && (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f))
     {
-        stream << "LootObject::IsLootPossible - Too far vertically from object: " << go->GetName();
+        stream << "LootObject::IsLootPossible - Too far vertically from object";
         botAI->TellMaster(stream);
         return false;
     }
