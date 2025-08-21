@@ -967,10 +967,14 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         }
     
         // Instead of calculating the center point, select a random point from the polygon
-        size_t randomIndex = urand(0, qPoi.points.size() - 1);
-        const QuestPOIPoint& point = qPoi.points[randomIndex];
-    
-        float dz = GetProperFloorHeight(bot, point.x, point.y, MAX_HEIGHT);
+        float randomX = 0, randomY = 0;
+        if (!GetRandomPointInPolygon(qPoi.points, randomX, randomY))
+        {
+            botAI->TellMaster("Failed to generate random point in polygon");
+            continue;
+        }
+        
+        float dz = GetProperFloorHeight(bot, randomX, randomY, MAX_HEIGHT);
     
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
@@ -1452,4 +1456,46 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
 
     botAI->TellMasterNoFacing("Final Floor Z set to: " + std::to_string(dz));
     return dz;
+}
+
+// Helper function to generate a random point inside a convex polygon
+bool NewRpgBaseAction::GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY)
+{
+    if (points.empty())
+        return false;
+
+    // For now, we assume the polygon is convex and use barycentric sampling
+    // For non-convex polygons, you'd need triangulation first
+
+    // Simple method: pick a random triangle from the polygon (assuming convex)
+    size_t numTriangles = points.size() - 2;
+    if (numTriangles == 0)
+        return false;
+
+    size_t triangleIndex = urand(0, numTriangles - 1);
+
+    // Triangle vertices
+    const QuestPOIPoint& a = points[0];
+    const QuestPOIPoint& b = points[triangleIndex + 1];
+    const QuestPOIPoint& c = points[triangleIndex + 2];
+
+    // Barycentric coordinates
+    float r1 = (float)rand() / RAND_MAX;
+    float r2 = (float)rand() / RAND_MAX;
+
+    // Ensure r1 + r2 <= 1
+    if (r1 + r2 > 1)
+    {
+        r1 = 1 - r1;
+        r2 = 1 - r2;
+    }
+
+    float u = 1 - r1 - r2;
+    float v = r1;
+    float w = r2;
+
+    outX = u * a.x + v * b.x + w * c.x;
+    outY = u * a.y + v * b.y + w * c.y;
+
+    return true;
 }
