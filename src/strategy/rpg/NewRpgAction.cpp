@@ -241,14 +241,19 @@ bool NewRpgDoQuestAction::Execute(Event event)
 bool NewRpgDoQuestAction::DoIncompleteQuest()
 {
     uint32 questId = RPG_INFO(do_quest, questId);
+    LOG_DEBUG("playerbots", "[New RPG] DoIncompleteQuest started for quest {}", questId);
+
     if (botAI->rpgInfo.do_quest.pos != WorldPosition())
     {
         /// @TODO: extract to a new function
         int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
+        botAI->TellMasterNoFacing("Checking objective completion for quest " + std::to_string(questId) + ", objective index: " + std::to_string(currentObjective));
+
         // check if the objective has completed
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
         const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
         bool completed = true;
+
         if (currentObjective < QUEST_OBJECTIVES_COUNT)
         {
             if (q_status.CreatureOrGOCount[currentObjective] < quest->RequiredNpcOrGoCount[currentObjective])
@@ -260,23 +265,30 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
                 completed = false;
         }
+
         // the current objective is completed, clear and find a new objective later
         if (completed)
         {
+            botAI->TellMasterNoFacing("Objective completed, clearing quest state for quest " + std::to_string(questId));
             botAI->rpgInfo.do_quest.lastReachPOI = 0;
             botAI->rpgInfo.do_quest.pos = WorldPosition();
             botAI->rpgInfo.do_quest.objectiveIdx = 0;
         }
     }
+
     if (botAI->rpgInfo.do_quest.pos == WorldPosition())
     {
+        botAI->TellMasterNoFacing("No valid POI position found, searching for quest POIs for quest " + std::to_string(questId));
+
         std::vector<POIInfo> poiInfo;
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
             // can't find a poi pos to go, stop doing quest for now
+            botAI->TellMasterNoFacing("Failed to get POI positions for quest " + std::to_string(questId));
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
+
         uint32 rndIdx = urand(0, poiInfo.size() - 1);
         G3D::Vector2 nearestPoi = poiInfo[rndIdx].pos;
         int32 objectiveIdx = poiInfo[rndIdx].objectiveIdx;
@@ -284,16 +296,21 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         float dx = nearestPoi.x, dy = nearestPoi.y;
         float dz = bot->GetMap()->GetGridHeight(dx, dy);
         float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
+
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
         }
-        
+
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        {
+            botAI->TellMasterNoFacing("Invalid height detected for quest " + std::to_string(questId));
             return false;
+        }
 
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);
+        botAI->TellMasterNoFacing("Setting new POI position for quest " + std::to_string(questId) + " at (" + std::to_string(dx) + ", " + std::to_string(dy) + ", " + std::to_string(dz) + ")");
         botAI->rpgInfo.do_quest.lastReachPOI = 0;
         botAI->rpgInfo.do_quest.pos = pos;
         botAI->rpgInfo.do_quest.objectiveIdx = objectiveIdx;
@@ -301,24 +318,32 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
     if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > 10.0f && !botAI->rpgInfo.do_quest.lastReachPOI)
     {
+        botAI->TellMasterNoFacing("Moving far to quest POI for quest " + std::to_string(questId));
         return MoveFarTo(botAI->rpgInfo.do_quest.pos);
     }
+
     // Now we are near the quest objective
     // kill mobs and looting quest should be done automatically by grind strategy
 
     if (!botAI->rpgInfo.do_quest.lastReachPOI)
     {
+        botAI->TellMasterNoFacing("Arrived at quest POI for quest " + std::to_string(questId));
         botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
         return true;
     }
+
     // stayed at this POI for more than 5 minutes
     if (GetMSTimeDiffToNow(botAI->rpgInfo.do_quest.lastReachPOI) >= poiStayTime)
     {
+        botAI->TellMasterNoFacing("Staying at POI for too long, checking for progress on quest " + std::to_string(questId));
+
         bool hasProgression = false;
         int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
+
         // check if the objective has progression
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
         const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+
         if (currentObjective < QUEST_OBJECTIVES_COUNT)
         {
             if (q_status.CreatureOrGOCount[currentObjective] != 0 && quest->RequiredNpcOrGoCount[currentObjective])
@@ -330,10 +355,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                 quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
                 hasProgression = true;
         }
+
         if (!hasProgression)
         {
             // we has reach the poi for more than 5 mins but no progession
             // may not be able to complete this quest, marked as abandoned
+            botAI->TellMasterNoFacing("No progression detected, marking quest " + std::to_string(questId) + " as abandoned");
             /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
             botAI->lowPriorityQuest.insert(questId);
             botAI->rpgStatistic.questAbandoned++;
@@ -341,7 +368,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
+
         // clear and select another poi later
+        botAI->TellMasterNoFacing("Clearing POI state for quest " + std::to_string(questId));
         botAI->rpgInfo.do_quest.lastReachPOI = 0;
         botAI->rpgInfo.do_quest.pos = WorldPosition();
         botAI->rpgInfo.do_quest.objectiveIdx = 0;
@@ -351,10 +380,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     // Only move random if we're actually at the destination (within 10f)
     if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) <= 10.0f)
     {
+        botAI->TellMasterNoFacing("Moving randomly near quest POI for quest " + std::to_string(questId));
         return MoveRandomNear(50.0f);
     }
-    
+
     // If we're still moving to the destination, let the movement continue
+    botAI->TellMasterNoFacing("Continuing movement to quest POI for quest " + std::to_string(questId));
     return true;
 }
 
