@@ -246,8 +246,8 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
     botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
 
-    // --- Step 4: Handle Trainers ---
-    if (creature->IsValidTrainerForPlayer(bot))
+    // --- Step 4: Handle Trainers, limited to class trainers for the moment ---
+    if (creature->IsValidTrainerForPlayer(bot) && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
     {
         botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         bot->SetSelection(info.wander_npc.npcOrGo);
