@@ -94,7 +94,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dy = y + sin(angle) * dis;
         float dz = z + 0.5f;
         // Use Floor Z instead of Ground Z for better exploration quest handling
-        float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
+        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
@@ -177,7 +177,7 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
         float dy = y + distance * sin(angle);
         float dz = z;
         // Use Floor Z instead of Ground Z for better exploration quest handling
-        float floorZ = bot->GetMap()->GetHeight(bot->GetPhaseMask(), dx, dy, dz);
+        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
@@ -777,10 +777,10 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 dy += point.y * weights[i];
             }
 
-            if (bot->GetDistance2d(dx, dy) >= 1500.0f)
+            if (bot->GetDistance2d(dx, dy) >= 2500.0f)
                 continue;
 
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+            float dz = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 continue;
@@ -822,49 +822,78 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     }
 
     // Get POIs to go
-    for (const QuestPOI& qPoi : *poiVector)
+    for (const QuestPOI &qPoi : *poiVector)
     {
         if (qPoi.MapId != bot->GetMapId())
-            continue;
-
-        bool inComplete = false;
-        for (uint32 objective : incompleteObjectiveIdx)
         {
-            if (qPoi.ObjectiveIndex == objective)
+            botAI->TellMaster("POI rejected: map mismatch (Bot=" + std::to_string(bot->GetMapId()) + ", POI=" + std::to_string(qPoi.MapId) + ")");
+            continue;
+        }
+    
+        bool inComplete = false;
+        
+        if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
+        {
+            botAI->TellMaster("POI ObjectiveIndex 16 accepted because quest is flagged as exploration.");
+            inComplete = true;
+        }
+        else
+        {
+            for (uint32 objective : incompleteObjectiveIdx)
             {
-                inComplete = true;
-                break;
+                if (qPoi.ObjectiveIndex == objective)
+                {
+                    botAI->TellMaster("POI ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) +
+                                      " matched an incomplete objective.");
+                    inComplete = true;
+                    break;
+                }
             }
         }
+   
         if (!inComplete)
+        {
+            botAI->TellMaster("POI rejected: ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) + " not in incomplete list");
             continue;
-        if (qPoi.points.size() == 0)
+        }
+    
+        if (qPoi.points.empty())
+        {
+            botAI->TellMaster("POI rejected: no polygon points");
             continue;
+        }
+    
         float dx = 0, dy = 0;
         std::vector<float> weights = GenerateRandomWeights(qPoi.points.size());
         for (size_t i = 0; i < qPoi.points.size(); i++)
         {
-            const QuestPOIPoint& point = qPoi.points[i];
-            dx += point.x * weights[i];
-            dy += point.y * weights[i];
+            dx += qPoi.points[i].x * weights[i];
+            dy += qPoi.points[i].y * weights[i];
         }
-
-        if (bot->GetDistance2d(dx, dy) >= 1500.0f)
-            continue;
-
+    
         float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
-
+    
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        {
+            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(dx) + ", " + std::to_string(dy) + ")");
             continue;
-
-        if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
+        }
+    
+        uint32 botZone = bot->GetZoneId();
+        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz);
+    
+        if (botZone != poiZone)
+        {
+            botAI->TellMaster("POI rejected: zone mismatch (Bot=" + std::to_string(botZone) + ", POI=" + std::to_string(poiZone) + ")");
             continue;
-
+        }
+    
+        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(dx) + ", " + std::to_string(dy) + ", " + std::to_string(dz) + ")");
         poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
     }
 
-    if (poiInfo.size() == 0)
-    {
+
+    if (poiInfo.size() == 0) {
         // LOG_DEBUG("playerbots", "[New rpg] {}: No available poi can be found for quest {}", bot->GetName(), questId);
         return false;
     }
@@ -1230,4 +1259,87 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return false;
     }
     return false;
+}
+
+float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, float dz)
+{
+    // Find the actual floor level for both caves and towers
+    float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
+    float waterLevel = bot->GetMap()->GetWaterLevel(dx, dy);
+    
+    // Get VMAP heights at different levels to determine if we're in a cave or tower
+    float vmapHeightAtTop = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT, true, 2000.0f);
+    
+    float dz = groundHeight;
+    
+    // Check if we have valid VMAP data
+    if (vmapHeightAtTop > INVALID_HEIGHT && vmapHeightAtTop != MAX_HEIGHT)
+    {
+        // We have VMAP data, now determine the appropriate floor level
+        
+        // Try to find the furthest from ground floor by checking VMAP heights progressively
+        float lowestVmapHeight = MAX_HEIGHT;  // For caves - deepest point (lowest Z)
+        float highestVmapHeight = INVALID_HEIGHT; // For towers - highest point (highest Z)
+        
+        // Check progressively lower heights to find the actual floor level
+        float searchZ = MAX_HEIGHT;
+        float searchStep = 10.0f;
+        
+        // Keep searching downward to find the lowest valid floor (for caves)
+        for (int i = 0; i < 30 && searchZ > -MAX_HEIGHT; ++i)
+        {
+            float vmapHeight = bot->GetMap()->GetHeight(dx, dy, searchZ, true, 1000.0f);
+            
+            if (vmapHeight > INVALID_HEIGHT && vmapHeight != MAX_HEIGHT)
+            {
+                if (vmapHeight < lowestVmapHeight)
+                    lowestVmapHeight = vmapHeight;
+                if (vmapHeight > highestVmapHeight)
+                    highestVmapHeight = vmapHeight;
+            }
+            
+            searchZ -= searchStep;
+            
+            // Early exit condition
+            if (searchZ < groundHeight - 200.0f && lowestVmapHeight == MAX_HEIGHT && highestVmapHeight == INVALID_HEIGHT)
+                break;
+        }
+        
+        // Determine if this is a cave or tower based on the VMAP data
+        if (lowestVmapHeight < MAX_HEIGHT && lowestVmapHeight < groundHeight - 20.0f)
+        {
+            // Cave structure - we want the deepest part (lowest Z value)
+            dz = lowestVmapHeight;
+        }
+        else if (highestVmapHeight > INVALID_HEIGHT && highestVmapHeight > groundHeight + 20.0f)
+        {
+            // Tower structure - we want the highest part (highest Z value)
+            // This gives us the top of the tower structure
+            dz = highestVmapHeight;
+        }
+        else
+        {
+            // Neither clearly a cave nor tower, use ground height
+            dz = groundHeight;
+        }
+    }
+    else
+    {
+        // No VMAP data, use ground height
+        dz = groundHeight;
+    }
+    
+    // Ensure we don't go below water level if there's water
+    if (waterLevel > INVALID_HEIGHT && waterLevel > dz)
+    {
+        dz = waterLevel;
+    }
+    
+    // Final safety check
+    if (dz <= INVALID_HEIGHT || dz == MAX_HEIGHT || dz == INVALID_HEIGHT_VALUE)
+    {
+        dz = groundHeight;
+    }
+
+    return dz;
 }
