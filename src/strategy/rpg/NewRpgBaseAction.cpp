@@ -918,7 +918,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float y = fields[1].Get<float>();
             float z = fields[2].Get<float>();
             float radius = fields[3].Get<float>();
-
+            botAI->TellMaster("Exploration Area Trigger data retrieved from DB");
             // Use the center of the area trigger as POI
             float dz = GetProperFloorHeight(bot, x, y, z);
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
