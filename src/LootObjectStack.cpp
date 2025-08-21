@@ -364,7 +364,7 @@ bool LootObject::IsLootPossible(Player* bot)
     std::ostringstream stream;
     if (reqItem && !bot->HasItemCount(reqItem, 1))
     {
-        stream << "LootObject::IsLootPossible - Missing required item: " << reqItem;
+        stream << "LootObject::IsLootPossible - Missing required item: " << reqItem << " for " << go->GetName();
         botAI->TellMaster(stream);
         return false;
     }
@@ -372,7 +372,7 @@ bool LootObject::IsLootPossible(Player* bot)
     
     if (!bot->IsInWater() && (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f))
     {
-        stream << "LootObject::IsLootPossible - Too far vertically from object";
+        stream << "LootObject::IsLootPossible - Too far vertically from object: " << go->GetName();
         botAI->TellMaster(stream);
         return false;
     }
@@ -436,7 +436,7 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (skillId == SKILL_NONE)
     {
-        stream << "LootObject::IsLootPossible - No skill required, lootable";
+        stream << "LootObject::IsLootPossible - No skill required, lootable: " << go->GetName();
         botAI->TellMaster(stream);
         return true;
     }
@@ -450,14 +450,14 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (!botAI->HasSkill((SkillType)skillId))
     {
-        stream << "LootObject::IsLootPossible - Bot lacks required skill: " << skillId;
+        stream << "LootObject::IsLootPossible - Bot lacks required skill: " << skillId << " for " << go->GetName();
         botAI->TellMaster(stream);
         return false;
     }
 
     if (!reqSkillValue)
     {
-        stream << "LootObject::IsLootPossible - No skill value required, lootable";
+        stream << "LootObject::IsLootPossible - No skill value required, lootable " << go->GetName();
         botAI->TellMaster(stream);
         return true;
     }
@@ -488,7 +488,7 @@ bool LootObject::IsLootPossible(Player* bot)
         return false;  // Bot is missing a skinning knife
     }
 
-    stream << "LootObject::IsLootPossible - All checks passed, lootable";
+    stream << "LootObject::IsLootPossible - All checks passed, lootable: " << go->GetName();
     botAI->TellMaster(stream);
     return true;
 }
