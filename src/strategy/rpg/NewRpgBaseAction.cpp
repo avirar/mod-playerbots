@@ -846,7 +846,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             uint32 triggerId = fields[0].Get<uint32>();
 
             // Now get the actual area trigger data
-            result = WorldDatabase.Query("SELECT x, y, z, radius FROM areatrigger WHERE id = {}", triggerId);
+            result = WorldDatabase.Query("SELECT x, y, z, radius FROM areatrigger WHERE entry = {}", triggerId);
             if (!result)
             {
                 botAI->TellMaster("Area trigger data not found for ID " + std::to_string(triggerId));
