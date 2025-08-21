@@ -57,6 +57,7 @@ protected:
     bool SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, uint32& fromNode, uint32& toNode);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    float GetProperFloorHeight(Player* bot, float dx, float dy, float dz);
 
 protected:
     /* FOR MOVE FAR */
