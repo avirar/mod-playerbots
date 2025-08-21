@@ -1363,7 +1363,7 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
 float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, float dz)
 {
     // Debug: Start of function
-    botAI->TellMasterNoFacing("GetProperFloorHeight called with dx=" + std::to_string(dx) + ", dy=" + std::to_string(dy));
+    botAI->TellMasterNoFacing("GetProperFloorHeight called with dx=" + std::to_string(dx) + ", dy=" + std::to_string(dy) + ", dz=" + std::to_string(dz));
 
     // Find the actual floor level for both caves and towers
     float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
