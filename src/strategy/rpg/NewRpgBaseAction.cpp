@@ -195,8 +195,8 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
         if (!map->CanReachPositionAndGetValidCoords(bot, dx, dy, dz))
             continue;
 
-        if (map->IsInWater(bot->GetPhaseMask(), dx, dy, dz, bot->GetCollisionHeight()))
-            continue;
+        // if (map->IsInWater(bot->GetPhaseMask(), dx, dy, dz, bot->GetCollisionHeight()))
+            // continue;
 
         bool moved = MoveTo(bot->GetMapId(), dx, dy, dz, false, false, false, true, priority);
         if (moved)
