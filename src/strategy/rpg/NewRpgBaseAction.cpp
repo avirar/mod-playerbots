@@ -863,24 +863,20 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             continue;
         }
     
-        float dx = 0, dy = 0;
-        std::vector<float> weights = GenerateRandomWeights(qPoi.points.size());
-        for (size_t i = 0; i < qPoi.points.size(); i++)
-        {
-            dx += qPoi.points[i].x * weights[i];
-            dy += qPoi.points[i].y * weights[i];
-        }
+        // Instead of calculating the center point, select a random point from the polygon
+        size_t randomIndex = urand(0, qPoi.points.size() - 1);
+        const QuestPOIPoint& point = qPoi.points[randomIndex];
     
-        float dz = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
+        float dz = GetProperFloorHeight(bot, point.x, point.y, MAX_HEIGHT);
     
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
-            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(dx) + ", " + std::to_string(dy) + ")");
+            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(point.x) + ", " + std::to_string(point.y) + ")");
             continue;
         }
     
         uint32 botZone = bot->GetZoneId();
-        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz);
+        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), point.x, point.y, dz);
     
         if (botZone != poiZone)
         {
@@ -888,8 +884,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             continue;
         }
     
-        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(dx) + ", " + std::to_string(dy) + ", " + std::to_string(dz) + ")");
-        poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
+        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(point.x) + ", " + std::to_string(point.y) + ", " + std::to_string(dz) + ")");
+        poiInfo.push_back({{point.x, point.y}, qPoi.ObjectiveIndex});
     }
 
 
