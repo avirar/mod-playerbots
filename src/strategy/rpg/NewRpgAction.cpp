@@ -446,15 +446,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
 
     // Only move random if we're actually at the destination (within 10f)
-    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) <= 10.0f)
-    {
-        botAI->TellMasterNoFacing("Moving randomly near quest POI for quest " + std::to_string(questId));
-        return MoveRandomNear(50.0f);
-    }
-
-    // If we're still moving to the destination, let the movement continue
-    botAI->TellMasterNoFacing("Continuing movement to quest POI for quest " + std::to_string(questId));
-    return true;
+    botAI->TellMasterNoFacing("Moving randomly near quest POI for quest " + std::to_string(questId));
+    return MoveRandomNear(50.0f);
 }
 
 bool NewRpgDoQuestAction::DoCompletedQuest()
