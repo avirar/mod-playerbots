@@ -283,76 +283,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
 
-        // Find the actual floor level for both caves and towers
-        float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
-        float waterLevel = bot->GetMap()->GetWaterLevel(dx, dy);
-        
-        // Get VMAP heights at different levels to determine if we're in a cave or tower
-        float vmapHeightAtTop = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT, true, 2000.0f);
-        
-        float dz = groundHeight;
-        
-        // Check if we have valid VMAP data
-        if (vmapHeightAtTop > INVALID_HEIGHT && vmapHeightAtTop != MAX_HEIGHT)
+        float floorZ = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
+        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
-            // We have VMAP data, now determine the appropriate floor level
-            
-            // Try to find the actual floor by checking VMAP heights progressively
-            float lowestVmapHeight = MAX_HEIGHT;  // For caves - deepest point (lowest Z)
-            float highestVmapHeight = INVALID_HEIGHT; // For towers - highest point (highest Z)
-            
-            // Check progressively lower heights to find the actual floor level
-            float searchZ = MAX_HEIGHT;
-            float searchStep = 10.0f;
-            
-            // Keep searching downward to find the lowest valid floor (for caves)
-            for (int i = 0; i < 30 && searchZ > -MAX_HEIGHT; ++i)
-            {
-                float vmapHeight = bot->GetMap()->GetHeight(dx, dy, searchZ, true, 1000.0f);
-                
-                if (vmapHeight > INVALID_HEIGHT && vmapHeight != MAX_HEIGHT)
-                {
-                    if (vmapHeight < lowestVmapHeight)
-                        lowestVmapHeight = vmapHeight;
-                    if (vmapHeight > highestVmapHeight)
-                        highestVmapHeight = vmapHeight;
-                }
-                
-                searchZ -= searchStep;
-                
-                // Early exit condition
-                if (searchZ < groundHeight - 200.0f && lowestVmapHeight == MAX_HEIGHT && highestVmapHeight == INVALID_HEIGHT)
-                    break;
-            }
-            
-            // Determine if this is a cave or tower based on the VMAP data
-            if (lowestVmapHeight < MAX_HEIGHT && lowestVmapHeight < groundHeight - 20.0f)
-            {
-                // Cave structure - we want the deepest part (lowest Z value)
-                dz = lowestVmapHeight;
-            }
-            else if (highestVmapHeight > INVALID_HEIGHT && highestVmapHeight > groundHeight + 20.0f)
-            {
-                // Tower structure - we want the highest part (highest Z value)
-                // This gives us the top of the tower structure
-                dz = highestVmapHeight;
-            }
-            else
-            {
-                // Neither clearly a cave nor tower, use ground height
-                dz = groundHeight;
-            }
-        }
-        else
-        {
-            // No VMAP data, use ground height
-            dz = groundHeight;
-        }
-        
-        // Ensure we don't go below water level if there's water
-        if (waterLevel > INVALID_HEIGHT && waterLevel > dz)
-        {
-            dz = waterLevel;
+            dz = floorZ;
         }
         
         // double check for GetQuestPOIPosAndObjectiveIdx
@@ -437,8 +371,12 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        
+        float floorZ = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
+        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
+        {
+            dz = floorZ;
+        }
 
         // double check for GetQuestPOIPosAndObjectiveIdx
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
