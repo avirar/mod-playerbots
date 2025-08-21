@@ -834,7 +834,50 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
-            botAI->TellMaster("POI ObjectiveIndex 16 accepted because quest is flagged as exploration.");
+            // Query areatrigger_involvedrelation to get the trigger ID
+            QueryResult result = WorldDatabase.Query("SELECT id FROM areatrigger_involvedrelation WHERE quest = {}", questId);
+            if (!result)
+            {
+                botAI->TellMaster("No area trigger found for quest " + std::to_string(questId));
+                continue;
+            }
+
+            Field* fields = result->Fetch();
+            uint32 triggerId = fields[0].Get<uint32>();
+
+            // Now get the actual area trigger data
+            result = WorldDatabase.Query("SELECT x, y, z, radius FROM areatrigger WHERE id = {}", triggerId);
+            if (!result)
+            {
+                botAI->TellMaster("Area trigger data not found for ID " + std::to_string(triggerId));
+                continue;
+            }
+
+            fields = result->Fetch();
+            float x = fields[0].Get<float>();
+            float y = fields[1].Get<float>();
+            float z = fields[2].Get<float>();
+            float radius = fields[3].Get<float>();
+
+            // Use the center of the area trigger as POI
+            float dz = GetProperFloorHeight(bot, x, y, MAX_HEIGHT);
+            if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+            {
+                botAI->TellMaster("Invalid Z for area trigger at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+                continue;
+            }
+
+            uint32 botZone = bot->GetZoneId();
+            uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), x, y, dz);
+
+            if (botZone != poiZone)
+            {
+                botAI->TellMaster("Zone mismatch for area trigger POI");
+                continue;
+            }
+
+            botAI->TellMaster("POI accepted (AreaTrigger): " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(dz) + ")");
+            poiInfo.push_back({{x, y}, qPoi.ObjectiveIndex});
             inComplete = true;
         }
         else
