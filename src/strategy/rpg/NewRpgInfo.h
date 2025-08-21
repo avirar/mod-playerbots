@@ -64,6 +64,7 @@ struct NewRpgInfo
     NewRpgStatus status{RPG_IDLE};
 
     uint32 startT{0};  // start timestamp of the current status
+    std::unordered_map<ObjectGuid, uint32> recentNpcVisits; // Timestamp of recent NPC visits
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
@@ -97,6 +98,7 @@ struct NewRpgInfo
     void Reset();
     void SetMoveFarTo(WorldPosition pos);
     std::string ToString();
+    void PruneOldVisits(uint32 expirationTimeMs);
 };
 
 struct NewRpgStatistic
