@@ -282,7 +282,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         int32 objectiveIdx = poiInfo[rndIdx].objectiveIdx;
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
-        float dz = groundHeight;
+        float dz = bot->GetMap()->GetGridHeight(dx, dy);
         float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
@@ -371,7 +371,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        float dz = groundHeight;
+        float dz = bot->GetMap()->GetGridHeight(dx, dy);
         float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
