@@ -1289,7 +1289,7 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
         botAI->TellMasterNoFacing("Initializing highestVmapHeight: " + std::to_string(highestVmapHeight));
 
         // Check progressively lower heights to find the actual floor level
-        float searchZ = MAX_HEIGHT;
+        float searchZ = groundHeight +150.0f;
         float searchStep = 10.0f;
 
         int i = 0;
