@@ -890,7 +890,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         }
     
         bool inComplete = false;
-        
+        botAI->TellMaster("Checking for Exploration quest objective");
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
             botAI->TellMaster("Exploration quest objective detected, checking for Area Triggers");
