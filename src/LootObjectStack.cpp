@@ -314,7 +314,7 @@ bool LootObject::IsLootPossible(Player* bot)
         return false;
     }
 
-    if (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f)
+    if (!bot->IsInWater() && (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f))
     {
         return false;
     }
