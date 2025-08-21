@@ -1335,5 +1335,6 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
         dz = groundHeight;
     }
 
+    botAI->TellMasterNoFacing("Floor Z set to: " + dz);
     return dz;
 }
