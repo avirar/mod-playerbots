@@ -68,6 +68,27 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
     {
         case RPG_IDLE:
         {
+            // PRIORITY: Go near Vendor NPC if bags are almost full to prevent looting issues
+            if (AI_VALUE(uint8, "bag space") > 80)
+            {
+                GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
+                if (!possibleTargets.empty())
+                {
+                    for (ObjectGuid& guid : possibleTargets)
+                    {
+                        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+
+                        if (!creature || !creature->IsInWorld())
+                            continue;
+
+                        if (creature->IsVendor())
+                        {
+                            info.ChangeToWanderNpc()();
+                            return true;
+                        }
+                    }
+                }
+            }
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
                                        RPG_TRAVEL_FLIGHT, RPG_REST});
         }
@@ -177,6 +198,7 @@ bool NewRpgWanderRandomAction::Execute(Event event)
 bool NewRpgWanderNpcAction::Execute(Event event)
 {
     NewRpgInfo& info = botAI->rpgInfo;
+
     if (!info.wander_npc.npcOrGo)
     {
         // No npc can be found, switch to IDLE
@@ -192,27 +214,87 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     }
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.wander_npc.npcOrGo);
-    if (object && IsWithinInteractionDist(object))
-    {
-        if (!info.wander_npc.lastReach)
-        {
-            info.wander_npc.lastReach = getMSTime();
-            if (bot->CanInteractWithQuestGiver(object))
-                InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
-            return true;
-        }
 
-        if (info.wander_npc.lastReach && GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
-            return false;
-
-        // has reached the npc for more than `npcStayTime`, select the next target
-        info.wander_npc.npcOrGo = ObjectGuid();
-        info.wander_npc.lastReach = 0;
-    }
-    else
+    // --- Step 1: Ensure bot is close enough to interact ---
+    if (!object || bot->GetDistance(object) > INTERACTION_DISTANCE)
     {
+        botAI->TellMaster("Moving to interact with target.");
         return MoveWorldObjectTo(info.wander_npc.npcOrGo);
     }
+
+    bool interacted = false;  // Track if the bot has interacted with the NPC
+
+    // --- Step 2: Handle Quest NPCs ---
+    if (bot->CanInteractWithQuestGiver(object))
+    {
+        botAI->TellMaster("Interacting with quest NPC.");
+        InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
+        interacted = true;
+    }
+
+    // --- Step 3: Detect NPC and Retrieve Details ---
+    botAI->TellMaster("Checking NPC GUID: " + info.wander_npc.npcOrGo.ToString());
+    Creature* creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
+
+    if (!creature)
+    {
+        botAI->TellMaster("No valid NPC found for interaction.");
+        return true;
+    }
+
+    std::string npcName = creature->GetName();
+    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+    botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
+
+    // --- Step 4: Handle Trainers ---
+    if (creature->IsValidTrainerForPlayer(bot))
+    {
+        botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
+        bot->SetSelection(info.wander_npc.npcOrGo);
+        botAI->TellMaster("Training with " + npcName + ".");
+        botAI->DoSpecificAction("trainer", Event("trainer"));
+        interacted = true;
+    }
+
+    // --- Step 5: Handle Vendors ---
+    if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+    {
+        botAI->TellMaster("NPC: " + npcName + " is a vendor.");
+        botAI->TellMaster("Buying and selling at " + npcName + ".");
+        botAI->DoSpecificAction("buy", Event("buy", "vendor"));
+        botAI->DoSpecificAction("sell", Event("sell", "*"));
+        interacted = true;
+    }
+
+    // --- Step 6: Handle Repair Vendors ---
+    if (npcFlags & UNIT_NPC_FLAG_REPAIR)
+    {
+        botAI->TellMaster("NPC: " + npcName + " offers repairs.");
+        bot->SetSelection(info.wander_npc.npcOrGo);
+        botAI->TellMaster("Repairing items at " + npcName + ".");
+        botAI->DoSpecificAction("repair", Event("repair"));
+        interacted = true;
+    }
+
+    // --- Step 7: Apply Waiting Logic (EVEN IF NO INTERACTION) ---
+    if (!info.wander_npc.lastReach)
+    {
+        info.wander_npc.lastReach = getMSTime();  // Set once for ALL cases
+        botAI->TellMaster("Pausing near " + npcName + " for " + std::to_string(npcStayTime) + "ms.");
+        return false;
+    }
+    else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
+    {
+        botAI->TellMaster("Waiting at " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.wander_npc.lastReach)) + "ms.");
+        return false;
+    }
+
+    // --- Step 8: Reset & Move to Next Target ---
+    botAI->TellMaster("Finished interacting with " + npcName + ". Moving to next target.");
+    info.wander_npc.npcOrGo = ObjectGuid();
+    info.wander_npc.lastReach = 0;
+    info.recentNpcVisits[creature->GetGUID()] = getMSTime();
+
     return true;
 }
 
