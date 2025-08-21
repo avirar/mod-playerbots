@@ -1259,78 +1259,109 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
 
 float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, float dz)
 {
+    // Debug: Start of function
+    botAI->TellMasterNoFacing("GetProperFloorHeight called with dx=" + std::to_string(dx) + ", dy=" + std::to_string(dy));
+
     // Find the actual floor level for both caves and towers
     float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
     float waterLevel = bot->GetMap()->GetWaterLevel(dx, dy);
-    
+
+    botAI->TellMasterNoFacing("Ground Height: " + std::to_string(groundHeight));
+    botAI->TellMasterNoFacing("Water Level: " + std::to_string(waterLevel));
+
     // Get VMAP heights at different levels to determine if we're in a cave or tower
     float vmapHeightAtTop = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT, true, 2000.0f);
-    
-    // float dz = groundHeight;
-    
+
+    botAI->TellMasterNoFacing("VMAP Height at MAX_HEIGHT: " + std::to_string(vmapHeightAtTop));
+
     // Check if we have valid VMAP data
     if (vmapHeightAtTop > INVALID_HEIGHT && vmapHeightAtTop != MAX_HEIGHT)
     {
+        botAI->TellMasterNoFacing("Valid VMAP data found.");
+
         // We have VMAP data, now determine the appropriate floor level
-        
+
         // Try to find the furthest from ground floor by checking VMAP heights progressively
         float lowestVmapHeight = MAX_HEIGHT;  // For caves - deepest point (lowest Z)
         float highestVmapHeight = INVALID_HEIGHT; // For towers - highest point (highest Z)
-        
+
+        botAI->TellMasterNoFacing("Initializing lowestVmapHeight: " + std::to_string(lowestVmapHeight));
+        botAI->TellMasterNoFacing("Initializing highestVmapHeight: " + std::to_string(highestVmapHeight));
+
         // Check progressively lower heights to find the actual floor level
         float searchZ = MAX_HEIGHT;
         float searchStep = 10.0f;
-        
+
+        int i = 0;
         // Keep searching downward to find the lowest valid floor (for caves)
-        for (int i = 0; i < 30 && searchZ > -MAX_HEIGHT; ++i)
+        for (; i < 30 && searchZ > -MAX_HEIGHT; ++i)
         {
             float vmapHeight = bot->GetMap()->GetHeight(dx, dy, searchZ, true, 1000.0f);
-            
+
+            botAI->TellMasterNoFacing("Search step " + std::to_string(i) + ": Z=" + std::to_string(searchZ) + ", VMAP Height=" + std::to_string(vmapHeight));
+
             if (vmapHeight > INVALID_HEIGHT && vmapHeight != MAX_HEIGHT)
             {
                 if (vmapHeight < lowestVmapHeight)
+                {
                     lowestVmapHeight = vmapHeight;
+                    botAI->TellMasterNoFacing("New lowest VMAP height found: " + std::to_string(lowestVmapHeight));
+                }
                 if (vmapHeight > highestVmapHeight)
+                {
                     highestVmapHeight = vmapHeight;
+                    botAI->TellMasterNoFacing("New highest VMAP height found: " + std::to_string(highestVmapHeight));
+                }
             }
-            
+
             searchZ -= searchStep;
-            
+
             // Early exit condition
             if (searchZ < groundHeight - 200.0f && lowestVmapHeight == MAX_HEIGHT && highestVmapHeight == INVALID_HEIGHT)
+            {
+                botAI->TellMasterNoFacing("Early exit condition met.");
                 break;
+            }
         }
-        
+
+        botAI->TellMasterNoFacing("Finished searching. Final lowestVmapHeight: " + std::to_string(lowestVmapHeight));
+        botAI->TellMasterNoFacing("Final highestVmapHeight: " + std::to_string(highestVmapHeight));
+
         // Determine if this is a cave or tower based on the VMAP data
         if (lowestVmapHeight < MAX_HEIGHT && lowestVmapHeight < groundHeight - 20.0f)
         {
             // Cave structure - we want the deepest part (lowest Z value)
             dz = lowestVmapHeight;
+            botAI->TellMasterNoFacing("Detected cave structure. Using lowest VMAP height: " + std::to_string(dz));
         }
         else if (highestVmapHeight > INVALID_HEIGHT && highestVmapHeight > groundHeight + 20.0f)
         {
             // Tower structure - we want the highest part (highest Z value)
             // This gives us the top of the tower structure
             dz = highestVmapHeight;
+            botAI->TellMasterNoFacing("Detected tower structure. Using highest VMAP height: " + std::to_string(dz));
         }
         else
         {
             // Neither clearly a cave nor tower, use ground height
             dz = groundHeight;
+            botAI->TellMasterNoFacing("No clear structure detected. Using ground height: " + std::to_string(dz));
         }
     }
     else
     {
         // No VMAP data, use ground height
         dz = groundHeight;
+        botAI->TellMasterNoFacing("No valid VMAP data. Using ground height: " + std::to_string(dz));
     }
 
     // Final safety check
     if (dz <= INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
     {
         dz = groundHeight;
+        botAI->TellMasterNoFacing("Safety check triggered. Resetting to ground height: " + std::to_string(dz));
     }
 
-    botAI->TellMasterNoFacing("Floor Z set to: " + std::to_string(dz));
+    botAI->TellMasterNoFacing("Final Floor Z set to: " + std::to_string(dz));
     return dz;
 }
