@@ -277,7 +277,6 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     }
 
     // --- Step 8: Reset & Move to Next Target ---
-    botAI->TellMaster("Finished interacting with " + npcName + ". Moving to next target.");
     info.wander_npc.npcOrGo = ObjectGuid();
     info.wander_npc.lastReach = 0;
     info.recentNpcVisits[creature->GetGUID()] = getMSTime();
