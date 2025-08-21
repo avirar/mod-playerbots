@@ -627,8 +627,12 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         return ObjectGuid();
 
     WorldObject* nearestObject = nullptr;
+    botAI->rpgInfo.PruneOldVisits(30 * 60 * 1000); // 30 minutes
     for (ObjectGuid& guid : possibleTargets)
     {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            continue;  // Skip recently visited
+
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
         if (!object || !object->IsInWorld())
@@ -647,6 +651,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
     for (ObjectGuid& guid : possibleGameObjects)
     {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            continue;  // Skip recently visited
+
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
 
         if (!object || !object->IsInWorld())
@@ -669,6 +676,56 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     // No questgiver to accept or reward
     if (questgiverOnly)
         return ObjectGuid();
+    // Priority 2–5: Trainers, Vendors, Repairs
+    for (ObjectGuid& guid : possibleTargets)
+    {
+        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            continue;  // Skip recently visited
+
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld())
+            continue;
+
+        if (distanceLimit && bot->GetDistance(creature) > distanceLimit)
+            continue;
+
+        // Class trainer with GREEN spells
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                        return creature->GetGUID();
+                }
+            }
+        }
+
+        // Profession trainer with GREEN spells (must know the profession spell)
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                        return creature->GetGUID();
+                }
+            }
+        }
+
+        // Vendor if bags > 50% full
+        if (AI_VALUE(uint8, "bag space") > 80 && creature->IsVendor())
+            return creature->GetGUID();
+
+        // Repair if any item < 50% durability
+        if (AI_VALUE(uint8, "durability") < 50 &&
+            creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_REPAIR))
+            return creature->GetGUID();
+    }
 
     if (possibleTargets.empty())
         return ObjectGuid();
