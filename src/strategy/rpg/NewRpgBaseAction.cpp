@@ -974,29 +974,31 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             continue;
         }
         
+        // Use the random point for all subsequent operations
         float dz = GetProperFloorHeight(bot, randomX, randomY, MAX_HEIGHT);
-    
+        
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
-            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(point.x) + ", " + std::to_string(point.y) + ")");
+            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(randomX) + ", " + std::to_string(randomY) + ")");
             continue;
         }
-    
+        
         uint32 botZone = bot->GetZoneId();
-        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), point.x, point.y, dz);
-    
+        uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), randomX, randomY, dz);
+        
         if (botZone != poiZone)
         {
             botAI->TellMaster("POI rejected: zone mismatch (Bot=" + std::to_string(botZone) + ", POI=" + std::to_string(poiZone) + ")");
             continue;
         }
-    
-        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(point.x) + ", " + std::to_string(point.y) + ", " + std::to_string(dz) + ")");
-        poiInfo.push_back({{point.x, point.y}, qPoi.ObjectiveIndex});
+        
+        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(randomX) + ", " + std::to_string(randomY) + ", " + std::to_string(dz) + ")");
+        poiInfo.push_back({{randomX, randomY}, qPoi.ObjectiveIndex});
     }
 
 
-    if (poiInfo.size() == 0) {
+    if (poiInfo.size() == 0)
+    {
         // LOG_DEBUG("playerbots", "[New rpg] {}: No available poi can be found for quest {}", bot->GetName(), questId);
         return false;
     }
