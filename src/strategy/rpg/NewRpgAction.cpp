@@ -348,7 +348,14 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         return true;
     }
 
-    return MoveRandomNear(50.0f);
+    // Only move random if we're actually at the destination (within 10f)
+    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) <= 10.0f)
+    {
+        return MoveRandomNear(50.0f);
+    }
+    
+    // If we're still moving to the destination, let the movement continue
+    return true;
 }
 
 bool NewRpgDoQuestAction::DoCompletedQuest()
