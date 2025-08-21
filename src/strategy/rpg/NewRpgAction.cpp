@@ -218,7 +218,6 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     // --- Step 1: Ensure bot is close enough to interact ---
     if (!object || bot->GetDistance(object) > INTERACTION_DISTANCE)
     {
-        botAI->TellMaster("Moving to interact with target.");
         return MoveWorldObjectTo(info.wander_npc.npcOrGo);
     }
 
@@ -227,31 +226,25 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     // --- Step 2: Handle Quest NPCs ---
     if (bot->CanInteractWithQuestGiver(object))
     {
-        botAI->TellMaster("Interacting with quest NPC.");
         InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
         interacted = true;
     }
 
     // --- Step 3: Detect NPC and Retrieve Details ---
-    botAI->TellMaster("Checking NPC GUID: " + info.wander_npc.npcOrGo.ToString());
     Creature* creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
 
     if (!creature)
     {
-        botAI->TellMaster("No valid NPC found for interaction.");
         return true;
     }
 
     std::string npcName = creature->GetName();
     uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
-    botAI->TellMaster("Found NPC: " + npcName + " (Flags: " + std::to_string(npcFlags) + ")");
 
     // --- Step 4: Handle Trainers, limited to class trainers for the moment ---
     if (creature->IsValidTrainerForPlayer(bot) && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
     {
-        botAI->TellMaster("NPC: " + npcName + " is a valid trainer for me.");
         bot->SetSelection(info.wander_npc.npcOrGo);
-        botAI->TellMaster("Training with " + npcName + ".");
         botAI->DoSpecificAction("trainer", Event("trainer"));
         interacted = true;
     }
@@ -259,19 +252,15 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     // --- Step 5: Handle Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
-        botAI->TellMaster("NPC: " + npcName + " is a vendor.");
-        botAI->TellMaster("Buying and selling at " + npcName + ".");
-        botAI->DoSpecificAction("buy", Event("buy", "vendor"));
         botAI->DoSpecificAction("sell", Event("sell", "*"));
+        botAI->DoSpecificAction("buy", Event("buy", "vendor"));
         interacted = true;
     }
 
     // --- Step 6: Handle Repair Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_REPAIR)
     {
-        botAI->TellMaster("NPC: " + npcName + " offers repairs.");
         bot->SetSelection(info.wander_npc.npcOrGo);
-        botAI->TellMaster("Repairing items at " + npcName + ".");
         botAI->DoSpecificAction("repair", Event("repair"));
         interacted = true;
     }
@@ -280,12 +269,10 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     if (!info.wander_npc.lastReach)
     {
         info.wander_npc.lastReach = getMSTime();  // Set once for ALL cases
-        botAI->TellMaster("Pausing near " + npcName + " for " + std::to_string(npcStayTime) + "ms.");
         return false;
     }
     else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
     {
-        botAI->TellMaster("Waiting at " + npcName + " for " + std::to_string(npcStayTime - GetMSTimeDiffToNow(info.wander_npc.lastReach)) + "ms.");
         return false;
     }
 
