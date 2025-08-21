@@ -137,3 +137,15 @@ std::string NewRpgInfo::ToString()
     }
     return out.str();
 }
+
+void NewRpgInfo::PruneOldVisits(uint32 expirationTimeMs)
+{
+    uint32 now = getMSTime();
+    for (auto it = recentNpcVisits.begin(); it != recentNpcVisits.end(); )
+    {
+        if (getMSTimeDiff((uint32)it->second, (uint32)now) > expirationTimeMs)
+            it = recentNpcVisits.erase(it);
+        else
+            ++it;
+    }
+}
