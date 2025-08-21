@@ -1270,7 +1270,7 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
     // Get VMAP heights at different levels to determine if we're in a cave or tower
     float vmapHeightAtTop = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT, true, 2000.0f);
     
-    float dz = groundHeight;
+    // float dz = groundHeight;
     
     // Check if we have valid VMAP data
     if (vmapHeightAtTop > INVALID_HEIGHT && vmapHeightAtTop != MAX_HEIGHT)
