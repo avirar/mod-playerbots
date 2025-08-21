@@ -414,7 +414,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         return true;
     }
 
-    return MoveRandomNear(20.0f);
+    return MoveRandomNear(50.0f);
 }
 
 bool NewRpgDoQuestAction::DoCompletedQuest()
