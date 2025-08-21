@@ -690,7 +690,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
             continue;
 
         // Class trainer with GREEN spells
-        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
         {
             const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
             if (trainerSpells)
@@ -703,6 +703,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
             }
         }
 
+        /*
         // Profession trainer with GREEN spells (must know the profession spell)
         if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
         {
@@ -716,6 +717,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                 }
             }
         }
+        */
 
         // Vendor if bags > 50% full
         if (AI_VALUE(uint8, "bag space") > 80 && creature->IsVendor())
