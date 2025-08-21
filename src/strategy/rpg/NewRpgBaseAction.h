@@ -58,7 +58,7 @@ protected:
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
     float GetProperFloorHeight(Player* bot, float dx, float dy, float dz);
-    bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY)
+    bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
 
 protected:
     /* FOR MOVE FAR */
