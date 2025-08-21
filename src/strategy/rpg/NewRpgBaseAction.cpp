@@ -1466,9 +1466,24 @@ bool NewRpgBaseAction::GetRandomPointInPolygon(const std::vector<QuestPOIPoint>&
     if (points.empty())
         return false;
 
-    // For now, we assume the polygon is convex and use barycentric sampling
-    // For non-convex polygons, you'd need triangulation first
+    // If we have only 1 point, return that point
+    if (points.size() == 1)
+    {
+        outX = points[0].x;
+        outY = points[0].y;
+        return true;
+    }
 
+    // If we have only 2 points, return a random point on the line segment
+    if (points.size() == 2)
+    {
+        float t = (float)rand() / RAND_MAX;
+        outX = points[0].x + t * (points[1].x - points[0].x);
+        outY = points[0].y + t * (points[1].y - points[0].y);
+        return true;
+    }
+
+    // For 3+ points, use barycentric sampling from triangles
     // Simple method: pick a random triangle from the polygon (assuming convex)
     size_t numTriangles = points.size() - 2;
     if (numTriangles == 0)
