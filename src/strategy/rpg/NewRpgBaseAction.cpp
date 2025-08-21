@@ -1328,15 +1328,9 @@ float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, fl
         // No VMAP data, use ground height
         dz = groundHeight;
     }
-    
-    // Ensure we don't go below water level if there's water
-    if (waterLevel > INVALID_HEIGHT && waterLevel > dz)
-    {
-        dz = waterLevel;
-    }
-    
+
     // Final safety check
-    if (dz <= INVALID_HEIGHT || dz == MAX_HEIGHT || dz == INVALID_HEIGHT_VALUE)
+    if (dz <= INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
     {
         dz = groundHeight;
     }
