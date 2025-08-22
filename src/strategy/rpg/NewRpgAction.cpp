@@ -363,7 +363,10 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
 
         float dx = nearestPoi.x, dy = nearestPoi.y;
         float dz = bot->GetMap()->GetGridHeight(dx, dy);
-        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
+        
+        // Look for nearby quest-related NPCs to get proper Z reference
+        ObjectGuid nearbyNPC = FindNearbyQuestNPC(questId, dx, dy, 100.0f);
+        float floorZ = GetProperFloorHeightNearNPC(bot, dx, dy, dz, nearbyNPC);
 
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
@@ -471,7 +474,10 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
         float dz = bot->GetMap()->GetGridHeight(dx, dy);
-        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
+        
+        // Look for nearby quest giver for reward to get proper Z reference
+        ObjectGuid nearbyNPC = FindNearbyQuestNPC(questId, dx, dy, 100.0f);
+        float floorZ = GetProperFloorHeightNearNPC(bot, dx, dy, dz, nearbyNPC);
         if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
         {
             dz = floorZ;
