@@ -62,6 +62,7 @@ protected:
     bool IsNPCOnDifferentElevation(WorldObject* npc, float botZ, float tolerance = 10.0f);
     bool ValidateReachability(WorldPosition dest, ObjectGuid targetNpc = ObjectGuid());
     ObjectGuid FindNearbyQuestNPC(uint32 questId, float x, float y, float searchRadius);
+    bool TryAlternativeApproachForLOS(ObjectGuid guid, float& bestX, float& bestY, float& bestZ);
     bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
 
 protected:
