@@ -376,7 +376,10 @@ bool LootObject::IsLootPossible(Player* bot)
         const float x = worldObj->GetPositionX();
         const float y = worldObj->GetPositionY();
         const float z = worldObj->GetPositionZ();
-        if (!map->CanReachPositionAndGetValidCoords(bot, x, y, z))
+        float destX = x;
+        float destY = y;
+        float destZ = z;
+        if (!map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
         {
             stream << "LootObject::IsLootPossible - Too far vertically from object and cannot reach it";
             botAI->TellMaster(stream);
