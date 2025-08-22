@@ -65,6 +65,8 @@
 #include "XpGainAction.h"
 #include "NewRpgAction.h"
 #include "CancelChannelAction.h"
+#include "UseQuestItemOnTargetAction.h"
+#include "MoveToQuestItemTargetAction.h"
 
 class PlayerbotAI;
 
@@ -193,6 +195,8 @@ public:
         creators["clean quest log"] = &ActionContext::clean_quest_log;
         creators["roll"] = &ActionContext::roll_action;
         creators["cancel channel"] = &ActionContext::cancel_channel;
+        creators["quest item use on target"] = &ActionContext::quest_item_use_on_target;
+        creators["move to quest item target"] = &ActionContext::move_to_quest_item_target;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
@@ -444,6 +448,10 @@ private:
     static Action* new_rpg_wander_npc(PlayerbotAI* ai) { return new NewRpgWanderNpcAction(ai); }
     static Action* new_rpg_do_quest(PlayerbotAI* ai) { return new NewRpgDoQuestAction(ai); }
     static Action* new_rpg_travel_flight(PlayerbotAI* ai) { return new NewRpgTravelFlightAction(ai); }
+
+    // Quest item actions
+    static Action* quest_item_use_on_target(PlayerbotAI* ai) { return new UseQuestItemOnTargetAction(ai); }
+    static Action* move_to_quest_item_target(PlayerbotAI* ai) { return new MoveToQuestItemTargetAction(ai); }
 };
 
 #endif
