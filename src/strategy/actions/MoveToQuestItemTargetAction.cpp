@@ -45,8 +45,14 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
         return false;
     }
 
-    // Check if we're already in range
-    float range = botAI->GetRange("spell");
+    // Check if we're already in range (use the spell's actual range)
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    
+    // If spell has 0 range, use melee range as fallback
+    if (range <= 0.0f)
+        range = botAI->GetRange("melee");
+        
     if (bot->GetDistance(target) <= range)
     {
         // We're already in range, no need to move
@@ -79,8 +85,14 @@ bool MoveToQuestItemTargetAction::isUseful()
     if (!target)
         return false;
 
-    // Check if we need to move (are we out of range?)
-    float range = botAI->GetRange("spell");
+    // Check if we need to move (are we out of range? use spell's actual range)
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    
+    // If spell has 0 range, use melee range as fallback
+    if (range <= 0.0f)
+        range = botAI->GetRange("melee");
+        
     return bot->GetDistance(target) > range;
 }
 
