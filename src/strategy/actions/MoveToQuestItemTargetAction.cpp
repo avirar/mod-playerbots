@@ -17,8 +17,8 @@
 #include "Unit.h"
 #include "ChatHelper.h"
 
-// Maximum distance to search for quest targets
-constexpr float QUEST_TARGET_SEARCH_RANGE = 50.0f;
+// Maximum distance to search for quest targets (same as grind distance)
+constexpr float QUEST_TARGET_SEARCH_RANGE = 75.0f;
 
 bool MoveToQuestItemTargetAction::Execute(Event event)
 {
