@@ -36,6 +36,14 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 
     if (dest != botAI->rpgInfo.moveFarPos)
     {
+        // Validate reachability before committing to new destination
+        if (!ValidateReachability(dest))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} destination not reachable: ({},{},{})", 
+                     bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+            return false;
+        }
+        
         // clear stuck information if it's a new dest
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
@@ -132,28 +140,46 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     WorldObject* object = botAI->GetWorldObject(guid);
     if (!object)
         return false;
-    float x = object->GetPositionX();
-    float y = object->GetPositionY();
-    float z = object->GetPositionZ();
+        
+    float objectX = object->GetPositionX();
+    float objectY = object->GetPositionY();
+    float objectZ = object->GetPositionZ();
     float mapId = object->GetMapId();
     float angle = 0.f;
 
     if (!object->ToUnit() || !object->ToUnit()->isMoving())
-        angle = object->GetAngle(bot) + (M_PI * irand(-25, 25) / 100.0);  // Closest 45 degrees towards the target
+        angle = object->GetAngle(bot) + (M_PI * irand(-25, 25) / 100.0);
     else
-        angle = object->GetOrientation() +
-                (M_PI * irand(-25, 25) / 100.0);  // 45 degrees infront of target (leading it's movement)
+        angle = object->GetOrientation() + (M_PI * irand(-25, 25) / 100.0);
 
     float rnd = rand_norm();
-    x += cos(angle) * distance * rnd;
-    y += sin(angle) * distance * rnd;
-    if (!object->GetMap()->CheckCollisionAndGetValidCoords(object, object->GetPositionX(), object->GetPositionY(),
-                                                           object->GetPositionZ(), x, y, z))
+    float x = objectX + cos(angle) * distance * rnd;
+    float y = objectY + sin(angle) * distance * rnd;
+    float z = objectZ;
+
+    // Use NPC-aware height calculation to ensure we move to the same elevation as the target
+    float properZ = GetProperFloorHeightNearNPC(bot, x, y, objectZ, guid);
+    if (properZ != INVALID_HEIGHT && properZ != VMAP_INVALID_HEIGHT_VALUE)
     {
-        x = object->GetPositionX();
-        y = object->GetPositionY();
-        z = object->GetPositionZ();
+        z = properZ;
     }
+
+    // Validate collision, but preserve Z coordinate from NPC level
+    float validX = x, validY = y, validZ = z;
+    if (!object->GetMap()->CheckCollisionAndGetValidCoords(object, objectX, objectY, objectZ, validX, validY, validZ))
+    {
+        // If collision check fails, try moving closer to the object at its Z level
+        x = objectX + cos(angle) * (distance * 0.5f);
+        y = objectY + sin(angle) * (distance * 0.5f);
+        z = objectZ;
+    }
+    else
+    {
+        x = validX;
+        y = validY;
+        z = validZ;
+    }
+    
     return MoveTo(mapId, x, y, z, false, false, false, true);
 }
 
@@ -627,7 +653,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         return ObjectGuid();
 
     WorldObject* nearestObject = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
     botAI->rpgInfo.PruneOldVisits(30 * 60 * 1000); // 30 minutes
+    
     for (ObjectGuid& guid : possibleTargets)
     {
         if (botAI->rpgInfo.recentNpcVisits.count(guid))
@@ -641,10 +669,21 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
+        // Check elevation difference - prefer NPCs on similar elevation
+        float elevationPenalty = 0.0f;
+        if (IsNPCOnDifferentElevation(object, bot->GetPositionZ(), 15.0f))
+        {
+            elevationPenalty = 50.0f; // Add distance penalty for different elevations
+        }
+
         if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
         {
-            if (!nearestObject || bot->GetExactDist(nearestObject) > bot->GetExactDist(object))
+            float adjustedDistance = bot->GetExactDist(object) + elevationPenalty;
+            if (adjustedDistance < nearestDistance)
+            {
                 nearestObject = object;
+                nearestDistance = adjustedDistance;
+            }
             break;
         }
     }
@@ -662,10 +701,21 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
+        // Check elevation difference for GameObjects too
+        float elevationPenalty = 0.0f;
+        if (IsNPCOnDifferentElevation(object, bot->GetPositionZ(), 15.0f))
+        {
+            elevationPenalty = 50.0f;
+        }
+
         if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
         {
-            if (!nearestObject || bot->GetExactDist(nearestObject) > bot->GetExactDist(object))
+            float adjustedDistance = bot->GetExactDist(object) + elevationPenalty;
+            if (adjustedDistance < nearestDistance)
+            {
                 nearestObject = object;
+                nearestDistance = adjustedDistance;
+            }
             break;
         }
     }
@@ -885,20 +935,20 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     {
         if (qPoi.MapId != bot->GetMapId())
         {
-            botAI->TellMaster("POI rejected: map mismatch (Bot=" + std::to_string(bot->GetMapId()) + ", POI=" + std::to_string(qPoi.MapId) + ")");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: map mismatch (Bot={}, POI={})", bot->GetName(), bot->GetMapId(), qPoi.MapId);
             continue;
         }
     
         bool inComplete = false;
-        botAI->TellMaster("Checking for Exploration quest objective");
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking for Exploration quest objective", bot->GetName());
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
-            botAI->TellMaster("Exploration quest objective detected, checking for Area Triggers");
+            LOG_DEBUG("playerbots", "[New RPG] {} Exploration quest objective detected, checking for Area Triggers", bot->GetName());
             // Query areatrigger_involvedrelation to get the trigger ID
             QueryResult result = WorldDatabase.Query("SELECT id FROM areatrigger_involvedrelation WHERE quest = {}", questId);
             if (!result)
             {
-                botAI->TellMaster("No area trigger found for quest " + std::to_string(questId));
+                LOG_DEBUG("playerbots", "[New RPG] {} No area trigger found for quest {}", bot->GetName(), questId);
                 continue;
             }
 
@@ -909,7 +959,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             result = WorldDatabase.Query("SELECT x, y, z, radius FROM areatrigger WHERE entry = {}", triggerId);
             if (!result)
             {
-                botAI->TellMaster("Area trigger data not found for ID " + std::to_string(triggerId));
+                LOG_DEBUG("playerbots", "[New RPG] {} Area trigger data not found for ID {}", bot->GetName(), triggerId);
                 continue;
             }
 
@@ -918,12 +968,12 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float y = fields[1].Get<float>();
             float z = fields[2].Get<float>();
             float radius = fields[3].Get<float>();
-            botAI->TellMaster("Exploration Area Trigger data retrieved from DB");
+            LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB", bot->GetName());
             // Use the center of the area trigger as POI
-            float dz = GetProperFloorHeight(bot, x, y, z);
+            float dz = GetProperFloorHeightNearNPC(bot, x, y, z);
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             {
-                botAI->TellMaster("Invalid Z for area trigger at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+                LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z for area trigger at ({}, {})", bot->GetName(), x, y);
                 continue;
             }
 
@@ -932,11 +982,11 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
             if (botZone != poiZone)
             {
-                botAI->TellMaster("Zone mismatch for area trigger POI");
+                LOG_DEBUG("playerbots", "[New RPG] {} Zone mismatch for area trigger POI", bot->GetName());
                 continue;
             }
 
-            botAI->TellMaster("POI accepted (AreaTrigger): " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(dz) + ")");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI accepted (AreaTrigger): {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, x, y, dz);
             poiInfo.push_back({{x, y}, qPoi.ObjectiveIndex});
             inComplete = true;
         }
@@ -946,8 +996,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             {
                 if (qPoi.ObjectiveIndex == objective)
                 {
-                    botAI->TellMaster("POI ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) +
-                                      " matched an incomplete objective.");
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI ObjectiveIndex {} matched an incomplete objective", bot->GetName(), qPoi.ObjectiveIndex);
                     inComplete = true;
                     break;
                 }
@@ -956,13 +1005,13 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
    
         if (!inComplete)
         {
-            botAI->TellMaster("POI rejected: ObjectiveIndex " + std::to_string(qPoi.ObjectiveIndex) + " not in incomplete list");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: ObjectiveIndex {} not in incomplete list", bot->GetName(), qPoi.ObjectiveIndex);
             continue;
         }
     
         if (qPoi.points.empty())
         {
-            botAI->TellMaster("POI rejected: no polygon points");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: no polygon points", bot->GetName());
             continue;
         }
     
@@ -970,16 +1019,17 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         float randomX = 0, randomY = 0;
         if (!GetRandomPointInPolygon(qPoi.points, randomX, randomY))
         {
-            botAI->TellMaster("Failed to generate random point in polygon");
+            LOG_DEBUG("playerbots", "[New RPG] {} Failed to generate random point in polygon", bot->GetName());
             continue;
         }
         
-        // Use the random point for all subsequent operations
-        float dz = GetProperFloorHeight(bot, randomX, randomY, MAX_HEIGHT);
+        // Use the random point for all subsequent operations and look for nearby NPCs for Z reference
+        ObjectGuid nearbyNPC = FindNearbyQuestNPC(questId, randomX, randomY, 100.0f);
+        float dz = GetProperFloorHeightNearNPC(bot, randomX, randomY, MAX_HEIGHT, nearbyNPC);
         
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
-            botAI->TellMaster("POI rejected: invalid Z at (" + std::to_string(randomX) + ", " + std::to_string(randomY) + ")");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: invalid Z at ({}, {})", bot->GetName(), randomX, randomY);
             continue;
         }
         
@@ -988,11 +1038,11 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (botZone != poiZone)
         {
-            botAI->TellMaster("POI rejected: zone mismatch (Bot=" + std::to_string(botZone) + ", POI=" + std::to_string(poiZone) + ")");
+            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: zone mismatch (Bot={}, POI={})", bot->GetName(), botZone, poiZone);
             continue;
         }
         
-        botAI->TellMaster("POI accepted: " + std::to_string(qPoi.ObjectiveIndex) + " at (" + std::to_string(randomX) + ", " + std::to_string(randomY) + ", " + std::to_string(dz) + ")");
+        LOG_DEBUG("playerbots", "[New RPG] {} POI accepted: {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, randomX, randomY, dz);
         poiInfo.push_back({{randomX, randomY}, qPoi.ObjectiveIndex});
     }
 
@@ -1368,96 +1418,152 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
 
 float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, float dz)
 {
-    // Debug: Start of function
-    botAI->TellMasterNoFacing("GetProperFloorHeight called with dx=" + std::to_string(dx) + ", dy=" + std::to_string(dy) + ", dz=" + std::to_string(dz));
-
-    // Find the actual floor level for both caves and towers
     float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
-    float waterLevel = bot->GetMap()->GetWaterLevel(dx, dy);
-
-    // Get VMAP heights at different levels to determine if we're in a cave or tower
-    float vmapHeightAtTop = bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT, true, 2000.0f);
-
-    // Check if we have valid VMAP data
-    if (vmapHeightAtTop > INVALID_HEIGHT && vmapHeightAtTop != MAX_HEIGHT)
+    
+    // Get VMAP height for more accurate positioning
+    float vmapHeight = bot->GetMap()->GetHeight(dx, dy, dz + 10.0f, true, 50.0f);
+    
+    // Use VMAP height if valid, otherwise fall back to ground height
+    if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
     {
-        // We have VMAP data, now determine the appropriate floor level
+        return vmapHeight;
+    }
+    
+    return groundHeight;
+}
 
-        // Try to find the furthest from ground floor by checking VMAP heights progressively
-        float lowestVmapHeight = MAX_HEIGHT;  // For caves - deepest point (lowest Z)
-        float highestVmapHeight = INVALID_HEIGHT; // For towers - highest point (highest Z)
-
-        // Check progressively lower heights to find the actual floor level
-        float searchZ = groundHeight +150.0f;
-        float searchStep = 20.0f;
-
-        int i = 0;
-        // Keep searching downward to find the lowest valid floor (for caves)
-        for (; i < 25 && searchZ > -MAX_HEIGHT; ++i)
+float NewRpgBaseAction::GetProperFloorHeightNearNPC(Player* bot, float dx, float dy, float referenceZ, ObjectGuid npcGuid)
+{
+    // If we have a specific NPC, try to match its elevation
+    if (!npcGuid.IsEmpty())
+    {
+        WorldObject* npc = ObjectAccessor::GetWorldObject(*bot, npcGuid);
+        if (npc)
         {
-            float vmapHeight = bot->GetMap()->GetHeight(dx, dy, searchZ, true, 1000.0f);
-
-            // Early exit if we detect invalid height
-            if (vmapHeight <= INVALID_HEIGHT || vmapHeight == VMAP_INVALID_HEIGHT_VALUE)
+            float npcZ = npc->GetPositionZ();
+            float distance2D = bot->GetDistance2d(npc);
+            
+            // If we're moving close to the NPC, try to match its Z level
+            if (distance2D < 50.0f)
             {
-                break;
-            }
-
-            if (vmapHeight > INVALID_HEIGHT && vmapHeight != MAX_HEIGHT)
-            {
-                if (vmapHeight < lowestVmapHeight)
+                // Check if the NPC's Z level is reachable from our position
+                float heightDiff = abs(npcZ - bot->GetPositionZ());
+                if (heightDiff < 100.0f) // Reasonable elevation difference
                 {
-                    lowestVmapHeight = vmapHeight;
-                }
-                if (vmapHeight > highestVmapHeight)
-                {
-                    highestVmapHeight = vmapHeight;
+                    // Use NPC's Z level with slight VMAP adjustment
+                    float vmapHeight = bot->GetMap()->GetHeight(dx, dy, npcZ + 5.0f, true, 10.0f);
+                    if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
+                    {
+                        return vmapHeight;
+                    }
+                    return npcZ;
                 }
             }
+        }
+    }
+    
+    // If no NPC context or NPC method failed, use reference Z with validation
+    if (referenceZ > INVALID_HEIGHT && referenceZ != VMAP_INVALID_HEIGHT_VALUE)
+    {
+        float vmapHeight = bot->GetMap()->GetHeight(dx, dy, referenceZ + 5.0f, true, 10.0f);
+        if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
+        {
+            return vmapHeight;
+        }
+        return referenceZ;
+    }
+    
+    // Fallback to standard height calculation
+    return GetProperFloorHeight(bot, dx, dy, bot->GetPositionZ());
+}
 
-            searchZ -= searchStep;
+bool NewRpgBaseAction::IsNPCOnDifferentElevation(WorldObject* npc, float botZ, float tolerance)
+{
+    if (!npc)
+        return false;
+        
+    float heightDiff = abs(npc->GetPositionZ() - botZ);
+    return heightDiff > tolerance;
+}
 
-            // Early exit condition
-            if (searchZ < groundHeight - 200.0f && lowestVmapHeight == MAX_HEIGHT && highestVmapHeight == INVALID_HEIGHT)
+bool NewRpgBaseAction::ValidateReachability(WorldPosition dest, ObjectGuid targetNpc)
+{
+    if (dest == WorldPosition())
+        return false;
+        
+    // Basic distance check
+    float distance = bot->GetDistance(dest);
+    if (distance > 2500.0f)
+        return false;
+        
+    // If we have a target NPC, check if the destination is on a reasonable elevation
+    if (!targetNpc.IsEmpty())
+    {
+        WorldObject* npc = ObjectAccessor::GetWorldObject(*bot, targetNpc);
+        if (npc)
+        {
+            float npcZ = npc->GetPositionZ();
+            float destZ = dest.GetPositionZ();
+            float elevationDiff = abs(destZ - npcZ);
+            
+            // If destination is far from NPC elevation, it might not be reachable
+            if (elevationDiff > 50.0f)
             {
-                break;
+                LOG_DEBUG("playerbots", "[New RPG] {} destination Z ({}) too far from NPC Z ({}), elevation diff: {}",
+                         bot->GetName(), destZ, npcZ, elevationDiff);
+                return false;
             }
         }
-
-        // Determine if this is a cave or tower based on the VMAP data
-        if (lowestVmapHeight < MAX_HEIGHT && lowestVmapHeight < groundHeight - 20.0f)
-        {
-            // Cave structure - we want the deepest part (lowest Z value)
-            dz = lowestVmapHeight;
-            botAI->TellMasterNoFacing("Detected cave structure. Using lowest VMAP height: " + std::to_string(dz));
-        }
-        else if (highestVmapHeight > INVALID_HEIGHT && highestVmapHeight > groundHeight + 20.0f)
-        {
-            // Tower structure - we want the highest part (highest Z value)
-            // This gives us the top of the tower structure
-            dz = highestVmapHeight;
-            botAI->TellMasterNoFacing("Detected tower structure. Using highest VMAP height: " + std::to_string(dz));
-        }
-        else
-        {
-            // Neither clearly a cave nor tower, use ground height
-            dz = groundHeight;
-        }
     }
-    else
+    
+    // Basic pathfinding check for short distances
+    if (distance < pathFinderDis)
     {
-        // No VMAP data, use ground height
-        dz = groundHeight;
+        PathGenerator path(bot);
+        path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+        PathType type = path.GetPathType();
+        uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+        return !(type & (~typeOk));
     }
+    
+    return true; // Assume reachable for long distances (will be handled by MoveFarTo logic)
+}
 
-    // Final safety check
-    if (dz <= INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+ObjectGuid NewRpgBaseAction::FindNearbyQuestNPC(uint32 questId, float x, float y, float searchRadius)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+        return ObjectGuid();
+
+    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
+    ObjectGuid closestNPC;
+    float closestDistance = searchRadius;
+
+    for (ObjectGuid& guid : possibleTargets)
     {
-        dz = groundHeight;
+        WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
+        if (!object || !object->IsInWorld())
+            continue;
+
+        Creature* creature = object->ToCreature();
+        if (!creature)
+            continue;
+
+        float distance2D = sqrt((creature->GetPositionX() - x) * (creature->GetPositionX() - x) +
+                               (creature->GetPositionY() - y) * (creature->GetPositionY() - y));
+
+        if (distance2D < closestDistance)
+        {
+            // Check if this NPC is related to the quest (quest giver, objective, etc.)
+            if (CanInteractWithQuestGiver(creature))
+            {
+                closestNPC = guid;
+                closestDistance = distance2D;
+            }
+        }
     }
 
-    botAI->TellMasterNoFacing("Final Floor Z set to: " + std::to_string(dz));
-    return dz;
+    return closestNPC;
 }
 
 // Helper function to generate a random point inside a convex polygon
