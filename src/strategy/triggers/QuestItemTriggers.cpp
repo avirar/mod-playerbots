@@ -233,12 +233,12 @@ bool QuestItemUsableTrigger::IsTargetValidForSpell(Unit* target, uint32 spellId)
         return false;
     }
 
-    // Use the spell's actual range
-    float range = spellInfo->GetMaxRange();
+    // Use the spell's actual range - 2.0f or INTERACT_DISTANCE - 2.0f
+    float range = spellInfo->GetMaxRange() - 2.0f;
     
-    // If spell has 0 range, use melee range as fallback
-    if (range <= 0.0f)
-        range = botAI->GetRange("melee");
+    // Ensure minimum distance is INTERACT_DISTANCE - 2.0f for quest item interactions
+    if (range <= 0.0f || range < (INTERACT_DISTANCE - 2.0f))
+        range = INTERACT_DISTANCE - 2.0f;
         
     float distance = bot->GetDistance(target);
     
@@ -363,13 +363,13 @@ bool FarFromQuestItemTargetTrigger::IsActive()
     if (!target)
         return false;
 
-    // Check if we're too far from the target (use spell's actual range)
+    // Check if we're too far from the target (use spell's actual range - 2.0f or INTERACT_DISTANCE - 2.0f)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACT_DISTANCE - 2.0f);
     
-    // If spell has 0 range, use melee range as fallback
-    if (range <= 0.0f)
-        range = botAI->GetRange("melee");
+    // Ensure minimum distance is INTERACT_DISTANCE - 2.0f for quest item interactions
+    if (range <= 0.0f || range < (INTERACT_DISTANCE - 2.0f))
+        range = INTERACT_DISTANCE - 2.0f;
         
     return bot->GetDistance(target) > range;
 }
