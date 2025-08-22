@@ -372,9 +372,16 @@ bool LootObject::IsLootPossible(Player* bot)
     
     if (!bot->IsInWater() && (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f))
     {
-        stream << "LootObject::IsLootPossible - Too far vertically from object";
-        botAI->TellMaster(stream);
-        return false;
+        Map* map = bot->GetMap();
+        const float x = worldObj->GetPositionX();
+        const float y = worldObj->GetPositionY();
+        const float z = worldObj->GetPositionZ();
+        if (!map->CanReachPositionAndGetValidCoords(bot, x, y, z))
+        {
+            stream << "LootObject::IsLootPossible - Too far vertically from object and cannot reach it";
+            botAI->TellMaster(stream);
+            return false;
+        }
     }
 
     Creature* creature = botAI->GetCreature(guid);
