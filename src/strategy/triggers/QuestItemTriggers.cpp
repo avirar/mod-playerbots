@@ -80,7 +80,7 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
                 std::ostringstream spellOut;
                 spellOut << "DEBUG: Item has spell ID " << spellId;
                 botAI->TellMaster(spellOut.str());
-                
+                /*
                 // Verify we can cast this spell
                 if (botAI->CanCastSpell(spellId, bot, false))
                 {
@@ -95,6 +95,7 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
                 {
                     botAI->TellMaster("DEBUG: Cannot cast spell");
                 }
+                */
             }
         }
     }
