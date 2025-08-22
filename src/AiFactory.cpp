@@ -628,7 +628,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     if (!player->InBattleground())
     {
         nonCombatEngine->addStrategiesNoInit("nc", "food", "chat", "follow", "default", "quest", "loot",
-                                            "gather", "duel", "pvp", "buff", "mount", "emote", nullptr);
+                                            "gather", "duel", "pvp", "buff", "mount", "emote", "questitems", nullptr);
     }
 
     if (sPlayerbotAIConfig->autoSaveMana && PlayerbotAI::IsHeal(player, true))
