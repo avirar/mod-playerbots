@@ -121,6 +121,7 @@ public:
         creators["formation"] = &StrategyContext::combat_formation;
         creators["move from group"] = &StrategyContext::move_from_group;
         creators["worldbuff"] = &StrategyContext::world_buff;
+        creators["questitems"] = &StrategyContext::quest_items;
     }
 
 private:
@@ -189,6 +190,7 @@ private:
     static Strategy* combat_formation(PlayerbotAI* ai) { return new CombatFormationStrategy(ai); }
     static Strategy* move_from_group(PlayerbotAI* botAI) { return new MoveFromGroupStrategy(botAI); }
     static Strategy* world_buff(PlayerbotAI* botAI) { return new WorldBuffStrategy(botAI); }
+    static Strategy* quest_items(PlayerbotAI* botAI) { return new UseQuestItemsStrategy(botAI); }
 };
 
 class MovementStrategyContext : public NamedObjectContext<Strategy>
@@ -234,13 +236,11 @@ public:
     {
         creators["quest"] = &QuestStrategyContext::quest;
         creators["accept all quests"] = &QuestStrategyContext::accept_all_quests;
-        creators["questitems"] = &QuestStrategyContext::quest_items;
     }
 
 private:
     static Strategy* quest(PlayerbotAI* botAI) { return new DefaultQuestStrategy(botAI); }
     static Strategy* accept_all_quests(PlayerbotAI* botAI) { return new AcceptAllQuestsStrategy(botAI); }
-    static Strategy* quest_items(PlayerbotAI* botAI) { return new UseQuestItemsStrategy(botAI); }
 };
 
 #endif
