@@ -311,21 +311,58 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     if (!item || !target)
         return false;
 
-    // Use the item on the target using the UseItem method from UseItemAction
-    bool result = UseItem(item, ObjectGuid::Empty, nullptr, target);
-    
-    if (result)
+    botAI->TellMaster("DEBUG: About to use quest item on target");
+
+    // For quest items, we need to bypass normal spell checks
+    // and send the item use packet directly with the target
+    uint8 bagIndex = item->GetBagSlot();
+    uint8 slot = item->GetSlot();
+    uint8 spell_index = 0;
+    uint8 cast_count = 1;
+    ObjectGuid item_guid = item->GetGUID();
+    uint32 glyphIndex = 0;
+    uint8 castFlags = 0;
+
+    // Get the spell ID from the item
+    uint32 spellId = 0;
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
-        std::ostringstream out;
-        out << "Using " << chat->FormatItem(item->GetTemplate()) << " on " << target->GetName();
-        botAI->TellMasterNoFacing(out.str());
-    }
-    else
-    {
-        std::ostringstream out;
-        out << "Failed to use " << chat->FormatItem(item->GetTemplate()) << " on " << target->GetName();
-        botAI->TellError(out.str());
+        if (item->GetTemplate()->Spells[i].SpellId > 0)
+        {
+            spellId = item->GetTemplate()->Spells[i].SpellId;
+            break;
+        }
     }
 
-    return result;
+    std::ostringstream debugOut;
+    debugOut << "DEBUG: Using item in bag " << (int)bagIndex << " slot " << (int)slot << " with spell " << spellId << " on target " << target->GetName();
+    botAI->TellMaster(debugOut.str());
+
+    // Create the item use packet
+    WorldPacket packet(CMSG_USE_ITEM);
+    packet << bagIndex << slot << cast_count << spellId << item_guid << glyphIndex << castFlags;
+
+    // Add target information
+    uint32 targetFlag = TARGET_FLAG_UNIT;
+    packet << targetFlag << target->GetGUID().WriteAsPacked();
+
+    // Clear movement states like other item uses do
+    bot->ClearUnitState(UNIT_STATE_CHASE);
+    bot->ClearUnitState(UNIT_STATE_FOLLOW);
+
+    if (bot->isMoving())
+    {
+        bot->StopMoving();
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+        return false;
+    }
+
+    // Send the packet
+    bot->GetSession()->HandleUseItemOpcode(packet);
+
+    std::ostringstream out;
+    out << "Using " << chat->FormatItem(item->GetTemplate()) << " on " << target->GetName();
+    botAI->TellMasterNoFacing(out.str());
+
+    return true;
 }
