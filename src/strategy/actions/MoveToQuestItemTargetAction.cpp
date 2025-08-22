@@ -48,14 +48,13 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
     if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
         range = INTERACTION_DISTANCE - 2.0f;
         
-    if (bot->GetDistance(target) <= range)
+    // Cache distance calculation to avoid redundant calls
+    float distance = bot->GetDistance(target);
+    if (distance <= range)
     {
         // We're already in range, no need to move
         return false;
     }
-
-    // Move towards the target
-    float distance = bot->GetDistance(target);
     
 
     // Use the MovementAction's move functionality
@@ -148,17 +147,18 @@ Unit* MoveToQuestItemTargetAction::FindBestTargetForQuestItem(uint32 spellId) co
         if (!target)
             continue;
 
+        // Early distance check before expensive spell validation
+        float distance = bot->GetDistance(target);
+        if (distance >= closestDistance)
+            continue;
+
         // Check if this target is valid for our quest item spell
         if (!IsTargetValidForSpell(target, spellId))
             continue;
 
-        // Prefer closer targets
-        float distance = bot->GetDistance(target);
-        if (distance < closestDistance)
-        {
-            closestDistance = distance;
-            bestTarget = target;
-        }
+        // Target is both valid and closer
+        closestDistance = distance;
+        bestTarget = target;
     }
 
     // Also check nearby NPCs specifically (they might not be in possible targets)
@@ -172,15 +172,17 @@ Unit* MoveToQuestItemTargetAction::FindBestTargetForQuestItem(uint32 spellId) co
             if (!target)
                 continue;
 
+            // Early distance check before expensive spell validation
+            float distance = bot->GetDistance(target);
+            if (distance >= closestDistance)
+                continue;
+
             if (!IsTargetValidForSpell(target, spellId))
                 continue;
 
-            float distance = bot->GetDistance(target);
-            if (distance < closestDistance)
-            {
-                closestDistance = distance;
-                bestTarget = target;
-            }
+            // Target is both valid and closer
+            closestDistance = distance;
+            bestTarget = target;
         }
     }
 
