@@ -148,17 +148,18 @@ Unit* UseQuestItemOnTargetAction::FindBestTargetForQuestItem(uint32 spellId) con
         if (!target)
             continue;
 
+        // Early distance check before expensive spell validation
+        float distance = bot->GetDistance(target);
+        if (distance >= closestDistance)
+            continue;
+
         // Check if this target is valid for our quest item spell
         if (!IsTargetValidForSpell(target, spellId))
             continue;
 
-        // Prefer closer targets
-        float distance = bot->GetDistance(target);
-        if (distance < closestDistance)
-        {
-            closestDistance = distance;
-            bestTarget = target;
-        }
+        // Target is both valid and closer
+        closestDistance = distance;
+        bestTarget = target;
     }
 
     // Also check nearby NPCs specifically
@@ -172,15 +173,17 @@ Unit* UseQuestItemOnTargetAction::FindBestTargetForQuestItem(uint32 spellId) con
             if (!target)
                 continue;
 
+            // Early distance check before expensive spell validation
+            float distance = bot->GetDistance(target);
+            if (distance >= closestDistance)
+                continue;
+
             if (!IsTargetValidForSpell(target, spellId))
                 continue;
 
-            float distance = bot->GetDistance(target);
-            if (distance < closestDistance)
-            {
-                closestDistance = distance;
-                bestTarget = target;
-            }
+            // Target is both valid and closer
+            closestDistance = distance;
+            bestTarget = target;
         }
     }
 
