@@ -17,6 +17,7 @@ public:
 
     void InitTriggers(std::vector<TriggerNode*>& triggers) override;
     std::string const getName() override { return "questitems"; }
+    uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT; }
 };
 
 #endif
