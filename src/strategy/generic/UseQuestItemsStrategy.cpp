@@ -16,6 +16,6 @@ void UseQuestItemsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     triggers.push_back(
         new TriggerNode("far from quest item target", NextAction::array(0, new NextAction("move to quest item target", 7.0f), nullptr)));
     
-    // Lower priority periodic check to see if quest items can be used
-    triggers.push_back(new TriggerNode("often", NextAction::array(0, new NextAction("quest item usable", 5.0f), nullptr)));
+    // Lower priority periodic check to see if quest items can be used (should be a different action)
+    // triggers.push_back(new TriggerNode("often", NextAction::array(0, new NextAction("quest item use on target", 5.0f), nullptr)));
 }
