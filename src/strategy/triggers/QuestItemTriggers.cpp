@@ -60,9 +60,13 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
         if (!itemTemplate)
             continue;
 
-        // Debug: Show what items we find
+        // Only consider quest items (class 12) or consumable items (class 0)
+        if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
+            continue;
+
+        // Debug: Show what relevant items we find
         std::ostringstream out;
-        out << "DEBUG: Found item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Flags: " << itemTemplate->Flags << ")";
+        out << "DEBUG: Found quest/consumable item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Class: " << itemTemplate->Class << ", Flags: " << itemTemplate->Flags << ")";
         botAI->TellMaster(out.str());
 
         // Check if this is a quest item with player-castable spells
@@ -78,24 +82,16 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
             if (spellId > 0)
             {
                 std::ostringstream spellOut;
-                spellOut << "DEBUG: Item has spell ID " << spellId;
+                spellOut << "DEBUG: Item has spell ID " << spellId << " - valid quest item!";
                 botAI->TellMaster(spellOut.str());
-                /*
-                // Verify we can cast this spell
-                if (botAI->CanCastSpell(spellId, bot, false))
-                {
-                    botAI->TellMaster("DEBUG: Can cast spell!");
-                    if (outItem)
-                        *outItem = item;
-                    if (outSpellId)
-                        *outSpellId = spellId;
-                    return true;
-                }
-                else
-                {
-                    botAI->TellMaster("DEBUG: Cannot cast spell");
-                }
-                */
+                
+                // For quest items, we don't use CanCastSpell as it's too restrictive
+                // Quest items should work based on quest logic, not normal spell rules
+                if (outItem)
+                    *outItem = item;
+                if (outSpellId)
+                    *outSpellId = spellId;
+                return true;
             }
         }
     }
@@ -117,9 +113,13 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
             if (!itemTemplate)
                 continue;
 
-            // Debug: Show what items we find in bags
+            // Only consider quest items (class 12) or consumable items (class 0)
+            if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
+                continue;
+
+            // Debug: Show what relevant items we find in bags
             std::ostringstream out;
-            out << "DEBUG: Found bag item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Flags: " << itemTemplate->Flags << ")";
+            out << "DEBUG: Found bag quest/consumable item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Class: " << itemTemplate->Class << ", Flags: " << itemTemplate->Flags << ")";
             botAI->TellMaster(out.str());
 
             // Check if this is a quest item with player-castable spells
@@ -135,23 +135,16 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
                 if (spellId > 0)
                 {
                     std::ostringstream spellOut;
-                    spellOut << "DEBUG: Bag item has spell ID " << spellId;
+                    spellOut << "DEBUG: Bag item has spell ID " << spellId << " - valid quest item!";
                     botAI->TellMaster(spellOut.str());
                     
-                    // Verify we can cast this spell
-                    if (botAI->CanCastSpell(spellId, bot, false))
-                    {
-                        botAI->TellMaster("DEBUG: Can cast bag item spell!");
-                        if (outItem)
-                            *outItem = item;
-                        if (outSpellId)
-                            *outSpellId = spellId;
-                        return true;
-                    }
-                    else
-                    {
-                        botAI->TellMaster("DEBUG: Cannot cast bag item spell");
-                    }
+                    // For quest items, we don't use CanCastSpell as it's too restrictive
+                    // Quest items should work based on quest logic, not normal spell rules
+                    if (outItem)
+                        *outItem = item;
+                    if (outSpellId)
+                        *outSpellId = spellId;
+                    return true;
                 }
             }
         }
