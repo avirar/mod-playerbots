@@ -156,6 +156,10 @@ bool UseQuestItemOnTargetAction::IsValidQuestItem(Item* item, uint32* outSpellId
     if (!itemTemplate)
         return false;
 
+    // Only consider quest items (class 12) or consumable items (class 0)
+    if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
+        return false;
+
     // Check if this item has the player-castable flag
     if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
         return false;
@@ -166,13 +170,11 @@ bool UseQuestItemOnTargetAction::IsValidQuestItem(Item* item, uint32* outSpellId
         uint32 spellId = itemTemplate->Spells[i].SpellId;
         if (spellId > 0)
         {
-            // Verify we can cast this spell
-            if (botAI->CanCastSpell(spellId, bot, false))
-            {
-                if (outSpellId)
-                    *outSpellId = spellId;
-                return true;
-            }
+            // For quest items, we don't use CanCastSpell as it's too restrictive
+            // Quest items should work based on quest logic, not normal spell rules
+            if (outSpellId)
+                *outSpellId = spellId;
+            return true;
         }
     }
 
