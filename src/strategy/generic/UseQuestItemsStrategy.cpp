@@ -9,10 +9,13 @@
 
 void UseQuestItemsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
-    /*
+    // High priority trigger for using quest items when valid targets are available and in range
     triggers.push_back(new TriggerNode("quest item usable", NextAction::array(0, new NextAction("quest item use on target", 6.0f), nullptr)));
+    
+    // Higher priority trigger for moving to quest targets when out of range
     triggers.push_back(
         new TriggerNode("far from quest item target", NextAction::array(0, new NextAction("move to quest item target", 7.0f), nullptr)));
+    
+    // Lower priority periodic check to see if quest items can be used
     triggers.push_back(new TriggerNode("often", NextAction::array(0, new NextAction("quest item usable", 5.0f), nullptr)));
-    */
 }
