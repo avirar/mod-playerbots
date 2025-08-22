@@ -18,7 +18,7 @@
 #include "ChatHelper.h"
 
 // Maximum distance to search for quest targets
-constexpr float QUEST_TARGET_SEARCH_RANGE = 30.0f;
+constexpr float QUEST_TARGET_SEARCH_RANGE = 75.0f;
 
 bool UseQuestItemOnTargetAction::Execute(Event event)
 {
