@@ -46,12 +46,18 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
         return false;
     }
 
-    // Check if we're in range of the target
-    float range = botAI->GetRange("spell");
+    // Check if we're in range of the target (use the spell's actual range)
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    
+    // If spell has 0 range, use melee range as fallback
+    if (range <= 0.0f)
+        range = botAI->GetRange("melee");
+        
     float distance = bot->GetDistance(target);
     
     std::ostringstream debugOut;
-    debugOut << "DEBUG: Action range check - Distance: " << distance << ", Range: " << range;
+    debugOut << "DEBUG: Action range check - Distance: " << distance << ", Spell Range: " << range << " (spell " << spellId << ")";
     botAI->TellMaster(debugOut.str());
     
     if (distance > range)
