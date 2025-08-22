@@ -192,6 +192,68 @@ bool NewRpgWanderRandomAction::Execute(Event event)
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
 
+    // While wandering, also look for any active quest objectives using non-LOS search
+    std::map<uint32, Quest const*> activeQuests;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+            
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (quest && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE)
+        {
+            activeQuests[questId] = quest;
+        }
+    }
+    
+    if (!activeQuests.empty())
+    {
+        // Search for objectives of any active quest using non-LOS
+        GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
+        
+        for (ObjectGuid& guid : possibleTargets)
+        {
+            Unit* unit = ObjectAccessor::GetUnit(*bot, guid);
+            if (!unit || !unit->IsInWorld())
+                continue;
+                
+            float distance = bot->GetDistance(unit);
+            if (distance > 100.0f) // Wider search during wandering
+                continue;
+                
+            if (unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* creature = unit->ToCreature();
+                if (!creature)
+                    continue;
+                    
+                uint32 creatureEntry = creature->GetEntry();
+                
+                // Check if this creature is needed for any active quest
+                for (auto& [questId, quest] : activeQuests)
+                {
+                    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    {
+                        int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                        if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                        {
+                            // Check if we still need this objective
+                            const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                            if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                            {
+                                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective {} (entry {}) while wandering for quest {}", 
+                                         bot->GetName(), creature->GetName(), creatureEntry, questId);
+                                
+                                return MoveWorldObjectTo(guid, 25.0f);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return MoveRandomNear();
 }
 
@@ -448,7 +510,93 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         return true;
     }
 
-    // Only move random if we're actually at the destination (within 10f)
+    // Before moving randomly, search for quest targets/objectives using non-LOS search
+    if (SearchQuestGiverAndAcceptOrReward())
+        return true;
+        
+    // Get quest template to check specific required NPCs/GameObjects
+    uint32 questId = RPG_INFO(do_quest, questId);
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+        return MoveRandomNear(50.0f);
+        
+    // Search for specific quest objectives using non-LOS search
+    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
+    GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
+    
+    // Look for required NPCs first
+    for (ObjectGuid& guid : possibleTargets)
+    {
+        Unit* unit = ObjectAccessor::GetUnit(*bot, guid);
+        if (!unit || !unit->IsInWorld())
+            continue;
+            
+        float distance = bot->GetDistance(unit);
+        if (distance > 80.0f) // Reasonable search radius at POI
+            continue;
+            
+        if (unit->GetTypeId() == TYPEID_UNIT)
+        {
+            Creature* creature = unit->ToCreature();
+            if (!creature)
+                continue;
+                
+            uint32 creatureEntry = creature->GetEntry();
+            
+            // Check if this creature is required for the quest
+            for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                {
+                    // Check if we still need this objective
+                    const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                    if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found required quest NPC {} (entry {}) at distance {}", 
+                                 bot->GetName(), creature->GetName(), creatureEntry, distance);
+                        
+                        // Move towards the required NPC - grind strategy will handle combat
+                        return MoveWorldObjectTo(guid, 25.0f);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Look for required GameObjects
+    for (ObjectGuid& guid : possibleGameObjects)
+    {
+        GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+        if (!go || !go->IsInWorld())
+            continue;
+            
+        float distance = bot->GetDistance(go);
+        if (distance > 80.0f)
+            continue;
+            
+        uint32 goEntry = go->GetEntry();
+        
+        // Check if this GameObject is required for the quest
+        for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+            if (requiredNpcOrGo < 0 && (-requiredNpcOrGo) == (int32)goEntry)
+            {
+                // Check if we still need this objective  
+                const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found required quest GameObject {} (entry {}) at distance {}", 
+                             bot->GetName(), go->GetGOInfo()->name, goEntry, distance);
+                    
+                    return MoveWorldObjectTo(guid, INTERACTION_DISTANCE);
+                }
+            }
+        }
+    }
+
+    // Only move random if no quest targets found
     botAI->TellMasterNoFacing("Moving randomly near quest POI for quest " + std::to_string(questId));
     return MoveRandomNear(50.0f);
 }
