@@ -50,6 +50,7 @@
 #include "UseFoodStrategy.h"
 #include "UsePotionsStrategy.h"
 #include "WorldPacketHandlerStrategy.h"
+#include "UseQuestItemsStrategy.h"
 
 class StrategyContext : public NamedObjectContext<Strategy>
 {
@@ -233,11 +234,13 @@ public:
     {
         creators["quest"] = &QuestStrategyContext::quest;
         creators["accept all quests"] = &QuestStrategyContext::accept_all_quests;
+        creators["questitems"] = &QuestStrategyContext::quest_items;
     }
 
 private:
     static Strategy* quest(PlayerbotAI* botAI) { return new DefaultQuestStrategy(botAI); }
     static Strategy* accept_all_quests(PlayerbotAI* botAI) { return new AcceptAllQuestsStrategy(botAI); }
+    static Strategy* quest_items(PlayerbotAI* botAI) { return new UseQuestItemsStrategy(botAI); }
 };
 
 #endif
