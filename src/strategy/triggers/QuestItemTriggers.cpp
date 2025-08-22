@@ -25,18 +25,34 @@ bool QuestItemUsableTrigger::IsActive()
     
     // Check if we have a quest item with a spell
     if (!HasQuestItemWithSpell(&questItem, &spellId))
+    {
+        // Debug: Uncomment to see if we're not finding quest items
+        botAI->TellMaster("DEBUG: No quest items with spells found");
         return false;
+    }
 
     // Check if there are valid targets for this quest item
-    return HasValidTargetForQuestItem(spellId);
+    bool hasValidTarget = HasValidTargetForQuestItem(spellId);
+    
+    // Debug: Uncomment to see trigger activation
+    if (hasValidTarget)
+        botAI->TellMaster("DEBUG: Quest item usable trigger activated!");
+    else
+        botAI->TellMaster("DEBUG: No valid targets for quest item");
+    
+    return hasValidTarget;
 }
 
 bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSpellId) const
 {
-    // Iterate through all inventory items
-    for (uint8 bag = INVENTORY_SLOT_ITEM_START; bag < INVENTORY_SLOT_ITEM_END; ++bag)
+    // Debug: Check if we're even scanning inventory
+    botAI->TellMaster("DEBUG: Scanning for quest items...");
+    
+    // Check all inventory slots including bags
+    // First check main inventory
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
-        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
         if (!item)
             continue;
 
@@ -44,9 +60,16 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
         if (!itemTemplate)
             continue;
 
+        // Debug: Show what items we find
+        std::ostringstream out;
+        out << "DEBUG: Found item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Flags: " << itemTemplate->Flags << ")";
+        botAI->TellMaster(out.str());
+
         // Check if this is a quest item with player-castable spells
         if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
             continue;
+
+        botAI->TellMaster("DEBUG: Item has ITEM_FLAG_PLAYERCAST!");
 
         // Check if the item has an associated spell
         for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
@@ -54,14 +77,80 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
             uint32 spellId = itemTemplate->Spells[i].SpellId;
             if (spellId > 0)
             {
+                std::ostringstream spellOut;
+                spellOut << "DEBUG: Item has spell ID " << spellId;
+                botAI->TellMaster(spellOut.str());
+                
                 // Verify we can cast this spell
                 if (botAI->CanCastSpell(spellId, bot, false))
                 {
+                    botAI->TellMaster("DEBUG: Can cast spell!");
                     if (outItem)
                         *outItem = item;
                     if (outSpellId)
                         *outSpellId = spellId;
                     return true;
+                }
+                else
+                {
+                    botAI->TellMaster("DEBUG: Cannot cast spell");
+                }
+            }
+        }
+    }
+
+    // Also check items in bags
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+    {
+        Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        if (!pBag)
+            continue;
+
+        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+        {
+            Item* item = pBag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            const ItemTemplate* itemTemplate = item->GetTemplate();
+            if (!itemTemplate)
+                continue;
+
+            // Debug: Show what items we find in bags
+            std::ostringstream out;
+            out << "DEBUG: Found bag item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Flags: " << itemTemplate->Flags << ")";
+            botAI->TellMaster(out.str());
+
+            // Check if this is a quest item with player-castable spells
+            if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
+                continue;
+
+            botAI->TellMaster("DEBUG: Bag item has ITEM_FLAG_PLAYERCAST!");
+
+            // Check if the item has an associated spell
+            for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+            {
+                uint32 spellId = itemTemplate->Spells[i].SpellId;
+                if (spellId > 0)
+                {
+                    std::ostringstream spellOut;
+                    spellOut << "DEBUG: Bag item has spell ID " << spellId;
+                    botAI->TellMaster(spellOut.str());
+                    
+                    // Verify we can cast this spell
+                    if (botAI->CanCastSpell(spellId, bot, false))
+                    {
+                        botAI->TellMaster("DEBUG: Can cast bag item spell!");
+                        if (outItem)
+                            *outItem = item;
+                        if (outSpellId)
+                            *outSpellId = spellId;
+                        return true;
+                    }
+                    else
+                    {
+                        botAI->TellMaster("DEBUG: Cannot cast bag item spell");
+                    }
                 }
             }
         }
