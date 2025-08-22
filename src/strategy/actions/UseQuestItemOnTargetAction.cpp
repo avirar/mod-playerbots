@@ -95,13 +95,10 @@ bool UseQuestItemOnTargetAction::isUseful()
 
 Item* UseQuestItemOnTargetAction::FindBestQuestItem(uint32* outSpellId) const
 {
-    Item* bestItem = nullptr;
-    uint32 bestSpellId = 0;
-
     // Search through all inventory slots for quest items with spells
-    for (uint8 bag = INVENTORY_SLOT_ITEM_START; bag < INVENTORY_SLOT_ITEM_END; ++bag)
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
-        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
         if (!item)
             continue;
 
@@ -113,6 +110,29 @@ Item* UseQuestItemOnTargetAction::FindBestQuestItem(uint32* outSpellId) const
             if (outSpellId)
                 *outSpellId = spellId;
             return item;
+        }
+    }
+
+    // Also search through bag slots
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+    {
+        Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        if (!pBag)
+            continue;
+
+        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+        {
+            Item* item = pBag->GetItemByPos(slot);
+            if (!item)
+                continue;
+
+            uint32 spellId = 0;
+            if (IsValidQuestItem(item, &spellId))
+            {
+                if (outSpellId)
+                    *outSpellId = spellId;
+                return item;
+            }
         }
     }
 
