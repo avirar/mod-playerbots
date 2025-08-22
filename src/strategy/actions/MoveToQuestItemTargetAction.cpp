@@ -34,9 +34,9 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
         return false;
     }
     
-    std::ostringstream out;
-    out << "DEBUG: MoveAction - Found quest item " << questItem->GetTemplate()->Name1 << " with spell " << spellId;
-    botAI->TellMaster(out.str());
+    std::ostringstream debugOut;
+    debugOut << "DEBUG: MoveAction - Found quest item " << questItem->GetTemplate()->Name1 << " with spell " << spellId;
+    botAI->TellMaster(debugOut.str());
 
     // Find the best target for this quest item
     Unit* target = FindBestTargetForQuestItem(spellId);
@@ -56,9 +56,9 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
     // Move towards the target
     float distance = bot->GetDistance(target);
     
-    std::ostringstream out;
-    out << "Moving to quest target " << target->GetName() << " (distance: " << distance << ")";
-    botAI->TellMasterNoFacing(out.str());
+    std::ostringstream moveOut;
+    moveOut << "Moving to quest target " << target->GetName() << " (distance: " << distance << ")";
+    botAI->TellMasterNoFacing(moveOut.str());
 
     // Use the MovementAction's move functionality
     return MoveTo(target->GetMapId(), target->GetPosition().GetPositionX(), 
