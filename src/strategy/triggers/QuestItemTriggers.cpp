@@ -16,7 +16,7 @@
 #include "ConditionMgr.h"
 
 // Maximum distance to consider a quest target as "nearby"
-constexpr float QUEST_ITEM_TARGET_RANGE = 30.0f;
+constexpr float QUEST_ITEM_TARGET_RANGE = 75.0f;
 
 bool QuestItemUsableTrigger::IsActive()
 {
@@ -233,11 +233,17 @@ bool QuestItemUsableTrigger::IsTargetValidForSpell(Unit* target, uint32 spellId)
         return false;
     }
 
-    float range = botAI->GetRange("spell");
+    // Use the spell's actual range
+    float range = spellInfo->GetMaxRange();
+    
+    // If spell has 0 range, use melee range as fallback
+    if (range <= 0.0f)
+        range = botAI->GetRange("melee");
+        
     float distance = bot->GetDistance(target);
     
     debugOut.str("");
-    debugOut << "DEBUG: Target distance: " << distance << ", spell range: " << range;
+    debugOut << "DEBUG: Target distance: " << distance << ", spell range: " << range << " (spell " << spellId << ")";
     botAI->TellMaster(debugOut.str());
     
     if (distance > range)
@@ -357,8 +363,14 @@ bool FarFromQuestItemTargetTrigger::IsActive()
     if (!target)
         return false;
 
-    // Check if we're too far from the target
-    float range = botAI->GetRange("spell");
+    // Check if we're too far from the target (use spell's actual range)
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    
+    // If spell has 0 range, use melee range as fallback
+    if (range <= 0.0f)
+        range = botAI->GetRange("melee");
+        
     return bot->GetDistance(target) > range;
 }
 
