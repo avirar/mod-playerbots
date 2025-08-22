@@ -28,7 +28,7 @@ private:
     bool IsValidQuestItem(Item* item, uint32* outSpellId = nullptr) const;
     bool IsTargetValidForSpell(Unit* target, uint32 spellId) const;
     bool CheckSpellConditions(uint32 spellId, Unit* target) const;
-    bool UseQuestItemOnTarget(Item* item, Unit* target) const;
+    bool UseQuestItemOnTarget(Item* item, Unit* target);
 };
 
 #endif
