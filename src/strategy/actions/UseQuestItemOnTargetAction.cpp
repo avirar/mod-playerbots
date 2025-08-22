@@ -93,6 +93,12 @@ bool UseQuestItemOnTargetAction::isUseful()
     return useful;
 }
 
+bool UseQuestItemOnTargetAction::isPossible()
+{
+    botAI->TellMaster("DEBUG: UseQuestItemOnTargetAction::isPossible() called - returing true");
+    return true;
+}
+
 Item* UseQuestItemOnTargetAction::FindBestQuestItem(uint32* outSpellId) const
 {
     // Search through all inventory slots for quest items with spells
