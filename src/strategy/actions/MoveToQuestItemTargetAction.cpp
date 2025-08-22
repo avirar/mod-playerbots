@@ -22,14 +22,21 @@ constexpr float QUEST_TARGET_SEARCH_RANGE = 50.0f;
 
 bool MoveToQuestItemTargetAction::Execute(Event event)
 {
+    botAI->TellMaster("DEBUG: MoveToQuestItemTargetAction::Execute called!");
+    
     uint32 spellId = 0;
     
     // Find the best quest item that needs a target
     Item* questItem = FindBestQuestItem(&spellId);
     if (!questItem)
     {
+        botAI->TellMaster("DEBUG: MoveAction - No quest items found");
         return false;
     }
+    
+    std::ostringstream out;
+    out << "DEBUG: MoveAction - Found quest item " << questItem->GetTemplate()->Name1 << " with spell " << spellId;
+    botAI->TellMaster(out.str());
 
     // Find the best target for this quest item
     Unit* target = FindBestTargetForQuestItem(spellId);
