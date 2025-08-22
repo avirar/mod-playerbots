@@ -253,7 +253,7 @@ bool UseQuestItemOnTargetAction::CheckSpellConditions(uint32 spellId, Unit* targ
     return true;
 }
 
-bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target) const
+bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
 {
     if (!item || !target)
         return false;
