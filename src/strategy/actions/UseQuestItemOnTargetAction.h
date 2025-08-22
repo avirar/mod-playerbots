@@ -20,6 +20,7 @@ public:
 
     bool Execute(Event event) override;
     bool isUseful() override;
+    bool isPossible() override;
 
 private:
     // Helper methods for quest item usage
