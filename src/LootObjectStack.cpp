@@ -251,11 +251,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     break;
 
                 case LOCK_KEY_SKILL:
-                    if (goId == 13891 || goId == 19535)  // Serpentbloom
+                    if (goId == 13891 || goId == 19535 || lockId == 259)  // Serpentbloom uses lock 259, there are others too
                     {
                         this->guid = lootGUID;
                         std::ostringstream stream;
-                        stream << "LootObject::Refresh - GameObject is Serpentbloom, no lock needed: " << go->GetName();
+                        stream << "LootObject::Refresh - GameObject is Serpentbloom or lockId 259, no lock needed: " << go->GetName();
                         botAI->TellMaster(stream);
                     }
                     else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
