@@ -511,17 +511,32 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
 
     // Before moving randomly, search for quest targets/objectives using non-LOS search
+    LOG_DEBUG("playerbots", "[New RPG] {} DoIncompleteQuest: reached quest objective search phase for quest {}", 
+             bot->GetName(), questId);
+             
     if (SearchQuestGiverAndAcceptOrReward())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Found quest giver, returning", bot->GetName());
         return true;
+    }
         
     // Get quest template to check specific required NPCs/GameObjects
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} No quest template found for quest {}", bot->GetName(), questId);
         return MoveRandomNear(50.0f);
+    }
+    
+    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} template found, proceeding with objective search", 
+             bot->GetName(), questId);
         
     // Search for specific quest objectives using non-LOS search
     GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
     GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
+    
+    LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest {} objectives - found {} targets, {} gameobjects", 
+             bot->GetName(), questId, possibleTargets.size(), possibleGameObjects.size());
     
     // Look for required NPCs first
     for (ObjectGuid& guid : possibleTargets)
@@ -531,8 +546,15 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             continue;
             
         float distance = bot->GetDistance(unit);
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking unit {} (entry {}) at distance {}", 
+                 bot->GetName(), unit->GetName(), unit->GetEntry(), distance);
+                 
         if (distance > 80.0f) // Reasonable search radius at POI
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Unit {} too far ({}), skipping", 
+                     bot->GetName(), unit->GetName(), distance);
             continue;
+        }
             
         if (unit->GetTypeId() == TYPEID_UNIT)
         {
@@ -546,17 +568,34 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
             {
                 int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
-                if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                if (requiredNpcOrGo > 0)
                 {
-                    // Check if we still need this objective
-                    const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
-                    if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} requires entry {}, checking against {}", 
+                             bot->GetName(), questId, i, requiredNpcOrGo, creatureEntry);
+                             
+                    if (requiredNpcOrGo == (int32)creatureEntry)
                     {
-                        LOG_DEBUG("playerbots", "[New RPG] {} Found required quest NPC {} (entry {}) at distance {}", 
-                                 bot->GetName(), creature->GetName(), creatureEntry, distance);
+                        // Check if we still need this objective
+                        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                        uint32 currentCount = q_status.CreatureOrGOCount[i];
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
                         
-                        // Move towards the required NPC - grind strategy will handle combat
-                        return MoveWorldObjectTo(guid, 25.0f);
+                        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} progress: {}/{}", 
+                                 bot->GetName(), questId, i, currentCount, requiredCount);
+                        
+                        if (currentCount < requiredCount)
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Found required quest NPC {} (entry {}) at distance {}", 
+                                     bot->GetName(), creature->GetName(), creatureEntry, distance);
+                            
+                            // Move towards the required NPC - grind strategy will handle combat
+                            return MoveWorldObjectTo(guid, 25.0f);
+                        }
+                        else
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Quest objective {} already completed ({}/{})", 
+                                     bot->GetName(), i, currentCount, requiredCount);
+                        }
                     }
                 }
             }
