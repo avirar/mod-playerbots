@@ -22,7 +22,6 @@ constexpr float QUEST_TARGET_SEARCH_RANGE = 75.0f;
 
 bool UseQuestItemOnTargetAction::Execute(Event event)
 {
-    botAI->TellMaster("DEBUG: UseQuestItemOnTargetAction::Execute called!");
     
     uint32 spellId = 0;
     
@@ -34,9 +33,6 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
         return false;
     }
     
-    std::ostringstream out;
-    out << "DEBUG: Found quest item " << questItem->GetTemplate()->Name1 << " with spell " << spellId;
-    botAI->TellMaster(out.str());
 
     // Find the best target for this quest item
     Unit* target = FindBestTargetForQuestItem(spellId);
@@ -56,19 +52,12 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
         
     float distance = bot->GetDistance(target);
     
-    std::ostringstream debugOut;
-    debugOut << "DEBUG: Action range check - Distance: " << distance << ", Range: " << range << " (spell " << spellId << ", INTERACTION_DISTANCE-2: " << (INTERACTION_DISTANCE - 2.0f) << ")";
-    botAI->TellMaster(debugOut.str());
     
     if (distance > range)
     {
-        std::ostringstream out;
-        out << "Target " << target->GetName() << " is too far away for quest item (distance: " << distance << ", range: " << range << ")";
-        botAI->TellMaster(out.str());
         return false;
     }
     
-    botAI->TellMaster("DEBUG: Target is in range, proceeding to use quest item");
 
     // Use the quest item on the target
     return UseQuestItemOnTarget(questItem, target);
@@ -76,7 +65,6 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
 
 bool UseQuestItemOnTargetAction::isUseful()
 {
-    botAI->TellMaster("DEBUG: UseQuestItemOnTargetAction::isUseful() called");
     
     uint32 spellId = 0;
     
@@ -84,7 +72,6 @@ bool UseQuestItemOnTargetAction::isUseful()
     Item* questItem = FindBestQuestItem(&spellId);
     if (!questItem)
     {
-        botAI->TellMaster("DEBUG: isUseful - No quest items found");
         return false;
     }
 
@@ -92,16 +79,12 @@ bool UseQuestItemOnTargetAction::isUseful()
     Unit* target = FindBestTargetForQuestItem(spellId);
     bool useful = (target != nullptr);
     
-    std::ostringstream out;
-    out << "DEBUG: isUseful - Target found: " << (useful ? "true" : "false");
-    botAI->TellMaster(out.str());
     
     return useful;
 }
 
 bool UseQuestItemOnTargetAction::isPossible()
 {
-    botAI->TellMaster("DEBUG: UseQuestItemOnTargetAction::isPossible() called - returing true");
     return true;
 }
 
@@ -317,7 +300,6 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     if (!item || !target)
         return false;
 
-    botAI->TellMaster("DEBUG: About to use quest item on target");
 
     // For quest items, we need to bypass normal spell checks
     // and send the item use packet directly with the target
@@ -340,9 +322,6 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         }
     }
 
-    std::ostringstream debugOut;
-    debugOut << "DEBUG: Using item in bag " << (int)bagIndex << " slot " << (int)slot << " with spell " << spellId << " on target " << target->GetName();
-    botAI->TellMaster(debugOut.str());
 
     // Create the item use packet
     WorldPacket packet(CMSG_USE_ITEM);
