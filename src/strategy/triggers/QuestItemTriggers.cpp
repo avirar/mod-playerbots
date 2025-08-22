@@ -110,7 +110,7 @@ bool QuestItemUsableTrigger::IsTargetValidForSpell(Unit* target, uint32 spellId)
 bool QuestItemUsableTrigger::CheckSpellConditions(uint32 spellId, Unit* target) const
 {
     // Query conditions table for this spell to find required target conditions
-    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, 0, spellId);
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
     for (Condition const* condition : conditions)
     {
@@ -241,7 +241,7 @@ bool FarFromQuestItemTargetTrigger::IsTargetValidForSpell(Unit* target, uint32 s
 bool FarFromQuestItemTargetTrigger::CheckSpellConditions(uint32 spellId, Unit* target) const
 {
     // Query conditions table for this spell to find required target conditions
-    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, 0, spellId);
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
     for (Condition const* condition : conditions)
     {
