@@ -515,7 +515,6 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         return true;
         
     // Get quest template to check specific required NPCs/GameObjects
-    uint32 questId = RPG_INFO(do_quest, questId);
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest)
         return MoveRandomNear(50.0f);
