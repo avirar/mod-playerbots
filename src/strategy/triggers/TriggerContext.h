@@ -20,6 +20,7 @@
 #include "RtiTriggers.h"
 #include "StuckTriggers.h"
 #include "TravelTriggers.h"
+#include "QuestItemTriggers.h"
 
 class PlayerbotAI;
 
@@ -228,6 +229,9 @@ public:
         creators["travel flight status"] = &TriggerContext::travel_flight_status;
         creators["can self resurrect"] = &TriggerContext::can_self_resurrect;
         creators["new pet"] = &TriggerContext::new_pet;
+        creators["quest item usable"] = &TriggerContext::quest_item_usable;
+        creators["far from quest item target"] = &TriggerContext::far_from_quest_item_target;
+        creators["quest item target available"] = &TriggerContext::quest_item_target_available;
     }
 
 private:
@@ -427,6 +431,9 @@ private:
     static Trigger* travel_flight_status(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, RPG_TRAVEL_FLIGHT); }
     static Trigger* can_self_resurrect(PlayerbotAI* ai) { return new SelfResurrectTrigger(ai); }
     static Trigger* new_pet(PlayerbotAI* ai) { return new NewPetTrigger(ai); }
+    static Trigger* quest_item_usable(PlayerbotAI* botAI) { return new QuestItemUsableTrigger(botAI); }
+    static Trigger* far_from_quest_item_target(PlayerbotAI* botAI) { return new FarFromQuestItemTargetTrigger(botAI); }
+    static Trigger* quest_item_target_available(PlayerbotAI* botAI) { return new QuestItemTargetAvailableTrigger(botAI); }
 };
 
 #endif
