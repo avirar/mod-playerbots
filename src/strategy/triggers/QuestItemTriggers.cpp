@@ -26,27 +26,18 @@ bool QuestItemUsableTrigger::IsActive()
     // Check if we have a quest item with a spell
     if (!HasQuestItemWithSpell(&questItem, &spellId))
     {
-        // Debug: Uncomment to see if we're not finding quest items
-        botAI->TellMaster("DEBUG: No quest items with spells found");
         return false;
     }
 
     // Check if there are valid targets for this quest item
     bool hasValidTarget = HasValidTargetForQuestItem(spellId);
     
-    // Debug: Uncomment to see trigger activation
-    if (hasValidTarget)
-        botAI->TellMaster("DEBUG: Quest item usable trigger activated!");
-    else
-        botAI->TellMaster("DEBUG: No valid targets for quest item");
     
     return hasValidTarget;
 }
 
 bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSpellId) const
 {
-    // Debug: Check if we're even scanning inventory
-    botAI->TellMaster("DEBUG: Scanning for quest items...");
     
     // Check all inventory slots including bags
     // First check main inventory
@@ -64,16 +55,11 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
         if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
             continue;
 
-        // Debug: Show what relevant items we find
-        std::ostringstream out;
-        out << "DEBUG: Found quest/consumable item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Class: " << itemTemplate->Class << ", Flags: " << itemTemplate->Flags << ")";
-        botAI->TellMaster(out.str());
 
         // Check if this is a quest item with player-castable spells
         if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
             continue;
 
-        botAI->TellMaster("DEBUG: Item has ITEM_FLAG_PLAYERCAST!");
 
         // Check if the item has an associated spell
         for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
@@ -81,9 +67,6 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
             uint32 spellId = itemTemplate->Spells[i].SpellId;
             if (spellId > 0)
             {
-                std::ostringstream spellOut;
-                spellOut << "DEBUG: Item has spell ID " << spellId << " - valid quest item!";
-                botAI->TellMaster(spellOut.str());
                 
                 // For quest items, we don't use CanCastSpell as it's too restrictive
                 // Quest items should work based on quest logic, not normal spell rules
@@ -117,16 +100,11 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
             if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
                 continue;
 
-            // Debug: Show what relevant items we find in bags
-            std::ostringstream out;
-            out << "DEBUG: Found bag quest/consumable item " << itemTemplate->Name1 << " (ID: " << itemTemplate->ItemId << ", Class: " << itemTemplate->Class << ", Flags: " << itemTemplate->Flags << ")";
-            botAI->TellMaster(out.str());
 
             // Check if this is a quest item with player-castable spells
             if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
                 continue;
 
-            botAI->TellMaster("DEBUG: Bag item has ITEM_FLAG_PLAYERCAST!");
 
             // Check if the item has an associated spell
             for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
@@ -134,9 +112,6 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
                 uint32 spellId = itemTemplate->Spells[i].SpellId;
                 if (spellId > 0)
                 {
-                    std::ostringstream spellOut;
-                    spellOut << "DEBUG: Bag item has spell ID " << spellId << " - valid quest item!";
-                    botAI->TellMaster(spellOut.str());
                     
                     // For quest items, we don't use CanCastSpell as it's too restrictive
                     // Quest items should work based on quest logic, not normal spell rules
@@ -155,16 +130,10 @@ bool QuestItemUsableTrigger::HasQuestItemWithSpell(Item** outItem, uint32* outSp
 
 bool QuestItemUsableTrigger::HasValidTargetForQuestItem(uint32 spellId) const
 {
-    std::ostringstream debugOut;
-    debugOut << "DEBUG: Looking for targets for spell ID " << spellId;
-    botAI->TellMaster(debugOut.str());
 
     // Get nearby units that could be quest targets
     GuidVector targets = AI_VALUE(GuidVector, "possible targets");
     
-    debugOut.str("");
-    debugOut << "DEBUG: Found " << targets.size() << " possible targets";
-    botAI->TellMaster(debugOut.str());
     
     for (ObjectGuid guid : targets)
     {
@@ -172,14 +141,10 @@ bool QuestItemUsableTrigger::HasValidTargetForQuestItem(uint32 spellId) const
         if (!target)
             continue;
 
-        debugOut.str("");
-        debugOut << "DEBUG: Checking target " << target->GetName() << " (ID: " << target->GetEntry() << ")";
-        botAI->TellMaster(debugOut.str());
 
         // Check if this target is valid for our quest item spell
         if (IsTargetValidForSpell(target, spellId))
         {
-            botAI->TellMaster("DEBUG: Found valid target!");
             return true;
         }
     }
@@ -187,9 +152,6 @@ bool QuestItemUsableTrigger::HasValidTargetForQuestItem(uint32 spellId) const
     // Also check nearby NPCs specifically
     GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
     
-    debugOut.str("");
-    debugOut << "DEBUG: Also checking " << npcs.size() << " nearby NPCs";
-    botAI->TellMaster(debugOut.str());
     
     for (ObjectGuid guid : npcs)
     {
@@ -197,19 +159,14 @@ bool QuestItemUsableTrigger::HasValidTargetForQuestItem(uint32 spellId) const
         if (!target)
             continue;
 
-        debugOut.str("");
-        debugOut << "DEBUG: Checking NPC " << target->GetName() << " (ID: " << target->GetEntry() << ")";
-        botAI->TellMaster(debugOut.str());
 
         // Check if this target is valid for our quest item spell
         if (IsTargetValidForSpell(target, spellId))
         {
-            botAI->TellMaster("DEBUG: Found valid NPC target!");
             return true;
         }
     }
 
-    botAI->TellMaster("DEBUG: No valid targets found after checking all possibilities");
     return false;
 }
 
@@ -217,19 +174,14 @@ bool QuestItemUsableTrigger::IsTargetValidForSpell(Unit* target, uint32 spellId)
 {
     if (!target || !target->IsAlive())
     {
-        botAI->TellMaster("DEBUG: Target is null or dead");
         return false;
     }
 
-    std::ostringstream debugOut;
-    debugOut << "DEBUG: Target " << target->GetName() << " is alive, checking spell requirements";
-    botAI->TellMaster(debugOut.str());
 
     // Check if target is in range
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
     {
-        botAI->TellMaster("DEBUG: No spell info found for spell");
         return false;
     }
 
@@ -242,110 +194,75 @@ bool QuestItemUsableTrigger::IsTargetValidForSpell(Unit* target, uint32 spellId)
         
     float distance = bot->GetDistance(target);
     
-    debugOut.str("");
-    debugOut << "DEBUG: Target distance: " << distance << ", spell range: " << range << " (spell " << spellId << ")";
-    botAI->TellMaster(debugOut.str());
     
     if (distance > range)
     {
-        botAI->TellMaster("DEBUG: Target out of range");
         return false;
     }
 
-    botAI->TellMaster("DEBUG: Target in range, checking spell conditions");
     
     // Check spell-specific conditions (aura requirements, creature type, etc.)
     bool conditionsValid = CheckSpellConditions(spellId, target);
     
-    debugOut.str("");
-    debugOut << "DEBUG: Spell conditions valid: " << (conditionsValid ? "true" : "false");
-    botAI->TellMaster(debugOut.str());
     
     return conditionsValid;
 }
 
 bool QuestItemUsableTrigger::CheckSpellConditions(uint32 spellId, Unit* target) const
 {
-    std::ostringstream debugOut;
-    debugOut << "DEBUG: Checking spell conditions for spell " << spellId << " on target " << target->GetName();
-    botAI->TellMaster(debugOut.str());
 
     // Query conditions table for this spell to find required target conditions
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
-    debugOut.str("");
-    debugOut << "DEBUG: Found " << conditions.size() << " conditions for this spell";
-    botAI->TellMaster(debugOut.str());
     
     if (conditions.empty())
     {
-        botAI->TellMaster("DEBUG: No conditions found, assuming target is valid");
         return true;
     }
     
     for (Condition const* condition : conditions)
     {
-        debugOut.str("");
-        debugOut << "DEBUG: Checking condition type " << condition->ConditionType << " with value " << condition->ConditionValue1;
-        botAI->TellMaster(debugOut.str());
 
         // Check for aura conditions (most common for quest items)
         if (condition->ConditionType == CONDITION_AURA)
         {
             uint32 requiredAuraId = condition->ConditionValue1;
             
-            debugOut.str("");
-            debugOut << "DEBUG: Checking for aura " << requiredAuraId << " on target";
-            botAI->TellMaster(debugOut.str());
             
             // Check if target has the required aura
             bool hasAura = target->HasAura(requiredAuraId);
             
-            debugOut.str("");
-            debugOut << "DEBUG: Target has aura " << requiredAuraId << ": " << (hasAura ? "true" : "false");
-            botAI->TellMaster(debugOut.str());
             
             // Apply condition logic (negated or normal)
             if (condition->NegativeCondition)
             {
-                botAI->TellMaster("DEBUG: Condition is negated - target should NOT have aura");
                 return !hasAura;
             }
             else
             {
-                botAI->TellMaster("DEBUG: Condition is normal - target should have aura");
                 return hasAura;
             }
         }
         // Add other condition types as needed
         else if (condition->ConditionType == CONDITION_CREATURE_TYPE)
         {
-            botAI->TellMaster("DEBUG: Checking creature type condition");
             if (target->GetTypeId() != TYPEID_UNIT)
             {
-                botAI->TellMaster("DEBUG: Target is not a creature");
                 return false;
             }
                 
             uint32 requiredCreatureType = condition->ConditionValue1;
             uint32 targetCreatureType = target->ToCreature()->GetCreatureTemplate()->type;
             
-            debugOut.str("");
-            debugOut << "DEBUG: Required creature type: " << requiredCreatureType << ", target type: " << targetCreatureType;
-            botAI->TellMaster(debugOut.str());
             
             return targetCreatureType == requiredCreatureType;
         }
         else
         {
-            debugOut.str("");
-            debugOut << "DEBUG: Unknown condition type " << condition->ConditionType << " - assuming valid";
-            botAI->TellMaster(debugOut.str());
         }
     }
 
     // If no specific conditions found, assume it's valid (fallback)
-    botAI->TellMaster("DEBUG: All conditions checked, assuming valid");
     return true;
 }
 
