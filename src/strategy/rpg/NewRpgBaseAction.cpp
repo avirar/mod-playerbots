@@ -141,6 +141,27 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     if (!object)
         return false;
         
+    // Check if we're close enough for interaction - if so, validate LOS
+    float currentDistance = bot->GetDistance(object);
+    if (currentDistance <= INTERACTION_DISTANCE)
+    {
+        if (!bot->IsWithinLOSInMap(object))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} NPC/GO at interaction distance but no LOS, trying alternative approach", 
+                     bot->GetName());
+            
+            // Try alternative approach angles for better LOS
+            float altX, altY, altZ;
+            if (TryAlternativeApproachForLOS(guid, altX, altY, altZ))
+            {
+                return MoveTo(object->GetMapId(), altX, altY, altZ, false, false, false, true);
+            }
+            
+            // If no alternative found, try to get closer
+            distance = std::min(distance, INTERACTION_DISTANCE * 0.5f);
+        }
+    }
+        
     float objectX = object->GetPositionX();
     float objectY = object->GetPositionY();
     float objectZ = object->GetPositionZ();
@@ -247,6 +268,15 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
     if (!object || !bot->CanInteractWithQuestGiver(object))
         return false;
+        
+    // Final LOS check before interaction - only fail if we're close enough to interact
+    float distance = bot->GetDistance(object);
+    if (distance <= INTERACTION_DISTANCE && !bot->IsWithinLOSInMap(object))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with NPC/GO {} - no LOS at interaction distance", 
+                 bot->GetName(), guid.ToString());
+        return false;
+    }
 
     // Creature* creature = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_NONE);
     // if (creature)
@@ -646,8 +676,17 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 
 ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly, float distanceLimit)
 {
+    // First try LOS-based search for nearby NPCs
     GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
     GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
+
+    // If no targets found with LOS, use non-LOS search as fallback
+    if (possibleTargets.empty())
+    {
+        possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
+        LOG_DEBUG("playerbots", "[New RPG] {} Using non-LOS search fallback, found {} targets", 
+                 bot->GetName(), possibleTargets.size());
+    }
 
     if (possibleTargets.empty() && possibleGameObjects.empty())
         return ObjectGuid();
@@ -1535,7 +1574,8 @@ ObjectGuid NewRpgBaseAction::FindNearbyQuestNPC(uint32 questId, float x, float y
     if (!quest)
         return ObjectGuid();
 
-    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
+    // Use non-LOS search for quest NPCs to find NPCs in multi-level areas
+    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
     ObjectGuid closestNPC;
     float closestDistance = searchRadius;
 
@@ -1564,6 +1604,49 @@ ObjectGuid NewRpgBaseAction::FindNearbyQuestNPC(uint32 questId, float x, float y
     }
 
     return closestNPC;
+}
+
+bool NewRpgBaseAction::TryAlternativeApproachForLOS(ObjectGuid guid, float& bestX, float& bestY, float& bestZ)
+{
+    WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
+    if (!object)
+        return false;
+        
+    float objectX = object->GetPositionX();
+    float objectY = object->GetPositionY();
+    float objectZ = object->GetPositionZ();
+    
+    // Try different approach angles around the NPC/GO to find LOS
+    float testDistance = INTERACTION_DISTANCE * 0.8f;
+    int attempts = 8; // Test 8 different angles around the object
+    
+    for (int i = 0; i < attempts; ++i)
+    {
+        float angle = (2.0f * M_PI / attempts) * i;
+        float testX = objectX + cos(angle) * testDistance;
+        float testY = objectY + sin(angle) * testDistance;
+        float testZ = GetProperFloorHeightNearNPC(bot, testX, testY, objectZ, guid);
+        
+        if (testZ == INVALID_HEIGHT || testZ == VMAP_INVALID_HEIGHT_VALUE)
+            continue;
+            
+        // Create temporary position to test LOS from
+        WorldPosition testPos(bot->GetMapId(), testX, testY, testZ);
+        
+        // Check if this position would have LOS to the object
+        // We can't easily test LOS from arbitrary positions, so just check if it's reachable
+        if (ValidateReachability(testPos, guid))
+        {
+            bestX = testX;
+            bestY = testY;
+            bestZ = testZ;
+            LOG_DEBUG("playerbots", "[New RPG] {} Found alternative approach angle {} for better LOS to {}", 
+                     bot->GetName(), i, guid.ToString());
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 // Helper function to generate a random point inside a convex polygon
