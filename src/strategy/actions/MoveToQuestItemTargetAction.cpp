@@ -17,7 +17,7 @@
 #include "Unit.h"
 #include "ChatHelper.h"
 
-// Maximum distance to search for quest targets (same as grind distance)
+// Maximum distance to search for quest targets
 constexpr float QUEST_TARGET_SEARCH_RANGE = 75.0f;
 
 bool MoveToQuestItemTargetAction::Execute(Event event)
@@ -45,13 +45,13 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
         return false;
     }
 
-    // Check if we're already in range (use the spell's actual range)
+    // Check if we're already in range (use the spell's actual range - 2.0f or INTERACT_DISTANCE - 2.0f)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACT_DISTANCE - 2.0f);
     
-    // If spell has 0 range, use melee range as fallback
-    if (range <= 0.0f)
-        range = botAI->GetRange("melee");
+    // Ensure minimum distance is INTERACT_DISTANCE - 2.0f for quest item interactions
+    if (range <= 0.0f || range < (INTERACT_DISTANCE - 2.0f))
+        range = INTERACT_DISTANCE - 2.0f;
         
     if (bot->GetDistance(target) <= range)
     {
@@ -85,13 +85,13 @@ bool MoveToQuestItemTargetAction::isUseful()
     if (!target)
         return false;
 
-    // Check if we need to move (are we out of range? use spell's actual range)
+    // Check if we need to move (are we out of range? use spell's actual range - 2.0f or INTERACT_DISTANCE - 2.0f)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACT_DISTANCE - 2.0f);
     
-    // If spell has 0 range, use melee range as fallback
-    if (range <= 0.0f)
-        range = botAI->GetRange("melee");
+    // Ensure minimum distance is INTERACT_DISTANCE - 2.0f for quest item interactions
+    if (range <= 0.0f || range < (INTERACT_DISTANCE - 2.0f))
+        range = INTERACT_DISTANCE - 2.0f;
         
     return bot->GetDistance(target) > range;
 }
