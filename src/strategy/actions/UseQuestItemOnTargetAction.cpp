@@ -203,7 +203,7 @@ bool UseQuestItemOnTargetAction::IsTargetValidForSpell(Unit* target, uint32 spel
 bool UseQuestItemOnTargetAction::CheckSpellConditions(uint32 spellId, Unit* target) const
 {
     // Query conditions table for this spell to find required target conditions
-    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, 0, spellId);
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
     // If no conditions are found, assume the target is valid
     if (conditions.empty())
