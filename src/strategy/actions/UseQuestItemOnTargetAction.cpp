@@ -46,18 +46,18 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
         return false;
     }
 
-    // Check if we're in range of the target (use the spell's actual range)
+    // Check if we're in range of the target (use the spell's actual range - 2.0f or INTERACT_DISTANCE - 2.0f)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-    float range = spellInfo ? spellInfo->GetMaxRange() : botAI->GetRange("melee");
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACT_DISTANCE - 2.0f);
     
-    // If spell has 0 range, use melee range as fallback
-    if (range <= 0.0f)
-        range = botAI->GetRange("melee");
+    // Ensure minimum distance is INTERACT_DISTANCE - 2.0f for quest item interactions
+    if (range <= 0.0f || range < (INTERACT_DISTANCE - 2.0f))
+        range = INTERACT_DISTANCE - 2.0f;
         
     float distance = bot->GetDistance(target);
     
     std::ostringstream debugOut;
-    debugOut << "DEBUG: Action range check - Distance: " << distance << ", Spell Range: " << range << " (spell " << spellId << ")";
+    debugOut << "DEBUG: Action range check - Distance: " << distance << ", Range: " << range << " (spell " << spellId << ", INTERACT_DISTANCE-2: " << (INTERACT_DISTANCE - 2.0f) << ")";
     botAI->TellMaster(debugOut.str());
     
     if (distance > range)
