@@ -209,8 +209,10 @@ bool NewRpgWanderRandomAction::Execute(Event event)
     
     if (!activeQuests.empty())
     {
-        // Search for objectives of any active quest using non-LOS
-        GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
+        // Search for objectives of any active quest using reliable core values
+        GuidVector possibleTargets = AI_VALUE(GuidVector, "all targets");  // All hostiles
+        GuidVector allNpcs = AI_VALUE(GuidVector, "nearest npcs");         // All NPCs
+        possibleTargets.insert(possibleTargets.end(), allNpcs.begin(), allNpcs.end());
         
         for (ObjectGuid& guid : possibleTargets)
         {
@@ -531,9 +533,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     LOG_DEBUG("playerbots", "[New RPG] {} Quest {} template found, proceeding with objective search", 
              bot->GetName(), questId);
         
-    // Search for specific quest objectives using non-LOS search
-    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
-    GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
+    // Search for quest objectives using core values that work reliably (like LOS command)
+    GuidVector possibleTargets = AI_VALUE(GuidVector, "all targets");  // All hostiles without LOS restrictions
+    GuidVector allNpcs = AI_VALUE(GuidVector, "nearest npcs");         // All NPCs without LOS restrictions  
+    GuidVector possibleGameObjects = AI_VALUE(GuidVector, "nearest game objects");
+    
+    // Combine hostile targets with all NPCs for comprehensive search
+    possibleTargets.insert(possibleTargets.end(), allNpcs.begin(), allNpcs.end());
     
     LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest {} objectives - found {} targets, {} gameobjects", 
              bot->GetName(), questId, possibleTargets.size(), possibleGameObjects.size());
