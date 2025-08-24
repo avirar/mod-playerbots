@@ -43,7 +43,30 @@ void TrainerAction::Learn(uint32 cost, TrainerSpell const* tSpell, std::ostrings
 
     if (!learned && !bot->HasSpell(tSpell->spell))
     {
-        bot->learnSpell(tSpell->spell);
+        // Check if this spell teaches a skill that's invalid for the bot's class
+        bool canLearnSkill = true;
+        for (uint8 j = 0; j < 3; ++j)
+        {
+            if (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP)
+            {
+                uint32 skillId = spellInfo->Effects[j].MiscValue;
+                
+                // Check if SKILL_THROWN (176) is being taught to invalid classes
+                if (skillId == SKILL_THROWN && 
+                    bot->getClass() != CLASS_WARRIOR && 
+                    bot->getClass() != CLASS_HUNTER && 
+                    bot->getClass() != CLASS_ROGUE)
+                {
+                    canLearnSkill = false;
+                    break;
+                }
+            }
+        }
+        
+        if (canLearnSkill)
+        {
+            bot->learnSpell(tSpell->spell);
+        }
     }
 
     msg << " - learned";
