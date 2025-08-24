@@ -208,7 +208,7 @@ Item* QuestItemHelper::GetCachedQuestItem(Player* bot, uint32* outSpellId)
         return nullptr;
 
     ObjectGuid botGuid = bot->GetGUID();
-    uint32 currentInventoryChangeCount = bot->GetTotalPlayTime(); // Use as a simple change indicator
+    uint32 currentInventoryChangeCount = bot->GetTotalPlayedTime(); // Use as a simple change indicator
     
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
