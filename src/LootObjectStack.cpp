@@ -322,13 +322,22 @@ bool LootObject::IsLootPossible(Player* bot)
         const float x = worldObj->GetPositionX();
         const float y = worldObj->GetPositionY();
         const float z = worldObj->GetPositionZ();
-        float destX = x;
-        float destY = y;
-        float destZ = z;
-        if (!map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
+        
+        // Check if loot is in water - if so, bot can swim to it
+        bool lootInWater = map->IsInWater(bot->GetPhaseMask(), x, y, z, bot->GetCollisionHeight());
+        
+        if (!lootInWater)
         {
-            return false;
+            // Only apply strict pathfinding check for non-water loot
+            float destX = x;
+            float destY = y;
+            float destZ = z;
+            if (!map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
+            {
+                return false;
+            }
         }
+        // If loot is in water, allow bot to attempt swimming to it regardless of pathfinding
     }
 
     Creature* creature = botAI->GetCreature(guid);
