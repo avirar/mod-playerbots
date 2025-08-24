@@ -63,7 +63,6 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         return;
     }
 
-    // Debug: Log what object we're checking
     Creature* creature = botAI->GetCreature(lootGUID);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
