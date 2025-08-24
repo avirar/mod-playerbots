@@ -266,7 +266,7 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 {
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
-    if (!object || !bot->CanInteractWithQuestGiver(object))
+    if (!object)
         return false;
         
     // Final LOS check before interaction - only fail if we're close enough to interact
@@ -277,6 +277,44 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                  bot->GetName(), guid.ToString());
         return false;
     }
+
+    // Handle GameObject quest objectives that need to be used directly
+    if (GameObject* go = object->ToGameObject())
+    {
+        // Check if this GameObject is a quest objective that should be used directly
+        if (go->GetGoType() != GAMEOBJECT_TYPE_QUESTGIVER)
+        {
+            // Check if this GameObject is required for any active quest
+            QuestStatusMap& questMap = bot->getQuestStatusMap();
+            for (auto& questPair : questMap)
+            {
+                const Quest* quest = sObjectMgr->GetQuestTemplate(questPair.first);
+                if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
+                    continue;
+                    
+                // Check if this GameObject is a quest objective
+                for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                    if (requiredNpcOrGo < 0 && (-requiredNpcOrGo) == (int32)go->GetEntry())
+                    {
+                        // Check if we still need this objective
+                        if (questPair.second.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest objective", 
+                                     bot->GetName(), go->GetGOInfo()->name);
+                            go->Use(bot);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Handle regular quest giver interaction
+    if (!bot->CanInteractWithQuestGiver(object))
+        return false;
 
     // Creature* creature = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_NONE);
     // if (creature)
