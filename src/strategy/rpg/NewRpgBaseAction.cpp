@@ -281,9 +281,15 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
     // Handle GameObject quest objectives that need to be used directly
     if (GameObject* go = object->ToGameObject())
     {
+        LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest: Processing GameObject {} (type {})", 
+                 bot->GetName(), go->GetGOInfo()->name, go->GetGoType());
+        
         // Check if this GameObject is a quest objective that should be used directly
         if (go->GetGoType() != GAMEOBJECT_TYPE_QUESTGIVER)
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} GameObject is not a quest giver, checking for quest objectives", 
+                     bot->GetName());
+            
             // Check if this GameObject is required for any active quest
             QuestStatusMap& questMap = bot->getQuestStatusMap();
             for (auto& questPair : questMap)
@@ -292,6 +298,9 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                 if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
                     continue;
                     
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for GameObject requirements", 
+                         bot->GetName(), questPair.first);
+                    
                 // Check if this GameObject is a quest objective
                 for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
                 {
@@ -299,16 +308,30 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                     if (requiredNpcOrGo < 0 && (-requiredNpcOrGo) == (int32)go->GetEntry())
                     {
                         // Check if we still need this objective
-                        if (questPair.second.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                        uint32 currentCount = questPair.second.CreatureOrGOCount[i];
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                        
+                        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: current {} / required {}", 
+                                 bot->GetName(), questPair.first, i, currentCount, requiredCount);
+                        
+                        if (currentCount < requiredCount)
                         {
-                            LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest objective", 
-                                     bot->GetName(), go->GetGOInfo()->name);
+                            LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
+                                     bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
                             go->Use(bot);
                             return true;
+                        }
+                        else
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} objective already complete for quest {}", 
+                                     bot->GetName(), go->GetGOInfo()->name, questPair.first);
                         }
                     }
                 }
             }
+            
+            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} not required for any active quest", 
+                     bot->GetName(), go->GetGOInfo()->name);
         }
     }
 
