@@ -14,35 +14,46 @@
 #include "SharedDefines.h"
 #include "NearestGameObjects.h"
 
-std::vector<uint32> PossibleRpgTargetsValue::allowedNpcFlags;
+// Static member initialization
+std::vector<uint32> RpgNpcFlags::standardFlags;
+
+const std::vector<uint32>& RpgNpcFlags::GetStandardRpgFlags()
+{
+    if (standardFlags.empty())
+        InitializeFlags();
+    return standardFlags;
+}
+
+void RpgNpcFlags::InitializeFlags()
+{
+    standardFlags = {
+        static_cast<uint32>(RpgNpcType::INNKEEPER),
+        static_cast<uint32>(RpgNpcType::GOSSIP),
+        static_cast<uint32>(RpgNpcType::QUESTGIVER),
+        static_cast<uint32>(RpgNpcType::FLIGHTMASTER),
+        static_cast<uint32>(RpgNpcType::BANKER),
+        static_cast<uint32>(RpgNpcType::GUILD_BANKER),
+        static_cast<uint32>(RpgNpcType::TRAINER_CLASS),
+        static_cast<uint32>(RpgNpcType::TRAINER_PROFESSION),
+        static_cast<uint32>(RpgNpcType::VENDOR_AMMO),
+        static_cast<uint32>(RpgNpcType::VENDOR_FOOD),
+        static_cast<uint32>(RpgNpcType::VENDOR_POISON),
+        static_cast<uint32>(RpgNpcType::VENDOR_REAGENT),
+        static_cast<uint32>(RpgNpcType::AUCTIONEER),
+        static_cast<uint32>(RpgNpcType::STABLEMASTER),
+        static_cast<uint32>(RpgNpcType::PETITIONER),
+        static_cast<uint32>(RpgNpcType::TABARDDESIGNER),
+        static_cast<uint32>(RpgNpcType::BATTLEMASTER),
+        static_cast<uint32>(RpgNpcType::TRAINER),
+        static_cast<uint32>(RpgNpcType::VENDOR),
+        static_cast<uint32>(RpgNpcType::REPAIR)
+    };
+}
 
 PossibleRpgTargetsValue::PossibleRpgTargetsValue(PlayerbotAI* botAI, float range)
     : NearestUnitsValue(botAI, "possible rpg targets", range, true)
 {
-    if (allowedNpcFlags.empty())
-    {
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_INNKEEPER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_QUESTGIVER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GUILD_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_CLASS);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_PROFESSION);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_AMMO);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_FOOD);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_POISON);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_REAGENT);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_AUCTIONEER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_STABLEMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_PETITIONER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TABARDDESIGNER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BATTLEMASTER);
-
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_REPAIR);
-    }
+    // No initialization needed - using centralized RpgNpcFlags helper
 }
 
 void PossibleRpgTargetsValue::FindUnits(std::list<Unit*>& targets)
@@ -63,7 +74,7 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
     if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
         return false;
 
-    for (uint32 npcFlag : allowedNpcFlags)
+    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
             return true;
@@ -83,35 +94,10 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
 }
 
 
-std::vector<uint32> PossibleNewRpgTargetsValue::allowedNpcFlags;
-
 PossibleNewRpgTargetsValue::PossibleNewRpgTargetsValue(PlayerbotAI* botAI, float range)
     : NearestUnitsValue(botAI, "possible new rpg targets", range, true)
 {
-    if (allowedNpcFlags.empty())
-    {
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_INNKEEPER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_QUESTGIVER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GUILD_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_CLASS);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_PROFESSION);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_AMMO);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_FOOD);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_POISON);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_REAGENT);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_AUCTIONEER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_STABLEMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_PETITIONER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TABARDDESIGNER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BATTLEMASTER);
-
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_REPAIR);
-    }
+    // No initialization needed - using centralized RpgNpcFlags helper
 }
 
 GuidVector PossibleNewRpgTargetsValue::Calculate()
@@ -152,7 +138,7 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
     if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
         return false;
 
-    for (uint32 npcFlag : allowedNpcFlags)
+    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
             return true;
@@ -161,35 +147,10 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
     return false;
 }
 
-std::vector<uint32> PossibleNewRpgTargetsNoLosValue::allowedNpcFlags;
-
 PossibleNewRpgTargetsNoLosValue::PossibleNewRpgTargetsNoLosValue(PlayerbotAI* botAI, float range)
     : NearestUnitsValue(botAI, "possible new rpg targets no los", range, true)
 {
-    if (allowedNpcFlags.empty())
-    {
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_INNKEEPER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GOSSIP);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_QUESTGIVER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_FLIGHTMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_GUILD_BANKER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_CLASS);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER_PROFESSION);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_AMMO);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_FOOD);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_POISON);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR_REAGENT);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_AUCTIONEER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_STABLEMASTER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_PETITIONER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TABARDDESIGNER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_BATTLEMASTER);
-
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_TRAINER);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_VENDOR);
-        allowedNpcFlags.push_back(UNIT_NPC_FLAG_REPAIR);
-    }
+    // No initialization needed - using centralized RpgNpcFlags helper
 }
 
 GuidVector PossibleNewRpgTargetsNoLosValue::Calculate()
@@ -235,7 +196,7 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
     if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
         return false;
 
-    for (uint32 npcFlag : allowedNpcFlags)
+    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
             return true;
