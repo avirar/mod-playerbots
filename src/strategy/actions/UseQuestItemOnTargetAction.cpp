@@ -19,39 +19,25 @@
 
 bool UseQuestItemOnTargetAction::Execute(Event event)
 {
-    uint32 spellId = 0;
-
-    // Find the best quest item to use
-    Item* questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
-    if (!questItem)
-    {
+    // Use shared computation from isUseful to avoid duplicate work
+    if (!isUseful())
         return false;
-    }
-
-    // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
-    if (!target)
-    {
-        return false;
-    }
-
-    // Check if we're in range of the target (use the spell's actual range minus buffer)
-    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f); // -2.0f buffer for reliable casting
-    
-    // Ensure minimum distance is INTERACTION_DISTANCE minus buffer for quest item interactions
-    if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
-        range = INTERACTION_DISTANCE - 2.0f; // -2.0f buffer for reliable interaction
         
-    float distance = bot->GetDistance(target);
+    // We know from isUseful() that we have both item and target - get them again
+    uint32 spellId = 0;
+    Item* questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
+    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
     
+    // Final range check with precise distance calculation
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
     
-    if (distance > range)
-    {
+    if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
+        range = INTERACTION_DISTANCE - 2.0f;
+        
+    if (bot->GetDistance(target) > range)
         return false;
-    }
     
-    // Use the quest item on the target
     return UseQuestItemOnTarget(questItem, target);
 }
 
@@ -62,16 +48,21 @@ bool UseQuestItemOnTargetAction::isUseful()
     // Check if we have any usable quest items
     Item* questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
     if (!questItem)
-    {
         return false;
-    }
 
-    // Check if there are valid targets available
+    // Check if there are valid targets available and in range
     Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
-    bool useful = (target != nullptr);
+    if (!target)
+        return false;
     
+    // Do range check here so Execute() doesn't need to repeat the work
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
     
-    return useful;
+    if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
+        range = INTERACTION_DISTANCE - 2.0f;
+        
+    return bot->GetDistance(target) <= range;
 }
 
 bool UseQuestItemOnTargetAction::isPossible()
