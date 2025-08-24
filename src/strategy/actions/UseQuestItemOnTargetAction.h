@@ -12,7 +12,19 @@ class Item;
 class PlayerbotAI;
 class Unit;
 
-// Action that uses quest items with spells on valid targets
+/**
+ * @brief Action that automatically uses quest items with spells on valid targets
+ * 
+ * This action searches the bot's inventory for quest items that have associated spells
+ * and can be used on nearby targets. It validates targets using the game's condition
+ * system and ensures proper range checking before attempting to use the item.
+ * 
+ * The action will:
+ * - Find quest items with player-castable spells
+ * - Locate valid targets within grind distance
+ * - Verify spell conditions (aura requirements, creature types, etc.)
+ * - Use the quest item on the target if in range
+ */
 class UseQuestItemOnTargetAction : public UseSpellItemAction
 {
 public:
@@ -23,12 +35,6 @@ public:
     bool isPossible() override;
 
 private:
-    // Helper methods for quest item usage
-    Item* FindBestQuestItem(uint32* outSpellId = nullptr) const;
-    Unit* FindBestTargetForQuestItem(uint32 spellId) const;
-    bool IsValidQuestItem(Item* item, uint32* outSpellId = nullptr) const;
-    bool IsTargetValidForSpell(Unit* target, uint32 spellId) const;
-    bool CheckSpellConditions(uint32 spellId, Unit* target) const;
     bool UseQuestItemOnTarget(Item* item, Unit* target);
 };
 
