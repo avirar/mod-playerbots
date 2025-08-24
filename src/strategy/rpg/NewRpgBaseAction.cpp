@@ -318,7 +318,11 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                         {
                             LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
                                      bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
-                            go->Use(bot);
+
+                            // Use proper packet-based GameObject interaction
+                            WorldPacket packet(CMSG_GAMEOBJ_USE);
+                            packet << go->GetGUID();
+                            bot->GetSession()->HandleGameObjectUseOpcode(packet);
                             return true;
                         }
                         else
