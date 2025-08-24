@@ -195,7 +195,8 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     
     // If swimming and moving to a loot target, allow direct movement
-    if (bot->isSwimming() && IsMovingToLootTarget())
+    bool isSwimmingToLoot = bot->isSwimming() && IsMovingToLootTarget();
+    if (isSwimmingToLoot)
     {
         generatePath = false; // Use direct movement, skip pathfinding
     }
@@ -250,13 +251,29 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             // }
             MotionMaster& mm = *bot->GetMotionMaster();
             mm.Clear();
-            if (!backwards)
+            
+            // Special handling for swimming to loot - use forced movement to allow underwater diving
+            if (isSwimmingToLoot)
             {
-                mm.MovePoint(0, x, y, z, generatePath);
+                if (!backwards)
+                {
+                    mm.MovePoint(0, x, y, z, false, true); // Force exact position, allow underwater
+                }
+                else
+                {
+                    mm.MovePointBackwards(0, x, y, z, false);
+                }
             }
             else
             {
-                mm.MovePointBackwards(0, x, y, z, generatePath);
+                if (!backwards)
+                {
+                    mm.MovePoint(0, x, y, z, generatePath);
+                }
+                else
+                {
+                    mm.MovePointBackwards(0, x, y, z, generatePath);
+                }
             }
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
@@ -292,13 +309,29 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             MotionMaster& mm = *bot->GetMotionMaster();
             G3D::Vector3 endP = path.back();
             mm.Clear();
-            if (!backwards)
+            
+            // Special handling for swimming to loot - use forced movement to allow underwater diving
+            if (isSwimmingToLoot)
             {
-                mm.MovePoint(0, x, y, z, generatePath);
+                if (!backwards)
+                {
+                    mm.MovePoint(0, x, y, z, false, true); // Force exact position, allow underwater
+                }
+                else
+                {
+                    mm.MovePointBackwards(0, x, y, z, false);
+                }
             }
             else
             {
-                mm.MovePointBackwards(0, x, y, z, generatePath);
+                if (!backwards)
+                {
+                    mm.MovePoint(0, x, y, z, generatePath);
+                }
+                else
+                {
+                    mm.MovePointBackwards(0, x, y, z, generatePath);
+                }
             }
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
@@ -2965,5 +2998,5 @@ bool MovementAction::IsMovingToLootTarget()
     float lootZ = lootObj->GetPositionZ();
     
     // Simple distance check to see if we're heading toward this loot
-    return bot->GetDistance(lootX, lootY, lootZ) > INTERACTION_DISTANCE - 2.0f;
+    return bot->GetDistance(lootX, lootY, lootZ) > INTERACTION_DISTANCE;
 }
