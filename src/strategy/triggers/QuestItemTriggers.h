@@ -12,7 +12,13 @@ class PlayerbotAI;
 class Unit;
 class Item;
 
-// Trigger that activates when the bot has a quest item with a spell that can be used on a valid target
+/**
+ * @brief Trigger that activates when quest items can be used on nearby valid targets
+ * 
+ * This trigger checks if the bot has quest items with spells and if there are
+ * valid targets within range that meet the spell's conditions. It's designed to
+ * work with UseQuestItemOnTargetAction.
+ */
 class QuestItemUsableTrigger : public Trigger
 {
 public:
@@ -21,14 +27,14 @@ public:
     bool IsActive() override;
 
 private:
-    // Helper methods for quest item validation
-    bool HasQuestItemWithSpell(Item** outItem, uint32* outSpellId) const;
-    bool HasValidTargetForQuestItem(uint32 spellId) const;
-    bool IsTargetValidForSpell(Unit* target, uint32 spellId) const;
-    bool CheckSpellConditions(uint32 spellId, Unit* target) const;
 };
 
-// Trigger that activates when the bot is too far from a valid quest item target
+/**
+ * @brief Trigger that activates when the bot is too far from quest item targets
+ * 
+ * This trigger works with MoveToQuestItemTargetAction to ensure the bot gets
+ * within range of valid quest targets before attempting to use quest items.
+ */
 class FarFromQuestItemTargetTrigger : public Trigger
 {
 public:
@@ -38,12 +44,14 @@ public:
 
 private:
     Unit* FindBestQuestItemTarget() const;
-    bool HasQuestItemWithSpell(Item** outItem, uint32* outSpellId) const;
-    bool IsTargetValidForSpell(Unit* target, uint32 spellId) const;
-    bool CheckSpellConditions(uint32 spellId, Unit* target) const;
 };
 
-// Trigger that activates when there are valid quest item targets available nearby
+/**
+ * @brief Trigger that activates when valid quest item targets are available nearby
+ * 
+ * This is a general availability trigger that can be used to enable quest item
+ * strategies when appropriate targets are detected in the area.
+ */
 class QuestItemTargetAvailableTrigger : public Trigger
 {
 public:
@@ -52,8 +60,6 @@ public:
     bool IsActive() override;
 
 private:
-    bool HasQuestItemWithSpell() const;
-    bool HasValidTargetsNearby() const;
 };
 
 #endif
