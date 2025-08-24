@@ -13,54 +13,21 @@
 #include "Playerbots.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "ObjectGuid.h"
+#include "AiObjectContext.h"
+#include "CreatureAI.h"
+
+// Static cache definitions
+std::unordered_map<ObjectGuid, QuestItemHelper::QuestItemCacheEntry> QuestItemHelper::questItemCache;
+std::unordered_map<uint32, std::vector<Condition const*>> QuestItemHelper::spellConditionCache;
+std::mutex QuestItemHelper::cacheMutex;
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
     if (!bot)
         return nullptr;
 
-    // Search through all inventory slots for quest items with spells
-    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
-    {
-        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
-        if (!item)
-            continue;
-
-        uint32 spellId = 0;
-        if (IsValidQuestItem(item, &spellId))
-        {
-            // Return the first valid quest item found
-            // Could be enhanced to prioritize based on quest urgency, etc.
-            if (outSpellId)
-                *outSpellId = spellId;
-            return item;
-        }
-    }
-
-    // Also search through bag slots
-    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
-    {
-        Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
-        if (!pBag)
-            continue;
-
-        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
-        {
-            Item* item = pBag->GetItemByPos(slot);
-            if (!item)
-                continue;
-
-            uint32 spellId = 0;
-            if (IsValidQuestItem(item, &spellId))
-            {
-                if (outSpellId)
-                    *outSpellId = spellId;
-                return item;
-            }
-        }
-    }
-
-    return nullptr;
+    return GetCachedQuestItem(bot, outSpellId);
 }
 
 bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
@@ -107,54 +74,53 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
         return nullptr;
 
     Unit* bestTarget = nullptr;
-    float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
+    float closestDistance = sPlayerbotAIConfig->grindDistance;
 
-    // Get nearby units that could be quest targets
-    GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
+    // Combine both target lists to avoid duplicate processing
+    GuidVector allTargets;
     
-    for (ObjectGuid guid : targets)
+    // Get possible targets
+    GuidVector possibleTargets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
+    allTargets.insert(allTargets.end(), possibleTargets.begin(), possibleTargets.end());
+    
+    // Get nearby NPCs (only if we didn't find anything in possible targets)
+    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+    allTargets.insert(allTargets.end(), npcs.begin(), npcs.end());
+    
+    // Remove duplicates - NPCs might be in both lists
+    std::sort(allTargets.begin(), allTargets.end());
+    allTargets.erase(std::unique(allTargets.begin(), allTargets.end()), allTargets.end());
+    
+    for (ObjectGuid guid : allTargets)
     {
         Unit* target = botAI->GetUnit(guid);
         if (!target)
             continue;
 
-        // Early distance check before expensive spell validation
-        float distance = bot->GetDistance(target);
-        if (distance >= closestDistance)
+        // Quick rough distance check first (cheapest operation)
+        // Use squared distance to avoid sqrt() - even cheaper than GetDistance()
+        float dx = bot->GetPositionX() - target->GetPositionX();
+        float dy = bot->GetPositionY() - target->GetPositionY();
+        float dz = bot->GetPositionZ() - target->GetPositionZ();
+        float distanceSquared = dx*dx + dy*dy + dz*dz;
+        
+        // Quick reject if obviously too far (compare squared distances)
+        float maxDistanceSquared = closestDistance * closestDistance;
+        if (distanceSquared >= maxDistanceSquared)
             continue;
 
-        // Check if this target is valid for our quest item spell
+        // Now do spell validation for potentially close targets
         if (!IsTargetValidForSpell(target, spellId))
+            continue;
+
+        // Only do precise distance calculation for targets that passed both checks
+        float distance = bot->GetDistance(target);
+        if (distance >= closestDistance)
             continue;
 
         // Target is both valid and closer
         closestDistance = distance;
         bestTarget = target;
-    }
-
-    // Also check nearby NPCs specifically (they might not be in possible targets)
-    if (!bestTarget)
-    {
-        GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
-        
-        for (ObjectGuid guid : npcs)
-        {
-            Unit* target = botAI->GetUnit(guid);
-            if (!target)
-                continue;
-
-            // Early distance check before expensive spell validation
-            float distance = bot->GetDistance(target);
-            if (distance >= closestDistance)
-                continue;
-
-            if (!IsTargetValidForSpell(target, spellId))
-                continue;
-
-            // Target is both valid and closer
-            closestDistance = distance;
-            bestTarget = target;
-        }
     }
 
     return bestTarget;
@@ -179,15 +145,15 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
     if (!target)
         return false;
 
-    // Query conditions table for this spell to find required target conditions
-    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+    // Use cached conditions to avoid repeated DB queries
+    const std::vector<Condition const*>* conditions = GetCachedSpellConditions(spellId);
     
     // If no conditions are found, assume the target is valid
-    if (conditions.empty())
+    if (!conditions || conditions->empty())
         return true;
 
     // Check each condition
-    for (Condition const* condition : conditions)
+    for (Condition const* condition : *conditions)
     {
         bool conditionMet = false;
 
@@ -228,4 +194,137 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
 
     // All conditions were met
     return true;
+}
+
+void QuestItemHelper::InvalidateQuestItemCache(ObjectGuid botGuid)
+{
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    questItemCache.erase(botGuid);
+}
+
+Item* QuestItemHelper::GetCachedQuestItem(Player* bot, uint32* outSpellId)
+{
+    if (!bot)
+        return nullptr;
+
+    ObjectGuid botGuid = bot->GetGUID();
+    uint32 currentInventoryChangeCount = bot->GetTotalPlayTime(); // Use as a simple change indicator
+    
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        
+        auto it = questItemCache.find(botGuid);
+        if (it != questItemCache.end())
+        {
+            // Check if cached data is still valid
+            if (it->second.inventoryChangeCount == currentInventoryChangeCount && it->second.item)
+            {
+                // Verify the cached item still exists and is still valid
+                if (bot->GetItemByGuid(it->second.item->GetGUID()) && IsValidQuestItem(it->second.item))
+                {
+                    if (outSpellId)
+                        *outSpellId = it->second.spellId;
+                    return it->second.item;
+                }
+            }
+        }
+    }
+    
+    // Cache miss or invalid - perform fresh search
+    Item* foundItem = nullptr;
+    uint32 foundSpellId = 0;
+    
+    // Search through all inventory slots for quest items with spells
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            continue;
+
+        uint32 spellId = 0;
+        if (IsValidQuestItem(item, &spellId))
+        {
+            foundItem = item;
+            foundSpellId = spellId;
+            break; // Early exit optimization - take first valid item found
+        }
+    }
+
+    // Also search through bag slots if not found in main inventory
+    if (!foundItem)
+    {
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        {
+            Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+            if (!pBag)
+                continue;
+
+            for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+            {
+                Item* item = pBag->GetItemByPos(slot);
+                if (!item)
+                    continue;
+
+                uint32 spellId = 0;
+                if (IsValidQuestItem(item, &spellId))
+                {
+                    foundItem = item;
+                    foundSpellId = spellId;
+                    break;
+                }
+            }
+            
+            if (foundItem)
+                break; // Early exit from bag loop
+        }
+    }
+    
+    // Update cache
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (foundItem)
+        {
+            questItemCache[botGuid] = {foundItem, foundSpellId, currentInventoryChangeCount};
+        }
+        else
+        {
+            // Cache the "no item found" result to avoid repeated searches
+            questItemCache[botGuid] = {nullptr, 0, currentInventoryChangeCount};
+        }
+    }
+    
+    if (outSpellId)
+        *outSpellId = foundSpellId;
+        
+    return foundItem;
+}
+
+const std::vector<Condition const*>* QuestItemHelper::GetCachedSpellConditions(uint32 spellId)
+{
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        
+        auto it = spellConditionCache.find(spellId);
+        if (it != spellConditionCache.end())
+        {
+            return &it->second;
+        }
+    }
+    
+    // Cache miss - query database
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+    
+    // Convert to vector for caching
+    std::vector<Condition const*> conditionVector;
+    for (Condition const* condition : conditions)
+    {
+        conditionVector.push_back(condition);
+    }
+    
+    // Update cache
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        spellConditionCache[spellId] = std::move(conditionVector);
+        return &spellConditionCache[spellId];
+    }
 }
