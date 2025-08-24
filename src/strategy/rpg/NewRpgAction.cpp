@@ -634,6 +634,15 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
                     LOG_DEBUG("playerbots", "[New RPG] {} Found required quest GameObject {} (entry {}) at distance {}", 
                              bot->GetName(), go->GetGOInfo()->name, goEntry, distance);
                     
+                    // If close enough, interact with the GameObject
+                    if (distance <= INTERACTION_DISTANCE)
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Close enough to GameObject, attempting interaction", 
+                                 bot->GetName());
+                        InteractWithNpcOrGameObjectForQuest(guid);
+                        return true;
+                    }
+                    
                     return MoveWorldObjectTo(guid, INTERACTION_DISTANCE);
                 }
             }

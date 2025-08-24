@@ -266,7 +266,7 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 {
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
-    if (!object || !bot->CanInteractWithQuestGiver(object))
+    if (!object)
         return false;
         
     // Final LOS check before interaction - only fail if we're close enough to interact
@@ -277,6 +277,71 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                  bot->GetName(), guid.ToString());
         return false;
     }
+
+    // Handle GameObject quest objectives that need to be used directly
+    if (GameObject* go = object->ToGameObject())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest: Processing GameObject {} (type {})", 
+                 bot->GetName(), go->GetGOInfo()->name, go->GetGoType());
+        
+        // Check if this GameObject is a quest objective that should be used directly
+        if (go->GetGoType() != GAMEOBJECT_TYPE_QUESTGIVER)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} GameObject is not a quest giver, checking for quest objectives", 
+                     bot->GetName());
+            
+            // Check if this GameObject is required for any active quest
+            QuestStatusMap& questMap = bot->getQuestStatusMap();
+            for (auto& questPair : questMap)
+            {
+                const Quest* quest = sObjectMgr->GetQuestTemplate(questPair.first);
+                if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
+                    continue;
+                    
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for GameObject requirements", 
+                         bot->GetName(), questPair.first);
+                    
+                // Check if this GameObject is a quest objective
+                for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                    if (requiredNpcOrGo < 0 && (-requiredNpcOrGo) == (int32)go->GetEntry())
+                    {
+                        // Check if we still need this objective
+                        uint32 currentCount = questPair.second.CreatureOrGOCount[i];
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                        
+                        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: current {} / required {}", 
+                                 bot->GetName(), questPair.first, i, currentCount, requiredCount);
+                        
+                        if (currentCount < requiredCount)
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
+                                     bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
+
+                            // Use proper packet-based GameObject interaction
+                            WorldPacket packet(CMSG_GAMEOBJ_USE);
+                            packet << go->GetGUID();
+                            bot->GetSession()->HandleGameObjectUseOpcode(packet);
+                            return true;
+                        }
+                        else
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} objective already complete for quest {}", 
+                                     bot->GetName(), go->GetGOInfo()->name, questPair.first);
+                        }
+                    }
+                }
+            }
+            
+            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} not required for any active quest", 
+                     bot->GetName(), go->GetGOInfo()->name);
+        }
+    }
+
+    // Handle regular quest giver interaction
+    if (!bot->CanInteractWithQuestGiver(object))
+        return false;
 
     // Creature* creature = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_NONE);
     // if (creature)
