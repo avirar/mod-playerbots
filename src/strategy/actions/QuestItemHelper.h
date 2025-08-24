@@ -6,6 +6,11 @@
 #pragma once
 
 #include "Define.h"
+#include <unordered_map>
+#include <vector>
+#include <mutex>
+
+class Condition;
 
 class Item;
 class Player;
@@ -17,7 +22,7 @@ class Unit;
  * 
  * This class centralizes common quest item functionality used across multiple
  * actions and triggers, including item validation, target finding, and spell
- * condition checking.
+ * condition checking. Includes performance optimizations with caching.
  */
 class QuestItemHelper
 {
@@ -61,4 +66,34 @@ public:
      * @return true if all conditions are met
      */
     static bool CheckSpellConditions(uint32 spellId, Unit* target);
+
+    /**
+     * @brief Invalidate cached quest items for a specific bot
+     * @param botGuid GUID of the bot whose cache should be cleared
+     */
+    static void InvalidateQuestItemCache(ObjectGuid botGuid);
+
+private:
+    // Cache structure for quest items per bot
+    struct QuestItemCacheEntry
+    {
+        Item* item;
+        uint32 spellId;
+        uint32 inventoryChangeCount;
+    };
+
+    // Cache structures
+    static std::unordered_map<ObjectGuid, QuestItemCacheEntry> questItemCache;
+    static std::unordered_map<uint32, std::vector<Condition const*>> spellConditionCache;
+    static std::mutex cacheMutex;
+
+    /**
+     * @brief Get cached quest item or perform fresh search
+     */
+    static Item* GetCachedQuestItem(Player* bot, uint32* outSpellId);
+
+    /**
+     * @brief Get cached spell conditions or query database
+     */
+    static const std::vector<Condition const*>* GetCachedSpellConditions(uint32 spellId);
 };
