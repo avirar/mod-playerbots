@@ -3,247 +3,115 @@
  * and/or modify it under version 2 of the License, or (at your option), any later version.
  */
 
-#include "PossibleRpgTargetsValue.h"
+#ifndef _PLAYERBOT_POSSIBLERPGTARGETSVALUE_H
+#define _PLAYERBOT_POSSIBLERPGTARGETSVALUE_H
 
-#include "CellImpl.h"
-#include "GridNotifiers.h"
-#include "GridNotifiersImpl.h"
-#include "ObjectGuid.h"
-#include "Playerbots.h"
-#include "ServerFacade.h"
-#include "SharedDefines.h"
 #include "NearestGameObjects.h"
+#include "NearestUnitsValue.h"
+#include "PlayerbotAIConfig.h"
+#include "SharedDefines.h"
 
-// Static member initialization
-std::vector<uint32> RpgNpcFlags::standardFlags;
+class PlayerbotAI;
 
-const std::vector<uint32>& RpgNpcFlags::GetStandardRpgFlags()
+/**
+ * @brief Standard RPG NPC types that bots should interact with
+ * 
+ * This enum defines the common NPC types that are considered valid
+ * RPG targets for bot interaction, eliminating code duplication across
+ * multiple RPG target value classes.
+ */
+enum class RpgNpcType : uint32
 {
-    if (standardFlags.empty())
-        InitializeFlags();
-    return standardFlags;
-}
+    INNKEEPER = UNIT_NPC_FLAG_INNKEEPER,
+    GOSSIP = UNIT_NPC_FLAG_GOSSIP,
+    QUESTGIVER = UNIT_NPC_FLAG_QUESTGIVER,
+    FLIGHTMASTER = UNIT_NPC_FLAG_FLIGHTMASTER,
+    BANKER = UNIT_NPC_FLAG_BANKER,
+    GUILD_BANKER = UNIT_NPC_FLAG_GUILD_BANKER,
+    TRAINER_CLASS = UNIT_NPC_FLAG_TRAINER_CLASS,
+    TRAINER_PROFESSION = UNIT_NPC_FLAG_TRAINER_PROFESSION,
+    VENDOR_AMMO = UNIT_NPC_FLAG_VENDOR_AMMO,
+    VENDOR_FOOD = UNIT_NPC_FLAG_VENDOR_FOOD,
+    VENDOR_POISON = UNIT_NPC_FLAG_VENDOR_POISON,
+    VENDOR_REAGENT = UNIT_NPC_FLAG_VENDOR_REAGENT,
+    AUCTIONEER = UNIT_NPC_FLAG_AUCTIONEER,
+    STABLEMASTER = UNIT_NPC_FLAG_STABLEMASTER,
+    PETITIONER = UNIT_NPC_FLAG_PETITIONER,
+    TABARDDESIGNER = UNIT_NPC_FLAG_TABARDDESIGNER,
+    BATTLEMASTER = UNIT_NPC_FLAG_BATTLEMASTER,
+    TRAINER = UNIT_NPC_FLAG_TRAINER,
+    VENDOR = UNIT_NPC_FLAG_VENDOR,
+    REPAIR = UNIT_NPC_FLAG_REPAIR
+};
 
-void RpgNpcFlags::InitializeFlags()
+/**
+ * @brief Helper class for managing RPG NPC flags
+ * 
+ * Provides static methods to get the standard set of NPC flags that
+ * should be considered valid RPG targets, eliminating code duplication.
+ */
+class RpgNpcFlags
 {
-    standardFlags = {
-        static_cast<uint32>(RpgNpcType::INNKEEPER),
-        static_cast<uint32>(RpgNpcType::GOSSIP),
-        static_cast<uint32>(RpgNpcType::QUESTGIVER),
-        static_cast<uint32>(RpgNpcType::FLIGHTMASTER),
-        static_cast<uint32>(RpgNpcType::BANKER),
-        static_cast<uint32>(RpgNpcType::GUILD_BANKER),
-        static_cast<uint32>(RpgNpcType::TRAINER_CLASS),
-        static_cast<uint32>(RpgNpcType::TRAINER_PROFESSION),
-        static_cast<uint32>(RpgNpcType::VENDOR_AMMO),
-        static_cast<uint32>(RpgNpcType::VENDOR_FOOD),
-        static_cast<uint32>(RpgNpcType::VENDOR_POISON),
-        static_cast<uint32>(RpgNpcType::VENDOR_REAGENT),
-        static_cast<uint32>(RpgNpcType::AUCTIONEER),
-        static_cast<uint32>(RpgNpcType::STABLEMASTER),
-        static_cast<uint32>(RpgNpcType::PETITIONER),
-        static_cast<uint32>(RpgNpcType::TABARDDESIGNER),
-        static_cast<uint32>(RpgNpcType::BATTLEMASTER),
-        static_cast<uint32>(RpgNpcType::TRAINER),
-        static_cast<uint32>(RpgNpcType::VENDOR),
-        static_cast<uint32>(RpgNpcType::REPAIR)
-    };
-}
+public:
+    /**
+     * @brief Get the standard set of RPG NPC flags
+     * @return Vector of NPC flags that are considered valid RPG targets
+     */
+    static const std::vector<uint32>& GetStandardRpgFlags();
 
-PossibleRpgTargetsValue::PossibleRpgTargetsValue(PlayerbotAI* botAI, float range)
-    : NearestUnitsValue(botAI, "possible rpg targets", range, true)
+private:
+    static std::vector<uint32> standardFlags;
+    static void InitializeFlags();
+};
+
+class PossibleRpgTargetsValue : public NearestUnitsValue
 {
-    // No initialization needed - using centralized RpgNpcFlags helper
-}
+public:
+    PossibleRpgTargetsValue(PlayerbotAI* botAI, float range = 70.0f);
 
-void PossibleRpgTargetsValue::FindUnits(std::list<Unit*>& targets)
+protected:
+    void FindUnits(std::list<Unit*>& targets) override;
+    bool AcceptUnit(Unit* unit) override;
+};
+
+class PossibleNewRpgTargetsValue : public NearestUnitsValue
 {
-    Acore::AnyUnitInObjectRangeCheck u_check(bot, range);
-    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, targets, u_check);
-    Cell::VisitObjects(bot, searcher, range);
-}
+public:
+    PossibleNewRpgTargetsValue(PlayerbotAI* botAI, float range = 150.0f);
+    GuidVector Calculate() override;
+protected:
+    void FindUnits(std::list<Unit*>& targets) override;
+    bool AcceptUnit(Unit* unit) override;
+};
 
-bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
+class PossibleNewRpgTargetsNoLosValue : public NearestUnitsValue
 {
-    if (unit->IsHostileTo(bot) || unit->GetTypeId() == TYPEID_PLAYER)
-        return false;
+public:
+    PossibleNewRpgTargetsNoLosValue(PlayerbotAI* botAI, float range = 200.0f);
+    GuidVector Calculate() override;
+protected:
+    void FindUnits(std::list<Unit*>& targets) override;
+    bool AcceptUnit(Unit* unit) override;
+};
 
-    if (sServerFacade->GetDistance2d(bot, unit) <= sPlayerbotAIConfig->tooCloseDistance)
-        return false;
-
-    if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
-        return false;
-
-    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
+class PossibleNewRpgGameObjectsValue : public ObjectGuidListCalculatedValue
+{
+public:
+    PossibleNewRpgGameObjectsValue(PlayerbotAI* botAI, float range = 150.0f, bool ignoreLos = true)
+        : ObjectGuidListCalculatedValue(botAI, "possible new rpg game objects"), range(range), ignoreLos(ignoreLos)
     {
-        if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
-            return true;
-    }
-
-    TravelTarget* travelTarget = context->GetValue<TravelTarget*>("travel target")->Get();
-    if (travelTarget->getDestination() && travelTarget->getDestination()->getEntry() == unit->GetEntry())
-        return true;
-
-    if (urand(1, 100) < 25 && unit->IsFriendlyTo(bot))
-        return true;
-
-    if (urand(1, 100) < 5)
-        return true;
-
-    return false;
-}
-
-
-PossibleNewRpgTargetsValue::PossibleNewRpgTargetsValue(PlayerbotAI* botAI, float range)
-    : NearestUnitsValue(botAI, "possible new rpg targets", range, true)
-{
-    // No initialization needed - using centralized RpgNpcFlags helper
-}
-
-GuidVector PossibleNewRpgTargetsValue::Calculate()
-{
-    std::list<Unit*> targets;
-    FindUnits(targets);
-
-    GuidVector results;
-    std::vector<std::pair<ObjectGuid, float>> guidDistancePairs;
-    for (Unit* unit : targets)
-    {
-        if (AcceptUnit(unit) && (ignoreLos || bot->IsWithinLOSInMap(unit)))
-            guidDistancePairs.push_back({unit->GetGUID(), bot->GetExactDist(unit)});
-    }
-    // Override to sort by distance
-    std::sort(guidDistancePairs.begin(), guidDistancePairs.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
-    
-    for (const auto& pair : guidDistancePairs) {
-        results.push_back(pair.first);
-    }
-    return results;
-}
-
-void PossibleNewRpgTargetsValue::FindUnits(std::list<Unit*>& targets)
-{
-    Acore::AnyUnitInObjectRangeCheck u_check(bot, range);
-    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, targets, u_check);
-    Cell::VisitObjects(bot, searcher, range);
-}
-
-bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
-{
-    if (unit->IsHostileTo(bot) || unit->GetTypeId() == TYPEID_PLAYER)
-        return false;
-
-    if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
-        return false;
-
-    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
-    {
-        if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
-            return true;
-    }
-
-    return false;
-}
-
-PossibleNewRpgTargetsNoLosValue::PossibleNewRpgTargetsNoLosValue(PlayerbotAI* botAI, float range)
-    : NearestUnitsValue(botAI, "possible new rpg targets no los", range, true)
-{
-    // No initialization needed - using centralized RpgNpcFlags helper
-}
-
-GuidVector PossibleNewRpgTargetsNoLosValue::Calculate()
-{
-    std::list<Unit*> targets;
-    FindUnits(targets);
-
-    GuidVector results;
-    std::vector<std::pair<ObjectGuid, float>> guidDistancePairs;
-    for (Unit* unit : targets)
-    {
-        // No LOS check - accept all units that pass AcceptUnit test
-        if (AcceptUnit(unit))
+        if (allowedGOFlags.empty())
         {
-            float distance = bot->GetExactDist(unit);
-            guidDistancePairs.push_back({unit->GetGUID(), distance});
+            allowedGOFlags.push_back(GAMEOBJECT_TYPE_QUESTGIVER);
         }
     }
     
-    // Sort by 3D distance to prioritize same-elevation NPCs
-    std::sort(guidDistancePairs.begin(), guidDistancePairs.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
-    
-    for (const auto& pair : guidDistancePairs) {
-        results.push_back(pair.first);
-    }
-    return results;
-}
+    static std::vector<GameobjectTypes> allowedGOFlags;
+    GuidVector Calculate() override;
 
-void PossibleNewRpgTargetsNoLosValue::FindUnits(std::list<Unit*>& targets)
-{
-    Acore::AnyUnitInObjectRangeCheck u_check(bot, range);
-    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, targets, u_check);
-    Cell::VisitObjects(bot, searcher, range);
-}
+private:
+    float range;
+    bool ignoreLos;
+};
 
-bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
-{
-    if (unit->IsHostileTo(bot) || unit->GetTypeId() == TYPEID_PLAYER)
-        return false;
-
-    if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_SPIRITHEALER))
-        return false;
-
-    for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
-    {
-        if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
-            return true;
-    }
-
-    return false;
-}
-
-std::vector<GameobjectTypes> PossibleNewRpgGameObjectsValue::allowedGOFlags;
-
-GuidVector PossibleNewRpgGameObjectsValue::Calculate()
-{
-    std::list<GameObject*> targets;
-    AnyGameObjectInObjectRangeCheck u_check(bot, range);
-    Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> searcher(bot, targets, u_check);
-    Cell::VisitObjects(bot, searcher, range);
-
-    
-    std::vector<std::pair<ObjectGuid, float>> guidDistancePairs;
-    for (GameObject* go : targets)
-    {
-        bool flagCheck = false;
-        for (uint32 goFlag : allowedGOFlags)
-        {
-            if (go->GetGoType() == goFlag)
-            {
-                flagCheck = true;
-                break;
-            }
-        }
-        if (!flagCheck)
-            continue;
-        
-        if (!ignoreLos && !bot->IsWithinLOSInMap(go))
-            continue;
-        
-        guidDistancePairs.push_back({go->GetGUID(), bot->GetExactDist(go)});
-    }
-    GuidVector results;
-
-    // Sort by distance
-    std::sort(guidDistancePairs.begin(), guidDistancePairs.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
-    
-    for (const auto& pair : guidDistancePairs) {
-        results.push_back(pair.first);
-    }
-    return results;
-}
+#endif
