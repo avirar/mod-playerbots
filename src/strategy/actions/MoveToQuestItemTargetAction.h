@@ -12,7 +12,18 @@ class Item;
 class PlayerbotAI;
 class Unit;
 
-// Action that moves the bot towards a valid quest item target
+/**
+ * @brief Action that moves the bot towards a valid quest item target
+ * 
+ * This action works in conjunction with UseQuestItemOnTargetAction to position
+ * the bot within range of valid quest targets. It uses the same target finding
+ * logic but focuses on movement rather than item usage.
+ * 
+ * The action will:
+ * - Find quest items that need targets
+ * - Locate the closest valid target
+ * - Move the bot within spell/interaction range of the target
+ */
 class MoveToQuestItemTargetAction : public MovementAction
 {
 public:
@@ -22,12 +33,6 @@ public:
     bool isUseful() override;
 
 private:
-    // Helper methods for finding quest targets
-    Item* FindBestQuestItem(uint32* outSpellId = nullptr) const;
-    Unit* FindBestTargetForQuestItem(uint32 spellId) const;
-    bool IsValidQuestItem(Item* item, uint32* outSpellId = nullptr) const;
-    bool IsTargetValidForSpell(Unit* target, uint32 spellId) const;
-    bool CheckSpellConditions(uint32 spellId, Unit* target) const;
 };
 
 #endif
