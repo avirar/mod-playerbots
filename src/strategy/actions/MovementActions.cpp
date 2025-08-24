@@ -2646,7 +2646,7 @@ bool MoveToLootAction::Execute(Event event)
     float lootX = lootObj->GetPositionX();
     float lootY = lootObj->GetPositionY();
     float lootZ = lootObj->GetPositionZ();
-    bool lootUnderwater = map->IsUnderWater(bot->GetPhaseMask(), lootX, lootY, lootZ);
+    bool lootUnderwater = map->IsUnderWater(bot->GetPhaseMask(), lootX, lootY, lootZ, bot->GetCollisionHeight());
     
     // If loot is underwater, move directly to it without pathfinding to avoid Z-coordinate correction
     if (lootUnderwater && (bot->isSwimming() || bot->IsInWater()))
