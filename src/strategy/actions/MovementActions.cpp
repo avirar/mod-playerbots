@@ -194,13 +194,6 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     }
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     
-    // If swimming and moving to a loot target, allow direct movement
-    bool isSwimmingToLoot = bot->isSwimming() && IsMovingToLootTarget();
-    if (isSwimmingToLoot)
-    {
-        generatePath = false; // Use direct movement, skip pathfinding
-    }
-    
     bool disableMoveSplinePath = sPlayerbotAIConfig->disableMoveSplinePath >= 2 ||
                                  (sPlayerbotAIConfig->disableMoveSplinePath == 1 && bot->InBattleground());
     if (Vehicle* vehicle = bot->GetVehicle())
@@ -252,28 +245,13 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             MotionMaster& mm = *bot->GetMotionMaster();
             mm.Clear();
             
-            // Special handling for swimming to loot - use forced movement to allow underwater diving
-            if (isSwimmingToLoot)
+            if (!backwards)
             {
-                if (!backwards)
-                {
-                    mm.MovePoint(0, x, y, z, false, true); // Force exact position, allow underwater
-                }
-                else
-                {
-                    mm.MovePointBackwards(0, x, y, z, false);
-                }
+                mm.MovePoint(0, x, y, z, generatePath);
             }
             else
             {
-                if (!backwards)
-                {
-                    mm.MovePoint(0, x, y, z, generatePath);
-                }
-                else
-                {
-                    mm.MovePointBackwards(0, x, y, z, generatePath);
-                }
+                mm.MovePointBackwards(0, x, y, z, generatePath);
             }
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
@@ -310,28 +288,13 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             G3D::Vector3 endP = path.back();
             mm.Clear();
             
-            // Special handling for swimming to loot - use forced movement to allow underwater diving
-            if (isSwimmingToLoot)
+            if (!backwards)
             {
-                if (!backwards)
-                {
-                    mm.MovePoint(0, x, y, z, false, true); // Force exact position, allow underwater
-                }
-                else
-                {
-                    mm.MovePointBackwards(0, x, y, z, false);
-                }
+                mm.MovePoint(0, x, y, z, generatePath);
             }
             else
             {
-                if (!backwards)
-                {
-                    mm.MovePoint(0, x, y, z, generatePath);
-                }
-                else
-                {
-                    mm.MovePointBackwards(0, x, y, z, generatePath);
-                }
+                mm.MovePointBackwards(0, x, y, z, generatePath);
             }
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
@@ -2649,7 +2612,7 @@ bool MoveToLootAction::Execute(Event event)
     bool lootUnderwater = map->IsUnderWater(bot->GetPhaseMask(), lootX, lootY, lootZ, bot->GetCollisionHeight());
     
     // If loot is underwater, move directly to it without pathfinding to avoid Z-coordinate correction
-    if (lootUnderwater && (bot->isSwimming() || bot->IsInWater()))
+    if (lootUnderwater)
     {
         // Use direct movement with pathfinding disabled to preserve exact Z-coordinate
         return MoveTo(lootObj->GetMapId(), lootX, lootY, lootZ, false, false, false, false, MovementPriority::MOVEMENT_NORMAL);
@@ -3001,21 +2964,3 @@ bool MoveAwayFromPlayerWithDebuffAction::isPossible()
     return bot->CanFreeMove();
 }
 
-bool MovementAction::IsMovingToLootTarget()
-{
-    LootObject lootTarget = AI_VALUE(LootObject, "loot target");
-    if (lootTarget.IsEmpty())
-        return false;
-        
-    WorldObject* lootObj = lootTarget.GetWorldObject(bot);
-    if (!lootObj)
-        return false;
-        
-    // Check if our current movement destination matches the loot object location
-    float lootX = lootObj->GetPositionX();
-    float lootY = lootObj->GetPositionY(); 
-    float lootZ = lootObj->GetPositionZ();
-    
-    // Simple distance check to see if we're heading toward this loot
-    return bot->GetDistance(lootX, lootY, lootZ) > INTERACTION_DISTANCE;
-}
