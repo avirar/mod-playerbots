@@ -110,7 +110,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
 
     // Get nearby units that could be quest targets
-    GuidVector targets = AI_VALUE(GuidVector, "possible targets");
+    GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
     
     for (ObjectGuid guid : targets)
     {
@@ -135,7 +135,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     // Also check nearby NPCs specifically (they might not be in possible targets)
     if (!bestTarget)
     {
-        GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+        GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
         
         for (ObjectGuid guid : npcs)
         {
