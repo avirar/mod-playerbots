@@ -17,22 +17,26 @@
 
 bool QuestItemUsableTrigger::IsActive()
 {
-    Item* questItem = nullptr;
     uint32 spellId = 0;
     
     // Check if we have a quest item with a spell
-    questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
+    Item* questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
     if (!questItem)
-    {
         return false;
-    }
 
-    // Check if there are valid targets for this quest item
+    // Check if there are valid targets for this quest item and if we're in range
     Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
-    bool hasValidTarget = (target != nullptr);
+    if (!target)
+        return false;
     
+    // Also check range here to avoid triggering actions when we're too far
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
     
-    return hasValidTarget;
+    if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
+        range = INTERACTION_DISTANCE - 2.0f;
+        
+    return bot->GetDistance(target) <= range;
 }
 
 
