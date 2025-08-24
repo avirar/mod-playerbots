@@ -2637,7 +2637,26 @@ bool MoveToLootAction::Execute(Event event)
     if (!loot.IsLootPossible(bot))
         return false;
 
-    return MoveNear(loot.GetWorldObject(bot), sPlayerbotAIConfig->contactDistance);
+    WorldObject* lootObj = loot.GetWorldObject(bot);
+    if (!lootObj)
+        return false;
+
+    // Check if loot is underwater
+    Map* map = bot->GetMap();
+    float lootX = lootObj->GetPositionX();
+    float lootY = lootObj->GetPositionY();
+    float lootZ = lootObj->GetPositionZ();
+    bool lootUnderwater = map->IsUnderWater(bot->GetPhaseMask(), lootX, lootY, lootZ);
+    
+    // If loot is underwater, move directly to it without pathfinding to avoid Z-coordinate correction
+    if (lootUnderwater && (bot->isSwimming() || bot->IsInWater()))
+    {
+        // Use direct movement with pathfinding disabled to preserve exact Z-coordinate
+        return MoveTo(lootObj->GetMapId(), lootX, lootY, lootZ, false, false, false, false, MovementPriority::MOVEMENT_NORMAL);
+    }
+    
+    // Use normal "near" movement for surface loot
+    return MoveNear(lootObj, sPlayerbotAIConfig->contactDistance);
 }
 
 bool MoveOutOfEnemyContactAction::Execute(Event event)
