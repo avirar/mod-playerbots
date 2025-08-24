@@ -193,6 +193,13 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         return false;
     }
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
+    
+    // If swimming and moving to a loot target, allow direct movement
+    if (bot->isSwimming() && IsMovingToLootTarget())
+    {
+        generatePath = false; // Use direct movement, skip pathfinding
+    }
+    
     bool disableMoveSplinePath = sPlayerbotAIConfig->disableMoveSplinePath >= 2 ||
                                  (sPlayerbotAIConfig->disableMoveSplinePath == 1 && bot->InBattleground());
     if (Vehicle* vehicle = bot->GetVehicle())
@@ -2940,4 +2947,23 @@ bool MoveAwayFromPlayerWithDebuffAction::Execute(Event event)
 bool MoveAwayFromPlayerWithDebuffAction::isPossible()
 {
     return bot->CanFreeMove();
+}
+
+bool MovementAction::IsMovingToLootTarget()
+{
+    LootObject lootTarget = AI_VALUE(LootObject, "loot target");
+    if (lootTarget.IsEmpty())
+        return false;
+        
+    WorldObject* lootObj = lootTarget.GetWorldObject(bot);
+    if (!lootObj)
+        return false;
+        
+    // Check if our current movement destination matches the loot object location
+    float lootX = lootObj->GetPositionX();
+    float lootY = lootObj->GetPositionY(); 
+    float lootZ = lootObj->GetPositionZ();
+    
+    // Simple distance check to see if we're heading toward this loot
+    return bot->GetDistance(lootX, lootY, lootZ) > INTERACTION_DISTANCE - 2.0f;
 }
