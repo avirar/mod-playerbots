@@ -50,15 +50,36 @@ public:
      * @brief Check if a target is valid for a specific quest spell
      * @param target Target unit to validate
      * @param spellId Spell ID to check conditions for
+     * @param caster Player casting the spell (for location/proximity checks)
      * @return true if target meets all spell conditions
      */
-    static bool IsTargetValidForSpell(Unit* target, uint32 spellId);
+    static bool IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster = nullptr);
 
     /**
      * @brief Check spell-specific conditions from the conditions table
      * @param spellId Spell ID to check conditions for
      * @param target Target to validate conditions against
+     * @param caster Player casting the spell (for location/proximity checks)
      * @return true if all conditions are met
      */
-    static bool CheckSpellConditions(uint32 spellId, Unit* target);
+    static bool CheckSpellConditions(uint32 spellId, Unit* target, Player* caster = nullptr);
+
+private:
+    /**
+     * @brief Check if player is near a specific creature type
+     * @param player Player to check proximity for
+     * @param creatureEntry Creature entry ID to search for
+     * @param maxDistance Maximum distance in yards
+     * @param requireAlive Whether creature must be alive (true) or dead (false)
+     * @return true if matching creature found within distance
+     */
+    static bool IsNearCreature(Player* player, uint32 creatureEntry, float maxDistance, bool requireAlive);
+
+    /**
+     * @brief Validate spell area/zone requirements from spell data
+     * @param player Player to validate location for
+     * @param spellId Spell ID to check requirements for
+     * @return true if player is in required area/zone
+     */
+    static bool CheckSpellLocationRequirements(Player* player, uint32 spellId);
 };
