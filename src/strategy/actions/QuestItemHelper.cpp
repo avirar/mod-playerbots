@@ -13,9 +13,6 @@
 #include "Playerbots.h"
 #include "SpellInfo.h"
 #include "Unit.h"
-#include "GridNotifiers.h"
-#include "GridNotifiersImpl.h"
-#include "CellImpl.h"
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
@@ -127,7 +124,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             continue;
 
         // Check if this target is valid for our quest item spell
-        if (!IsTargetValidForSpell(target, spellId, bot))
+        if (!IsTargetValidForSpell(target, spellId, bot, botAI))
             continue;
 
         // Target is both valid and closer
@@ -151,7 +148,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             if (distance >= closestDistance)
                 continue;
 
-            if (!IsTargetValidForSpell(target, spellId, bot))
+            if (!IsTargetValidForSpell(target, spellId, bot, botAI))
                 continue;
 
             // Target is both valid and closer
@@ -163,7 +160,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     return bestTarget;
 }
 
-bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster)
+bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster, PlayerbotAI* botAI)
 {
     if (!target || !target->IsAlive())
         return false;
@@ -174,10 +171,10 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         return false;
 
     // Check spell-specific conditions (aura requirements, creature type, etc.)
-    return CheckSpellConditions(spellId, target, caster);
+    return CheckSpellConditions(spellId, target, caster, botAI);
 }
 
-bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player* caster)
+bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player* caster, PlayerbotAI* botAI)
 {
     if (!target)
         return false;
@@ -238,12 +235,12 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             }
             case CONDITION_NEAR_CREATURE:
             {
-                if (caster)
+                if (botAI)
                 {
                     uint32 creatureEntry = condition->ConditionValue1;
                     float maxDistance = condition->ConditionValue2;
                     bool requireAlive = (condition->ConditionValue3 == 0);
-                    conditionMet = IsNearCreature(caster, creatureEntry, maxDistance, requireAlive);
+                    conditionMet = IsNearCreature(botAI, creatureEntry, maxDistance, requireAlive);
                 }
                 break;
             }
@@ -340,23 +337,33 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     return true;
 }
 
-bool QuestItemHelper::IsNearCreature(Player* player, uint32 creatureEntry, float maxDistance, bool requireAlive)
+bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, float maxDistance, bool requireAlive)
 {
-    if (!player)
+    if (!botAI)
         return false;
 
-    // Search for nearby creatures matching the specified entry
-    std::list<Creature*> creatures;
-    Trinity::AllCreaturesOfEntryInRange checker(player, creatureEntry, maxDistance);
-    Trinity::CreatureListSearcher<Trinity::AllCreaturesOfEntryInRange> searcher(player, creatures, checker);
-    Cell::VisitAllObjects(player, searcher, maxDistance);
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return false;
 
-    // Check if any matching creatures meet the alive/dead requirement
-    for (Creature* creature : creatures)
+    // Use the existing playerbots infrastructure to get nearby NPCs
+    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+    
+    for (ObjectGuid guid : npcs)
     {
-        if (requireAlive && creature->IsAlive())
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || unit->GetEntry() != creatureEntry)
+            continue;
+
+        // Check distance requirement
+        float distance = bot->GetDistance(unit);
+        if (distance > maxDistance)
+            continue;
+            
+        // Check alive/dead requirement
+        if (requireAlive && unit->IsAlive())
             return true;
-        if (!requireAlive && !creature->IsAlive())
+        if (!requireAlive && !unit->IsAlive())
             return true;
     }
 
