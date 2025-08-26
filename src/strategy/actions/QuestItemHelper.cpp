@@ -13,6 +13,9 @@
 #include "Playerbots.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
+#include "CellImpl.h"
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
@@ -124,7 +127,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             continue;
 
         // Check if this target is valid for our quest item spell
-        if (!IsTargetValidForSpell(target, spellId))
+        if (!IsTargetValidForSpell(target, spellId, bot))
             continue;
 
         // Target is both valid and closer
@@ -148,7 +151,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             if (distance >= closestDistance)
                 continue;
 
-            if (!IsTargetValidForSpell(target, spellId))
+            if (!IsTargetValidForSpell(target, spellId, bot))
                 continue;
 
             // Target is both valid and closer
@@ -160,7 +163,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     return bestTarget;
 }
 
-bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId)
+bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster)
 {
     if (!target || !target->IsAlive())
         return false;
@@ -171,12 +174,30 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId)
         return false;
 
     // Check spell-specific conditions (aura requirements, creature type, etc.)
-    return CheckSpellConditions(spellId, target);
+    return CheckSpellConditions(spellId, target, caster);
 }
 
-bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
+bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player* caster)
 {
     if (!target)
+        return false;
+
+    // If no caster was provided, try to determine it from the target
+    if (!caster)
+    {
+        if (target->GetTypeId() == TYPEID_PLAYER)
+            caster = target->ToPlayer();
+        else
+        {
+            // Get the caster from the target's master or nearby players
+            if (Unit* owner = target->GetOwner())
+                if (owner->GetTypeId() == TYPEID_PLAYER)
+                    caster = owner->ToPlayer();
+        }
+    }
+
+    // Check spell location requirements first (RequiredAreasID from spell data)
+    if (caster && !CheckSpellLocationRequirements(caster, spellId))
         return false;
 
     // Query conditions table for this spell to find required target conditions
@@ -197,7 +218,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
             {
                 uint32 requiredAuraId = condition->ConditionValue1;
                 bool hasAura = target->HasAura(requiredAuraId);
-                conditionMet = condition->NegativeCondition ? !hasAura : hasAura;
+                conditionMet = hasAura;
                 break;
             }
             case CONDITION_CREATURE_TYPE:
@@ -215,11 +236,100 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
                 conditionMet = target->GetEntry() == requiredEntry;
                 break;
             }
+            case CONDITION_NEAR_CREATURE:
+            {
+                if (caster)
+                {
+                    uint32 creatureEntry = condition->ConditionValue1;
+                    float maxDistance = condition->ConditionValue2;
+                    bool requireAlive = (condition->ConditionValue3 == 0);
+                    conditionMet = IsNearCreature(caster, creatureEntry, maxDistance, requireAlive);
+                }
+                break;
+            }
+            case CONDITION_AREAID:
+            {
+                if (caster)
+                {
+                    uint32 requiredAreaId = condition->ConditionValue1;
+                    uint32 playerAreaId = caster->GetAreaId();
+                    conditionMet = (playerAreaId == requiredAreaId);
+                }
+                break;
+            }
+            case CONDITION_ZONEID:
+            {
+                if (caster)
+                {
+                    uint32 requiredZoneId = condition->ConditionValue1;
+                    uint32 playerZoneId = caster->GetZoneId();
+                    conditionMet = (playerZoneId == requiredZoneId);
+                }
+                break;
+            }
+            case CONDITION_MAPID:
+            {
+                if (caster)
+                {
+                    uint32 requiredMapId = condition->ConditionValue1;
+                    uint32 playerMapId = caster->GetMapId();
+                    conditionMet = (playerMapId == requiredMapId);
+                }
+                break;
+            }
+            case CONDITION_ALIVE:
+            {
+                bool isAlive = target->IsAlive();
+                conditionMet = isAlive;
+                break;
+            }
+            case CONDITION_HP_PCT:
+            {
+                if (target->GetMaxHealth() > 0)
+                {
+                    uint32 requiredPct = condition->ConditionValue1;
+                    uint32 currentPct = (target->GetHealth() * 100) / target->GetMaxHealth();
+                    uint32 compareType = condition->ConditionValue2;
+                    
+                    switch (compareType)
+                    {
+                        case 0: conditionMet = (currentPct == requiredPct); break; // Equal
+                        case 1: conditionMet = (currentPct > requiredPct); break;  // Higher
+                        case 2: conditionMet = (currentPct < requiredPct); break;  // Lower
+                        case 3: conditionMet = (currentPct >= requiredPct); break; // Equal or higher
+                        case 4: conditionMet = (currentPct <= requiredPct); break; // Equal or lower
+                        default: conditionMet = true; break;
+                    }
+                }
+                break;
+            }
+            case CONDITION_UNIT_STATE:
+            {
+                uint32 requiredState = condition->ConditionValue1;
+                conditionMet = target->HasUnitState(static_cast<UnitState>(requiredState));
+                break;
+            }
+            case CONDITION_NEAR_GAMEOBJECT:
+            {
+                if (caster)
+                {
+                    uint32 goEntry = condition->ConditionValue1;
+                    float maxDistance = condition->ConditionValue2;
+                    // For simplicity, we'll assume this condition is met
+                    // Full implementation would require searching for nearby gameobjects
+                    conditionMet = true; // TODO: Implement gameobject proximity check
+                }
+                break;
+            }
             default:
-                // For unknown condition types, assume they're met
+                // For unknown condition types, assume they're met to avoid breaking functionality
                 conditionMet = true;
                 break;
         }
+
+        // Apply negative condition logic
+        if (condition->NegativeCondition)
+            conditionMet = !conditionMet;
 
         // If any condition is not met, the target is invalid
         if (!conditionMet)
@@ -228,4 +338,52 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target)
 
     // All conditions were met
     return true;
+}
+
+bool QuestItemHelper::IsNearCreature(Player* player, uint32 creatureEntry, float maxDistance, bool requireAlive)
+{
+    if (!player)
+        return false;
+
+    // Search for nearby creatures matching the specified entry
+    std::list<Creature*> creatures;
+    Trinity::AllCreaturesOfEntryInRange checker(player, creatureEntry, maxDistance);
+    Trinity::CreatureListSearcher<Trinity::AllCreaturesOfEntryInRange> searcher(player, creatures, checker);
+    Cell::VisitAllObjects(player, searcher, maxDistance);
+
+    // Check if any matching creatures meet the alive/dead requirement
+    for (Creature* creature : creatures)
+    {
+        if (requireAlive && creature->IsAlive())
+            return true;
+        if (!requireAlive && !creature->IsAlive())
+            return true;
+    }
+
+    return false;
+}
+
+bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spellId)
+{
+    if (!player)
+        return false;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return true; // No spell info means no restrictions
+
+    // Check RequiredAreasID field from spell data
+    if (spellInfo->RequiredAreasID > 0)
+    {
+        uint32 playerAreaId = player->GetAreaId();
+        if (playerAreaId != spellInfo->RequiredAreasID)
+        {
+            return false; // Player is not in the required area
+        }
+    }
+
+    // Future: Add other location-based spell requirements here
+    // e.g., RequiredMapID, RequiredZoneID, etc.
+
+    return true; // All location requirements met
 }
