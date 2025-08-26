@@ -51,29 +51,31 @@ public:
      * @param target Target unit to validate
      * @param spellId Spell ID to check conditions for
      * @param caster Player casting the spell (for location/proximity checks)
+     * @param botAI Bot AI instance for proximity checks (optional)
      * @return true if target meets all spell conditions
      */
-    static bool IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster = nullptr);
+    static bool IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster = nullptr, PlayerbotAI* botAI = nullptr);
 
     /**
      * @brief Check spell-specific conditions from the conditions table
      * @param spellId Spell ID to check conditions for
      * @param target Target to validate conditions against
      * @param caster Player casting the spell (for location/proximity checks)
+     * @param botAI Bot AI instance for proximity checks (optional)
      * @return true if all conditions are met
      */
-    static bool CheckSpellConditions(uint32 spellId, Unit* target, Player* caster = nullptr);
+    static bool CheckSpellConditions(uint32 spellId, Unit* target, Player* caster = nullptr, PlayerbotAI* botAI = nullptr);
 
 private:
     /**
      * @brief Check if player is near a specific creature type
-     * @param player Player to check proximity for
+     * @param botAI Bot AI instance for accessing nearby creatures
      * @param creatureEntry Creature entry ID to search for
      * @param maxDistance Maximum distance in yards
      * @param requireAlive Whether creature must be alive (true) or dead (false)
      * @return true if matching creature found within distance
      */
-    static bool IsNearCreature(Player* player, uint32 creatureEntry, float maxDistance, bool requireAlive);
+    static bool IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, float maxDistance, bool requireAlive);
 
     /**
      * @brief Validate spell area/zone requirements from spell data
