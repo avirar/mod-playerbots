@@ -379,18 +379,23 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     if (!spellInfo)
         return true; // No spell info means no restrictions
 
-    // Check RequiredAreasID field from spell data
-    if (spellInfo->RequiredAreasID > 0)
+    // Use the built-in SpellInfo location checking
+    uint32 mapId = player->GetMapId();
+    uint32 zoneId = player->GetZoneId();
+    uint32 areaId = player->GetAreaId();
+    
+    SpellCastResult locationResult = spellInfo->CheckLocation(mapId, zoneId, areaId, player);
+    if (locationResult != SPELL_CAST_OK)
     {
-        uint32 playerAreaId = player->GetAreaId();
-        if (playerAreaId != spellInfo->RequiredAreasID)
-        {
-            return false; // Player is not in the required area
-        }
+        return false; // Player is not in a valid location for this spell
     }
 
-    // Future: Add other location-based spell requirements here
-    // e.g., RequiredMapID, RequiredZoneID, etc.
+    // Check AreaGroupId if it exists (this is likely what RequiredAreasID maps to)
+    if (spellInfo->AreaGroupId > 0)
+    {
+        // For now, we'll trust the CheckLocation method above
+        // If needed, we can add specific AreaGroup validation here
+    }
 
     return true; // All location requirements met
 }
