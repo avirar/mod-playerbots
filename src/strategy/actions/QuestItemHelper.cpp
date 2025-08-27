@@ -342,6 +342,35 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         }
     }
 
+    // Additional spam prevention: Check for any aura that might indicate "burning" or "used" state
+    // Look for any fire, burning, or interaction auras on the target
+    Unit::AuraApplicationMap const& auras = target->GetAppliedAuras();
+    for (auto itr = auras.begin(); itr != auras.end(); ++itr)
+    {
+        SpellInfo const* auraSpell = itr->second->GetBase()->GetSpellInfo();
+        if (!auraSpell)
+            continue;
+            
+        // Check if this looks like a burning/fire/interaction effect
+        std::string spellName = auraSpell->SpellName[0] ? auraSpell->SpellName[0] : "";
+        std::transform(spellName.begin(), spellName.end(), spellName.begin(), ::tolower);
+        
+        if (spellName.find("burn") != std::string::npos || 
+            spellName.find("fire") != std::string::npos ||
+            spellName.find("flame") != std::string::npos ||
+            spellName.find("interact") != std::string::npos)
+        {
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Target " << target->GetName() << " has burning/interaction aura '" 
+                    << spellName << "' - preventing spam cast";
+                botAI->TellMaster(out.str());
+            }
+            return false;
+        }
+    }
+
     // For self-cast spells, skip the alive check (player might be casting on themselves)
     if (!spellInfo->NeedsExplicitUnitTarget())
     {
@@ -576,6 +605,14 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     uint32 requiredAreaId = condition->ConditionValue1;
                     uint32 playerAreaId = caster->GetAreaId();
                     conditionMet = (playerAreaId == requiredAreaId);
+                    
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CONDITION_AREAID check - playerArea:" << playerAreaId 
+                            << " requiredArea:" << requiredAreaId << " result:" << (conditionMet ? "PASS" : "FAIL");
+                        botAI->TellMaster(out.str());
+                    }
                 }
                 break;
             }
@@ -586,6 +623,14 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     uint32 requiredZoneId = condition->ConditionValue1;
                     uint32 playerZoneId = caster->GetZoneId();
                     conditionMet = (playerZoneId == requiredZoneId);
+                    
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CONDITION_ZONEID check - playerZone:" << playerZoneId 
+                            << " requiredZone:" << requiredZoneId << " result:" << (conditionMet ? "PASS" : "FAIL");
+                        botAI->TellMaster(out.str());
+                    }
                 }
                 break;
             }
