@@ -84,4 +84,13 @@ private:
      * @return true if player is in required area/zone
      */
     static bool CheckSpellLocationRequirements(Player* player, uint32 spellId);
+
+    /**
+     * @brief Check if quest item should be used (prevent spam casting)
+     * @param botAI Bot AI instance for debug output
+     * @param player Player to check spell effects for
+     * @param spellId Spell ID to check for existing effects
+     * @return true if quest item can be used, false if should be prevented
+     */
+    static bool CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32 spellId);
 };
