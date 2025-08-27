@@ -238,6 +238,9 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
             case ITEM_SUBCLASS_WEAPON_CROSSBOW:
                 spell += " crossbow";
                 break;
+            case ITEM_SUBCLASS_WEAPON_THROWN:
+                spell = "throw";
+                break;
         }
     }
 }
