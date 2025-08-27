@@ -406,7 +406,14 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         }
     }
 
-    // Check if using the quest item on this target would actually provide quest progress
+    // Check spell-specific conditions FIRST (aura requirements, creature type, etc.)
+    // This ensures only valid targets (like Alliance/Forsaken Corpses) are considered
+    if (!CheckSpellConditions(spellId, target, caster, botAI))
+    {
+        return false;
+    }
+
+    // AFTER spell conditions pass, check if using the quest item would provide quest progress
     if (!WouldProvideQuestCredit(caster, target, spellId))
     {
         if (botAI)
@@ -430,8 +437,8 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         return false;
     }
 
-    // Check spell-specific conditions (aura requirements, creature type, etc.)
-    return CheckSpellConditions(spellId, target, caster, botAI);
+    // All checks passed
+    return true;
 }
 
 bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player* caster, PlayerbotAI* botAI)
@@ -1147,9 +1154,8 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
         // Check if this is a casting-based quest (many quest items use this instead of creature kills)
         if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
         {
-            // For casting quests, we need to check if the conditions allow this target
-            // Since the spell conditions already validate the target, we should allow it
-            // But we still need to check if the quest objectives are complete
+            // For casting quests, we still need to validate spell conditions first
+            // Only check progress if the target would be valid for the spell conditions
             
             bool questNeedsProgress = false;
             for (uint8 j = 0; j < QUEST_OBJECTIVES_COUNT; ++j)
@@ -1163,7 +1169,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 if (botAI)
                 {
                     std::ostringstream out;
-                    out << "QuestItem: CAST quest " << questId << " objective " << j << " progress: " << currentCount << "/" << requiredCount;
+                    out << "QuestItem: CAST quest " << questId << " objective " << (int)j << " progress: " << currentCount << "/" << requiredCount;
                     botAI->TellMaster(out.str());
                 }
                 
@@ -1180,6 +1186,9 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 }
             }
             
+            // For CAST quests, we found the quest needs progress
+            // But we should not return true here - the caller should validate spell conditions first
+            // This function is called AFTER spell validation, so if we reach here, conditions passed
             if (questNeedsProgress)
             {
                 if (botAI)
