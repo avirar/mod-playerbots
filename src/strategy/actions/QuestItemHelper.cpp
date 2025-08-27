@@ -278,7 +278,11 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             if (!IsTargetValidForSpell(target, spellId, bot, botAI))
             {
                 if (botAI)
-                    botAI->TellMaster("QuestItem: NPC failed spell validation");
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: NPC " << target->GetName() << " (entry:" << target->GetEntry() << ") failed spell validation";
+                    botAI->TellMaster(out.str());
+                }
                 continue;
             }
 
@@ -1121,11 +1125,25 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
             continue;
 
         // Check each quest objective to see if it matches our target
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking quest " << questId << " (" << quest->GetTitle() << ") for target entry " << targetEntry;
+            botAI->TellMaster(out.str());
+        }
+        
         for (uint8 j = 0; j < QUEST_OBJECTIVES_COUNT; ++j)
         {
             uint32 requiredEntry = quest->RequiredNpcOrGo[j];
             if (requiredEntry == 0)
                 continue;
+                
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Quest " << questId << " objective " << j << " requires entry:" << requiredEntry;
+                botAI->TellMaster(out.str());
+            }
                 
             // Check if this objective matches our target entry
             if (requiredEntry == targetEntry)
