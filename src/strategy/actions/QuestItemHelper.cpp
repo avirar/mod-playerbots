@@ -658,7 +658,7 @@ bool QuestItemHelper::CanQuestSpellTargetDead(uint32 spellId)
     }
 
     // Check spell name/description for corpse-related keywords
-    if (spellInfo->SpellName && spellInfo->SpellName[0])
+    if (spellInfo->SpellName[0] && strlen(spellInfo->SpellName[0]) > 0)
     {
         std::string spellName = spellInfo->SpellName[0];
         std::transform(spellName.begin(), spellName.end(), spellName.begin(), ::tolower);
