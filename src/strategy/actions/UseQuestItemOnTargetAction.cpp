@@ -35,6 +35,14 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
         return false;
     }
 
+    // Debug: Show which target we selected for actual usage
+    {
+        std::ostringstream out;
+        out << "QuestItem: Selected target for spell cast: " << target->GetName() 
+            << " (GUID:" << target->GetGUID().ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+
     // Check if we're in range of the target (use the spell's actual range minus buffer)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f); // -2.0f buffer for reliable casting
