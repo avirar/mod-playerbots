@@ -1264,25 +1264,29 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
     return false;
 }
 
+// Shared static map to track quest item usage per target GUID
+static std::map<std::string, time_t> s_questItemUsageTracker;
+
 bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
 {
     if (!botAI || !target)
         return false;
 
-    // Static map to track quest item usage per target GUID
-    static std::map<std::string, time_t> questItemUsageTracker;
-    
-    // Create a unique key for this spell + target combination
-    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return false;
+
+    // Create a unique key for this bot + spell + target combination
+    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
     
     time_t currentTime = time(nullptr);
     
     // 30 second cooldown per target as suggested
     const time_t COOLDOWN_SECONDS = 30;
     
-    // Check if we've used this quest item on this target recently
-    auto it = questItemUsageTracker.find(key);
-    if (it != questItemUsageTracker.end())
+    // Check if this bot has used this quest item on this target recently
+    auto it = s_questItemUsageTracker.find(key);
+    if (it != s_questItemUsageTracker.end())
     {
         time_t lastUsed = it->second;
         time_t timeSinceLastUse = currentTime - lastUsed;
@@ -1314,19 +1318,20 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
 
 void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId)
 {
-    if (!target)
+    if (!botAI || !target)
         return;
 
-    // Static map to track quest item usage per target GUID
-    static std::map<std::string, time_t> questItemUsageTracker;
-    
-    // Create a unique key for this spell + target combination
-    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return;
+
+    // Create a unique key for this bot + spell + target combination  
+    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
     
     time_t currentTime = time(nullptr);
     
-    // Record the usage time
-    questItemUsageTracker[key] = currentTime;
+    // Record the usage time in the shared map
+    s_questItemUsageTracker[key] = currentTime;
     
     if (botAI)
     {
