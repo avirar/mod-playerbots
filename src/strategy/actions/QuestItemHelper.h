@@ -86,6 +86,13 @@ private:
     static bool CheckSpellLocationRequirements(Player* player, uint32 spellId);
 
     /**
+     * @brief Check if a quest spell can target dead units
+     * @param spellId Spell ID to check
+     * @return true if spell can target dead units (like corpse burning spells)
+     */
+    static bool CanQuestSpellTargetDead(uint32 spellId);
+
+    /**
      * @brief Check if quest item should be used (prevent spam casting)
      * @param botAI Bot AI instance for debug output
      * @param player Player to check spell effects for
