@@ -84,13 +84,59 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     if (!item || !target)
         return false;
 
+    // First verify the item pointer is not pointing to deallocated memory
+    // by checking if it's still in the bot's inventory before accessing any properties
+    ObjectGuid itemGuid;
+    uint8 bagIndex = 0;
+    uint8 slot = 0;
+    
+    try 
+    {
+        itemGuid = item->GetGUID();
+        bagIndex = item->GetBagSlot();
+        slot = item->GetSlot();
+    }
+    catch (...)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "Quest item pointer is invalid - cannot use";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
+    // Verify item is still in player inventory using the GUID
+    Item* inventoryItem = bot->GetItemByGuid(itemGuid);
+    if (!inventoryItem || inventoryItem != item)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "Quest item no longer in inventory or changed - cannot use";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
+    // Now safely get the item template from the verified inventory item
+    ItemTemplate const* itemTemplate = inventoryItem->GetTemplate();
+    if (!itemTemplate)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "Quest item has no template - cannot use";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
     // For quest items, we need to bypass normal spell checks
     // and send the item use packet directly with the target
-    uint8 bagIndex = item->GetBagSlot();
-    uint8 slot = item->GetSlot();
     uint8 spell_index = 0;
     uint8 cast_count = 1;
-    ObjectGuid item_guid = item->GetGUID();
     uint32 glyphIndex = 0;
     uint8 castFlags = 0;
 
@@ -98,16 +144,16 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     uint32 spellId = 0;
     for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
-        if (item->GetTemplate()->Spells[i].SpellId > 0)
+        if (itemTemplate->Spells[i].SpellId > 0)
         {
-            spellId = item->GetTemplate()->Spells[i].SpellId;
+            spellId = itemTemplate->Spells[i].SpellId;
             break;
         }
     }
 
     // Create the item use packet
     WorldPacket packet(CMSG_USE_ITEM);
-    packet << bagIndex << slot << cast_count << spellId << item_guid << glyphIndex << castFlags;
+    packet << bagIndex << slot << cast_count << spellId << itemGuid << glyphIndex << castFlags;
 
     // Add target information
     uint32 targetFlag = TARGET_FLAG_UNIT;
@@ -127,8 +173,28 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     // Send the packet
     bot->GetSession()->HandleUseItemOpcode(packet);
 
+    // Safety check: Verify item is still valid after packet handling
+    Item* postUseItem = bot->GetItemByGuid(itemGuid);
+    if (!postUseItem)
+    {
+        std::ostringstream out;
+        out << "Used quest item on " << target->GetName() << " (item was consumed/invalidated)";
+        botAI->TellMasterNoFacing(out.str());
+        return true;
+    }
+
+    // Get template safely from the post-use item
+    ItemTemplate const* postUseTemplate = postUseItem->GetTemplate();
+    if (!postUseTemplate)
+    {
+        std::ostringstream out;
+        out << "Used quest item (unknown) on " << target->GetName();
+        botAI->TellMasterNoFacing(out.str());
+        return true;
+    }
+
     std::ostringstream out;
-    out << "Using " << chat->FormatItem(item->GetTemplate()) << " on " << target->GetName();
+    out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
     botAI->TellMasterNoFacing(out.str());
 
     return true;
