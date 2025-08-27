@@ -34,9 +34,19 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             // Debug output for found quest item
             if (botAI)
             {
-                std::ostringstream out;
-                out << "QuestItem: Found quest item " << item->GetTemplate()->Name1 << " (ID:" << item->GetEntry() << ") with spell " << spellId;
-                botAI->TellMaster(out.str());
+                ItemTemplate const* template_ptr = item->GetTemplate();
+                if (template_ptr)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found quest item " << template_ptr->Name1 << " (ID:" << item->GetEntry() << ") with spell " << spellId;
+                    botAI->TellMaster(out.str());
+                }
+                else
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found quest item (no template) with spell " << spellId;
+                    botAI->TellMaster(out.str());
+                }
             }
             
             // Check if this quest item can be used (prevent spam casting)
@@ -44,8 +54,12 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             {
                 if (botAI)
                 {
+                    ItemTemplate const* template_ptr = item->GetTemplate();
                     std::ostringstream out;
-                    out << "QuestItem: Skipping " << item->GetTemplate()->Name1 << " - usage prevented";
+                    if (template_ptr)
+                        out << "QuestItem: Skipping " << template_ptr->Name1 << " - usage prevented";
+                    else
+                        out << "QuestItem: Skipping quest item - usage prevented";
                     botAI->TellMaster(out.str());
                 }
                 continue; // Skip this item and look for others
@@ -79,8 +93,12 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
                 {
                     if (botAI)
                     {
+                        ItemTemplate const* template_ptr = item->GetTemplate();
                         std::ostringstream out;
-                        out << "QuestItem: Skipping bag item " << item->GetTemplate()->Name1 << " - usage prevented";
+                        if (template_ptr)
+                            out << "QuestItem: Skipping bag item " << template_ptr->Name1 << " - usage prevented";
+                        else
+                            out << "QuestItem: Skipping bag quest item - usage prevented";
                         botAI->TellMaster(out.str());
                     }
                     continue; // Skip this item and look for others
