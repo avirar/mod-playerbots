@@ -1341,3 +1341,4 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
         botAI->TellMaster(out.str());
     }
 }
+
