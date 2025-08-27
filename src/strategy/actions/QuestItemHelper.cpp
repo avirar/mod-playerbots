@@ -365,10 +365,28 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     if (conditions.empty())
         return true;
 
-    // Check each condition
+    // Group conditions by ElseGroup for proper OR/AND logic
+    std::map<uint32, std::vector<Condition const*>> conditionGroups;
     for (Condition const* condition : conditions)
     {
-        bool conditionMet = false;
+        conditionGroups[condition->ElseGroup].push_back(condition);
+    }
+    
+    // Check each ElseGroup - if ANY group passes completely, the overall condition passes (OR logic)
+    for (auto& [elseGroup, groupConditions] : conditionGroups)
+    {
+        bool groupPassed = true; // All conditions in this group must pass (AND logic within group)
+        
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking ElseGroup " << elseGroup << " with " << groupConditions.size() << " conditions";
+            botAI->TellMaster(out.str());
+        }
+        
+        for (Condition const* condition : groupConditions)
+        {
+            bool conditionMet = false;
 
         // Debug output for each condition
         if (botAI)
@@ -565,33 +583,54 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                 break;
         }
 
-        // Apply negative condition logic
-        if (condition->NegativeCondition)
-            conditionMet = !conditionMet;
+            // Apply negative condition logic
+            if (condition->NegativeCondition)
+                conditionMet = !conditionMet;
 
-        // Debug output for final condition result
-        if (botAI)
-        {
-            std::ostringstream out;
-            out << "QuestItem: Condition type " << condition->ConditionType << " final result: " << (conditionMet ? "PASSED" : "FAILED");
-            botAI->TellMaster(out.str());
+            // Debug output for final condition result
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Condition type " << condition->ConditionType << " final result: " << (conditionMet ? "PASSED" : "FAILED");
+                botAI->TellMaster(out.str());
+            }
+
+            // If any condition in this group fails, the whole group fails
+            if (!conditionMet)
+            {
+                groupPassed = false;
+                break; // No need to check other conditions in this group
+            }
         }
-
-        // If any condition is not met, the target is invalid
-        if (!conditionMet)
+        
+        // If this group passed all its conditions, the overall condition is met
+        if (groupPassed)
         {
             if (botAI)
             {
                 std::ostringstream out;
-                out << "QuestItem: Spell " << spellId << " REJECTED - condition failed";
+                out << "QuestItem: ElseGroup " << elseGroup << " PASSED - spell condition met";
                 botAI->TellMaster(out.str());
             }
-            return false;
+            return true;
+        }
+        
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: ElseGroup " << elseGroup << " FAILED";
+            botAI->TellMaster(out.str());
         }
     }
 
-    // All conditions were met
-    return true;
+    // No ElseGroup passed
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Spell " << spellId << " REJECTED - all condition groups failed";
+        botAI->TellMaster(out.str());
+    }
+    return false;
 }
 
 bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, float maxDistance, bool requireAlive)
