@@ -197,5 +197,8 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
     botAI->TellMasterNoFacing(out.str());
 
+    // Record quest item usage to prevent spam casting on same target
+    QuestItemHelper::RecordQuestItemUsage(botAI, target, spellId);
+
     return true;
 }
