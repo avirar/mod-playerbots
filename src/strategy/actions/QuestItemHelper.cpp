@@ -402,6 +402,18 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         }
     }
 
+    // Check if using the quest item on this target would actually provide quest progress
+    if (!WouldProvideQuestCredit(caster, target, spellId))
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " would not provide quest credit - skipping";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
     // Check spell-specific conditions (aura requirements, creature type, etc.)
     return CheckSpellConditions(spellId, target, caster, botAI);
 }
@@ -1080,6 +1092,84 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
     {
         std::ostringstream out;
         out << "QuestItem: No active quest needs item " << itemTemplate->Name1;
+        botAI->TellMaster(out.str());
+    }
+    return false;
+}
+
+bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint32 spellId)
+{
+    if (!player || !target)
+        return false;
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+    uint32 targetEntry = target->GetEntry();
+    
+    // Check all active quests to see if this target would provide credit
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = player->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = player->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Check each quest objective to see if it matches our target
+        for (uint8 j = 0; j < QUEST_OBJECTIVES_COUNT; ++j)
+        {
+            uint32 requiredEntry = quest->RequiredNpcOrGo[j];
+            if (requiredEntry == 0)
+                continue;
+                
+            // Check if this objective matches our target entry
+            if (requiredEntry == targetEntry)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[j];
+                uint32 currentCount = player->GetQuestSlotCounter(slot, j);
+                
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Quest " << questId << " objective " << j << " - target entry:" << targetEntry 
+                        << " current:" << currentCount << " required:" << requiredCount;
+                    botAI->TellMaster(out.str());
+                }
+                
+                // If current count is less than required, this target would provide credit
+                if (currentCount < requiredCount)
+                {
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Target " << target->GetName() << " WOULD provide quest credit for quest " << questId;
+                        botAI->TellMaster(out.str());
+                    }
+                    return true;
+                }
+                else
+                {
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Target " << target->GetName() << " objective already complete (" << currentCount << "/" << requiredCount << ")";
+                        botAI->TellMaster(out.str());
+                    }
+                }
+            }
+        }
+    }
+
+    // No active quest would get credit from this target
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Target " << target->GetName() << " (entry:" << targetEntry << ") would NOT provide quest credit";
         botAI->TellMaster(out.str());
     }
     return false;
