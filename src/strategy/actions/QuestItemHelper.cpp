@@ -180,6 +180,13 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     // Get nearby units that could be quest targets
     GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
     
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Found " << targets.size() << " possible targets";
+        botAI->TellMaster(out.str());
+    }
+    
     for (ObjectGuid guid : targets)
     {
         Unit* target = botAI->GetUnit(guid);
@@ -205,23 +212,54 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     {
         GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
         
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Found " << npcs.size() << " nearest npcs";
+            botAI->TellMaster(out.str());
+        }
+        
         for (ObjectGuid guid : npcs)
         {
             Unit* target = botAI->GetUnit(guid);
             if (!target)
                 continue;
 
+            // Debug: Log each NPC we're checking
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Checking NPC " << target->GetName() << " (entry:" << target->GetEntry() 
+                    << ") alive:" << (target->IsAlive() ? "yes" : "no") << " distance:" << bot->GetDistance(target);
+                botAI->TellMaster(out.str());
+            }
+
             // Early distance check before expensive spell validation
             float distance = bot->GetDistance(target);
             if (distance >= closestDistance)
+            {
+                if (botAI)
+                    botAI->TellMaster("QuestItem: NPC too far, skipping");
                 continue;
+            }
 
             if (!IsTargetValidForSpell(target, spellId, bot, botAI))
+            {
+                if (botAI)
+                    botAI->TellMaster("QuestItem: NPC failed spell validation");
                 continue;
+            }
 
             // Target is both valid and closer
             closestDistance = distance;
             bestTarget = target;
+            
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Selected " << target->GetName() << " as best target";
+                botAI->TellMaster(out.str());
+            }
         }
     }
 
