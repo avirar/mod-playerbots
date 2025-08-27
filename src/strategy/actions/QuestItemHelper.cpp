@@ -19,6 +19,8 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
     if (!bot)
         return nullptr;
 
+    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+
     // Search through all inventory slots for quest items with spells
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
@@ -29,6 +31,14 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         uint32 spellId = 0;
         if (IsValidQuestItem(item, &spellId))
         {
+            // Debug output for found quest item
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Found quest item " << item->GetTemplate()->Name1 << " (ID:" << item->GetEntry() << ") with spell " << spellId;
+                botAI->TellMaster(out.str());
+            }
+            
             // Return the first valid quest item found
             // Could be enhanced to prioritize based on quest urgency, etc.
             if (outSpellId)
@@ -177,7 +187,15 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
 bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player* caster, PlayerbotAI* botAI)
 {
     if (!target)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: CheckSpellConditions - no target for spell " << spellId;
+            botAI->TellMaster(out.str());
+        }
         return false;
+    }
 
     // If no caster was provided, try to determine it from the target
     if (!caster)
@@ -195,10 +213,26 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
 
     // Check spell location requirements first (RequiredAreasID from spell data)
     if (caster && !CheckSpellLocationRequirements(caster, spellId))
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Spell " << spellId << " failed location requirements";
+            botAI->TellMaster(out.str());
+        }
         return false;
+    }
 
     // Query conditions table for this spell to find required target conditions
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+    
+    // Debug output for conditions found
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Spell " << spellId << " has " << conditions.size() << " conditions for target " << target->GetName() << " (entry:" << target->GetEntry() << ")";
+        botAI->TellMaster(out.str());
+    }
     
     // If no conditions are found, assume the target is valid
     if (conditions.empty())
@@ -208,6 +242,16 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     for (Condition const* condition : conditions)
     {
         bool conditionMet = false;
+
+        // Debug output for each condition
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking condition type " << condition->ConditionType 
+                << " values(" << condition->ConditionValue1 << "," << condition->ConditionValue2 << "," << condition->ConditionValue3 << ")"
+                << " negative:" << (condition->NegativeCondition ? "true" : "false");
+            botAI->TellMaster(out.str());
+        }
 
         switch (condition->ConditionType)
         {
@@ -240,7 +284,14 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     uint32 creatureEntry = condition->ConditionValue1;
                     float maxDistance = condition->ConditionValue2;
                     bool requireAlive = (condition->ConditionValue3 == 0);
+                    
                     conditionMet = IsNearCreature(botAI, creatureEntry, maxDistance, requireAlive);
+                    
+                    std::ostringstream out;
+                    out << "QuestItem: NEAR_CREATURE check for entry " << creatureEntry 
+                        << " within " << maxDistance << "y, requireAlive:" << (requireAlive ? "true" : "false")
+                        << " = " << (conditionMet ? "PASSED" : "FAILED");
+                    botAI->TellMaster(out.str());
                 }
                 break;
             }
@@ -328,9 +379,25 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
         if (condition->NegativeCondition)
             conditionMet = !conditionMet;
 
+        // Debug output for final condition result
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Condition type " << condition->ConditionType << " final result: " << (conditionMet ? "PASSED" : "FAILED");
+            botAI->TellMaster(out.str());
+        }
+
         // If any condition is not met, the target is invalid
         if (!conditionMet)
+        {
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Spell " << spellId << " REJECTED - condition failed";
+                botAI->TellMaster(out.str());
+            }
             return false;
+        }
     }
 
     // All conditions were met
@@ -349,24 +416,53 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
     // Use the existing playerbots infrastructure to get nearby NPCs
     GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     
+    std::ostringstream debugOut;
+    debugOut << "QuestItem: IsNearCreature scanning " << npcs.size() << " nearby NPCs for entry " << creatureEntry;
+    botAI->TellMaster(debugOut.str());
+    
+    int foundCount = 0;
     for (ObjectGuid guid : npcs)
     {
         Unit* unit = botAI->GetUnit(guid);
-        if (!unit || unit->GetEntry() != creatureEntry)
-            continue;
-
-        // Check distance requirement
-        float distance = bot->GetDistance(unit);
-        if (distance > maxDistance)
+        if (!unit)
             continue;
             
-        // Check alive/dead requirement
-        if (requireAlive && unit->IsAlive())
-            return true;
-        if (!requireAlive && !unit->IsAlive())
-            return true;
+        if (unit->GetEntry() == creatureEntry)
+        {
+            foundCount++;
+            float distance = bot->GetDistance(unit);
+            bool alive = unit->IsAlive();
+            
+            std::ostringstream out;
+            out << "QuestItem: Found creature " << creatureEntry << " at " << distance << "y, alive:" << (alive ? "true" : "false");
+            botAI->TellMaster(out.str());
+            
+            // Check distance requirement
+            if (distance > maxDistance)
+            {
+                out.str("");
+                out << "QuestItem: Creature too far (" << distance << " > " << maxDistance << ")";
+                botAI->TellMaster(out.str());
+                continue;
+            }
+                
+            // Check alive/dead requirement
+            if (requireAlive && alive)
+            {
+                botAI->TellMaster("QuestItem: FOUND valid alive creature!");
+                return true;
+            }
+            if (!requireAlive && !alive)
+            {
+                botAI->TellMaster("QuestItem: FOUND valid dead creature!");
+                return true;
+            }
+        }
     }
 
+    std::ostringstream finalOut;
+    finalOut << "QuestItem: No valid creature found. Total matching entry: " << foundCount;
+    botAI->TellMaster(finalOut.str());
     return false;
 }
 
@@ -387,14 +483,28 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     SpellCastResult locationResult = spellInfo->CheckLocation(mapId, zoneId, areaId, player);
     if (locationResult != SPELL_CAST_OK)
     {
+        // Debug output for location failures
+        if (PlayerbotAI* botAI = player->GetPlayerbotAI())
+        {
+            std::ostringstream out;
+            out << "QuestItem: Spell " << spellId << " location check failed. Map:" << mapId 
+                << " Zone:" << zoneId << " Area:" << areaId << " AreaGroupId:" << spellInfo->AreaGroupId 
+                << " Result:" << locationResult;
+            botAI->TellMaster(out.str());
+        }
         return false; // Player is not in a valid location for this spell
     }
 
-    // Check AreaGroupId if it exists (this is likely what RequiredAreasID maps to)
-    if (spellInfo->AreaGroupId > 0)
+    // Debug output for successful location check
+    if (PlayerbotAI* botAI = player->GetPlayerbotAI())
     {
-        // For now, we'll trust the CheckLocation method above
-        // If needed, we can add specific AreaGroup validation here
+        if (spellInfo->AreaGroupId > 0)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Spell " << spellId << " location check passed. Map:" << mapId 
+                << " Zone:" << zoneId << " Area:" << areaId << " AreaGroupId:" << spellInfo->AreaGroupId;
+            botAI->TellMaster(out.str());
+        }
     }
 
     return true; // All location requirements met
