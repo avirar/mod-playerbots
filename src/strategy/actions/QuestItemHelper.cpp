@@ -426,6 +426,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     }
 
     // Check if we've used this quest item on this specific target recently (prevent spam)
+    // But don't record usage yet - that happens when spell is actually cast
     if (!CanUseQuestItemOnTarget(botAI, target, spellId))
     {
         if (botAI)
@@ -1299,7 +1300,32 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
         }
     }
     
-    // Target can be used - record the current time for future checks
+    // Target can be used - but don't record usage yet (that happens when spell is actually cast)
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
+            << ") available for use";
+        botAI->TellMaster(out.str());
+    }
+    
+    return true;
+}
+
+void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+{
+    if (!target)
+        return;
+
+    // Static map to track quest item usage per target GUID
+    static std::map<std::string, time_t> questItemUsageTracker;
+    
+    // Create a unique key for this spell + target combination
+    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    
+    time_t currentTime = time(nullptr);
+    
+    // Record the usage time
     questItemUsageTracker[key] = currentTime;
     
     if (botAI)
@@ -1309,6 +1335,4 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
             << ") marked as used - 30s cooldown started";
         botAI->TellMaster(out.str());
     }
-    
-    return true;
 }
