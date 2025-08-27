@@ -39,8 +39,19 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
                 botAI->TellMaster(out.str());
             }
             
-            // Return the first valid quest item found
-            // Could be enhanced to prioritize based on quest urgency, etc.
+            // Check if this quest item can be used (prevent spam casting)
+            if (!CanUseQuestItem(botAI, bot, spellId))
+            {
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Skipping " << item->GetTemplate()->Name1 << " - usage prevented";
+                    botAI->TellMaster(out.str());
+                }
+                continue; // Skip this item and look for others
+            }
+            
+            // Return the first valid and usable quest item found
             if (outSpellId)
                 *outSpellId = spellId;
             return item;
@@ -63,6 +74,18 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             uint32 spellId = 0;
             if (IsValidQuestItem(item, &spellId))
             {
+                // Check if this quest item can be used (prevent spam casting)
+                if (!CanUseQuestItem(botAI, bot, spellId))
+                {
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Skipping bag item " << item->GetTemplate()->Name1 << " - usage prevented";
+                        botAI->TellMaster(out.str());
+                    }
+                    continue; // Skip this item and look for others
+                }
+                
                 if (outSpellId)
                     *outSpellId = spellId;
                 return item;
@@ -549,4 +572,66 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     }
 
     return true; // All location requirements met
+}
+
+bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32 spellId)
+{
+    if (!player || !botAI)
+        return false;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+
+    // Check for existing spell auras (prevents recasting buffs/summons)
+    if (player->HasAura(spellId))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Player already has aura " << spellId << " - preventing recast";
+        botAI->TellMaster(out.str());
+        return false;
+    }
+
+    // Check for summon spells - see if the summoned creature already exists nearby
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (spellInfo->Effects[i].Effect == SPELL_EFFECT_SUMMON || 
+            spellInfo->Effects[i].Effect == SPELL_EFFECT_SUMMON_PET ||
+            spellInfo->Effects[i].Effect == SPELL_EFFECT_SUMMON_OBJECT_WILD)
+        {
+            uint32 summonEntry = spellInfo->Effects[i].MiscValue;
+            if (summonEntry > 0)
+            {
+                // Check if this summon already exists nearby (within 30 yards)
+                bool foundExistingSummon = IsNearCreature(botAI, summonEntry, 30.0f, true);
+                
+                if (foundExistingSummon)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Summon creature " << summonEntry << " already exists nearby - preventing recast";
+                    botAI->TellMaster(out.str());
+                    return false;
+                }
+                else
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: No existing summon " << summonEntry << " found - allowing cast";
+                    botAI->TellMaster(out.str());
+                }
+            }
+        }
+    }
+
+    // Check for other spell effects that should prevent recasting
+    // Future: Add checks for:
+    // - SPELL_EFFECT_APPLY_AURA with specific aura types
+    // - Transformation effects
+    // - Vehicle effects
+    // - Item enchantments
+    // - etc.
+
+    std::ostringstream out;
+    out << "QuestItem: Quest item with spell " << spellId << " can be used";
+    botAI->TellMaster(out.str());
+    return true;
 }
