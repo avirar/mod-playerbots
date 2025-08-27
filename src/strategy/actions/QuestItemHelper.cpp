@@ -625,8 +625,10 @@ bool QuestItemHelper::CanQuestSpellTargetDead(uint32 spellId)
     if (!spellInfo)
         return false;
 
-    // Check spell attributes that allow targeting dead units
-    // Note: SPELL_ATTR2_CAN_TARGET_DEAD doesn't exist in AzerothCore, skip this check
+    // Check spell attributes that allow targeting dead units  
+    if (spellInfo->HasAttribute(SPELL_ATTR2_ALLOW_DEAD_TARGET) || 
+        spellInfo->HasAttribute(SPELL_ATTR3_IGNORE_CASTER_AND_TARGET_RESTRICTIONS))
+        return true;
 
     // Check for implicit target types that indicate corpse targeting
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
