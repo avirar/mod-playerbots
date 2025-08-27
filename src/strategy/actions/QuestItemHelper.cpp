@@ -418,6 +418,18 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         return false;
     }
 
+    // Check if we've used this quest item on this specific target recently (prevent spam)
+    if (!CanUseQuestItemOnTarget(botAI, target, spellId))
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " used recently - preventing spam";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
     // Check spell-specific conditions (aura requirements, creature type, etc.)
     return CheckSpellConditions(spellId, target, caster, botAI);
 }
@@ -1240,4 +1252,45 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
         botAI->TellMaster(out.str());
     }
     return false;
+}
+
+bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+{
+    if (!botAI || !target)
+        return false;
+
+    // Create a unique key for this spell + target combination
+    std::string key = "quest_item_used_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    
+    // Check if we've used this quest item on this target recently
+    time_t lastUsed = botAI->GetAiObjectContext()->GetValue<time_t>(key)->Get();
+    time_t currentTime = time(nullptr);
+    
+    // 30 second cooldown per target as suggested
+    const time_t COOLDOWN_SECONDS = 30;
+    
+    if (lastUsed > 0 && (currentTime - lastUsed) < COOLDOWN_SECONDS)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
+                << ") used " << (currentTime - lastUsed) << "s ago - " << (COOLDOWN_SECONDS - (currentTime - lastUsed)) << "s remaining";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+    
+    // Target can be used - record the current time for future checks
+    botAI->GetAiObjectContext()->GetValue<time_t>(key)->Set(currentTime);
+    
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
+            << ") marked as used - 30s cooldown started";
+        botAI->TellMaster(out.str());
+    }
+    
+    return true;
 }
