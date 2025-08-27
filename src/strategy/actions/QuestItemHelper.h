@@ -66,6 +66,14 @@ public:
      */
     static bool CheckSpellConditions(uint32 spellId, Unit* target, Player* caster = nullptr, PlayerbotAI* botAI = nullptr);
 
+    /**
+     * @brief Record that quest item was used on target (start cooldown)
+     * @param botAI Bot AI instance for debug output
+     * @param target Target that was used
+     * @param spellId Spell ID that was used
+     */
+    static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+
 private:
     /**
      * @brief Check if player is near a specific creature type
@@ -128,11 +136,4 @@ private:
      */
     static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 
-    /**
-     * @brief Record that quest item was used on target (start cooldown)
-     * @param botAI Bot AI instance for debug output
-     * @param target Target that was used
-     * @param spellId Spell ID that was used
-     */
-    static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 };
