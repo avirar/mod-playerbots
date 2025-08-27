@@ -618,7 +618,7 @@ bool ItemUsageValue::IsPlayerCastItemNeededForActiveQuests(Player* player, ItemT
             if (quest->RequiredNpcOrGo[i] != 0)
             {
                 uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
-                uint32 currentCount = player->GetQuestSlotCreatureOrGOCount(slot, i);
+                uint32 currentCount = player->GetQuestSlotCounter(slot, i);
                 
                 if (currentCount < requiredCount)
                 {
