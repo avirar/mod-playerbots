@@ -276,6 +276,40 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     if (!spellInfo)
         return false;
 
+    // Prevent spam-casting: Check if target already has aura from this spell
+    if (target->HasAura(spellId))
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " already has aura " << spellId << " - preventing spam cast";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
+    // Also check for common quest-related auras that indicate the target has been "used"
+    // Many corpse-burning/interaction spells apply temporary visual or state auras
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        const SpellEffectInfo& effect = spellInfo->Effects[i];
+        
+        // If the spell triggers another spell, check if target has that aura too
+        if (effect.Effect == SPELL_EFFECT_TRIGGER_SPELL && effect.TriggerSpell > 0)
+        {
+            if (target->HasAura(effect.TriggerSpell))
+            {
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Target " << target->GetName() << " has triggered aura " << effect.TriggerSpell << " - preventing spam cast";
+                    botAI->TellMaster(out.str());
+                }
+                return false;
+            }
+        }
+    }
+
     // For self-cast spells, skip the alive check (player might be casting on themselves)
     if (!spellInfo->NeedsExplicitUnitTarget())
     {
