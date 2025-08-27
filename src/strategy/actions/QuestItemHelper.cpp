@@ -19,7 +19,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
     if (!bot)
         return nullptr;
 
-    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
 
     // Search through all inventory slots for quest items with spells
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
@@ -484,7 +484,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     if (locationResult != SPELL_CAST_OK)
     {
         // Debug output for location failures
-        if (PlayerbotAI* botAI = player->GetPlayerbotAI())
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
         {
             std::ostringstream out;
             out << "QuestItem: Spell " << spellId << " location check failed. Map:" << mapId 
@@ -496,7 +496,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     }
 
     // Debug output for successful location check
-    if (PlayerbotAI* botAI = player->GetPlayerbotAI())
+    if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
     {
         if (spellInfo->AreaGroupId > 0)
         {
