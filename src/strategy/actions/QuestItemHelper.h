@@ -118,4 +118,13 @@ private:
      * @return true if target would provide quest progress, false otherwise
      */
     static bool WouldProvideQuestCredit(Player* player, Unit* target, uint32 spellId);
+
+    /**
+     * @brief Check if target has been used recently for quest items (GUID-based tracking)
+     * @param botAI Bot AI instance for accessing context
+     * @param target Target to check usage for
+     * @param spellId Spell ID to check cooldown for
+     * @return true if target can be used, false if recently used
+     */
+    static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 };
