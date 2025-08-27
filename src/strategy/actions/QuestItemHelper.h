@@ -127,4 +127,12 @@ private:
      * @return true if target can be used, false if recently used
      */
     static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+
+    /**
+     * @brief Record that quest item was used on target (start cooldown)
+     * @param botAI Bot AI instance for debug output
+     * @param target Target that was used
+     * @param spellId Spell ID that was used
+     */
+    static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 };
