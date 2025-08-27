@@ -1124,14 +1124,63 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
         if (!quest)
             continue;
 
-        // Check each quest objective to see if it matches our target
         if (botAI)
         {
             std::ostringstream out;
-            out << "QuestItem: Checking quest " << questId << " (" << quest->GetTitle() << ") for target entry " << targetEntry;
+            out << "QuestItem: Checking quest " << questId << " (" << quest->GetTitle() << ") - CAST flag:" 
+                << (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST) ? "YES" : "NO");
             botAI->TellMaster(out.str());
         }
+
+        // Check if this is a casting-based quest (many quest items use this instead of creature kills)
+        if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
+        {
+            // For casting quests, we need to check if the conditions allow this target
+            // Since the spell conditions already validate the target, we should allow it
+            // But we still need to check if the quest objectives are complete
+            
+            bool questNeedsProgress = false;
+            for (uint8 j = 0; j < QUEST_OBJECTIVES_COUNT; ++j)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[j];
+                if (requiredCount == 0)
+                    continue;
+                    
+                uint32 currentCount = player->GetQuestSlotCounter(slot, j);
+                
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: CAST quest " << questId << " objective " << j << " progress: " << currentCount << "/" << requiredCount;
+                    botAI->TellMaster(out.str());
+                }
+                
+                if (currentCount < requiredCount)
+                {
+                    questNeedsProgress = true;
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CAST quest " << questId << " needs " << (requiredCount - currentCount) << " more casts";
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+            
+            if (questNeedsProgress)
+            {
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Target " << target->GetName() << " WOULD provide quest credit for CAST quest " << questId;
+                    botAI->TellMaster(out.str());
+                }
+                return true;
+            }
+        }
         
+        // Check traditional creature/gameobject kill objectives
         for (uint8 j = 0; j < QUEST_OBJECTIVES_COUNT; ++j)
         {
             uint32 requiredEntry = quest->RequiredNpcOrGo[j];
