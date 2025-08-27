@@ -202,6 +202,18 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     // If spell doesn't need an explicit target, return the bot as self-target
     if (!spellInfo->NeedsExplicitUnitTarget())
     {
+        // Check location requirements for self-cast spells (like Plaguehound Cage requiring Bleeding Vale)
+        if (!CheckSpellLocationRequirements(bot, spellId))
+        {
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Self-cast spell " << spellId << " failed location requirements";
+                botAI->TellMaster(out.str());
+            }
+            return nullptr;
+        }
+        
         botAI->TellMaster("QuestItem: Spell is self-cast, using bot as target");
         return bot;
     }
@@ -1341,4 +1353,3 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
         botAI->TellMaster(out.str());
     }
 }
-
