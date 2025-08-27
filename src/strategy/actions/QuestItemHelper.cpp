@@ -355,26 +355,18 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             {
                 if (target->GetTypeId() == TYPEID_UNIT)
                 {
-                    uint32 requiredValue = condition->ConditionValue1;
+                    uint32 requiredType = condition->ConditionValue1;
+                    uint32 targetType = target->ToCreature()->GetCreatureTemplate()->type;
                     
-                    // For quest spells, ConditionValue1 often contains creature entry instead of type
-                    // First try matching creature entry (common for quest targeting)
-                    if (target->GetEntry() == requiredValue)
-                    {
-                        conditionMet = true;
-                    }
-                    else
-                    {
-                        // Fallback to creature type matching
-                        conditionMet = target->ToCreature()->GetCreatureTemplate()->type == requiredValue;
-                    }
+                    // According to conditions.md: "True if creature_template.type == ConditionValue1"
+                    conditionMet = (targetType == requiredType);
                     
                     if (botAI)
                     {
                         std::ostringstream out;
                         out << "QuestItem: CONDITION_CREATURE_TYPE check - target entry:" << target->GetEntry() 
-                            << " type:" << target->ToCreature()->GetCreatureTemplate()->type 
-                            << " required:" << requiredValue << " result:" << (conditionMet ? "PASS" : "FAIL");
+                            << " targetType:" << targetType << " requiredType:" << requiredType
+                            << " result:" << (conditionMet ? "PASS" : "FAIL");
                         botAI->TellMaster(out.str());
                     }
                 }
@@ -382,8 +374,59 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             }
             case CONDITION_OBJECT_ENTRY_GUID:
             {
-                uint32 requiredEntry = condition->ConditionValue1;
-                conditionMet = target->GetEntry() == requiredEntry;
+                uint32 requiredTypeID = condition->ConditionValue1;
+                uint32 requiredEntry = condition->ConditionValue2;
+                uint32 requiredGUID = condition->ConditionValue3;
+                
+                // Check if target matches the required TypeID
+                bool typeMatches = false;
+                switch (requiredTypeID)
+                {
+                    case TYPEID_UNIT:
+                        typeMatches = (target->GetTypeId() == TYPEID_UNIT);
+                        break;
+                    case TYPEID_PLAYER:
+                        typeMatches = (target->GetTypeId() == TYPEID_PLAYER);
+                        break;
+                    case TYPEID_GAMEOBJECT:
+                        typeMatches = (target->GetTypeId() == TYPEID_GAMEOBJECT);
+                        break;
+                    case TYPEID_CORPSE:
+                        typeMatches = (target->GetTypeId() == TYPEID_CORPSE);
+                        break;
+                    default:
+                        typeMatches = false;
+                        break;
+                }
+                
+                if (!typeMatches)
+                {
+                    conditionMet = false;
+                }
+                else
+                {
+                    // Check entry requirement (0 = any entry)
+                    if (requiredEntry == 0)
+                    {
+                        conditionMet = true; // Any object of given type
+                    }
+                    else
+                    {
+                        conditionMet = (target->GetEntry() == requiredEntry);
+                    }
+                    
+                    // TODO: Check GUID requirement if needed (requiredGUID != 0)
+                    // For now, we ignore GUID checking as it's rarely used
+                }
+                
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: CONDITION_OBJECT_ENTRY_GUID check - target typeID:" << target->GetTypeId()
+                        << " entry:" << target->GetEntry() << " requiredTypeID:" << requiredTypeID 
+                        << " requiredEntry:" << requiredEntry << " result:" << (conditionMet ? "PASS" : "FAIL");
+                    botAI->TellMaster(out.str());
+                }
                 break;
             }
             case CONDITION_NEAR_CREATURE:
