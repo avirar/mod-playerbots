@@ -50,6 +50,22 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             }
             
             // Check if this quest item can be used (prevent spam casting)
+            // Check if this quest item is actually needed for any active quests
+            if (!IsQuestItemNeeded(bot, item, spellId))
+            {
+                if (botAI)
+                {
+                    ItemTemplate const* template_ptr = item->GetTemplate();
+                    std::ostringstream out;
+                    if (template_ptr)
+                        out << "QuestItem: Skipping " << template_ptr->Name1 << " - not needed for active quests";
+                    else
+                        out << "QuestItem: Skipping quest item - not needed for active quests";
+                    botAI->TellMaster(out.str());
+                }
+                continue; // Skip this item and look for others
+            }
+
             if (!CanUseQuestItem(botAI, bot, spellId))
             {
                 if (botAI)
@@ -89,6 +105,22 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             if (IsValidQuestItem(item, &spellId))
             {
                 // Check if this quest item can be used (prevent spam casting)
+                // Check if this quest item is actually needed for any active quests
+                if (!IsQuestItemNeeded(bot, item, spellId))
+                {
+                    if (botAI)
+                    {
+                        ItemTemplate const* template_ptr = item->GetTemplate();
+                        std::ostringstream out;
+                        if (template_ptr)
+                            out << "QuestItem: Skipping bag item " << template_ptr->Name1 << " - not needed for active quests";
+                        else
+                            out << "QuestItem: Skipping bag quest item - not needed for active quests";
+                        botAI->TellMaster(out.str());
+                    }
+                    continue; // Skip this item and look for others
+                }
+
                 if (!CanUseQuestItem(botAI, bot, spellId))
                 {
                     if (botAI)
@@ -892,4 +924,118 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
     out << "QuestItem: Quest item with spell " << spellId << " can be used";
     botAI->TellMaster(out.str());
     return true;
+}
+
+bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spellId)
+{
+    if (!player || !item)
+        return false;
+
+    const ItemTemplate* itemTemplate = item->GetTemplate();
+    if (!itemTemplate)
+        return false;
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+    
+    // Check all active quests to see if any require this item
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = player->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = player->GetQuestStatus(questId);
+        
+        // Only consider active (incomplete) quests
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Check if this quest uses our item
+        bool questUsesItem = false;
+        
+        // Check quest required items
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredItemId[i] == itemTemplate->ItemId)
+            {
+                questUsesItem = true;
+                break;
+            }
+        }
+
+        // Also check if any quest objectives might need this spell cast
+        // (Many quest items aren't in RequiredItemId but are used for objectives)
+        if (!questUsesItem)
+        {
+            // Check if the quest has objectives that might require spell casting
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredNpcOrGo[i] != 0)
+                {
+                    // This quest has creature/object objectives that might require our item
+                    questUsesItem = true;
+                    break;
+                }
+            }
+        }
+
+        if (questUsesItem)
+        {
+            // Check if quest objectives are already complete
+            bool questObjectivesComplete = true;
+            
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredNpcOrGo[i] == 0)
+                    continue;
+                    
+                uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+                if (reqCount == 0)
+                    continue;
+                    
+                uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+                if (currentCount < reqCount)
+                {
+                    questObjectivesComplete = false;
+                    
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Quest " << questId << " (" << quest->GetTitle() << ") objective " << i 
+                            << " needs " << (reqCount - currentCount) << " more, item needed";
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+            
+            // If quest is active and objectives aren't complete, we need this item
+            if (!questObjectivesComplete)
+            {
+                return true;
+            }
+            else
+            {
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Quest " << questId << " (" << quest->GetTitle() << ") objectives complete, item not needed";
+                    botAI->TellMaster(out.str());
+                }
+            }
+        }
+    }
+
+    // No active quest needs this item
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: No active quest needs item " << itemTemplate->Name1;
+        botAI->TellMaster(out.str());
+    }
+    return false;
 }
