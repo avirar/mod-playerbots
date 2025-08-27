@@ -250,16 +250,23 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         return CheckSpellConditions(spellId, target, caster, botAI);
     }
 
-    // For targeted spells, check if target is alive
+    // For targeted spells, check if target is alive (unless it's a quest item that can target dead units)
     if (!target->IsAlive())
     {
+        // Check if this quest item spell can target dead units
+        bool canTargetDead = CanQuestSpellTargetDead(spellId);
+        
         if (botAI)
         {
             std::ostringstream out;
-            out << "QuestItem: Target " << target->GetName() << " is not alive for spell " << spellId;
+            out << "QuestItem: Target " << target->GetName() << " is dead, canTargetDead=" << (canTargetDead ? "true" : "false");
             botAI->TellMaster(out.str());
         }
-        return false;
+        
+        if (!canTargetDead)
+        {
+            return false;
+        }
     }
 
     // Check spell-specific conditions (aura requirements, creature type, etc.)
@@ -348,8 +355,28 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             {
                 if (target->GetTypeId() == TYPEID_UNIT)
                 {
-                    uint32 requiredCreatureType = condition->ConditionValue1;
-                    conditionMet = target->ToCreature()->GetCreatureTemplate()->type == requiredCreatureType;
+                    uint32 requiredValue = condition->ConditionValue1;
+                    
+                    // For quest spells, ConditionValue1 often contains creature entry instead of type
+                    // First try matching creature entry (common for quest targeting)
+                    if (target->GetEntry() == requiredValue)
+                    {
+                        conditionMet = true;
+                    }
+                    else
+                    {
+                        // Fallback to creature type matching
+                        conditionMet = target->ToCreature()->GetCreatureTemplate()->type == requiredValue;
+                    }
+                    
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CONDITION_CREATURE_TYPE check - target entry:" << target->GetEntry() 
+                            << " type:" << target->ToCreature()->GetCreatureTemplate()->type 
+                            << " required:" << requiredValue << " result:" << (conditionMet ? "PASS" : "FAIL");
+                        botAI->TellMaster(out.str());
+                    }
                 }
                 break;
             }
@@ -590,6 +617,64 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     }
 
     return true; // All location requirements met
+}
+
+bool QuestItemHelper::CanQuestSpellTargetDead(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+
+    // Check spell attributes that allow targeting dead units
+    if (spellInfo->HasAttribute(SPELL_ATTR2_CAN_TARGET_DEAD))
+        return true;
+
+    // Check for implicit target types that indicate corpse targeting
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        const SpellEffectInfo& effect = spellInfo->Effects[i];
+        
+        // Check implicit targets - some target dead units specifically
+        uint32 targetA = effect.TargetA.GetTarget();
+        uint32 targetB = effect.TargetB.GetTarget();
+        
+        // TARGET_UNIT_TARGET_ENEMY (6) with certain spell effects often work on corpses
+        // TARGET_UNIT_NEARBY_ENTRY (46) can target dead units with specific entries
+        if (targetA == 6 || targetA == 46 || targetB == 6 || targetB == 46)
+        {
+            // Combined with DUMMY or SCRIPT effects suggests corpse interaction
+            if (effect.Effect == SPELL_EFFECT_DUMMY || effect.Effect == SPELL_EFFECT_SCRIPT_EFFECT)
+            {
+                return true;
+            }
+        }
+        
+        // SPELL_EFFECT_DUMMY effects are often used for quest interactions with corpses
+        if (effect.Effect == SPELL_EFFECT_DUMMY)
+            return true;
+            
+        // SPELL_EFFECT_SCRIPT_EFFECT is also commonly used for quest spells
+        if (effect.Effect == SPELL_EFFECT_SCRIPT_EFFECT)
+            return true;
+    }
+
+    // Check spell name/description for corpse-related keywords
+    if (spellInfo->SpellName && spellInfo->SpellName[0])
+    {
+        std::string spellName = spellInfo->SpellName[0];
+        std::transform(spellName.begin(), spellName.end(), spellName.begin(), ::tolower);
+        
+        // Look for corpse-related keywords in spell name
+        if (spellName.find("burn") != std::string::npos ||
+            spellName.find("corpse") != std::string::npos ||
+            spellName.find("body") != std::string::npos ||
+            spellName.find("remains") != std::string::npos)
+        {
+            return true;
+        }
+    }
+
+    return false; // By default, assume spells cannot target dead units
 }
 
 bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32 spellId)
