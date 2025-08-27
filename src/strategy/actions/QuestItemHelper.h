@@ -109,4 +109,13 @@ private:
      * @return true if item is needed for active quests, false otherwise
      */
     static bool IsQuestItemNeeded(Player* player, Item* item, uint32 spellId);
+
+    /**
+     * @brief Check if using quest item on target would provide quest progress
+     * @param player Player to check quest progress for
+     * @param target Target to check quest credit for
+     * @param spellId Spell ID of the quest item
+     * @return true if target would provide quest progress, false otherwise
+     */
+    static bool WouldProvideQuestCredit(Player* player, Unit* target, uint32 spellId);
 };
