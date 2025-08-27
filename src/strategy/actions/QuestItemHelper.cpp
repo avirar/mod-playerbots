@@ -1259,30 +1259,39 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     if (!botAI || !target)
         return false;
 
-    // Create a unique key for this spell + target combination
-    std::string key = "quest_item_used_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    // Static map to track quest item usage per target GUID
+    static std::map<std::string, time_t> questItemUsageTracker;
     
-    // Check if we've used this quest item on this target recently
-    time_t lastUsed = botAI->GetAiObjectContext()->GetValue<time_t>(key)->Get();
+    // Create a unique key for this spell + target combination
+    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    
     time_t currentTime = time(nullptr);
     
     // 30 second cooldown per target as suggested
     const time_t COOLDOWN_SECONDS = 30;
     
-    if (lastUsed > 0 && (currentTime - lastUsed) < COOLDOWN_SECONDS)
+    // Check if we've used this quest item on this target recently
+    auto it = questItemUsageTracker.find(key);
+    if (it != questItemUsageTracker.end())
     {
-        if (botAI)
+        time_t lastUsed = it->second;
+        time_t timeSinceLastUse = currentTime - lastUsed;
+        
+        if (timeSinceLastUse < COOLDOWN_SECONDS)
         {
-            std::ostringstream out;
-            out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
-                << ") used " << (currentTime - lastUsed) << "s ago - " << (COOLDOWN_SECONDS - (currentTime - lastUsed)) << "s remaining";
-            botAI->TellMaster(out.str());
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
+                    << ") used " << timeSinceLastUse << "s ago - " << (COOLDOWN_SECONDS - timeSinceLastUse) << "s remaining";
+                botAI->TellMaster(out.str());
+            }
+            return false;
         }
-        return false;
     }
     
     // Target can be used - record the current time for future checks
-    botAI->GetAiObjectContext()->GetValue<time_t>(key)->Set(currentTime);
+    questItemUsageTracker[key] = currentTime;
     
     if (botAI)
     {
