@@ -100,4 +100,13 @@ private:
      * @return true if quest item can be used, false if should be prevented
      */
     static bool CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32 spellId);
+
+    /**
+     * @brief Check if quest item is needed for active quests
+     * @param player Player to check active quests for
+     * @param item Quest item to check
+     * @param spellId Spell ID of the quest item
+     * @return true if item is needed for active quests, false otherwise
+     */
+    static bool IsQuestItemNeeded(Player* player, Item* item, uint32 spellId);
 };
