@@ -116,6 +116,23 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     if (!bot)
         return nullptr;
 
+    // Check if this spell needs a target at all
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return nullptr;
+
+    // Debug output for spell targeting info
+    std::ostringstream debugOut;
+    debugOut << "QuestItem: Spell " << spellId << " targets=" << spellInfo->Targets << " needsTarget=" << spellInfo->NeedsExplicitUnitTarget();
+    botAI->TellMaster(debugOut.str());
+
+    // If spell doesn't need an explicit target, return the bot as self-target
+    if (!spellInfo->NeedsExplicitUnitTarget())
+    {
+        botAI->TellMaster("QuestItem: Spell is self-cast, using bot as target");
+        return bot;
+    }
+
     Unit* bestTarget = nullptr;
     float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
 
@@ -172,13 +189,37 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
 
 bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player* caster, PlayerbotAI* botAI)
 {
-    if (!target || !target->IsAlive())
+    if (!target)
         return false;
 
     // Check basic spell targeting requirements
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
         return false;
+
+    // For self-cast spells, skip the alive check (player might be casting on themselves)
+    if (!spellInfo->NeedsExplicitUnitTarget())
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Self-cast spell " << spellId << " validation for " << target->GetName();
+            botAI->TellMaster(out.str());
+        }
+        return CheckSpellConditions(spellId, target, caster, botAI);
+    }
+
+    // For targeted spells, check if target is alive
+    if (!target->IsAlive())
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " is not alive for spell " << spellId;
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
 
     // Check spell-specific conditions (aura requirements, creature type, etc.)
     return CheckSpellConditions(spellId, target, caster, botAI);
