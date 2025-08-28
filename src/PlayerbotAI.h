@@ -27,9 +27,16 @@
 #include "WorldPacket.h"
 #include <map>
 #include <string>
+#include <ctime>
 
-// Forward declare PendingQuestItemCast for member variable
-struct PendingQuestItemCast;
+// Structure to track pending quest item casts per bot
+struct PendingQuestItemCast
+{
+    std::string key;      // spell_target key (without bot GUID)
+    Unit* target;         // Target pointer (for validation)
+    ObjectGuid targetGuid; // Target GUID for safety
+    time_t castTime;      // When cast was initiated
+};
 
 class AiObjectContext;
 class Creature;
