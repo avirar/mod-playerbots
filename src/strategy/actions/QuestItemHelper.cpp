@@ -1098,12 +1098,12 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
     
-    // Simplified approach: A quest item is needed if there are any incomplete quests
-    // The actual target validation will determine if there are valid targets
-    // This avoids the complex logic of trying to predict item-quest relationships
+    // NEW APPROACH: Check if this specific quest item is needed for any incomplete quest
+    // by validating that the spell could actually provide quest credit
     
-    // Check if we have any active incomplete quests at all
-    bool hasIncompleteQuests = false;
+    bool itemNeededForActiveQuest = false;
+    
+    // Check all active incomplete quests
     for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 questId = player->GetQuestSlotQuestId(slot);
@@ -1111,19 +1111,52 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             continue;
 
         QuestStatus questStatus = player->GetQuestStatus(questId);
-        if (questStatus == QUEST_STATUS_INCOMPLETE)
-        {
-            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-            if (!quest)
-                continue;
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
 
-            // Check if this quest still has incomplete objectives
-            bool hasIncompleteObjectives = false;
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking if item " << itemTemplate->Name1 << " is needed for quest " << questId << " (" << quest->GetTitle() << ")";
+            botAI->TellMaster(out.str());
+        }
+
+        // Check if this quest has incomplete objectives that could potentially be completed by this item
+        bool questNeedsProgress = false;
+        
+        // Check traditional kill/interact objectives
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredNpcOrGo[i] == 0)
+                continue;
+                
+            uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+            if (reqCount == 0)
+                continue;
+                
+            uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+            if (currentCount < reqCount)
+            {
+                questNeedsProgress = true;
+                if (botAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Quest " << questId << " objective " << (int)i << " needs progress: " << currentCount << "/" << reqCount;
+                    botAI->TellMaster(out.str());
+                }
+                break;
+            }
+        }
+        
+        // Check CAST quest objectives (many quest items use this mechanism)
+        if (!questNeedsProgress && quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
+        {
             for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
             {
-                if (quest->RequiredNpcOrGo[i] == 0)
-                    continue;
-                    
                 uint32 reqCount = quest->RequiredNpcOrGoCount[i];
                 if (reqCount == 0)
                     continue;
@@ -1131,59 +1164,106 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                 uint32 currentCount = player->GetQuestSlotCounter(slot, i);
                 if (currentCount < reqCount)
                 {
-                    hasIncompleteObjectives = true;
+                    questNeedsProgress = true;
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CAST quest " << questId << " objective " << (int)i << " needs progress: " << currentCount << "/" << reqCount;
+                        botAI->TellMaster(out.str());
+                    }
                     break;
                 }
             }
-            
-            // Also check for CAST quests that might need progress
-            if (!hasIncompleteObjectives && quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
+        }
+        
+        // If this quest needs progress, check if our spell could potentially help
+        if (questNeedsProgress)
+        {
+            // Validate that the spell from this item could actually provide quest credit
+            // by checking spell conditions and target availability
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (spellInfo)
             {
-                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                // Check if spell location requirements are met
+                if (CheckSpellLocationRequirements(player, spellId))
                 {
-                    uint32 reqCount = quest->RequiredNpcOrGoCount[i];
-                    if (reqCount == 0)
-                        continue;
-                        
-                    uint32 currentCount = player->GetQuestSlotCounter(slot, i);
-                    if (currentCount < reqCount)
+                    // For self-cast spells, assume they might be needed (like area effect quest items)
+                    if (!spellInfo->NeedsExplicitUnitTarget())
                     {
-                        hasIncompleteObjectives = true;
+                        itemNeededForActiveQuest = true;
+                        if (botAI)
+                        {
+                            std::ostringstream out;
+                            out << "QuestItem: Self-cast item " << itemTemplate->Name1 << " might be needed for quest " << questId;
+                            botAI->TellMaster(out.str());
+                        }
                         break;
                     }
+                    else
+                    {
+                        // For targeted spells, check if there are any valid targets that could provide quest credit
+                        // We do a quick check for nearby creatures that match quest objectives
+                        bool foundPotentialTarget = false;
+                        
+                        // Check traditional objectives
+                        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                        {
+                            uint32 requiredEntry = quest->RequiredNpcOrGo[i];
+                            if (requiredEntry == 0)
+                                continue;
+                                
+                            uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+                            uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+                            
+                            if (currentCount >= reqCount)
+                                continue; // This objective is complete
+                            
+                            // Check if we can find creatures matching this entry nearby
+                            if (IsNearCreature(botAI, requiredEntry, sPlayerbotAIConfig->grindDistance, false))
+                            {
+                                foundPotentialTarget = true;
+                                if (botAI)
+                                {
+                                    std::ostringstream out;
+                                    out << "QuestItem: Found potential target (entry " << requiredEntry << ") for quest " << questId << " objective " << (int)i;
+                                    botAI->TellMaster(out.str());
+                                }
+                                break;
+                            }
+                        }
+                        
+                        if (foundPotentialTarget)
+                        {
+                            itemNeededForActiveQuest = true;
+                            if (botAI)
+                            {
+                                std::ostringstream out;
+                                out << "QuestItem: Targeted item " << itemTemplate->Name1 << " might be needed for quest " << questId;
+                                botAI->TellMaster(out.str());
+                            }
+                            break;
+                        }
+                    }
                 }
-            }
-            
-            if (hasIncompleteObjectives)
-            {
-                hasIncompleteQuests = true;
-                if (botAI)
-                {
-                    std::ostringstream out;
-                    out << "QuestItem: Found incomplete quest " << questId << " (" << quest->GetTitle() << ") - item might be needed";
-                    botAI->TellMaster(out.str());
-                }
-                break; // Found at least one incomplete quest
             }
         }
     }
 
-    if (!hasIncompleteQuests)
+    if (!itemNeededForActiveQuest)
     {
         if (botAI)
         {
             std::ostringstream out;
-            out << "QuestItem: No incomplete quests found - item " << itemTemplate->Name1 << " not needed";
+            out << "QuestItem: Item " << itemTemplate->Name1 << " not needed for any active quest";
             botAI->TellMaster(out.str());
         }
         return false;
     }
 
-    // Let the target validation determine if this item is actually useful
     if (botAI)
     {
         std::ostringstream out;
-        out << "QuestItem: Item " << itemTemplate->Name1 << " might be needed - deferring to target validation";
+        out << "QuestItem: Item " << itemTemplate->Name1 << " is needed for active quest progress";
         botAI->TellMaster(out.str());
     }
     return true;
