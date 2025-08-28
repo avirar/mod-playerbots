@@ -1428,17 +1428,8 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
 // Shared static map to track quest item usage per target GUID
 static std::map<std::string, time_t> s_questItemUsageTracker;
 
-// Structure to track pending quest item casts
-struct PendingQuestItemCast
-{
-    std::string key;      // bot_spell_target key
-    Unit* target;         // Target pointer (for validation)
-    ObjectGuid targetGuid; // Target GUID for safety
-    time_t castTime;      // When cast was initiated
-};
-
-// Shared static map to track pending quest item casts
-static std::map<std::string, PendingQuestItemCast> s_pendingQuestItemCasts;
+// PendingQuestItemCast struct now defined in QuestItemHelper.h
+// Individual bot maps are now stored as member variables in PlayerbotAI
 
 bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
 {
@@ -1449,8 +1440,8 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     if (!bot)
         return false;
 
-    // Create a unique key for this bot + spell + target combination
-    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    // Create a unique key for spell + target combination (bot GUID no longer needed since each bot has its own map)
+    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
     
     time_t currentTime = time(nullptr);
     
@@ -1478,8 +1469,8 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     }
     
     // Also check if there's a pending cast for this target
-    auto pendingIt = s_pendingQuestItemCasts.find(key);
-    if (pendingIt != s_pendingQuestItemCasts.end())
+    auto pendingIt = botAI->pendingQuestItemCasts.find(key);
+    if (pendingIt != botAI->pendingQuestItemCasts.end())
     {
         if (botAI)
         {
@@ -1538,8 +1529,8 @@ void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* targe
     if (!bot)
         return;
 
-    // Create a unique key for this bot + spell + target combination
-    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    // Create a unique key for spell + target combination (bot GUID no longer needed since each bot has its own map)
+    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
     
     time_t currentTime = time(nullptr);
     
@@ -1550,7 +1541,7 @@ void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* targe
     pending.targetGuid = target->GetGUID();
     pending.castTime = currentTime;
     
-    s_pendingQuestItemCasts[key] = pending;
+    botAI->pendingQuestItemCasts[key] = pending;
     
     if (botAI)
     {
@@ -1570,17 +1561,16 @@ void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
     if (!bot)
         return;
 
-    // Find and remove any pending casts for this spell by this bot
-    std::string botGuidStr = bot->GetGUID().ToString();
+    // Find and remove any pending casts for this spell from this bot's map
     std::string spellIdStr = std::to_string(spellId);
     
-    auto it = s_pendingQuestItemCasts.begin();
-    while (it != s_pendingQuestItemCasts.end())
+    auto it = botAI->pendingQuestItemCasts.begin();
+    while (it != botAI->pendingQuestItemCasts.end())
     {
         const std::string& key = it->first;
         
-        // Check if this pending cast belongs to this bot and spell
-        if (key.find(botGuidStr + "_" + spellIdStr + "_") == 0)
+        // Check if this pending cast is for this spell (key starts with spellId_)
+        if (key.find(spellIdStr + "_") == 0)
         {
             if (botAI)
             {
@@ -1590,7 +1580,7 @@ void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
                 botAI->TellMaster(out.str());
             }
             
-            it = s_pendingQuestItemCasts.erase(it);
+            it = botAI->pendingQuestItemCasts.erase(it);
         }
         else
         {
@@ -1607,8 +1597,8 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
     time_t currentTime = time(nullptr);
     const time_t PENDING_TIMEOUT = 5; // 5 seconds timeout for pending casts
     
-    auto it = s_pendingQuestItemCasts.begin();
-    while (it != s_pendingQuestItemCasts.end())
+    auto it = botAI->pendingQuestItemCasts.begin();
+    while (it != botAI->pendingQuestItemCasts.end())
     {
         const PendingQuestItemCast& pending = it->second;
         time_t timeSinceCast = currentTime - pending.castTime;
@@ -1655,7 +1645,7 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
                 }
             }
             
-            it = s_pendingQuestItemCasts.erase(it);
+            it = botAI->pendingQuestItemCasts.erase(it);
         }
         else
         {
