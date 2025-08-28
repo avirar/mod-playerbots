@@ -65,6 +65,9 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
 
 bool UseQuestItemOnTargetAction::isUseful()
 {
+    // Process pending quest item casts periodically (clean up timeouts)
+    QuestItemHelper::ProcessPendingQuestItemCasts(botAI);
+
     uint32 spellId = 0;
     
     // Check if we have any usable quest items
@@ -178,6 +181,9 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         return false;
     }
 
+    // Record pending cast before sending packet
+    QuestItemHelper::RecordPendingQuestItemCast(botAI, target, spellId);
+
     // Send the packet
     bot->GetSession()->HandleUseItemOpcode(packet);
 
@@ -205,8 +211,8 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
     botAI->TellMasterNoFacing(out.str());
 
-    // Record quest item usage to prevent spam casting on same target
-    QuestItemHelper::RecordQuestItemUsage(botAI, target, spellId);
+    // NOTE: Do not record usage immediately - let the pending system handle it
+    // based on server response (success/failure)
 
     return true;
 }
