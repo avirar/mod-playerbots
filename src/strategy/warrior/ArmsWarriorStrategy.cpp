@@ -71,7 +71,10 @@ void ArmsWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     GenericWarriorStrategy::InitTriggers(triggers);
 
     triggers.push_back(new TriggerNode("enemy out of melee",
-        NextAction::array(0, new NextAction("charge", ACTION_MOVE + 10), nullptr)));
+        NextAction::array(0, new NextAction("charge", ACTION_MOVE + 12),
+                            new NextAction("reach melee", ACTION_MOVE + 11), 
+                            new NextAction("heroic throw", ACTION_MOVE + 10),
+                            new NextAction("shoot", ACTION_MOVE + 9), nullptr)));
     
     triggers.push_back(new TriggerNode("battle stance",
         NextAction::array(0, new NextAction("battle stance", ACTION_HIGH + 10), nullptr)));
