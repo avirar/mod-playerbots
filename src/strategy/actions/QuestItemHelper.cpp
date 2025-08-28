@@ -1230,6 +1230,19 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                                 }
                                 break;
                             }
+                            
+                            // ALSO check for creatures that give KillCredit for this entry (trigger creature system)
+                            if (CheckForKillCreditCreatures(botAI, requiredEntry))
+                            {
+                                foundPotentialTarget = true;
+                                if (botAI)
+                                {
+                                    std::ostringstream out;
+                                    out << "QuestItem: Found KillCredit target for entry " << requiredEntry << " for quest " << questId << " objective " << (int)i;
+                                    botAI->TellMaster(out.str());
+                                }
+                                break;
+                            }
                         }
                         
                         if (foundPotentialTarget)
@@ -1649,4 +1662,51 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
             ++it;
         }
     }
+}
+
+bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 killCreditEntry)
+{
+    if (!botAI)
+        return false;
+
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return false;
+
+    // Get nearby NPCs and check if any give KillCredit for the required entry
+    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+    
+    for (ObjectGuid guid : npcs)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || unit->GetTypeId() != TYPEID_UNIT)
+            continue;
+
+        Creature* creature = unit->ToCreature();
+        if (!creature)
+            continue;
+
+        CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+        if (!creatureTemplate)
+            continue;
+
+        float distance = bot->GetDistance(creature);
+        if (distance > sPlayerbotAIConfig->grindDistance)
+            continue;
+
+        // Check if this creature gives KillCredit for our required entry
+        if (creatureTemplate->KillCredit[0] == killCreditEntry || creatureTemplate->KillCredit[1] == killCreditEntry)
+        {
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Found KillCredit creature " << creature->GetName() << " (entry:" << creature->GetEntry() 
+                    << ") gives credit for " << killCreditEntry << " at distance " << distance;
+                botAI->TellMaster(out.str());
+            }
+            return true;
+        }
+    }
+
+    return false;
 }
