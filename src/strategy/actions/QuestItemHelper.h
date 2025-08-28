@@ -74,6 +74,27 @@ public:
      */
     static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 
+    /**
+     * @brief Record a pending quest item cast (before server confirmation)
+     * @param botAI Bot AI instance for debug output
+     * @param target Target that was targeted
+     * @param spellId Spell ID that was cast
+     */
+    static void RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+
+    /**
+     * @brief Handle spell failure notification for quest items
+     * @param botAI Bot AI instance for debug output
+     * @param spellId Spell ID that failed
+     */
+    static void OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId);
+
+    /**
+     * @brief Clean up expired pending casts and convert successful ones to cooldowns
+     * @param botAI Bot AI instance for debug output
+     */
+    static void ProcessPendingQuestItemCasts(PlayerbotAI* botAI);
+
 private:
     /**
      * @brief Check if player is near a specific creature type
