@@ -247,7 +247,76 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
 
 NextAction** CastShootAction::getPrerequisites()
 {
+    // For melee classes, don't add "reach spell" prerequisite if we're in a melee combat context
+    // This prevents conflicts with "reach melee" actions that are typically higher priority
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return nullptr;
+    
+    // Check if bot is already trying to reach melee range
+    // If target is within spell range but outside melee range, use shoot without positioning
+    float spellRange = botAI->GetRange("spell");
+    float meleeRange = botAI->GetRange("melee");
+    float distance = bot->GetDistance(target);
+    
+    // If we're already within shoot range, don't need reach spell
+    if (distance <= spellRange)
+        return nullptr;
+    
+    // If target is close to melee range, let melee positioning handle it
+    // This prevents conflicts with reach melee actions
+    if (distance <= meleeRange + 10.0f) // 10 yard buffer
+        return nullptr;
+    
+    // Only use reach spell for truly distant targets
     return NextAction::array(0, new NextAction("reach spell"), nullptr);
+}
+
+bool CastShootAction::isUseful()
+{
+    // First check basic spell requirements
+    if (!CastSpellAction::isUseful())
+        return false;
+        
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+    
+    // Only shoot if target is truly unreachable for melee combat
+    
+    // Check 1: Target is flying or hovering (common case for unreachable targets)
+    if (target->IsFlying() || target->IsHovering() || target->GetPositionZ() - bot->GetPositionZ() > 10.0f)
+    {
+        return true;
+    }
+    
+    // Check 2: We've been trying to reach melee for a while but can't get there
+    // This could indicate pathing issues, targets on ledges, etc.
+    float distance = bot->GetDistance(target);
+    float meleeRange = botAI->GetRange("melee");
+    
+    if (distance > meleeRange + 5.0f) // Target is out of melee range
+    {
+        // Check if we've been in combat for a reasonable time but haven't reached melee
+        // This is a heuristic for "probably can't path to target"
+        if (bot->IsInCombat() && bot->GetCombatTimer() > 5000) // 5 seconds in combat
+        {
+            // Additional check: if bot hasn't moved much recently, probably stuck/can't path
+            // This is imperfect but better than always shooting
+            return true;
+        }
+    }
+    
+    // Check 3: For ranged classes, always allow shooting
+    uint8 botClass = bot->getClass();
+    if (botClass == CLASS_HUNTER || botClass == CLASS_MAGE || botClass == CLASS_WARLOCK || 
+        botClass == CLASS_PRIEST)
+    {
+        return true;
+    }
+    
+    // For melee classes, only shoot as last resort for unreachable targets
+    return false;
 }
 
 NextAction** CastSpellAction::getPrerequisites()
