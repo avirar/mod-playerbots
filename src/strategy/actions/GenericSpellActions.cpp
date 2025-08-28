@@ -254,56 +254,39 @@ NextAction** CastShootAction::getPrerequisites()
 
 bool CastShootAction::isUseful()
 {
+    // Debug logging
+    botAI->TellMasterNoFacing("CastShootAction::isUseful() called");
+    
     // First check basic spell requirements
     if (!CastSpellAction::isUseful())
+    {
+        botAI->TellMasterNoFacing("CastShootAction: CastSpellAction::isUseful() returned false");
         return false;
+    }
         
     Unit* target = AI_VALUE(Unit*, "current target");
     if (!target)
+    {
+        botAI->TellMasterNoFacing("CastShootAction: no target");
         return false;
-    
-    // Only shoot if target is truly unreachable for melee combat
-    
-    // Check 1: Target is flying, hovering, or swimming (common case for unreachable targets)
-    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && 
-        std::abs(target->GetPositionZ() - bot->GetPositionZ()) > 10.0f)
-    {
-        return true;
     }
     
-    // Check 2: We've been trying to reach melee for a while but can't get there
-    // This could indicate pathing issues, targets on ledges, etc.
-    float distance = bot->GetDistance(target);
-    float meleeRange = botAI->GetRange("melee");
-    
-    if (distance > meleeRange + 5.0f) // Target is out of melee range
-    {
-        // Use pathfinding validation to check if target is truly unreachable
-        Map* map = bot->GetMap();
-        if (map)
-        {
-            float targetX = target->GetPositionX();
-            float targetY = target->GetPositionY();
-            float targetZ = target->GetPositionZ();
-            
-            // Check if we can path to the target's position
-            if (!map->CanReachPositionAndGetValidCoords(bot, targetX, targetY, targetZ))
-            {
-                return true;
-            }
-        }
-    }
-    
-    // Check 3: For ranged classes, always allow shooting
+    // Since the trigger already determined the target is unreachable, just return true
+    // The trigger logic handles all the unreachable detection
     uint8 botClass = bot->getClass();
+    
+    // For ranged classes, always allow shooting
     if (botClass == CLASS_HUNTER || botClass == CLASS_MAGE || botClass == CLASS_WARLOCK || 
         botClass == CLASS_PRIEST)
     {
+        botAI->TellMasterNoFacing("CastShootAction: ranged class, allowing shoot");
         return true;
     }
     
-    // For melee classes, only shoot as last resort for unreachable targets
-    return false;
+    // For melee classes, if this action is being considered by the strategy,
+    // it means the "enemy unreachable" trigger fired, so allow shooting
+    botAI->TellMasterNoFacing("CastShootAction: melee class but allowing shoot due to unreachable trigger");
+    return true;
 }
 
 NextAction** CastSpellAction::getPrerequisites()
