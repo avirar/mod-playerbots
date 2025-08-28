@@ -7,6 +7,7 @@
 #define _PLAYERBOT_LOOTOBJECTSTACK_H
 
 #include "ObjectGuid.h"
+#include "SharedDefines.h"
 
 class AiObjectContext;
 class Player;
