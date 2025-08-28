@@ -302,14 +302,7 @@ bool EnemyUnreachableTrigger::IsActive()
     if (!target)
         return false;
     
-    // Check if target is flying, hovering, or swimming with significant height difference
-    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && 
-        std::abs(target->GetPositionZ() - bot->GetPositionZ()) > 10.0f)
-    {
-        return true;
-    }
-    
-    // Check if target is out of melee range and unreachable via pathfinding
+    // Debug logging
     float distance = bot->GetDistance(target);
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
@@ -317,6 +310,21 @@ bool EnemyUnreachableTrigger::IsActive()
         
     float meleeRange = botAI->GetRange("melee");
     
+    // Temporary debug - log trigger checks
+    if (distance > meleeRange + 5.0f)
+    {
+        botAI->TellMasterNoFacing("EnemyUnreachable: checking distance=" + std::to_string(distance) + " melee=" + std::to_string(meleeRange));
+    }
+    
+    // Check if target is flying, hovering, or swimming with significant height difference
+    float heightDiff = std::abs(target->GetPositionZ() - bot->GetPositionZ());
+    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && heightDiff > 10.0f)
+    {
+        botAI->TellMasterNoFacing("EnemyUnreachable: flying/swimming target, height diff=" + std::to_string(heightDiff));
+        return true;
+    }
+    
+    // Check if target is out of melee range and unreachable via pathfinding
     if (distance > meleeRange + 5.0f)
     {
         Map* map = bot->GetMap();
@@ -329,7 +337,12 @@ bool EnemyUnreachableTrigger::IsActive()
             // Check if we can path to the target's position
             if (!map->CanReachPositionAndGetValidCoords(bot, targetX, targetY, targetZ))
             {
+                botAI->TellMasterNoFacing("EnemyUnreachable: pathfinding failed - target unreachable!");
                 return true;
+            }
+            else
+            {
+                botAI->TellMasterNoFacing("EnemyUnreachable: pathfinding OK - target reachable");
             }
         }
     }
