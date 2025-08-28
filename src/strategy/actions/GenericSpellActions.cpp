@@ -285,7 +285,7 @@ bool CastShootAction::isUseful()
     // Only shoot if target is truly unreachable for melee combat
     
     // Check 1: Target is flying, hovering, or swimming (common case for unreachable targets)
-    if ((target->IsFlying() || target->IsHovering() || target->IsSwimming()) && 
+    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && 
         std::abs(target->GetPositionZ() - bot->GetPositionZ()) > 10.0f)
     {
         return true;
