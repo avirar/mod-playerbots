@@ -1279,6 +1279,18 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
 // Shared static map to track quest item usage per target GUID
 static std::map<std::string, time_t> s_questItemUsageTracker;
 
+// Structure to track pending quest item casts
+struct PendingQuestItemCast
+{
+    std::string key;      // bot_spell_target key
+    Unit* target;         // Target pointer (for validation)
+    ObjectGuid targetGuid; // Target GUID for safety
+    time_t castTime;      // When cast was initiated
+};
+
+// Shared static map to track pending quest item casts
+static std::map<std::string, PendingQuestItemCast> s_pendingQuestItemCasts;
+
 bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
 {
     if (!botAI || !target)
@@ -1316,6 +1328,20 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
         }
     }
     
+    // Also check if there's a pending cast for this target
+    auto pendingIt = s_pendingQuestItemCasts.find(key);
+    if (pendingIt != s_pendingQuestItemCasts.end())
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
+                << ") has pending cast - waiting for server response";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+    
     // Target can be used - but don't record usage yet (that happens when spell is actually cast)
     if (botAI)
     {
@@ -1351,5 +1377,140 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
         out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
             << ") marked as used - 30s cooldown started";
         botAI->TellMaster(out.str());
+    }
+}
+
+void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+{
+    if (!botAI || !target)
+        return;
+
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return;
+
+    // Create a unique key for this bot + spell + target combination
+    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+    
+    time_t currentTime = time(nullptr);
+    
+    // Store the pending cast
+    PendingQuestItemCast pending;
+    pending.key = key;
+    pending.target = target;
+    pending.targetGuid = target->GetGUID();
+    pending.castTime = currentTime;
+    
+    s_pendingQuestItemCasts[key] = pending;
+    
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Recording pending cast on " << target->GetName() 
+            << " (GUID:" << target->GetGUID().ToString() << ") with spell " << spellId;
+        botAI->TellMaster(out.str());
+    }
+}
+
+void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
+{
+    if (!botAI)
+        return;
+
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return;
+
+    // Find and remove any pending casts for this spell by this bot
+    std::string botGuidStr = bot->GetGUID().ToString();
+    std::string spellIdStr = std::to_string(spellId);
+    
+    auto it = s_pendingQuestItemCasts.begin();
+    while (it != s_pendingQuestItemCasts.end())
+    {
+        const std::string& key = it->first;
+        
+        // Check if this pending cast belongs to this bot and spell
+        if (key.find(botGuidStr + "_" + spellIdStr + "_") == 0)
+        {
+            if (botAI)
+            {
+                std::ostringstream out;
+                out << "QuestItem: Spell " << spellId << " failed - removing pending cast for target " 
+                    << it->second.targetGuid.ToString();
+                botAI->TellMaster(out.str());
+            }
+            
+            it = s_pendingQuestItemCasts.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
+{
+    if (!botAI)
+        return;
+
+    time_t currentTime = time(nullptr);
+    const time_t PENDING_TIMEOUT = 5; // 5 seconds timeout for pending casts
+    
+    auto it = s_pendingQuestItemCasts.begin();
+    while (it != s_pendingQuestItemCasts.end())
+    {
+        const PendingQuestItemCast& pending = it->second;
+        time_t timeSinceCast = currentTime - pending.castTime;
+        
+        if (timeSinceCast >= PENDING_TIMEOUT)
+        {
+            // Cast is old enough - assume it succeeded and convert to cooldown
+            // Validate target still exists first
+            Unit* target = nullptr;
+            if (pending.target)
+            {
+                // Basic pointer validation - check if target still has same GUID
+                try 
+                {
+                    if (pending.target->GetGUID() == pending.targetGuid)
+                        target = pending.target;
+                }
+                catch (...)
+                {
+                    // Target pointer is invalid
+                }
+            }
+            
+            if (target)
+            {
+                // Extract spell ID from key for recording usage
+                size_t firstUnderscore = pending.key.find('_');
+                size_t secondUnderscore = pending.key.find('_', firstUnderscore + 1);
+                if (firstUnderscore != std::string::npos && secondUnderscore != std::string::npos)
+                {
+                    std::string spellIdStr = pending.key.substr(firstUnderscore + 1, secondUnderscore - firstUnderscore - 1);
+                    uint32 spellId = std::stoul(spellIdStr);
+                    
+                    // Record the cooldown
+                    s_questItemUsageTracker[pending.key] = currentTime;
+                    
+                    if (botAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Pending cast timeout - assuming success, starting cooldown for " 
+                            << target->GetName() << " (GUID:" << target->GetGUID().ToString() << ")";
+                        botAI->TellMaster(out.str());
+                    }
+                }
+            }
+            
+            it = s_pendingQuestItemCasts.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
     }
 }
