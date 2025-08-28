@@ -21,7 +21,12 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
 
-    // Search through all inventory slots for quest items with spells
+    // NEW APPROACH: Find quest item that has valid targets available
+    // This prevents selecting items that have no valid targets
+    
+    std::vector<std::pair<Item*, uint32>> candidateItems;
+    
+    // Collect all valid quest items from inventory
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
     {
         Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
@@ -31,64 +36,11 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         uint32 spellId = 0;
         if (IsValidQuestItem(item, &spellId))
         {
-            // Debug output for found quest item
-            if (botAI)
-            {
-                ItemTemplate const* template_ptr = item->GetTemplate();
-                if (template_ptr)
-                {
-                    std::ostringstream out;
-                    out << "QuestItem: Found quest item " << template_ptr->Name1 << " (ID:" << item->GetEntry() << ") with spell " << spellId;
-                    botAI->TellMaster(out.str());
-                }
-                else
-                {
-                    std::ostringstream out;
-                    out << "QuestItem: Found quest item (no template) with spell " << spellId;
-                    botAI->TellMaster(out.str());
-                }
-            }
-            
-            // Check if this quest item can be used (prevent spam casting)
-            // Check if this quest item is actually needed for any active quests
-            if (!IsQuestItemNeeded(bot, item, spellId))
-            {
-                if (botAI)
-                {
-                    ItemTemplate const* template_ptr = item->GetTemplate();
-                    std::ostringstream out;
-                    if (template_ptr)
-                        out << "QuestItem: Skipping " << template_ptr->Name1 << " - not needed for active quests";
-                    else
-                        out << "QuestItem: Skipping quest item - not needed for active quests";
-                    botAI->TellMaster(out.str());
-                }
-                continue; // Skip this item and look for others
-            }
-
-            if (!CanUseQuestItem(botAI, bot, spellId))
-            {
-                if (botAI)
-                {
-                    ItemTemplate const* template_ptr = item->GetTemplate();
-                    std::ostringstream out;
-                    if (template_ptr)
-                        out << "QuestItem: Skipping " << template_ptr->Name1 << " - usage prevented";
-                    else
-                        out << "QuestItem: Skipping quest item - usage prevented";
-                    botAI->TellMaster(out.str());
-                }
-                continue; // Skip this item and look for others
-            }
-            
-            // Return the first valid and usable quest item found
-            if (outSpellId)
-                *outSpellId = spellId;
-            return item;
+            candidateItems.push_back({item, spellId});
         }
     }
 
-    // Also search through bag slots
+    // Also collect from bag slots
     for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
     {
         Bag* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
@@ -104,45 +56,103 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
             uint32 spellId = 0;
             if (IsValidQuestItem(item, &spellId))
             {
-                // Check if this quest item can be used (prevent spam casting)
-                // Check if this quest item is actually needed for any active quests
-                if (!IsQuestItemNeeded(bot, item, spellId))
-                {
-                    if (botAI)
-                    {
-                        ItemTemplate const* template_ptr = item->GetTemplate();
-                        std::ostringstream out;
-                        if (template_ptr)
-                            out << "QuestItem: Skipping bag item " << template_ptr->Name1 << " - not needed for active quests";
-                        else
-                            out << "QuestItem: Skipping bag quest item - not needed for active quests";
-                        botAI->TellMaster(out.str());
-                    }
-                    continue; // Skip this item and look for others
-                }
-
-                if (!CanUseQuestItem(botAI, bot, spellId))
-                {
-                    if (botAI)
-                    {
-                        ItemTemplate const* template_ptr = item->GetTemplate();
-                        std::ostringstream out;
-                        if (template_ptr)
-                            out << "QuestItem: Skipping bag item " << template_ptr->Name1 << " - usage prevented";
-                        else
-                            out << "QuestItem: Skipping bag quest item - usage prevented";
-                        botAI->TellMaster(out.str());
-                    }
-                    continue; // Skip this item and look for others
-                }
-                
-                if (outSpellId)
-                    *outSpellId = spellId;
-                return item;
+                candidateItems.push_back({item, spellId});
             }
         }
     }
 
+    if (botAI)
+    {
+        std::ostringstream out;
+        out << "QuestItem: Found " << candidateItems.size() << " candidate quest items";
+        botAI->TellMaster(out.str());
+    }
+
+    // Now test each item to see if it has valid targets
+    for (auto& [item, spellId] : candidateItems)
+    {
+        if (botAI)
+        {
+            ItemTemplate const* template_ptr = item->GetTemplate();
+            std::ostringstream out;
+            if (template_ptr)
+                out << "QuestItem: Testing item " << template_ptr->Name1 << " (ID:" << item->GetEntry() << ") with spell " << spellId;
+            else
+                out << "QuestItem: Testing quest item (no template) with spell " << spellId;
+            botAI->TellMaster(out.str());
+        }
+
+        // Check if this quest item is needed
+        if (!IsQuestItemNeeded(bot, item, spellId))
+        {
+            if (botAI)
+            {
+                ItemTemplate const* template_ptr = item->GetTemplate();
+                std::ostringstream out;
+                if (template_ptr)
+                    out << "QuestItem: Skipping " << template_ptr->Name1 << " - not needed for active quests";
+                else
+                    out << "QuestItem: Skipping quest item - not needed for active quests";
+                botAI->TellMaster(out.str());
+            }
+            continue;
+        }
+
+        // Check if item can be used (not on cooldown, etc)
+        if (!CanUseQuestItem(botAI, bot, spellId))
+        {
+            if (botAI)
+            {
+                ItemTemplate const* template_ptr = item->GetTemplate();
+                std::ostringstream out;
+                if (template_ptr)
+                    out << "QuestItem: Skipping " << template_ptr->Name1 << " - usage prevented";
+                else
+                    out << "QuestItem: Skipping quest item - usage prevented";
+                botAI->TellMaster(out.str());
+            }
+            continue;
+        }
+
+        // Most importantly: Check if there are valid targets for this specific spell
+        Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId);
+        if (testTarget)
+        {
+            if (botAI)
+            {
+                ItemTemplate const* template_ptr = item->GetTemplate();
+                std::ostringstream out;
+                if (template_ptr)
+                    out << "QuestItem: Selected " << template_ptr->Name1 << " - found valid target " << testTarget->GetName();
+                else
+                    out << "QuestItem: Selected quest item - found valid target " << testTarget->GetName();
+                botAI->TellMaster(out.str());
+            }
+            
+            if (outSpellId)
+                *outSpellId = spellId;
+            return item;
+        }
+        else
+        {
+            if (botAI)
+            {
+                ItemTemplate const* template_ptr = item->GetTemplate();
+                std::ostringstream out;
+                if (template_ptr)
+                    out << "QuestItem: Skipping " << template_ptr->Name1 << " - no valid targets found";
+                else
+                    out << "QuestItem: Skipping quest item - no valid targets found";
+                botAI->TellMaster(out.str());
+            }
+        }
+    }
+
+    if (botAI)
+    {
+        botAI->TellMaster("QuestItem: No quest items with valid targets found");
+    }
+    
     return nullptr;
 }
 
@@ -801,14 +811,21 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
     if (!bot)
         return false;
 
+    std::ostringstream debugOut;
+    debugOut << "QuestItem: IsNearCreature looking for entry " << creatureEntry 
+             << " within " << maxDistance << "y, requireAlive:" << (requireAlive ? "true" : "false");
+    botAI->TellMaster(debugOut.str());
+
     // Use the existing playerbots infrastructure to get nearby NPCs
     GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     
-    std::ostringstream debugOut;
-    debugOut << "QuestItem: IsNearCreature scanning " << npcs.size() << " nearby NPCs for entry " << creatureEntry;
+    debugOut.str("");
+    debugOut << "QuestItem: Scanning " << npcs.size() << " nearby NPCs";
     botAI->TellMaster(debugOut.str());
     
     int foundCount = 0;
+    int validCount = 0;
+    
     for (ObjectGuid guid : npcs)
     {
         Unit* unit = botAI->GetUnit(guid);
@@ -822,7 +839,8 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             bool alive = unit->IsAlive();
             
             std::ostringstream out;
-            out << "QuestItem: Found creature " << creatureEntry << " at " << distance << "y, alive:" << (alive ? "true" : "false");
+            out << "QuestItem: Found creature " << creatureEntry << " (" << unit->GetName() 
+                << ") at " << distance << "y, alive:" << (alive ? "true" : "false");
             botAI->TellMaster(out.str());
             
             // Check distance requirement
@@ -835,21 +853,42 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             }
                 
             // Check alive/dead requirement
+            bool aliveRequirementMet = false;
             if (requireAlive && alive)
             {
-                botAI->TellMaster("QuestItem: FOUND valid alive creature!");
+                aliveRequirementMet = true;
+            }
+            else if (!requireAlive)
+            {
+                // When requireAlive is false, we accept both alive and dead creatures
+                // This is because ConditionValue3 == 0 means "don't care about alive status"
+                aliveRequirementMet = true;
+            }
+            
+            if (aliveRequirementMet)
+            {
+                validCount++;
+                out.str("");
+                out << "QuestItem: FOUND valid creature " << unit->GetName() 
+                    << " (entry:" << creatureEntry << ") at " << distance << "y";
+                botAI->TellMaster(out.str());
                 return true;
             }
-            if (!requireAlive && !alive)
+            else
             {
-                botAI->TellMaster("QuestItem: FOUND valid dead creature!");
-                return true;
+                out.str("");
+                out << "QuestItem: Creature " << unit->GetName() 
+                    << " doesn't meet alive requirement (alive:" << (alive ? "true" : "false") 
+                    << ", required:" << (requireAlive ? "alive" : "any") << ")";
+                botAI->TellMaster(out.str());
             }
         }
     }
 
+
     std::ostringstream finalOut;
-    finalOut << "QuestItem: No valid creature found. Total matching entry: " << foundCount;
+    finalOut << "QuestItem: No valid creature found. Total matching entry: " << foundCount 
+             << ", valid distance+status: " << validCount;
     botAI->TellMaster(finalOut.str());
     return false;
 }
@@ -863,36 +902,65 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     if (!spellInfo)
         return true; // No spell info means no restrictions
 
-    // Use the built-in SpellInfo location checking
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+
+    // Get current location info
     uint32 mapId = player->GetMapId();
     uint32 zoneId = player->GetZoneId();
     uint32 areaId = player->GetAreaId();
     
+    // Check for specific area requirements
+    if (spellInfo->AreaGroupId > 0)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: Spell " << spellId << " requires AreaGroupId " << spellInfo->AreaGroupId 
+                << " - player is in Area:" << areaId << " Zone:" << zoneId << " Map:" << mapId;
+            botAI->TellMaster(out.str());
+        }
+    }
+    
+    // Use the built-in SpellInfo location checking
     SpellCastResult locationResult = spellInfo->CheckLocation(mapId, zoneId, areaId, player);
     if (locationResult != SPELL_CAST_OK)
     {
-        // Debug output for location failures
-        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+        // Provide more detailed error messages
+        if (botAI)
         {
             std::ostringstream out;
-            out << "QuestItem: Spell " << spellId << " location check failed. Map:" << mapId 
-                << " Zone:" << zoneId << " Area:" << areaId << " AreaGroupId:" << spellInfo->AreaGroupId 
-                << " Result:" << locationResult;
+            out << "QuestItem: Spell " << spellId << " location check FAILED. ";
+            
+            switch (locationResult)
+            {
+                case SPELL_FAILED_INCORRECT_AREA:
+                    out << "Wrong area - requires area/zone restriction";
+                    break;
+                case SPELL_FAILED_REQUIRES_AREA:
+                    out << "Requires specific area";
+                    break;
+                default:
+                    out << "Location error code " << locationResult;
+                    break;
+            }
+            
+            out << " (Map:" << mapId << " Zone:" << zoneId << " Area:" << areaId;
+            if (spellInfo->AreaGroupId > 0)
+                out << " RequiredAreaGroup:" << spellInfo->AreaGroupId;
+            out << ")";
             botAI->TellMaster(out.str());
         }
         return false; // Player is not in a valid location for this spell
     }
 
     // Debug output for successful location check
-    if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+    if (botAI)
     {
+        std::ostringstream out;
+        out << "QuestItem: Spell " << spellId << " location check PASSED";
         if (spellInfo->AreaGroupId > 0)
-        {
-            std::ostringstream out;
-            out << "QuestItem: Spell " << spellId << " location check passed. Map:" << mapId 
-                << " Zone:" << zoneId << " Area:" << areaId << " AreaGroupId:" << spellInfo->AreaGroupId;
-            botAI->TellMaster(out.str());
-        }
+            out << " (AreaGroup:" << spellInfo->AreaGroupId << ")";
+        botAI->TellMaster(out.str());
     }
 
     return true; // All location requirements met
