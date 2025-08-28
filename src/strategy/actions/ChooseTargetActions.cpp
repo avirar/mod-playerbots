@@ -6,6 +6,7 @@
 #include "ChooseTargetActions.h"
 
 #include "ChooseRpgTargetAction.h"
+#include "Creature.h"
 #include "Event.h"
 #include "LootObjectStack.h"
 #include "NewRpgStrategy.h"
@@ -217,6 +218,28 @@ bool AttackAnythingAction::WouldTargetProvideQuestCredit(Unit* target)
                 if (currentCount < requiredCount)
                 {
                     return true; // Target is needed for quest progress
+                }
+            }
+            
+            // Also check if our target gives KillCredit for the required entry (trigger creature system)
+            if (target->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* creature = target->ToCreature();
+                if (creature)
+                {
+                    CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+                    if (creatureTemplate && 
+                        (creatureTemplate->KillCredit[0] == requiredEntry || creatureTemplate->KillCredit[1] == requiredEntry))
+                    {
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                        uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                        
+                        // If current count is less than required, this target would provide credit
+                        if (currentCount < requiredCount)
+                        {
+                            return true; // Target gives KillCredit for quest objective
+                        }
+                    }
                 }
             }
         }
