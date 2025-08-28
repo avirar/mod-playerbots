@@ -6,11 +6,24 @@
 #pragma once
 
 #include "Define.h"
+#include <map>
+#include <string>
+#include <ctime>
 
 class Item;
+class ObjectGuid;
 class Player;
 class PlayerbotAI;
 class Unit;
+
+// Structure to track pending quest item casts per bot
+struct PendingQuestItemCast
+{
+    std::string key;      // spell_target key (without bot GUID)
+    Unit* target;         // Target pointer (for validation)
+    ObjectGuid targetGuid; // Target GUID for safety
+    time_t castTime;      // When cast was initiated
+};
 
 /**
  * @brief Utility class for quest item operations to eliminate code duplication
