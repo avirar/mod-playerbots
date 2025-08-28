@@ -229,6 +229,8 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
 
         switch (pItem->GetTemplate()->SubClass)
         {
+            // Shoot WEAPON_TYPE spells are now rolled-up into just shoot, with the exception of Throw
+            /*
             case ITEM_SUBCLASS_WEAPON_GUN:
                 spell += " gun";
                 break;
@@ -238,6 +240,7 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
             case ITEM_SUBCLASS_WEAPON_CROSSBOW:
                 spell += " crossbow";
                 break;
+            */
             case ITEM_SUBCLASS_WEAPON_THROWN:
                 spell = "throw";
                 break;
