@@ -157,4 +157,12 @@ private:
      */
     static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
 
+    /**
+     * @brief Check for creatures that give KillCredit for a specific entry (trigger creature system)
+     * @param botAI Bot AI instance for accessing nearby creatures
+     * @param killCreditEntry Entry ID that creatures should give credit for
+     * @return true if creatures found that give KillCredit for the entry
+     */
+    static bool CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 killCreditEntry);
+
 };
