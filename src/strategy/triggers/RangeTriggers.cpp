@@ -303,7 +303,7 @@ bool EnemyUnreachableTrigger::IsActive()
         return false;
     
     // Check if target is flying, hovering, or swimming with significant height difference
-    if ((target->IsFlying() || target->IsHovering() || target->IsSwimming()) && 
+    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && 
         std::abs(target->GetPositionZ() - bot->GetPositionZ()) > 10.0f)
     {
         return true;
