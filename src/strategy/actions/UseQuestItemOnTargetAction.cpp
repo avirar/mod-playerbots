@@ -48,8 +48,8 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
     float range = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f); // -2.0f buffer for reliable casting
     
     // Ensure minimum distance is INTERACTION_DISTANCE minus buffer for quest item interactions
-    if (range <= 0.0f || range < (INTERACTION_DISTANCE - 2.0f))
-        range = INTERACTION_DISTANCE - 2.0f; // -2.0f buffer for reliable interaction
+    if (range <= 0.0f)
+        range = 0.5f; // -2.0f buffer for reliable interaction
         
     float distance = bot->GetDistance(target);
     
