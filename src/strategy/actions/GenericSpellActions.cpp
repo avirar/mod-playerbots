@@ -230,13 +230,16 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
         switch (pItem->GetTemplate()->SubClass)
         {
             case ITEM_SUBCLASS_WEAPON_GUN:
-                spell += " gun";
+                // spell += " gun";
+                spell = "shoot";
                 break;
             case ITEM_SUBCLASS_WEAPON_BOW:
-                spell += " bow";
+                // spell += " bow";
+                spell = "shoot";
                 break;
             case ITEM_SUBCLASS_WEAPON_CROSSBOW:
-                spell += " crossbow";
+                // spell += " crossbow";
+                spell = "shoot";
                 break;
             case ITEM_SUBCLASS_WEAPON_THROWN:
                 spell = "throw";
