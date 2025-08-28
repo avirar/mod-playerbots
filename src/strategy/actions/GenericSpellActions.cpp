@@ -285,7 +285,7 @@ bool CastShootAction::isUseful()
     // Only shoot if target is truly unreachable for melee combat
     
     // Check 1: Target is flying or hovering (common case for unreachable targets)
-    if (target->IsFlying() || target->IsHovering() || target->GetPositionZ() - bot->GetPositionZ() > 10.0f)
+    if ((target->IsFlying() || target->IsHovering()) && (target->GetPositionZ() - bot->GetPositionZ() > 10.0f))
     {
         return true;
     }
@@ -297,13 +297,19 @@ bool CastShootAction::isUseful()
     
     if (distance > meleeRange + 5.0f) // Target is out of melee range
     {
-        // Check if we've been in combat for a reasonable time but haven't reached melee
-        // This is a heuristic for "probably can't path to target"
-        if (bot->IsInCombat() && bot->GetCombatTimer() > 5000) // 5 seconds in combat
+        // Use pathfinding validation to check if target is truly unreachable
+        Map* map = bot->GetMap();
+        if (map)
         {
-            // Additional check: if bot hasn't moved much recently, probably stuck/can't path
-            // This is imperfect but better than always shooting
-            return true;
+            float targetX = target->GetPositionX();
+            float targetY = target->GetPositionY();
+            float targetZ = target->GetPositionZ();
+            
+            // Check if we can path to the target's position
+            if (!map->CanReachPositionAndGetValidCoords(bot, targetX, targetY, targetZ))
+            {
+                return true;
+            }
         }
     }
     
