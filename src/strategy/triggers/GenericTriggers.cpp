@@ -194,7 +194,27 @@ bool NoAttackersTrigger::IsActive()
 
 bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target", "current target"); }
 
-bool NoTargetTrigger::IsActive() { return !AI_VALUE(Unit*, "current target"); }
+bool NoTargetTrigger::IsActive() 
+{ 
+    if (AI_VALUE(Unit*, "current target"))
+        return false;
+
+    // Don't trigger attack anything if higher priority actions should take precedence
+    
+    // Priority 1: Don't attack if loot is available (loot has 5.0f-8.0f priority)
+    if (AI_VALUE(bool, "has available loot"))
+        return false;
+    
+    // Priority 2: Don't attack if we can use quest items (quest items have 5.0f-7.0f priority)  
+    if (AI_VALUE(bool, "quest item usable"))
+        return false;
+        
+    // Priority 3: Don't attack if we need to move to quest item target (7.0f priority)
+    if (AI_VALUE(bool, "far from quest item target"))
+        return false;
+        
+    return true;
+}
 
 bool MyAttackerCountTrigger::IsActive()
 {
