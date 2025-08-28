@@ -1030,7 +1030,12 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
     
-    // Check all active quests to see if any require this item
+    // Simplified approach: A quest item is needed if there are any incomplete quests
+    // The actual target validation will determine if there are valid targets
+    // This avoids the complex logic of trying to predict item-quest relationships
+    
+    // Check if we have any active incomplete quests at all
+    bool hasIncompleteQuests = false;
     for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 questId = player->GetQuestSlotQuestId(slot);
@@ -1038,49 +1043,14 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             continue;
 
         QuestStatus questStatus = player->GetQuestStatus(questId);
-        
-        // Only consider active (incomplete) quests
-        if (questStatus != QUEST_STATUS_INCOMPLETE)
-            continue;
-
-        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-        if (!quest)
-            continue;
-
-        // Check if this quest uses our item
-        bool questUsesItem = false;
-        
-        // Check quest required items
-        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        if (questStatus == QUEST_STATUS_INCOMPLETE)
         {
-            if (quest->RequiredItemId[i] == itemTemplate->ItemId)
-            {
-                questUsesItem = true;
-                break;
-            }
-        }
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            if (!quest)
+                continue;
 
-        // Also check if any quest objectives might need this spell cast
-        // (Many quest items aren't in RequiredItemId but are used for objectives)
-        if (!questUsesItem)
-        {
-            // Check if the quest has objectives that might require spell casting
-            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
-            {
-                if (quest->RequiredNpcOrGo[i] != 0)
-                {
-                    // This quest has creature/object objectives that might require our item
-                    questUsesItem = true;
-                    break;
-                }
-            }
-        }
-
-        if (questUsesItem)
-        {
-            // Check if quest objectives are already complete
-            bool questObjectivesComplete = true;
-            
+            // Check if this quest still has incomplete objectives
+            bool hasIncompleteObjectives = false;
             for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
             {
                 if (quest->RequiredNpcOrGo[i] == 0)
@@ -1093,44 +1063,62 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                 uint32 currentCount = player->GetQuestSlotCounter(slot, i);
                 if (currentCount < reqCount)
                 {
-                    questObjectivesComplete = false;
-                    
-                    if (botAI)
-                    {
-                        std::ostringstream out;
-                        out << "QuestItem: Quest " << questId << " (" << quest->GetTitle() << ") objective " << i 
-                            << " needs " << (reqCount - currentCount) << " more, item needed";
-                        botAI->TellMaster(out.str());
-                    }
+                    hasIncompleteObjectives = true;
                     break;
                 }
             }
             
-            // If quest is active and objectives aren't complete, we need this item
-            if (!questObjectivesComplete)
+            // Also check for CAST quests that might need progress
+            if (!hasIncompleteObjectives && quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
             {
-                return true;
+                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+                    if (reqCount == 0)
+                        continue;
+                        
+                    uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+                    if (currentCount < reqCount)
+                    {
+                        hasIncompleteObjectives = true;
+                        break;
+                    }
+                }
             }
-            else
+            
+            if (hasIncompleteObjectives)
             {
+                hasIncompleteQuests = true;
                 if (botAI)
                 {
                     std::ostringstream out;
-                    out << "QuestItem: Quest " << questId << " (" << quest->GetTitle() << ") objectives complete, item not needed";
+                    out << "QuestItem: Found incomplete quest " << questId << " (" << quest->GetTitle() << ") - item might be needed";
                     botAI->TellMaster(out.str());
                 }
+                break; // Found at least one incomplete quest
             }
         }
     }
 
-    // No active quest needs this item
+    if (!hasIncompleteQuests)
+    {
+        if (botAI)
+        {
+            std::ostringstream out;
+            out << "QuestItem: No incomplete quests found - item " << itemTemplate->Name1 << " not needed";
+            botAI->TellMaster(out.str());
+        }
+        return false;
+    }
+
+    // Let the target validation determine if this item is actually useful
     if (botAI)
     {
         std::ostringstream out;
-        out << "QuestItem: No active quest needs item " << itemTemplate->Name1;
+        out << "QuestItem: Item " << itemTemplate->Name1 << " might be needed - deferring to target validation";
         botAI->TellMaster(out.str());
     }
-    return false;
+    return true;
 }
 
 bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint32 spellId)
