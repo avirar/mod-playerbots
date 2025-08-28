@@ -311,7 +311,7 @@ bool EnemyUnreachableTrigger::IsActive()
     
     // Check if target is out of melee range and unreachable via pathfinding
     float distance = bot->GetDistance(target);
-    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
         return false;
         
