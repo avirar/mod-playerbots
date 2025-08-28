@@ -234,6 +234,7 @@ public:
 
     ActionThreatType getThreatType() override { return ActionThreatType::None; }
     NextAction** getPrerequisites() override;
+    bool isUseful() override;
 };
 
 class CastLifeBloodAction : public CastHealingSpellAction
