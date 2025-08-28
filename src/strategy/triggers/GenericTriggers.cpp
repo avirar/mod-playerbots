@@ -207,8 +207,8 @@ bool NoTargetTrigger::IsActive()
     if (AI_VALUE(Unit*, "current target"))
         return false;
 
-    // Conservative approach: Only check loot availability for now 
-    // (most common case that user wants to fix)
+    // Conservative approach: Check priorities without recursive trigger calls
+    
     // Priority 1: Don't attack if loot is available (loot has 5.0f-8.0f priority)
     try {
         if (AI_VALUE(bool, "has available loot"))
@@ -216,7 +216,18 @@ bool NoTargetTrigger::IsActive()
     }
     catch (...) {
         // If loot value lookup fails, fall back to default behavior
-        return true;
+    }
+    
+    // Priority 2: Don't attack if we have quest items (safe direct check)
+    try {
+        Item* questItem = QuestItemHelper::FindBestQuestItem(bot, nullptr);
+        if (questItem) {
+            // We have quest items - let quest item actions handle priorities
+            return false;
+        }
+    }
+    catch (...) {
+        // If quest item lookup fails, continue
     }
         
     return true;
