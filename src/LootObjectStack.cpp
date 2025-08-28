@@ -9,6 +9,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Playerbots.h"
+#include "SharedDefines.h"
 #include "Unit.h"
 
 #define MAX_LOOT_OBJECT_COUNT 200
@@ -214,15 +215,27 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     break;
 
                 case LOCK_KEY_SKILL:
-                    if (goId == 13891 || goId == 19535 || lockId == 259)  // Serpentbloom uses lock 259, there are others too
                     {
-                        this->guid = lootGUID;
-                    }
-                    else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
-                    {
-                        skillId = SkillByLockType(LockType(lockInfo->Index[i]));
-                        reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-                        guid = lootGUID;
+                        LockType lockType = LockType(lockInfo->Index[i]);
+                        SkillType mappedSkill = SkillByLockType(lockType);
+                        
+                        if (mappedSkill > SKILL_NONE)
+                        {
+                            // Standard skill-based lock (lockpicking, mining, herbalism, etc.)
+                            skillId = mappedSkill;
+                            reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
+                            guid = lootGUID;
+                        }
+                        else if (IsAccessibleLockType(lockType))
+                        {
+                            // Special lock types that don't require skills but should be accessible
+                            // (like LOCKTYPE_OPEN_KNEELING, LOCKTYPE_OPEN, LOCKTYPE_TREASURE, etc.)
+                            skillId = SKILL_NONE; // No skill required
+                            reqSkillValue = 0;
+                            guid = lootGUID;
+                        }
+                        // If lock type is not accessible (like LOCKTYPE_DISARM_TRAP without mapping), 
+                        // don't set guid - bot won't try to loot it
                     }
                     break;
 
@@ -263,6 +276,41 @@ bool LootObject::IsNeededForQuest(Player* bot, uint32 itemId)
     }
 
     return false;
+}
+
+bool LootObject::IsAccessibleLockType(LockType lockType)
+{
+    // These lock types don't require specific skills but should be accessible to players
+    // Based on analysis of LockType.dbc and AzerothCore's SkillByLockType function
+    switch (lockType)
+    {
+        case LOCKTYPE_OPEN:                    // 5  - Basic opening
+        case LOCKTYPE_TREASURE:                // 6  - Treasure chests  
+        case LOCKTYPE_CLOSE:                   // 8  - Closing objects
+        case LOCKTYPE_QUICK_OPEN:              // 10 - Quick opening
+        case LOCKTYPE_QUICK_CLOSE:             // 11 - Quick closing  
+        case LOCKTYPE_OPEN_TINKERING:          // 12 - Engineering opening
+        case LOCKTYPE_OPEN_KNEELING:           // 13 - Kneeling opening (quest objects)
+        case LOCKTYPE_OPEN_ATTACKING:          // 14 - Combat opening
+        case LOCKTYPE_BLASTING:                // 16 - Explosive opening
+        case LOCKTYPE_SLOW_OPEN:               // 17 - Slow opening (visual effect)
+        case LOCKTYPE_SLOW_CLOSE:              // 18 - Slow closing (visual effect)
+        case LOCKTYPE_OPEN_FROM_VEHICLE:       // 21 - Vehicle opening
+            return true;
+            
+        // These lock types should NOT be accessible without proper skills/items
+        case LOCKTYPE_PICKLOCK:                // 1  - Requires lockpicking skill
+        case LOCKTYPE_HERBALISM:               // 2  - Requires herbalism skill  
+        case LOCKTYPE_MINING:                  // 3  - Requires mining skill
+        case LOCKTYPE_DISARM_TRAP:             // 4  - Requires trap disarming (not implemented)
+        case LOCKTYPE_CALCIFIED_ELVEN_GEMS:    // 7  - Special case (not implemented)
+        case LOCKTYPE_ARM_TRAP:                // 9  - Trap arming (not implemented)
+        case LOCKTYPE_GAHZRIDIAN:              // 15 - Special case (not implemented)  
+        case LOCKTYPE_FISHING:                 // 19 - Requires fishing skill
+        case LOCKTYPE_INSCRIPTION:             // 20 - Requires inscription skill
+        default:
+            return false;
+    }
 }
 
 WorldObject* LootObject::GetWorldObject(Player* bot)
