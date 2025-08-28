@@ -25,6 +25,11 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
+#include <map>
+#include <string>
+
+// Forward declare PendingQuestItemCast for member variable
+struct PendingQuestItemCast;
 
 class AiObjectContext;
 class Creature;
@@ -640,6 +645,7 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    std::map<std::string, PendingQuestItemCast> pendingQuestItemCasts;
 };
 
 #endif
