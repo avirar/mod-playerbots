@@ -166,3 +166,4 @@ private:
     static bool CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 killCreditEntry);
 
 };
+
