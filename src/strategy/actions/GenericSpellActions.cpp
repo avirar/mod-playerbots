@@ -230,22 +230,24 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
         switch (pItem->GetTemplate()->SubClass)
         {
             case ITEM_SUBCLASS_WEAPON_GUN:
-                // spell += " gun";
-                spell = "shoot";
+                spell += " gun";
                 break;
             case ITEM_SUBCLASS_WEAPON_BOW:
-                // spell += " bow";
-                spell = "shoot";
+                spell += " bow";
                 break;
             case ITEM_SUBCLASS_WEAPON_CROSSBOW:
-                // spell += " crossbow";
-                spell = "shoot";
+                spell += " crossbow";
                 break;
             case ITEM_SUBCLASS_WEAPON_THROWN:
                 spell = "throw";
                 break;
         }
     }
+}
+
+NextAction** CastShootAction::getPrerequisites()
+{
+    return NextAction::array(0, new NextAction("reach spell"), nullptr);
 }
 
 NextAction** CastSpellAction::getPrerequisites()
