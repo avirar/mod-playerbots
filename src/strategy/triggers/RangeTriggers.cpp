@@ -295,3 +295,44 @@ bool TooFarFromPlayerWithAuraTrigger::TooFarFromPlayerWithAura(uint32 spellId, f
 
     return false;
 }
+
+bool EnemyUnreachableTrigger::IsActive()
+{
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+    
+    // Check if target is flying, hovering, or swimming with significant height difference
+    if ((target->IsFlying() || target->IsHovering() || target->IsSwimming()) && 
+        std::abs(target->GetPositionZ() - bot->GetPositionZ()) > 10.0f)
+    {
+        return true;
+    }
+    
+    // Check if target is out of melee range and unreachable via pathfinding
+    float distance = bot->GetDistance(target);
+    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+    if (!botAI)
+        return false;
+        
+    float meleeRange = botAI->GetRange("melee");
+    
+    if (distance > meleeRange + 5.0f)
+    {
+        Map* map = bot->GetMap();
+        if (map)
+        {
+            float targetX = target->GetPositionX();
+            float targetY = target->GetPositionY();
+            float targetZ = target->GetPositionZ();
+            
+            // Check if we can path to the target's position
+            if (!map->CanReachPositionAndGetValidCoords(bot, targetX, targetY, targetZ))
+            {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
