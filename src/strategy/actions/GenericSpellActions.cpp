@@ -247,29 +247,9 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
 
 NextAction** CastShootAction::getPrerequisites()
 {
-    // For melee classes, don't add "reach spell" prerequisite if we're in a melee combat context
-    // This prevents conflicts with "reach melee" actions that are typically higher priority
-    Unit* target = AI_VALUE(Unit*, "current target");
-    if (!target)
-        return nullptr;
-    
-    // Check if bot is already trying to reach melee range
-    // If target is within spell range but outside melee range, use shoot without positioning
-    float spellRange = botAI->GetRange("spell");
-    float meleeRange = botAI->GetRange("melee");
-    float distance = bot->GetDistance(target);
-    
-    // If we're already within shoot range, don't need reach spell
-    if (distance <= spellRange)
-        return nullptr;
-    
-    // If target is close to melee range, let melee positioning handle it
-    // This prevents conflicts with reach melee actions
-    if (distance <= meleeRange + 10.0f) // 10 yard buffer
-        return nullptr;
-    
-    // Only use reach spell for truly distant targets
-    return NextAction::array(0, new NextAction("reach spell"), nullptr);
+    // No prerequisites - let strategy triggers handle positioning
+    // The "enemy unreachable" trigger will only fire when appropriate
+    return nullptr;
 }
 
 bool CastShootAction::isUseful()
