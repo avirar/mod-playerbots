@@ -426,6 +426,9 @@ public:
     BotState GetState() { return currentState; };
     void ResetStrategies(bool load = false);
     void ReInitCurrentEngine();
+    
+    // Quest item pending casts accessors
+    std::map<std::string, PendingQuestItemCast>& GetPendingQuestItemCasts() { return pendingQuestItemCasts; }
     void Reset(bool full = false);
     static bool IsTank(Player* player, bool bySpec = false);
     static bool IsHeal(Player* player, bool bySpec = false);
