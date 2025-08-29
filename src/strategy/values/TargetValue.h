@@ -116,6 +116,15 @@ public:
     }
 };
 
+class SpellFocusTargetValue : public ManualSetValue<ObjectGuid>
+{
+public:
+    SpellFocusTargetValue(PlayerbotAI* botAI, std::string const name = "spell focus target")
+        : ManualSetValue<ObjectGuid>(botAI, ObjectGuid::Empty, name)
+    {
+    }
+};
+
 class FindTargetValue : public UnitCalculatedValue, public Qualified
 {
 public:
