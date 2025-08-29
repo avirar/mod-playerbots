@@ -11,6 +11,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "SmartScriptMgr.h"
 #include "SpellInfo.h"
 #include "Unit.h"
 
@@ -1864,15 +1865,17 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
                 if (!target || target->GetEntry() != requiredCreatureEntry)
                     continue;
                     
-                // Check distance
+                // Check distance using SmartAI-aware range detection
                 float distance = bot->GetDistance(target);
-                if (distance > sPlayerbotAIConfig->grindDistance)
+                float maxDistance = GetSmartAIInteractionRange(requiredCreatureEntry);
+                
+                if (distance > maxDistance)
                     continue;
                     
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
-                    out << "QuestItem: Found required creature " << target->GetName() << " (entry " << requiredCreatureEntry << ") at distance " << distance;
+                    out << "QuestItem: Found required creature " << target->GetName() << " (entry " << requiredCreatureEntry << ") at distance " << distance << " (max: " << maxDistance << ")";
                     botAI->TellMaster(out.str());
                 }
                 
@@ -1885,4 +1888,46 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
         botAI->TellMaster("QuestItem: No valid targets found using spell conditions");
         
     return nullptr;
+}
+
+float QuestItemHelper::GetSmartAIInteractionRange(uint32 creatureEntry)
+{
+    // Get SmartAI script for this creature
+    SmartAIEventList scripts = sSmartScriptMgr->GetScript(creatureEntry, SMART_SCRIPT_TYPE_CREATURE);
+    
+    float maxRange = sPlayerbotAIConfig->grindDistance; // Default fallback
+    
+    for (SmartScriptHolder const& script : scripts)
+    {
+        // Look for MOVE_TO_POS_TARGET action (type 201) which responds to gameobjects
+        if (script.action.type == SMART_ACTION_MOVE_TO_POS_TARGET)
+        {
+            // Check different target types that might have distance parameters
+            switch (script.target.type)
+            {
+                case SMART_TARGET_GAMEOBJECT_DISTANCE:
+                case SMART_TARGET_CREATURE_DISTANCE:
+                {
+                    // target_param2 typically contains the search distance
+                    float distance = static_cast<float>(script.target.unitDistance.dist);
+                    if (distance > 0.0f && distance > maxRange)
+                        maxRange = distance;
+                    break;
+                }
+                case SMART_TARGET_GAMEOBJECT_RANGE:
+                case SMART_TARGET_CREATURE_RANGE:
+                {
+                    // For range targets, param3 is typically the max range
+                    float distance = static_cast<float>(script.target.unitRange.maxDist);
+                    if (distance > 0.0f && distance > maxRange)
+                        maxRange = distance;
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+    
+    return maxRange;
 }
