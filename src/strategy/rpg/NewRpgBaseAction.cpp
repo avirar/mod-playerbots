@@ -368,7 +368,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             IsQuestWorthDoing(quest) && IsQuestCapableDoing(quest))
         {
             AcceptQuest(quest, guid);
-            if (botAI->GetMaster())
+            if (botAI->GetMaster() && botAI->HasStrategy("debug newrpg", BOT_STATE_NON_COMBAT))
                 botAI->TellMasterNoFacing("Quest accepted " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
@@ -377,7 +377,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
         {
             TurnInQuest(quest, guid);
-            if (botAI->GetMaster())
+            if (botAI->GetMaster() && botAI->HasStrategy("debug newrpg", BOT_STATE_NON_COMBAT))
                 botAI->TellMasterNoFacing("Quest rewarded " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
             botAI->rpgStatistic.questRewarded++;
@@ -667,7 +667,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-            if (botAI->GetMaster())
+            if (botAI->GetMaster() && botAI->HasStrategy("debug newrpg", BOT_STATE_NON_COMBAT))
                 botAI->TellMasterNoFacing("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             dropped++;
@@ -692,7 +692,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-            if (botAI->GetMaster())
+            if (botAI->GetMaster() && botAI->HasStrategy("debug newrpg", BOT_STATE_NON_COMBAT))
                 botAI->TellMasterNoFacing("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             dropped++;
