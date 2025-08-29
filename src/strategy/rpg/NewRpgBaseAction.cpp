@@ -271,13 +271,14 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         
     // Final LOS check before interaction - only fail if we're close enough to interact
     float distance = bot->GetDistance(object);
+    /*
     if (distance <= INTERACTION_DISTANCE && !bot->IsWithinLOSInMap(object))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with NPC/GO {} - no LOS at interaction distance", 
                  bot->GetName(), guid.ToString());
         return false;
     }
-
+    */
     // Handle GameObject quest objectives that need to be used directly
     if (GameObject* go = object->ToGameObject())
     {
