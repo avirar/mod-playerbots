@@ -61,7 +61,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
     }
 
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Found " << candidateItems.size() << " candidate quest items";
@@ -71,7 +71,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
     // Now test each item to see if it has valid targets
     for (auto& [item, spellId] : candidateItems)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             ItemTemplate const* template_ptr = item->GetTemplate();
             std::ostringstream out;
@@ -85,7 +85,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         // Check if this quest item is needed
         if (!IsQuestItemNeeded(bot, item, spellId))
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 ItemTemplate const* template_ptr = item->GetTemplate();
                 std::ostringstream out;
@@ -101,7 +101,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         // Check if item can be used (not on cooldown, etc)
         if (!CanUseQuestItem(botAI, bot, spellId))
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 ItemTemplate const* template_ptr = item->GetTemplate();
                 std::ostringstream out;
@@ -118,7 +118,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId);
         if (testTarget)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 ItemTemplate const* template_ptr = item->GetTemplate();
                 std::ostringstream out;
@@ -135,7 +135,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
         else
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 ItemTemplate const* template_ptr = item->GetTemplate();
                 std::ostringstream out;
@@ -148,7 +148,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
     }
 
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         botAI->TellMaster("QuestItem: No quest items with valid targets found");
     }
@@ -205,9 +205,12 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
         return nullptr;
 
     // Debug output for spell targeting info
-    std::ostringstream debugOut;
-    debugOut << "QuestItem: Spell " << spellId << " targets=" << spellInfo->Targets << " needsTarget=" << spellInfo->NeedsExplicitUnitTarget();
-    botAI->TellMaster(debugOut.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream debugOut;
+        debugOut << "QuestItem: Spell " << spellId << " targets=" << spellInfo->Targets << " needsTarget=" << spellInfo->NeedsExplicitUnitTarget();
+        botAI->TellMaster(debugOut.str());
+    }
 
     // If spell doesn't need an explicit target, return the bot as self-target
     if (!spellInfo->NeedsExplicitUnitTarget())
@@ -215,7 +218,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
         // Check location requirements for self-cast spells (like Plaguehound Cage requiring Bleeding Vale)
         if (!CheckSpellLocationRequirements(bot, spellId))
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Self-cast spell " << spellId << " failed location requirements";
@@ -224,7 +227,8 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             return nullptr;
         }
         
-        botAI->TellMaster("QuestItem: Spell is self-cast, using bot as target");
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            botAI->TellMaster("QuestItem: Spell is self-cast, using bot as target");
         return bot;
     }
 
@@ -234,7 +238,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     // Get nearby units that could be quest targets
     GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
     
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Found " << targets.size() << " possible targets";
@@ -266,7 +270,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     {
         GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
         
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Found " << npcs.size() << " nearest npcs";
@@ -280,7 +284,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
                 continue;
 
             // Debug: Log each NPC we're checking
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Checking NPC " << target->GetName() << " (entry:" << target->GetEntry() 
@@ -292,14 +296,14 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             float distance = bot->GetDistance(target);
             if (distance >= closestDistance)
             {
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     botAI->TellMaster("QuestItem: NPC too far, skipping");
                 continue;
             }
 
             if (!IsTargetValidForSpell(target, spellId, bot, botAI))
             {
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: NPC " << target->GetName() << " (entry:" << target->GetEntry() << ") failed spell validation";
@@ -312,7 +316,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             closestDistance = distance;
             bestTarget = target;
             
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Selected " << target->GetName() << " as best target";
@@ -337,7 +341,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     // Prevent spam-casting: Check if target already has aura from this spell
     if (target->HasAura(spellId))
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Target " << target->GetName() << " already has aura " << spellId << " - preventing spam cast";
@@ -357,7 +361,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         {
             if (target->HasAura(effect.TriggerSpell))
             {
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: Target " << target->GetName() << " has triggered aura " << effect.TriggerSpell << " - preventing spam cast";
@@ -386,7 +390,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
             spellName.find("flame") != std::string::npos ||
             spellName.find("interact") != std::string::npos)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Target " << target->GetName() << " has burning/interaction aura '" 
@@ -400,7 +404,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     // For self-cast spells, skip the alive check (player might be casting on themselves)
     if (!spellInfo->NeedsExplicitUnitTarget())
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Self-cast spell " << spellId << " validation for " << target->GetName();
@@ -415,7 +419,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
         // Check if this quest item spell can target dead units
         bool canTargetDead = CanQuestSpellTargetDead(spellId);
         
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Target " << target->GetName() << " is dead, canTargetDead=" << (canTargetDead ? "true" : "false");
@@ -438,7 +442,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     // AFTER spell conditions pass, check if using the quest item would provide quest progress
     if (!WouldProvideQuestCredit(caster, target, spellId))
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Target " << target->GetName() << " would not provide quest credit - skipping";
@@ -451,7 +455,7 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
     // But don't record usage yet - that happens when spell is actually cast
     if (!CanUseQuestItemOnTarget(botAI, target, spellId))
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Target " << target->GetName() << " used recently - preventing spam";
@@ -468,7 +472,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
 {
     if (!target)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: CheckSpellConditions - no target for spell " << spellId;
@@ -494,7 +498,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     // Check spell location requirements first (RequiredAreasID from spell data)
     if (caster && !CheckSpellLocationRequirements(caster, spellId))
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Spell " << spellId << " failed location requirements";
@@ -507,7 +511,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
     // Debug output for conditions found
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Spell " << spellId << " has " << conditions.size() << " conditions for target " << target->GetName() << " (entry:" << target->GetEntry() << ")";
@@ -530,7 +534,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     {
         bool groupPassed = true; // All conditions in this group must pass (AND logic within group)
         
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Checking ElseGroup " << elseGroup << " with " << groupConditions.size() << " conditions";
@@ -542,7 +546,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             bool conditionMet = false;
 
         // Debug output for each condition
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Checking condition type " << condition->ConditionType 
@@ -570,7 +574,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     // According to conditions.md: "True if creature_template.type == ConditionValue1"
                     conditionMet = (targetType == requiredType);
                     
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: CONDITION_CREATURE_TYPE check - target entry:" << target->GetEntry() 
@@ -628,7 +632,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     // For now, we ignore GUID checking as it's rarely used
                 }
                 
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: CONDITION_OBJECT_ENTRY_GUID check - target typeID:" << target->GetTypeId()
@@ -640,7 +644,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             }
             case CONDITION_NEAR_CREATURE:
             {
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     uint32 creatureEntry = condition->ConditionValue1;
                     float maxDistance = condition->ConditionValue2;
@@ -664,7 +668,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     uint32 playerAreaId = caster->GetAreaId();
                     conditionMet = (playerAreaId == requiredAreaId);
                     
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: CONDITION_AREAID check - playerArea:" << playerAreaId 
@@ -682,7 +686,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                     uint32 playerZoneId = caster->GetZoneId();
                     conditionMet = (playerZoneId == requiredZoneId);
                     
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: CONDITION_ZONEID check - playerZone:" << playerZoneId 
@@ -757,7 +761,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                 conditionMet = !conditionMet;
 
             // Debug output for final condition result
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Condition type " << condition->ConditionType << " final result: " << (conditionMet ? "PASSED" : "FAILED");
@@ -775,7 +779,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
         // If this group passed all its conditions, the overall condition is met
         if (groupPassed)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: ElseGroup " << elseGroup << " PASSED - spell condition met";
@@ -784,7 +788,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             return true;
         }
         
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: ElseGroup " << elseGroup << " FAILED";
@@ -793,7 +797,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     }
 
     // No ElseGroup passed
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Spell " << spellId << " REJECTED - all condition groups failed";
@@ -811,17 +815,23 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
     if (!bot)
         return false;
 
-    std::ostringstream debugOut;
-    debugOut << "QuestItem: IsNearCreature looking for entry " << creatureEntry 
-             << " within " << maxDistance << "y, requireAlive:" << (requireAlive ? "true" : "false");
-    botAI->TellMaster(debugOut.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream debugOut;
+        debugOut << "QuestItem: IsNearCreature looking for entry " << creatureEntry 
+                 << " within " << maxDistance << "y, requireAlive:" << (requireAlive ? "true" : "false");
+        botAI->TellMaster(debugOut.str());
+    }
 
     // Use the existing playerbots infrastructure to get nearby NPCs
     GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     
-    debugOut.str("");
-    debugOut << "QuestItem: Scanning " << npcs.size() << " nearby NPCs";
-    botAI->TellMaster(debugOut.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream debugOut;
+        debugOut << "QuestItem: Scanning " << npcs.size() << " nearby NPCs";
+        botAI->TellMaster(debugOut.str());
+    }
     
     int foundCount = 0;
     int validCount = 0;
@@ -886,10 +896,13 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
     }
 
 
-    std::ostringstream finalOut;
-    finalOut << "QuestItem: No valid creature found. Total matching entry: " << foundCount 
-             << ", valid distance+status: " << validCount;
-    botAI->TellMaster(finalOut.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream finalOut;
+        finalOut << "QuestItem: No valid creature found. Total matching entry: " << foundCount 
+                 << ", valid distance+status: " << validCount;
+        botAI->TellMaster(finalOut.str());
+    }
     return false;
 }
 
@@ -912,7 +925,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     // Check for specific area requirements
     if (spellInfo->AreaGroupId > 0)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Spell " << spellId << " requires AreaGroupId " << spellInfo->AreaGroupId 
@@ -926,7 +939,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     if (locationResult != SPELL_CAST_OK)
     {
         // Provide more detailed error messages
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Spell " << spellId << " location check FAILED. ";
@@ -954,7 +967,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
     }
 
     // Debug output for successful location check
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Spell " << spellId << " location check PASSED";
@@ -1037,9 +1050,12 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
     // Check for existing spell auras (prevents recasting buffs/summons)
     if (player->HasAura(spellId))
     {
-        std::ostringstream out;
-        out << "QuestItem: Player already has aura " << spellId << " - preventing recast";
-        botAI->TellMaster(out.str());
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "QuestItem: Player already has aura " << spellId << " - preventing recast";
+            botAI->TellMaster(out.str());
+        }
         return false;
     }
 
@@ -1118,7 +1134,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
         if (!quest)
             continue;
 
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Checking if item " << itemTemplate->Name1 << " is needed for quest " << questId << " (" << quest->GetTitle() << ")";
@@ -1142,7 +1158,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             if (currentCount < reqCount)
             {
                 questNeedsProgress = true;
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: Quest " << questId << " objective " << (int)i << " needs progress: " << currentCount << "/" << reqCount;
@@ -1165,7 +1181,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                 if (currentCount < reqCount)
                 {
                     questNeedsProgress = true;
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: CAST quest " << questId << " objective " << (int)i << " needs progress: " << currentCount << "/" << reqCount;
@@ -1191,7 +1207,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                     if (!spellInfo->NeedsExplicitUnitTarget())
                     {
                         itemNeededForActiveQuest = true;
-                        if (botAI)
+                        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                         {
                             std::ostringstream out;
                             out << "QuestItem: Self-cast item " << itemTemplate->Name1 << " might be needed for quest " << questId;
@@ -1222,7 +1238,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                             if (IsNearCreature(botAI, requiredEntry, sPlayerbotAIConfig->grindDistance, false))
                             {
                                 foundPotentialTarget = true;
-                                if (botAI)
+                                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                                 {
                                     std::ostringstream out;
                                     out << "QuestItem: Found potential target (entry " << requiredEntry << ") for quest " << questId << " objective " << (int)i;
@@ -1235,7 +1251,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                             if (CheckForKillCreditCreatures(botAI, requiredEntry))
                             {
                                 foundPotentialTarget = true;
-                                if (botAI)
+                                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                                 {
                                     std::ostringstream out;
                                     out << "QuestItem: Found KillCredit target for entry " << requiredEntry << " for quest " << questId << " objective " << (int)i;
@@ -1248,7 +1264,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                         if (foundPotentialTarget)
                         {
                             itemNeededForActiveQuest = true;
-                            if (botAI)
+                            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                             {
                                 std::ostringstream out;
                                 out << "QuestItem: Targeted item " << itemTemplate->Name1 << " might be needed for quest " << questId;
@@ -1264,7 +1280,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
 
     if (!itemNeededForActiveQuest)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Item " << itemTemplate->Name1 << " not needed for any active quest";
@@ -1273,7 +1289,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
         return false;
     }
 
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Item " << itemTemplate->Name1 << " is needed for active quest progress";
@@ -1305,7 +1321,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
         if (!quest)
             continue;
 
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Checking quest " << questId << " (" << quest->GetTitle() << ") - CAST flag:" 
@@ -1328,7 +1344,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                     
                 uint32 currentCount = player->GetQuestSlotCounter(slot, j);
                 
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: CAST quest " << questId << " objective " << (int)j << " progress: " << currentCount << "/" << requiredCount;
@@ -1338,7 +1354,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 if (currentCount < requiredCount)
                 {
                     questNeedsProgress = true;
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: CAST quest " << questId << " needs " << (requiredCount - currentCount) << " more casts";
@@ -1353,7 +1369,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
             // This function is called AFTER spell validation, so if we reach here, conditions passed
             if (questNeedsProgress)
             {
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: Target " << target->GetName() << " WOULD provide quest credit for CAST quest " << questId;
@@ -1370,7 +1386,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
             if (requiredEntry == 0)
                 continue;
                 
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Quest " << questId << " objective " << j << " requires entry:" << requiredEntry;
@@ -1383,7 +1399,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 uint32 requiredCount = quest->RequiredNpcOrGoCount[j];
                 uint32 currentCount = player->GetQuestSlotCounter(slot, j);
                 
-                if (botAI)
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: Quest " << questId << " objective " << j << " - target entry:" << targetEntry 
@@ -1394,7 +1410,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 // If current count is less than required, this target would provide credit
                 if (currentCount < requiredCount)
                 {
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: Target " << target->GetName() << " WOULD provide quest credit for quest " << questId;
@@ -1404,7 +1420,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
                 }
                 else
                 {
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: Target " << target->GetName() << " objective already complete (" << currentCount << "/" << requiredCount << ")";
@@ -1416,7 +1432,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
     }
 
     // No active quest would get credit from this target
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Target " << target->GetName() << " (entry:" << targetEntry << ") would NOT provide quest credit";
@@ -1457,7 +1473,7 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
         
         if (timeSinceLastUse < COOLDOWN_SECONDS)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
@@ -1472,7 +1488,7 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     auto pendingIt = botAI->GetPendingQuestItemCasts().find(key);
     if (pendingIt != botAI->GetPendingQuestItemCasts().end())
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
@@ -1483,7 +1499,7 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     }
     
     // Target can be used - but don't record usage yet (that happens when spell is actually cast)
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
@@ -1511,7 +1527,7 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
     // Record the usage time in the shared map
     s_questItemUsageTracker[key] = currentTime;
     
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Target " << target->GetName() << " (GUID:" << target->GetGUID().ToString() 
@@ -1543,7 +1559,7 @@ void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* targe
     
     botAI->GetPendingQuestItemCasts()[key] = pending;
     
-    if (botAI)
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Recording pending cast on " << target->GetName() 
@@ -1572,7 +1588,7 @@ void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
         // Check if this pending cast is for this spell (key starts with spellId_)
         if (key.find(spellIdStr + "_") == 0)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Spell " << spellId << " failed - removing pending cast for target " 
@@ -1635,7 +1651,7 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
                     // Record the cooldown
                     s_questItemUsageTracker[pending.key] = currentTime;
                     
-                    if (botAI)
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
                         out << "QuestItem: Pending cast timeout - assuming success, starting cooldown for " 
@@ -1687,7 +1703,7 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
         // Check if this creature gives KillCredit for our required entry
         if (creatureTemplate->KillCredit[0] == killCreditEntry || creatureTemplate->KillCredit[1] == killCreditEntry)
         {
-            if (botAI)
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
                 out << "QuestItem: Found KillCredit creature " << creature->GetName() << " (entry:" << creature->GetEntry() 
@@ -1700,4 +1716,3 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
 
     return false;
 }
-
