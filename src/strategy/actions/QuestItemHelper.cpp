@@ -934,6 +934,76 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
         }
     }
     
+    // Check RequiresSpellFocus (similar to Spell.cpp implementation)
+    if (spellInfo->RequiresSpellFocus)
+    {
+        bool foundSpellFocus = false;
+        
+        // Use existing playerbot infrastructure to find nearby gameobjects
+        GuidVector nearbyGameObjects = AI_VALUE(GuidVector, "nearest game objects");
+        
+        for (ObjectGuid goGuid : nearbyGameObjects)
+        {
+            GameObject* go = botAI->GetGameObject(goGuid);
+            if (!go)
+                continue;
+                
+            // Check if this gameobject is a spell focus object with matching focus ID
+            if (go->GetGoType() == GAMEOBJECT_TYPE_SPELL_FOCUS && 
+                go->isSpawned() &&
+                go->GetGOInfo()->spellFocus.focusId == spellInfo->RequiresSpellFocus)
+            {
+                // Check if player is within the spell focus range
+                float dist = (float)((go->GetGOInfo()->spellFocus.dist) / 2);
+                float requiredRange = dist - 2.0f; // Add -2.0f buffer for reliable casting
+                if (requiredRange <= 0.0f)
+                    requiredRange = 0.5f; // Minimum safe distance
+                    
+                if (go->IsWithinDistInMap(player, requiredRange))
+                {
+                    foundSpellFocus = true;
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Spell " << spellId << " found required spell focus: " << go->GetName() 
+                            << " (focus ID " << spellInfo->RequiresSpellFocus << ") at distance " << player->GetDistance(go);
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+                else
+                {
+                    // Store the spell focus object as a movement target so the bot can move to it
+                    botAI->GetAiObjectContext()->GetValue<ObjectGuid>("spell focus target")->Set(go->GetGUID());
+                    
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Spell " << spellId << " found spell focus " << go->GetName()
+                            << " but out of range (" << player->GetDistance(go) << " > " << requiredRange 
+                            << "). Moving to spell focus object.";
+                        botAI->TellMaster(out.str());
+                    }
+                    return false; // Return false so quest item isn't used yet, movement action will handle getting closer
+                }
+            }
+        }
+        
+        if (!foundSpellFocus)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Spell " << spellId << " requires spell focus " << spellInfo->RequiresSpellFocus << " but none found nearby";
+                botAI->TellMaster(out.str());
+            }
+            
+            // Clear any previous spell focus target since none was found
+            botAI->GetAiObjectContext()->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
+            return false;
+        }
+    }
+    
     // Use the built-in SpellInfo location checking
     SpellCastResult locationResult = spellInfo->CheckLocation(mapId, zoneId, areaId, player);
     if (locationResult != SPELL_CAST_OK)
