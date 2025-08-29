@@ -1081,9 +1081,12 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
                 }
                 else
                 {
-                    std::ostringstream out;
-                    out << "QuestItem: No existing summon " << summonEntry << " found - allowing cast";
-                    botAI->TellMaster(out.str());
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: No existing summon " << summonEntry << " found - allowing cast";
+                        botAI->TellMaster(out.str());
+                    }
                 }
             }
         }
@@ -1097,9 +1100,12 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
     // - Item enchantments
     // - etc.
 
-    std::ostringstream out;
-    out << "QuestItem: Quest item with spell " << spellId << " can be used";
-    botAI->TellMaster(out.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Quest item with spell " << spellId << " can be used";
+        botAI->TellMaster(out.str());
+    }
     return true;
 }
 
