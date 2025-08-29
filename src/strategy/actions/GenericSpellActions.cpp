@@ -282,13 +282,11 @@ bool CastShootAction::isUseful()
     if (botClass == CLASS_HUNTER || botClass == CLASS_MAGE || botClass == CLASS_WARLOCK || 
         botClass == CLASS_PRIEST)
     {
-        botAI->TellMasterNoFacing("CastShootAction: ranged class, allowing shoot");
         return true;
     }
     
     // For melee classes, if this action is being considered by the strategy,
     // it means the "enemy unreachable" trigger fired, so allow shooting
-    botAI->TellMasterNoFacing("CastShootAction: melee class but allowing shoot due to unreachable trigger");
     return true;
 }
 
