@@ -1469,8 +1469,8 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     }
     
     // Also check if there's a pending cast for this target
-    auto pendingIt = botAI->pendingQuestItemCasts.find(key);
-    if (pendingIt != botAI->pendingQuestItemCasts.end())
+    auto pendingIt = botAI->GetPendingQuestItemCasts().find(key);
+    if (pendingIt != botAI->GetPendingQuestItemCasts().end())
     {
         if (botAI)
         {
@@ -1541,7 +1541,7 @@ void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* targe
     pending.targetGuid = target->GetGUID();
     pending.castTime = currentTime;
     
-    botAI->pendingQuestItemCasts[key] = pending;
+    botAI->GetPendingQuestItemCasts()[key] = pending;
     
     if (botAI)
     {
@@ -1564,8 +1564,8 @@ void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
     // Find and remove any pending casts for this spell from this bot's map
     std::string spellIdStr = std::to_string(spellId);
     
-    auto it = botAI->pendingQuestItemCasts.begin();
-    while (it != botAI->pendingQuestItemCasts.end())
+    auto it = botAI->GetPendingQuestItemCasts().begin();
+    while (it != botAI->GetPendingQuestItemCasts().end())
     {
         const std::string& key = it->first;
         
@@ -1580,7 +1580,7 @@ void QuestItemHelper::OnQuestItemSpellFailed(PlayerbotAI* botAI, uint32 spellId)
                 botAI->TellMaster(out.str());
             }
             
-            it = botAI->pendingQuestItemCasts.erase(it);
+            it = botAI->GetPendingQuestItemCasts().erase(it);
         }
         else
         {
@@ -1597,8 +1597,8 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
     time_t currentTime = time(nullptr);
     const time_t PENDING_TIMEOUT = 5; // 5 seconds timeout for pending casts
     
-    auto it = botAI->pendingQuestItemCasts.begin();
-    while (it != botAI->pendingQuestItemCasts.end())
+    auto it = botAI->GetPendingQuestItemCasts().begin();
+    while (it != botAI->GetPendingQuestItemCasts().end())
     {
         const PendingQuestItemCast& pending = it->second;
         time_t timeSinceCast = currentTime - pending.castTime;
@@ -1645,7 +1645,7 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
                 }
             }
             
-            it = botAI->pendingQuestItemCasts.erase(it);
+            it = botAI->GetPendingQuestItemCasts().erase(it);
         }
         else
         {
