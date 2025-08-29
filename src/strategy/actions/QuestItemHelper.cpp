@@ -169,22 +169,25 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
         return false;
 
-    // Check if this item has the player-castable flag
-    if (!(itemTemplate->Flags & ITEM_FLAG_PLAYERCAST))
-        return false;
-
     // Check if the item has an associated spell that we can cast
     for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
         uint32 spellId = itemTemplate->Spells[i].SpellId;
         if (spellId > 0)
         {
-            // For quest items, we don't use CanCastSpell as it's too restrictive
-            // Quest items should work based on quest logic, not normal spell rules
+            // Quest-driven approach: Accept items with spells if they're needed for active quests
+            // This handles items like "Tender Strider Meat" that have spells but no PLAYERCAST flag
             if (outSpellId)
                 *outSpellId = spellId;
             return true;
         }
+    }
+    
+    // Legacy check: Items with PLAYERCAST flag (kept for compatibility)
+    if (itemTemplate->Flags & ITEM_FLAG_PLAYERCAST)
+    {
+        // Item has PLAYERCAST but no spell - might be a special case
+        return true;
     }
 
     return false;
@@ -235,7 +238,16 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     Unit* bestTarget = nullptr;
     float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
 
-    // Get nearby units that could be quest targets
+    // First, try to find targets using database conditions (quest-aware targeting)
+    Unit* conditionTarget = FindTargetUsingSpellConditions(botAI, spellId);
+    if (conditionTarget)
+    {
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            botAI->TellMaster("QuestItem: Found target using spell conditions");
+        return conditionTarget;
+    }
+    
+    // Fallback to traditional targeting if no conditions found
     GuidVector targets = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets")->Get();
     
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -1268,6 +1280,23 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             }
         }
         
+        // Also check ItemDrop requirements (like Kyle's Gone Missing quest)
+        // This handles quests where items are required via ItemDrop rather than RequiredItemId
+        for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
+        {
+            if (quest->ItemDrop[i] == itemTemplate->ItemId)
+            {
+                questNeedsProgress = true;
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Item " << itemTemplate->Name1 << " is required for quest " << questId << " (ItemDrop)";
+                    botAI->TellMaster(out.str());
+                }
+                break;
+            }
+        }
+        
         // If this quest needs progress, check if our spell could potentially help
         if (questNeedsProgress)
         {
@@ -1791,4 +1820,69 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
     }
 
     return false;
+}
+
+Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
+{
+    if (!botAI)
+        return nullptr;
+        
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return nullptr;
+        
+    // Query conditions for spell implicit targets (type 13)
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Spell " << spellId << " has " << conditions.size() << " conditions";
+        botAI->TellMaster(out.str());
+    }
+    
+    for (Condition const* condition : conditions)
+    {
+        if (condition->ConditionType == CONDITION_CREATURE_TYPE)
+        {
+            uint32 requiredCreatureType = condition->ConditionValue1;
+            uint32 requiredCreatureEntry = condition->ConditionValue2;
+            
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Looking for creature type " << requiredCreatureType << " entry " << requiredCreatureEntry;
+                botAI->TellMaster(out.str());
+            }
+            
+            // Search for the specific creature entry
+            GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+            
+            for (ObjectGuid guid : npcs)
+            {
+                Unit* target = botAI->GetUnit(guid);
+                if (!target || target->GetEntry() != requiredCreatureEntry)
+                    continue;
+                    
+                // Check distance
+                float distance = bot->GetDistance(target);
+                if (distance > sPlayerbotAIConfig->grindDistance)
+                    continue;
+                    
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found required creature " << target->GetName() << " (entry " << requiredCreatureEntry << ") at distance " << distance;
+                    botAI->TellMaster(out.str());
+                }
+                
+                return target;
+            }
+        }
+    }
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        botAI->TellMaster("QuestItem: No valid targets found using spell conditions");
+        
+    return nullptr;
 }
