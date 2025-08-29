@@ -940,7 +940,7 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
         bool foundSpellFocus = false;
         
         // Use existing playerbot infrastructure to find nearby gameobjects
-        GuidVector nearbyGameObjects = AI_VALUE(GuidVector, "nearest game objects");
+        GuidVector nearbyGameObjects = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects")->Get();
         
         for (ObjectGuid goGuid : nearbyGameObjects)
         {
