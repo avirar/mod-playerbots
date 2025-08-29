@@ -173,5 +173,12 @@ private:
      */
     static Unit* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
 
+    /**
+     * @brief Get maximum interaction range for creature based on SmartAI scripts
+     * @param creatureEntry Creature entry ID to check SmartAI for
+     * @return Maximum range in yards, or default grind distance if no specific range found
+     */
+    static float GetSmartAIInteractionRange(uint32 creatureEntry);
+
 };
 
