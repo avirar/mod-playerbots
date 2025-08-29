@@ -165,5 +165,13 @@ private:
      */
     static bool CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 killCreditEntry);
 
+    /**
+     * @brief Find valid target for quest spell using database conditions
+     * @param botAI Bot AI instance for accessing nearby units
+     * @param spellId Spell ID to find targets for
+     * @return Valid target unit or nullptr if none found
+     */
+    static Unit* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
+
 };
 
