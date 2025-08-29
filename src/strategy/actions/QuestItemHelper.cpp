@@ -1700,3 +1700,4 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
 
     return false;
 }
+
