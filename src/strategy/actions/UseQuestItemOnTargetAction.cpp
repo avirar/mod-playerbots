@@ -36,6 +36,7 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
     }
 
     // Debug: Show which target we selected for actual usage
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestItem: Selected target for spell cast: " << target->GetName() 
@@ -109,7 +110,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     }
     catch (...)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "Quest item pointer is invalid - cannot use";
@@ -122,7 +123,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     Item* inventoryItem = bot->GetItemByGuid(itemGuid);
     if (!inventoryItem || inventoryItem != item)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "Quest item no longer in inventory or changed - cannot use";
@@ -135,7 +136,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     ItemTemplate const* itemTemplate = inventoryItem->GetTemplate();
     if (!itemTemplate)
     {
-        if (botAI)
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
             out << "Quest item has no template - cannot use";
@@ -191,9 +192,12 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     Item* postUseItem = bot->GetItemByGuid(itemGuid);
     if (!postUseItem)
     {
-        std::ostringstream out;
-        out << "Used quest item on " << target->GetName() << " (item was consumed/invalidated)";
-        botAI->TellMasterNoFacing(out.str());
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "Used quest item on " << target->GetName() << " (item was consumed/invalidated)";
+            botAI->TellMaster(out.str());
+        }
         return true;
     }
 
@@ -201,15 +205,18 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     ItemTemplate const* postUseTemplate = postUseItem->GetTemplate();
     if (!postUseTemplate)
     {
-        std::ostringstream out;
-        out << "Used quest item (unknown) on " << target->GetName();
-        botAI->TellMasterNoFacing(out.str());
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "Used quest item (unknown) on " << target->GetName();
+            botAI->TellMaster(out.str());
+        }
         return true;
     }
 
     std::ostringstream out;
     out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
-    botAI->TellMasterNoFacing(out.str());
+    botAI->TellMaster(out.str());
 
     // NOTE: Do not record usage immediately - let the pending system handle it
     // based on server response (success/failure)
