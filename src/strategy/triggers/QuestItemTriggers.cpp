@@ -38,6 +38,22 @@ bool QuestItemUsableTrigger::IsActive()
 
 bool FarFromQuestItemTargetTrigger::IsActive()
 {
+    // Check if we need to move to a spell focus object first
+    ObjectGuid spellFocusGuid = AI_VALUE(ObjectGuid, "spell focus target");
+    if (!spellFocusGuid.IsEmpty())
+    {
+        GameObject* spellFocus = botAI->GetGameObject(spellFocusGuid);
+        if (spellFocus && spellFocus->isSpawned())
+        {
+            float dist = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
+            float requiredRange = dist - 2.0f; // Add -2.0f buffer
+            if (requiredRange <= 0.0f)
+                requiredRange = 0.5f;
+                
+            return bot->GetDistance(spellFocus) > requiredRange;
+        }
+    }
+    
     Item* questItem = nullptr;
     uint32 spellId = 0;
     
