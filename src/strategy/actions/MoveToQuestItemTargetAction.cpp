@@ -40,13 +40,13 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
             else
             {
                 // We're close enough to the spell focus, clear the target
-                AI_VALUE(ObjectGuid, "spell focus target")->Set(ObjectGuid::Empty);
+                context->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
             }
         }
         else
         {
             // Spell focus object no longer exists, clear the target
-            AI_VALUE(ObjectGuid, "spell focus target")->Set(ObjectGuid::Empty);
+            context->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
         }
     }
     
