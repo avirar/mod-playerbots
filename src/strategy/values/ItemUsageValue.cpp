@@ -558,11 +558,12 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
         }
     }
 
-    // Check for quest items with player-cast spells (like Crow Meat)
+    // Check for quest items with spells (like Crow Meat, Tender Strider Meat)
     // These are quest items that are used ON targets to complete objectives
-    if (proto->Class == ITEM_CLASS_QUEST && (proto->Flags & ITEM_FLAG_PLAYERCAST))
+    // Updated to check for any quest item with spells, not just PLAYERCAST flagged ones
+    if (proto->Class == ITEM_CLASS_QUEST)
     {
-        // Check if this player-cast quest item is actually needed for current quests
+        // Check if this quest item has any spells (regardless of PLAYERCAST flag)
         for (uint8 i = 0; i < MAX_ITEM_SPELLS; i++)
         {
             uint32 spellId = proto->Spells[i].SpellId;
@@ -570,20 +571,66 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
             {
                 PlayerbotAI* debugAI = GET_PLAYERBOT_AI(player);
                 
-                // Check if this spell/item is needed for any current quest objectives
-                bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
-                
-                if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                // For items with PLAYERCAST flag, use the existing detailed check
+                if (proto->Flags & ITEM_FLAG_PLAYERCAST)
                 {
-                    std::ostringstream out;
-                    out << "QuestLoot: Quest item " << proto->Name1 << " with spell " << spellId 
-                        << " needed: " << (neededForQuest ? "YES" : "NO");
-                    debugAI->TellMaster(out.str());
+                    bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
+                    
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                            << " needed: " << (neededForQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+                    
+                    if (neededForQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
                 }
-                
-                if (neededForQuest)
+                else
                 {
-                    return true; // Quest item is specifically needed
+                    // For quest items with spells but no PLAYERCAST flag (like Tender Strider Meat)
+                    // Check if the item is required for any active quest via ItemDrop
+                    bool neededForActiveQuest = false;
+                    
+                    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    {
+                        uint32 questId = player->GetQuestSlotQuestId(slot);
+                        if (questId == 0)
+                            continue;
+                            
+                        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                        if (!quest)
+                            continue;
+                            
+                        // Check ItemDrop requirements (like Kyle's quest)
+                        for (uint8 j = 0; j < QUEST_SOURCE_ITEM_IDS_COUNT; ++j)
+                        {
+                            if (quest->ItemDrop[j] == proto->ItemId)
+                            {
+                                neededForActiveQuest = true;
+                                break;
+                            }
+                        }
+                        
+                        if (neededForActiveQuest)
+                            break;
+                    }
+                    
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Non-PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                            << " needed for active quest: " << (neededForActiveQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+                    
+                    if (neededForActiveQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
                 }
             }
         }
