@@ -573,7 +573,7 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
                 // Check if this spell/item is needed for any current quest objectives
                 bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
                 
-                if (debugAI)
+                if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestLoot: Quest item " << proto->Name1 << " with spell " << spellId 
@@ -671,7 +671,7 @@ bool ItemUsageValue::IsPlayerCastItemNeededForActiveQuests(Player* player, ItemT
         }
     }
 
-    if (debugAI)
+    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
         out << "QuestLoot: No active incomplete quests found that could use " << proto->Name1;
