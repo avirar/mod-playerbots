@@ -257,20 +257,15 @@ NextAction** CastShootAction::getPrerequisites()
 
 bool CastShootAction::isUseful()
 {
-    // Debug logging
-    botAI->TellMasterNoFacing("CastShootAction::isUseful() called");
-    
     // First check basic spell requirements
     if (!CastSpellAction::isUseful())
     {
-        botAI->TellMasterNoFacing("CastShootAction: CastSpellAction::isUseful() returned false");
         return false;
     }
         
     Unit* target = AI_VALUE(Unit*, "current target");
     if (!target)
     {
-        botAI->TellMasterNoFacing("CastShootAction: no target");
         return false;
     }
     
