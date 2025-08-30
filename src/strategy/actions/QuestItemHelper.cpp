@@ -1844,6 +1844,13 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
     
     for (Condition const* condition : conditions)
     {
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "QuestItem: Found condition type " << condition->ConditionType << " values: " << condition->ConditionValue1 << ", " << condition->ConditionValue2 << ", " << condition->ConditionValue3;
+            botAI->TellMaster(out.str());
+        }
+        
         if (condition->ConditionType == CONDITION_CREATURE_TYPE)
         {
             uint32 requiredCreatureType = condition->ConditionValue1;
