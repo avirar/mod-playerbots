@@ -629,7 +629,7 @@ bool LootObject::IsLootPossible(Player* bot)
 
     // Prevent bot from running to chests that are unlootable (e.g. Gunship Armory before completing the event)
     GameObject* go = botAI->GetGameObject(guid);
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+    if (go && (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE) || !go->isSpawned()))
     {
         bool canLootForQuest = false;
     
