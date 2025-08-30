@@ -523,6 +523,12 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     // Query conditions table for this spell to find required target conditions
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
+    // Also check spell implicit target conditions for self-cast spells (like Kyle proximity check)
+    ConditionList implicitConditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
+    
+    // Merge both condition lists
+    conditions.insert(conditions.end(), implicitConditions.begin(), implicitConditions.end());
+    
     // Debug output for conditions found
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
@@ -581,6 +587,7 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
             {
                 if (target->GetTypeId() == TYPEID_UNIT)
                 {
+                    // Normal case: checking if the target creature matches the required type
                     uint32 requiredType = condition->ConditionValue1;
                     uint32 targetType = target->ToCreature()->GetCreatureTemplate()->type;
                     
@@ -593,6 +600,56 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                         out << "QuestItem: CONDITION_CREATURE_TYPE check - target entry:" << target->GetEntry() 
                             << " targetType:" << targetType << " requiredType:" << requiredType
                             << " result:" << (conditionMet ? "PASS" : "FAIL");
+                        botAI->TellMaster(out.str());
+                    }
+                }
+                else if (target->GetTypeId() == TYPEID_PLAYER && condition->ConditionValue2 > 0)
+                {
+                    // Special case: for self-cast spells, check if a nearby creature of the specified entry exists
+                    // ConditionValue1 = creature type, ConditionValue2 = specific creature entry
+                    uint32 requiredType = condition->ConditionValue1;
+                    uint32 requiredEntry = condition->ConditionValue2;
+                    
+                    // Search for nearby creatures matching the entry and type
+                    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+                    
+                    for (ObjectGuid guid : npcs)
+                    {
+                        Unit* nearbyUnit = botAI->GetUnit(guid);
+                        if (!nearbyUnit || nearbyUnit->GetEntry() != requiredEntry)
+                            continue;
+                            
+                        if (nearbyUnit->GetTypeId() == TYPEID_UNIT)
+                        {
+                            uint32 creatureType = nearbyUnit->ToCreature()->GetCreatureTemplate()->type;
+                            if (creatureType == requiredType)
+                            {
+                                // Check distance using SmartAI-aware range detection
+                                float distance = caster->GetDistance(nearbyUnit);
+                                float maxDistance = GetSmartAIInteractionRange(requiredEntry);
+                                
+                                if (distance <= maxDistance)
+                                {
+                                    conditionMet = true;
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: CONDITION_CREATURE_TYPE proximity check - found " << nearbyUnit->GetName() 
+                                            << " (entry:" << requiredEntry << " type:" << creatureType << ") at distance " 
+                                            << distance << " (max:" << maxDistance << ") = PASS";
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!conditionMet && botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: CONDITION_CREATURE_TYPE proximity check - no valid creature found"
+                            << " (type:" << requiredType << " entry:" << requiredEntry << ") = FAIL";
                         botAI->TellMaster(out.str());
                     }
                 }
