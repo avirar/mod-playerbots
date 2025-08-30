@@ -57,12 +57,7 @@ protected:
     bool SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, uint32& fromNode, uint32& toNode);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
-    float GetProperFloorHeight(Player* bot, float dx, float dy, float dz);
-    float GetProperFloorHeightNearNPC(Player* bot, float dx, float dy, float referenceZ, ObjectGuid npcGuid = ObjectGuid());
-    bool IsNPCOnDifferentElevation(WorldObject* npc, float botZ, float tolerance = 10.0f);
-    bool ValidateReachability(WorldPosition dest, ObjectGuid targetNpc = ObjectGuid());
-    ObjectGuid FindNearbyQuestNPC(uint32 questId, float x, float y, float searchRadius);
-    bool TryAlternativeApproachForLOS(ObjectGuid guid, float& bestX, float& bestY, float& bestZ);
+    bool SearchForActualQuestTargets(uint32 questId);
     bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
 
 protected:
