@@ -231,6 +231,18 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
             return nullptr;
         }
         
+        // Check spell conditions for self-cast spells (like Kyle proximity for Tender Strider Meat)
+        if (!CheckSpellConditions(spellId, bot, bot, botAI))
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Self-cast spell " << spellId << " failed spell conditions";
+                botAI->TellMaster(out.str());
+            }
+            return nullptr;
+        }
+        
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             botAI->TellMaster("QuestItem: Spell is self-cast, using bot as target");
         return bot;
