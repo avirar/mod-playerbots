@@ -271,13 +271,14 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         
     // Final LOS check before interaction - only fail if we're close enough to interact
     float distance = bot->GetDistance(object);
+    /*
     if (distance <= INTERACTION_DISTANCE && !bot->IsWithinLOSInMap(object))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with NPC/GO {} - no LOS at interaction distance", 
                  bot->GetName(), guid.ToString());
         return false;
     }
-
+    */
     // Handle GameObject quest objectives that need to be used directly
     if (GameObject* go = object->ToGameObject())
     {
@@ -368,8 +369,8 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             IsQuestWorthDoing(quest) && IsQuestCapableDoing(quest))
         {
             AcceptQuest(quest, guid);
-            if (botAI->GetMaster())
-                botAI->TellMasterNoFacing("Quest accepted " + ChatHelper::FormatQuest(quest));
+            if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("Quest accepted " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
             LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
@@ -377,8 +378,8 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
         {
             TurnInQuest(quest, guid);
-            if (botAI->GetMaster())
-                botAI->TellMasterNoFacing("Quest rewarded " + ChatHelper::FormatQuest(quest));
+            if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("Quest rewarded " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
             botAI->rpgStatistic.questRewarded++;
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
@@ -667,8 +668,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-            if (botAI->GetMaster())
-                botAI->TellMasterNoFacing("Quest dropped " + ChatHelper::FormatQuest(quest));
+            if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             dropped++;
         }
@@ -692,8 +693,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-            if (botAI->GetMaster())
-                botAI->TellMasterNoFacing("Quest dropped " + ChatHelper::FormatQuest(quest));
+            if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             dropped++;
         }
@@ -714,8 +715,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)i;
         bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-        if (botAI->GetMaster())
-            botAI->TellMasterNoFacing("Quest dropped " + ChatHelper::FormatQuest(quest));
+        if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
         botAI->rpgStatistic.questDropped++;
     }
 
@@ -874,7 +875,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         */
 
         // Vendor if bags > 50% full
-        if (AI_VALUE(uint8, "bag space") > 80 && creature->IsVendor())
+        if (AI_VALUE(uint8, "bag space") > 50 && creature->IsVendor())
             return creature->GetGUID();
 
         // Repair if any item < 50% durability

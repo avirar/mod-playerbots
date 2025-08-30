@@ -6,12 +6,15 @@
 #include "ChooseTargetActions.h"
 
 #include "ChooseRpgTargetAction.h"
+#include "Creature.h"
 #include "Event.h"
 #include "LootObjectStack.h"
 #include "NewRpgStrategy.h"
+#include "ObjectMgr.h"
 #include "Playerbots.h"
 #include "PossibleRpgTargetsValue.h"
 #include "PvpTriggers.h"
+#include "QuestDef.h"
 #include "ServerFacade.h"
 
 bool AttackEnemyPlayerAction::isUseful()
@@ -60,6 +63,10 @@ bool AttackAnythingAction::isUseful()
     {
         return false;
     }
+
+    // NEW: Check if target would provide quest credit before attacking
+    if (!WouldTargetProvideQuestCredit(target))
+        return false;
 
     return true;
 }
@@ -169,5 +176,142 @@ bool AttackRtiTargetAction::isUseful()
     if (botAI->ContainsStrategy(STRATEGY_TYPE_HEAL))
         return false;
 
+    return true;
+}
+
+bool AttackAnythingAction::WouldTargetProvideQuestCredit(Unit* target)
+{
+    if (!target || !bot)
+        return true; // Default to allowing attack if we can't validate (safety fallback)
+
+    uint32 targetEntry = target->GetEntry();
+    
+    // Check all active incomplete quests to see if this target would provide credit
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = bot->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Check traditional kill objectives
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            uint32 requiredEntry = quest->RequiredNpcOrGo[i];
+            if (requiredEntry == 0)
+                continue;
+                
+            // Check if this objective matches our target entry
+            if (requiredEntry == targetEntry)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                
+                // If current count is less than required, this target would provide credit
+                if (currentCount < requiredCount)
+                {
+                    return true; // Target is needed for quest progress
+                }
+            }
+            
+            // Also check if our target gives KillCredit for the required entry (trigger creature system)
+            if (target->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* creature = target->ToCreature();
+                if (creature)
+                {
+                    CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+                    if (creatureTemplate && 
+                        (creatureTemplate->KillCredit[0] == requiredEntry || creatureTemplate->KillCredit[1] == requiredEntry))
+                    {
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                        uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                        
+                        // If current count is less than required, this target would provide credit
+                        if (currentCount < requiredCount)
+                        {
+                            return true; // Target gives KillCredit for quest objective
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check CAST quest objectives (some quests require spell casting on specific creatures)
+        if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
+        {
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                if (requiredCount == 0)
+                    continue;
+                    
+                uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                if (currentCount < requiredCount)
+                {
+                    // For CAST quests, we might need to interact with specific creatures
+                    // Even if they don't directly match RequiredNpcOrGo, they could be targets for quest spells
+                    // Allow attacking creatures that might be quest targets for casting
+                    return true;
+                }
+            }
+        }
+    }
+    
+    // If no active quest would get credit from this target, check if we should allow grinding
+    // Only allow grinding if we don't have any incomplete quest objectives that we should be focusing on
+    bool hasIncompleteQuestObjectives = false;
+    
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = bot->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Check if this quest has any incomplete objectives
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredNpcOrGo[i] == 0)
+                continue;
+                
+            uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+            if (reqCount == 0)
+                continue;
+                
+            uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+            if (currentCount < reqCount)
+            {
+                hasIncompleteQuestObjectives = true;
+                break;
+            }
+        }
+        
+        if (hasIncompleteQuestObjectives)
+            break;
+    }
+    
+    // If we have incomplete quest objectives, don't allow random grinding
+    // The bot should focus on quest objectives instead
+    if (hasIncompleteQuestObjectives)
+    {
+        return false;
+    }
+    
+    // No active quests with incomplete objectives, allow grinding/attacking
     return true;
 }

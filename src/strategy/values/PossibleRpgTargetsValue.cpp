@@ -28,7 +28,7 @@ void RpgNpcFlags::InitializeFlags()
 {
     standardFlags = {
         static_cast<uint32>(RpgNpcType::INNKEEPER),
-        static_cast<uint32>(RpgNpcType::GOSSIP),
+        // Removed GOSSIP - prevents targeting guards and other flavor NPCs
         static_cast<uint32>(RpgNpcType::QUESTGIVER),
         static_cast<uint32>(RpgNpcType::FLIGHTMASTER),
         static_cast<uint32>(RpgNpcType::BANKER),

@@ -56,8 +56,14 @@ void FuryWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     GenericWarriorStrategy::InitTriggers(triggers);
 
+    // High priority trigger for truly unreachable enemies
+    triggers.push_back(new TriggerNode("enemy unreachable",
+        NextAction::array(0, new NextAction("shoot", ACTION_MOVE + 15), nullptr)));
+
     triggers.push_back(new TriggerNode("enemy out of melee",
-                                       NextAction::array(0, new NextAction("charge", ACTION_MOVE + 9), nullptr)));
+                                       NextAction::array(0, new NextAction("charge", ACTION_MOVE + 11),
+                                                           new NextAction("reach melee", ACTION_MOVE + 10),
+                                                           new NextAction("heroic throw", ACTION_MOVE + 9), nullptr)));
     triggers.push_back(new TriggerNode(
         "berserker stance", NextAction::array(0, new NextAction("berserker stance", ACTION_HIGH + 9), nullptr)));
     triggers.push_back(new TriggerNode("battle shout",

@@ -17,6 +17,38 @@
 
 bool MoveToQuestItemTargetAction::Execute(Event event)
 {
+    // Check if we need to move to a spell focus object first
+    ObjectGuid spellFocusGuid = AI_VALUE(ObjectGuid, "spell focus target");
+    if (!spellFocusGuid.IsEmpty())
+    {
+        GameObject* spellFocus = botAI->GetGameObject(spellFocusGuid);
+        if (spellFocus && spellFocus->isSpawned())
+        {
+            // Calculate the required range based on spell focus distance
+            float dist = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
+            float requiredRange = dist - 2.0f; // Add -2.0f buffer for reliable casting
+            if (requiredRange <= 0.0f)
+                requiredRange = 0.5f; // Minimum safe distance
+                
+            float distance = bot->GetDistance(spellFocus);
+            if (distance > requiredRange)
+            {
+                // Move to the spell focus object
+                return MoveTo(spellFocus->GetMapId(), spellFocus->GetPosition().GetPositionX(),
+                             spellFocus->GetPosition().GetPositionY(), spellFocus->GetPosition().GetPositionZ());
+            }
+            else
+            {
+                // We're close enough to the spell focus, clear the target
+                context->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
+            }
+        }
+        else
+        {
+            // Spell focus object no longer exists, clear the target
+            context->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
+        }
+    }
     
     uint32 spellId = 0;
     
@@ -59,6 +91,25 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
 
 bool MoveToQuestItemTargetAction::isUseful()
 {
+    // Check if we need to move to a spell focus object
+    ObjectGuid spellFocusGuid = AI_VALUE(ObjectGuid, "spell focus target");
+    if (!spellFocusGuid.IsEmpty())
+    {
+        GameObject* spellFocus = botAI->GetGameObject(spellFocusGuid);
+        if (spellFocus && spellFocus->isSpawned())
+        {
+            float dist = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
+            float requiredRange = dist - 2.0f; // Add -2.0f buffer
+            if (requiredRange <= 0.0f)
+                requiredRange = 0.5f;
+                
+            if (bot->GetDistance(spellFocus) > requiredRange)
+            {
+                return true; // We need to move to spell focus
+            }
+        }
+    }
+    
     uint32 spellId = 0;
     
     // Check if we have any usable quest items

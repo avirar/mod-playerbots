@@ -46,6 +46,7 @@ private:
     ItemUsage QueryItemUsageForEquip(ItemTemplate const* proto, int32 randomPropertyId = 0);
     uint32 GetSmallestBagSize();
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
+    bool IsPlayerCastItemNeededForActiveQuests(Player* player, ItemTemplate const* proto, uint32 spellId);
     bool IsItemNeededForSkill(ItemTemplate const* proto);
     bool IsItemUsefulForSkill(ItemTemplate const* proto);
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);

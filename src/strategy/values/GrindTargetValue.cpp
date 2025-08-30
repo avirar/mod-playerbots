@@ -80,7 +80,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             continue;
         }
 
-        if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > INTERACTION_DISTANCE)
+        // Allow targeting flying creatures - all classes have some ranged abilities, 25yds, -2 for buffer)
+        // Use spell distance since even melee classes have ranged attacks (Heroic Throw, ranged weapons, etc.)
+        if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > 23.0f)
             continue;
 
         if (!bot->InBattleground() && GetTargetingPlayerCount(unit) > assistCount)

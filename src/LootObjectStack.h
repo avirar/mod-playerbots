@@ -7,6 +7,7 @@
 #define _PLAYERBOT_LOOTOBJECTSTACK_H
 
 #include "ObjectGuid.h"
+#include "SharedDefines.h"
 
 class AiObjectContext;
 class Player;
@@ -43,6 +44,7 @@ public:
 
 private:
     static bool IsNeededForQuest(Player* bot, uint32 itemId);
+    static bool IsAccessibleLockType(LockType lockType);
 };
 
 class LootTarget

@@ -234,6 +234,7 @@ public:
         creators["travel target"] = &ValueContext::travel_target;
         creators["talk target"] = &ValueContext::talk_target;
         creators["pull target"] = &ValueContext::pull_target;
+        creators["spell focus target"] = &ValueContext::spell_focus_target;
         creators["group"] = &ValueContext::group;
         creators["range"] = &ValueContext::range;
         creators["inside target"] = &ValueContext::inside_target;
@@ -481,6 +482,7 @@ private:
     static UntypedValue* next_rpg_action(PlayerbotAI* botAI) { return new NextRpgActionValue(botAI); }
     static UntypedValue* travel_target(PlayerbotAI* botAI) { return new TravelTargetValue(botAI); }
     static UntypedValue* pull_target(PlayerbotAI* botAI) { return new PullTargetValue(botAI); }
+    static UntypedValue* spell_focus_target(PlayerbotAI* botAI) { return new SpellFocusTargetValue(botAI); }
 
     static UntypedValue* bg_master(PlayerbotAI* botAI) { return new BgMasterValue(botAI); }
     static UntypedValue* bg_role(PlayerbotAI* botAI) { return new BgRoleValue(botAI); }

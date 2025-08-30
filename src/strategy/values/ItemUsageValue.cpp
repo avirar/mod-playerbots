@@ -558,7 +558,174 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
         }
     }
 
+    // Check for quest items with spells (like Crow Meat, Tender Strider Meat)
+    // These are quest items that are used ON targets to complete objectives
+    // Updated to check for any quest item with spells, not just PLAYERCAST flagged ones
+    if (proto->Class == ITEM_CLASS_QUEST)
+    {
+        // Check if this quest item has any spells (regardless of PLAYERCAST flag)
+        for (uint8 i = 0; i < MAX_ITEM_SPELLS; i++)
+        {
+            uint32 spellId = proto->Spells[i].SpellId;
+            if (spellId > 0)
+            {
+                PlayerbotAI* debugAI = GET_PLAYERBOT_AI(player);
+                
+                // For items with PLAYERCAST flag, use the existing detailed check
+                if (proto->Flags & ITEM_FLAG_PLAYERCAST)
+                {
+                    bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
+                    
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                            << " needed: " << (neededForQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+                    
+                    if (neededForQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
+                }
+                else
+                {
+                    // For quest items with spells but no PLAYERCAST flag (like Tender Strider Meat)
+                    // Check if the item is required for any active quest via ItemDrop
+                    bool neededForActiveQuest = false;
+                    
+                    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    {
+                        uint32 questId = player->GetQuestSlotQuestId(slot);
+                        if (questId == 0)
+                            continue;
+                            
+                        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                        if (!quest)
+                            continue;
+                            
+                        // Check ItemDrop requirements (like Kyle's quest)
+                        for (uint8 j = 0; j < QUEST_SOURCE_ITEM_IDS_COUNT; ++j)
+                        {
+                            if (quest->ItemDrop[j] == proto->ItemId)
+                            {
+                                neededForActiveQuest = true;
+                                break;
+                            }
+                        }
+                        
+                        if (neededForActiveQuest)
+                            break;
+                    }
+                    
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Non-PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                            << " needed for active quest: " << (neededForActiveQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+                    
+                    if (neededForActiveQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
+                }
+            }
+        }
+    }
+
     return false; // Item is not useful for any active quests
+}
+
+bool ItemUsageValue::IsPlayerCastItemNeededForActiveQuests(Player* player, ItemTemplate const* proto, uint32 spellId)
+{
+    PlayerbotAI* debugAI = GET_PLAYERBOT_AI(player);
+    
+    // Check all active quests to see if this item/spell could be useful
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 entry = player->GetQuestSlotQuestId(slot);
+        Quest const* quest = sObjectMgr->GetQuestTemplate(entry);
+        if (!quest)
+            continue;
+
+        // Get current quest progress
+        QuestStatus questStatus = player->GetQuestStatus(entry);
+        if (questStatus == QUEST_STATUS_COMPLETE || questStatus == QUEST_STATUS_NONE)
+            continue; // Skip completed or unavailable quests
+
+        // Check if quest is incomplete and could potentially use this item
+        bool questNeedsProgress = false;
+
+        // Check quest objectives for completion
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredNpcOrGo[i] != 0)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+                
+                if (currentCount < requiredCount)
+                {
+                    questNeedsProgress = true;
+                    
+                    if (debugAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Quest " << quest->GetTitle() << " needs " << (requiredCount - currentCount) 
+                            << " more of objective " << i << " (NpcOrGo:" << quest->RequiredNpcOrGo[i] << ")";
+                        debugAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If quest needs progress, check if this item could help
+        if (questNeedsProgress)
+        {
+            // For now, assume quest items with player-cast spells in incomplete quests are useful
+            // This could be enhanced further by checking:
+            // 1. Spell target requirements vs quest objectives
+            // 2. Spell conditions vs quest requirements
+            // 3. Quest area vs player location
+            
+            if (debugAI)
+            {
+                std::ostringstream out;
+                out << "QuestLoot: Item " << proto->Name1 << " potentially useful for incomplete quest: " << quest->GetTitle();
+                debugAI->TellMaster(out.str());
+            }
+            
+            // Check if we already have enough of this item
+            uint32 currentItemCount = AI_VALUE2(uint32, "item count", proto->Name1);
+            uint32 maxUsefulCount = 5; // Don't hoard more than 5 of any quest item
+            
+            if (currentItemCount >= maxUsefulCount)
+            {
+                if (debugAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestLoot: Already have " << currentItemCount << " " << proto->Name1 << ", skipping";
+                    debugAI->TellMaster(out.str());
+                }
+                continue; // Already have enough
+            }
+            
+            return true; // Item is useful for this quest
+        }
+    }
+
+    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestLoot: No active incomplete quests found that could use " << proto->Name1;
+        debugAI->TellMaster(out.str());
+    }
+    
+    return false; // No active quests need this item
 }
 
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)

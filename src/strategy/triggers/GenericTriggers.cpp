@@ -10,12 +10,14 @@
 #include "BattlegroundWS.h"
 #include "CreatureAI.h"
 #include "GameTime.h"
+#include "Item.h"
 #include "ItemVisitors.h"
 #include "LastSpellCastValue.h"
 #include "ObjectGuid.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
+#include "QuestItemHelper.h"
 #include "SharedDefines.h"
 #include "TemporarySummon.h"
 #include "ThreatMgr.h"
@@ -194,7 +196,44 @@ bool NoAttackersTrigger::IsActive()
 
 bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target", "current target"); }
 
-bool NoTargetTrigger::IsActive() { return !AI_VALUE(Unit*, "current target"); }
+bool NoTargetTrigger::IsActive() 
+{ 
+    // Safety checks: ensure botAI context is valid and initialized
+    if (!botAI || !bot)
+        return false;
+        
+    // Additional safety: check if AI context is available
+    if (!botAI->GetAiObjectContext())
+        return false;
+
+    if (AI_VALUE(Unit*, "current target"))
+        return false;
+
+    // Conservative approach: Check priorities without recursive trigger calls
+    
+    // Priority 1: Don't attack if loot is available (loot has 5.0f-8.0f priority)
+    try {
+        if (AI_VALUE(bool, "has available loot"))
+            return false;
+    }
+    catch (...) {
+        // If loot value lookup fails, fall back to default behavior
+    }
+    
+    // Priority 2: Don't attack if we have quest items (safe direct check)
+    try {
+        Item* questItem = QuestItemHelper::FindBestQuestItem(bot, nullptr);
+        if (questItem) {
+            // We have quest items - let quest item actions handle priorities
+            return false;
+        }
+    }
+    catch (...) {
+        // If quest item lookup fails, continue
+    }
+        
+    return true;
+}
 
 bool MyAttackerCountTrigger::IsActive()
 {
