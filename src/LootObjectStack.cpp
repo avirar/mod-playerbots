@@ -263,7 +263,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
         // Find the most permissive lock (easiest to satisfy) - locks work with OR logic
         bool foundAccessibleLock = false;
-        uint32 bestSkillId = SKILL_MAX; // Start with impossible skill
+        uint32 bestSkillId = SKILL_NONE; // Start with no skill requirement
         uint32 bestReqSkillValue = UINT32_MAX; // Start with impossible requirement
         uint32 bestReqItem = 0;
         
