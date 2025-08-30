@@ -1467,7 +1467,6 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                                     effect == SPELL_EFFECT_QUEST_COMPLETE ||       // Directly completes quests
                                     effect == SPELL_EFFECT_SEND_EVENT ||           // Triggers quest events
                                     effect == SPELL_EFFECT_KILL_CREDIT ||          // Gives kill credit
-                                    effect == SPELL_EFFECT_KILL_CREDIT_PERSONAL || // Personal kill credit
                                     effect == SPELL_EFFECT_CREATE_ITEM)            // Creates quest items
                                 {
                                     isActualQuestItem = true;
