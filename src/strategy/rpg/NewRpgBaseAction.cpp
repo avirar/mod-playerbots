@@ -875,7 +875,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         */
 
         // Vendor if bags > 50% full
-        if (AI_VALUE(uint8, "bag space") > 80 && creature->IsVendor())
+        if (AI_VALUE(uint8, "bag space") > 50 && creature->IsVendor())
             return creature->GetGUID();
 
         // Repair if any item < 50% durability
