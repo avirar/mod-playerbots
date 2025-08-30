@@ -1255,8 +1255,34 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
     WorldPosition dest{};
     if (!prepared_locs.empty())
     {
-        uint32 idx = urand(0, prepared_locs.size() - 1);
-        dest = prepared_locs[idx];
+        // 66% chance to favor nearest camp, 34% chance for random camp
+        if (urand(1, 100) <= 66)
+        {
+            // Find nearest camp
+            float nearestDistance = std::numeric_limits<float>::max();
+            uint32 nearestIdx = 0;
+            for (uint32 i = 0; i < prepared_locs.size(); ++i)
+            {
+                float distance = bot->GetExactDist(prepared_locs[i]);
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearestIdx = i;
+                }
+            }
+            dest = prepared_locs[nearestIdx];
+            LOG_DEBUG("playerbots", "[New RPG] Bot {} selected NEAREST camp at {:.1f}yd (66% chance)", 
+                      bot->GetName(), nearestDistance);
+        }
+        else
+        {
+            // Random camp selection
+            uint32 idx = urand(0, prepared_locs.size() - 1);
+            dest = prepared_locs[idx];
+            float randomDistance = bot->GetExactDist(dest);
+            LOG_DEBUG("playerbots", "[New RPG] Bot {} selected RANDOM camp at {:.1f}yd (34% chance)", 
+                      bot->GetName(), randomDistance);
+        }
     }
     LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
               bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
@@ -1360,6 +1386,13 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             availableStatus.push_back(status);
             probSum += sPlayerbotAIConfig->RpgStatusProbWeight[status];
         }
+    }
+	// Safety check. Default to "rest" if all RPG weights = 0
+    if (availableStatus.empty() || probSum == 0)
+    {
+        botAI->rpgInfo.ChangeToRest();
+        bot->SetStandState(UNIT_STAND_STATE_SIT);
+        return true;
     }
     uint32 rand = urand(1, probSum);
     uint32 accumulate = 0;
