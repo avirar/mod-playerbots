@@ -721,7 +721,30 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                         break;
                 }
                 
-                if (!typeMatches)
+                if (!typeMatches && target->GetTypeId() == TYPEID_PLAYER && requiredTypeID == TYPEID_UNIT)
+                {
+                    // Special case: for self-cast spells, check if a nearby unit of the specified entry exists
+                    // This handles cases like Kyle proximity check for Tender Strider Meat
+                    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+                    
+                    for (ObjectGuid guid : npcs)
+                    {
+                        Unit* nearbyUnit = botAI->GetUnit(guid);
+                        if (!nearbyUnit || nearbyUnit->GetEntry() != requiredEntry)
+                            continue;
+                            
+                        // Check distance using SmartAI-aware range detection
+                        float distance = caster->GetDistance(nearbyUnit);
+                        float maxDistance = GetSmartAIInteractionRange(requiredEntry);
+                        
+                        if (distance <= maxDistance)
+                        {
+                            conditionMet = true;
+                            break;
+                        }
+                    }
+                }
+                else if (!typeMatches)
                 {
                     conditionMet = false;
                 }
@@ -744,9 +767,17 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
-                    out << "QuestItem: CONDITION_OBJECT_ENTRY_GUID check - target typeID:" << target->GetTypeId()
-                        << " entry:" << target->GetEntry() << " requiredTypeID:" << requiredTypeID 
-                        << " requiredEntry:" << requiredEntry << " result:" << (conditionMet ? "PASS" : "FAIL");
+                    if (target->GetTypeId() == TYPEID_PLAYER && requiredTypeID == TYPEID_UNIT)
+                    {
+                        out << "QuestItem: CONDITION_OBJECT_ENTRY_GUID proximity check - looked for unit entry " << requiredEntry 
+                            << " near player, result:" << (conditionMet ? "PASS" : "FAIL");
+                    }
+                    else
+                    {
+                        out << "QuestItem: CONDITION_OBJECT_ENTRY_GUID direct check - target typeID:" << target->GetTypeId()
+                            << " entry:" << target->GetEntry() << " requiredTypeID:" << requiredTypeID 
+                            << " requiredEntry:" << requiredEntry << " result:" << (conditionMet ? "PASS" : "FAIL");
+                    }
                     botAI->TellMaster(out.str());
                 }
                 break;
