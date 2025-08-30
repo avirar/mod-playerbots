@@ -818,7 +818,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
 
-    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
     
     if (debugLoot && !availableLoot.empty())
