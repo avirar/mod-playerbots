@@ -543,19 +543,30 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
         botAI->TellMaster(out.str());
     }
     
-    // Also check spell implicit target conditions for self-cast spells (like Kyle proximity check)
-    ConditionList implicitConditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
-    
-    // Debug implicit conditions
-    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    // Also check spell implicit target conditions for self-cast spells (Kyle proximity check)
+    // These are stored directly in SpellInfo->Effects[i].ImplicitTargetConditions
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (spellInfo)
     {
-        std::ostringstream out;
-        out << "QuestItem: Found " << implicitConditions.size() << " SPELL_IMPLICIT_TARGET conditions for spell " << spellId;
-        botAI->TellMaster(out.str());
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+        {
+            if (spellInfo->Effects[i].ImplicitTargetConditions)
+            {
+                ConditionList const* implicitConditions = spellInfo->Effects[i].ImplicitTargetConditions;
+                
+                // Debug implicit conditions
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found " << implicitConditions->size() << " SPELL_IMPLICIT_TARGET conditions for spell " << spellId << " effect " << (int)i;
+                    botAI->TellMaster(out.str());
+                }
+                
+                // Merge the implicit target conditions
+                conditions.insert(conditions.end(), implicitConditions->begin(), implicitConditions->end());
+            }
+        }
     }
-    
-    // Merge both condition lists
-    conditions.insert(conditions.end(), implicitConditions.begin(), implicitConditions.end());
     
     // Debug output for conditions found
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
