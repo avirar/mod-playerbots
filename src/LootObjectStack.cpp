@@ -261,6 +261,12 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             botAI->TellMaster(out.str());
         }
 
+        // Find the most permissive lock (easiest to satisfy) - locks work with OR logic
+        bool foundAccessibleLock = false;
+        uint32 bestSkillId = SKILL_MAX; // Start with impossible skill
+        uint32 bestReqSkillValue = UINT32_MAX; // Start with impossible requirement
+        uint32 bestReqItem = 0;
+        
         for (uint8 i = 0; i < 8; ++i)
         {
             switch (lockInfo->Type[i])
@@ -268,15 +274,35 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 case LOCK_KEY_ITEM:
                     if (lockInfo->Index[i] > 0)
                     {
-                        reqItem = lockInfo->Index[i];
-                        guid = lootGUID;
                         if (debugLoot)
                         {
-                            const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                            const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(lockInfo->Index[i]);
                             std::ostringstream out;
-                            out << "LootRefresh: Requires key item " 
-                                << (keyProto ? keyProto->Name1 : "Unknown") << " (ID: " << reqItem << ")";
+                            out << "LootRefresh: Lock option " << (i+1) << " - requires key item " 
+                                << (keyProto ? keyProto->Name1 : "Unknown") << " (ID: " << lockInfo->Index[i] << ")";
                             botAI->TellMaster(out.str());
+                        }
+                        
+                        // If bot has this key item, this is the best option (no skill required)
+                        if (bot->HasItemCount(lockInfo->Index[i], 1))
+                        {
+                            bestSkillId = SKILL_NONE;
+                            bestReqSkillValue = 0;
+                            bestReqItem = lockInfo->Index[i];
+                            foundAccessibleLock = true;
+                            if (debugLoot)
+                                botAI->TellMaster("LootRefresh: Bot has required key - this is best option");
+                            break; // Key access is always best, stop checking other locks
+                        }
+                        else
+                        {
+                            // Consider this key option if no better option found yet
+                            if (!foundAccessibleLock)
+                            {
+                                bestReqItem = lockInfo->Index[i];
+                                bestSkillId = SKILL_NONE;
+                                bestReqSkillValue = 0;
+                            }
                         }
                     }
                     break;
@@ -288,49 +314,127 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         
                         if (mappedSkill > SKILL_NONE)
                         {
-                            // Standard skill-based lock (lockpicking, mining, herbalism, etc.)
-                            skillId = mappedSkill;
-                            reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-                            guid = lootGUID;
+                            uint32 reqSkill = std::max((uint32)1, lockInfo->Skill[i]);
                             if (debugLoot)
                             {
                                 std::ostringstream out;
-                                out << "LootRefresh: Requires skill " << skillId 
-                                    << " (level " << reqSkillValue << ")";
+                                out << "LootRefresh: Lock option " << (i+1) << " - requires skill " << mappedSkill 
+                                    << " (level " << reqSkill << ")";
+                                botAI->TellMaster(out.str());
+                            }
+                            
+                            // Check if bot can satisfy this skill requirement
+                            if (botAI->HasSkill((SkillType)mappedSkill) && bot->GetSkillValue(mappedSkill) >= reqSkill)
+                            {
+                                // This lock can be satisfied - choose it if it's better than current best
+                                if (!foundAccessibleLock || mappedSkill == SKILL_NONE || 
+                                    (bestSkillId != SKILL_NONE && reqSkill < bestReqSkillValue))
+                                {
+                                    bestSkillId = mappedSkill;
+                                    bestReqSkillValue = reqSkill;
+                                    bestReqItem = 0;
+                                    foundAccessibleLock = true;
+                                    if (debugLoot)
+                                        botAI->TellMaster("LootRefresh: Bot can satisfy skill requirement - considering this option");
+                                }
+                            }
+                            else if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "LootRefresh: Bot cannot satisfy skill " << mappedSkill 
+                                    << " (have " << (botAI->HasSkill((SkillType)mappedSkill) ? std::to_string(bot->GetSkillValue(mappedSkill)) : "0")
+                                    << ", need " << reqSkill << ")";
                                 botAI->TellMaster(out.str());
                             }
                         }
                         else if (IsAccessibleLockType(lockType))
                         {
-                            // Special lock types that don't require skills but should be accessible
-                            // (like LOCKTYPE_OPEN_KNEELING, LOCKTYPE_OPEN, LOCKTYPE_TREASURE, etc.)
-                            skillId = SKILL_NONE; // No skill required
-                            reqSkillValue = 0;
-                            guid = lootGUID;
                             if (debugLoot)
                             {
                                 std::ostringstream out;
-                                out << "LootRefresh: Accessible lock type " << lockType << " - no skill required";
+                                out << "LootRefresh: Lock option " << (i+1) << " - accessible lock type " << lockType << " (no skill required)";
                                 botAI->TellMaster(out.str());
                             }
+                            
+                            // No skill required - this is always accessible and beats skill requirements
+                            bestSkillId = SKILL_NONE;
+                            bestReqSkillValue = 0;
+                            bestReqItem = 0;
+                            foundAccessibleLock = true;
+                            if (debugLoot)
+                                botAI->TellMaster("LootRefresh: No skill lock type - this is accessible");
+                            break; // No-skill access is very good, but key access would be better
                         }
                         else if (debugLoot)
                         {
                             std::ostringstream out;
-                            out << "LootRefresh: Inaccessible lock type " << lockType << " - bot cannot loot";
+                            out << "LootRefresh: Lock option " << (i+1) << " - inaccessible lock type " << lockType;
                             botAI->TellMaster(out.str());
                         }
-                        // If lock type is not accessible (like LOCKTYPE_DISARM_TRAP without mapping), 
-                        // don't set guid - bot won't try to loot it
                     }
                     break;
 
-                case LOCK_KEY_NONE:
-                    guid = lootGUID;
-                    if (debugLoot)
-                        botAI->TellMaster("LootRefresh: No lock required");
+                default:
+                    // LOCK_KEY_NONE (0) and other undefined types are ignored, just like server
+                    if (debugLoot && lockInfo->Type[i] != 0)
+                    {
+                        std::ostringstream out;
+                        out << "LootRefresh: Lock option " << (i+1) << " - unknown lock type " << lockInfo->Type[i];
+                        botAI->TellMaster(out.str());
+                    }
                     break;
             }
+            
+            // If we found the best possible option (no lock or key access), stop checking
+            if (foundAccessibleLock && bestSkillId == SKILL_NONE && bestReqItem == 0)
+                break;
+        }
+        
+        // Check if we found any actual lock requirements (not just Type 0 entries)
+        bool hasActualRequirements = false;
+        for (uint8 i = 0; i < 8; ++i)
+        {
+            if (lockInfo->Type[i] == LOCK_KEY_ITEM || lockInfo->Type[i] == LOCK_KEY_SKILL || lockInfo->Type[i] == LOCK_KEY_SPELL)
+            {
+                hasActualRequirements = true;
+                break;
+            }
+        }
+        
+        // Apply the best lock option found, or allow access if no actual requirements exist
+        if (foundAccessibleLock || bestReqItem > 0 || !hasActualRequirements)
+        {
+            skillId = bestSkillId;
+            reqSkillValue = bestReqSkillValue;
+            reqItem = bestReqItem;
+            guid = lootGUID;
+            
+            if (debugLoot)
+            {
+                std::ostringstream out;
+                if (!hasActualRequirements)
+                {
+                    out << "LootRefresh: No actual lock requirements found (only Type 0 entries) - allowing access";
+                }
+                else
+                {
+                    out << "LootRefresh: Selected best lock option - ";
+                    if (bestReqItem > 0)
+                    {
+                        const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(bestReqItem);
+                        out << "key item " << (keyProto ? keyProto->Name1 : "Unknown") << " (ID: " << bestReqItem << ")";
+                    }
+                    else if (bestSkillId == SKILL_NONE)
+                        out << "no requirements";
+                    else
+                        out << "skill " << bestSkillId << " (level " << bestReqSkillValue << ")";
+                }
+                botAI->TellMaster(out.str());
+            }
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("LootRefresh: No accessible lock options found - bot cannot loot this object");
         }
     }
 }
@@ -714,7 +818,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
 
-    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    PlayerbotAI* botAI = bot->GetPlayerbotAI();
     bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
     
     if (debugLoot && !availableLoot.empty())
