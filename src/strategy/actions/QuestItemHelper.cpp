@@ -535,8 +535,24 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
     // Query conditions table for this spell to find required target conditions
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
     
+    // Debug spell conditions
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Found " << conditions.size() << " SPELL conditions for spell " << spellId;
+        botAI->TellMaster(out.str());
+    }
+    
     // Also check spell implicit target conditions for self-cast spells (like Kyle proximity check)
     ConditionList implicitConditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
+    
+    // Debug implicit conditions
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Found " << implicitConditions.size() << " SPELL_IMPLICIT_TARGET conditions for spell " << spellId;
+        botAI->TellMaster(out.str());
+    }
     
     // Merge both condition lists
     conditions.insert(conditions.end(), implicitConditions.begin(), implicitConditions.end());
