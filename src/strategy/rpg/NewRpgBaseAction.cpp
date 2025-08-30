@@ -36,14 +36,6 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 
     if (dest != botAI->rpgInfo.moveFarPos)
     {
-        // Validate reachability before committing to new destination
-        if (!ValidateReachability(dest))
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} destination not reachable: ({},{},{})", 
-                     bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-            return false;
-        }
-        
         // clear stuck information if it's a new dest
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
@@ -101,12 +93,6 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dx = x + cos(angle) * dis;
         float dy = y + sin(angle) * dis;
         float dz = z + 0.5f;
-        // Use Floor Z instead of Ground Z for better exploration quest handling
-        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
-        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
-        {
-            dz = floorZ;
-        }
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
         PathType type = path.GetPathType();
@@ -1803,4 +1789,108 @@ bool NewRpgBaseAction::GetRandomPointInPolygon(const std::vector<QuestPOIPoint>&
     outY = u * a.y + v * b.y + w * c.y;
 
     return true;
+}
+
+bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest) return false;
+
+    LOG_DEBUG("playerbots", "[New RPG] {} Smart fallback search for quest {}", bot->GetName(), questId);
+
+    // Get nearby objects using reliable AI_VALUE calls
+    GuidVector nearbyNPCs = AI_VALUE(GuidVector, "nearest npcs");
+    GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
+
+    // Check direct kill credit requirements first
+    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+        if (requiredNpcOrGo == 0) continue;
+
+        // Check if we still need this objective
+        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+        if (q_status.CreatureOrGOCount[i] >= quest->RequiredNpcOrGoCount[i])
+            continue;
+
+        if (requiredNpcOrGo > 0) // NPC kill credit
+        {
+            uint32 targetEntry = requiredNpcOrGo;
+            
+            for (const ObjectGuid& guid : nearbyNPCs)
+            {
+                Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+                if (!creature || !creature->IsInWorld()) continue;
+                
+                if (creature->GetEntry() == targetEntry && bot->GetDistance(creature) <= 200.0f)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found direct kill target {} at exact position", 
+                             bot->GetName(), creature->GetName());
+                    
+                    // Use the actual target's position - no Z calculations needed!
+                    WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(), 
+                                          creature->GetPositionY(), creature->GetPositionZ());
+                    
+                    botAI->rpgInfo.do_quest.pos = targetPos;
+                    botAI->rpgInfo.do_quest.objectiveIdx = i;
+                    botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                    
+                    return true;
+                }
+            }
+        }
+        else // GameObject interaction
+        {
+            uint32 targetEntry = -requiredNpcOrGo;
+            
+            for (const ObjectGuid& guid : nearbyGOs)
+            {
+                GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+                if (!go || !go->IsInWorld()) continue;
+                
+                if (go->GetEntry() == targetEntry && bot->GetDistance(go) <= 200.0f)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest GameObject {} at exact position", 
+                             bot->GetName(), go->GetGOInfo()->name);
+                    
+                    WorldPosition targetPos(go->GetMapId(), go->GetPositionX(), 
+                                          go->GetPositionY(), go->GetPositionZ());
+                    
+                    botAI->rpgInfo.do_quest.pos = targetPos;
+                    botAI->rpgInfo.do_quest.objectiveIdx = i;
+                    botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                    
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Check for creatures that drop needed quest items using server's loot system
+    for (const ObjectGuid& guid : nearbyNPCs)
+    {
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld()) continue;
+        
+        if (bot->GetDistance(creature) > 200.0f) continue;
+
+        // Use the server's built-in quest loot detection system!
+        if (sLootMgr->GetLootStore(LOOT_CORPSE)->HaveQuestLootForPlayer(creature->GetEntry(), bot))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Found quest item dropper {} (server confirmed quest loot)", 
+                     bot->GetName(), creature->GetName());
+
+            // Use creature's exact position - no Z calculations needed
+            WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(), 
+                                  creature->GetPositionY(), creature->GetPositionZ());
+            
+            botAI->rpgInfo.do_quest.pos = targetPos;
+            botAI->rpgInfo.do_quest.objectiveIdx = 0; // Item objectives
+            botAI->rpgInfo.do_quest.lastReachPOI = 0;
+            
+            return true;
+        }
+    }
+
+    return false;
 }
