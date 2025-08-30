@@ -67,15 +67,29 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         return;
     }
 
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+
     Creature* creature = botAI->GetCreature(lootGUID);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootRefresh: Evaluating creature " << creature->GetName() 
+                << " (Entry: " << creature->GetEntry() << ")";
+            botAI->TellMaster(out.str());
+        }
+
         if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
         {
             guid = lootGUID;
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Creature is lootable");
         }
         else
         {
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Creature not lootable - skipping");
             return;
         }
 
@@ -87,6 +101,21 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (botAI->HasSkill((SkillType)skillId) && bot->GetSkillValue(skillId) >= reqSkillValue)
             {
                 guid = lootGUID;
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "LootRefresh: Creature skinnable with skill " << skillId 
+                        << " (req: " << reqSkillValue << ", have: " << bot->GetSkillValue(skillId) << ")";
+                    botAI->TellMaster(out.str());
+                }
+            }
+            else if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "LootRefresh: Cannot skin - missing skill " << skillId 
+                    << " (req: " << reqSkillValue << ", have: " 
+                    << (botAI->HasSkill((SkillType)skillId) ? std::to_string(bot->GetSkillValue(skillId)) : "0") << ")";
+                botAI->TellMaster(out.str());
             }
         }
 
@@ -96,6 +125,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootRefresh: Evaluating gameobject " << go->GetName() 
+                << " (Entry: " << go->GetEntry() << ", Type: " << go->GetGoType() << ")";
+            botAI->TellMaster(out.str());
+        }
+
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
         bool hasNeededQuestItem = false;
@@ -116,6 +153,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             {
                 hasNeededQuestItem = true;
                 this->guid = lootGUID;
+                if (debugLoot)
+                {
+                    const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
+                    std::ostringstream out;
+                    out << "LootRefresh: Found needed quest item " 
+                        << (proto ? proto->Name1 : "Unknown") << " (ID: " << itemId << ")";
+                    botAI->TellMaster(out.str());
+                }
                 break;
             }
 
@@ -132,6 +177,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // If gameobject has only quest items that bot doesn't need, skip it.
         if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
         {
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Gameobject has only unneeded quest items - skipping");
             return;
         }
 
@@ -202,7 +249,16 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
         {
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Gameobject accepted - no lock info");
             return;
+        }
+
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootRefresh: Gameobject has lock ID " << lockId;
+            botAI->TellMaster(out.str());
         }
 
         for (uint8 i = 0; i < 8; ++i)
@@ -214,6 +270,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     {
                         reqItem = lockInfo->Index[i];
                         guid = lootGUID;
+                        if (debugLoot)
+                        {
+                            const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                            std::ostringstream out;
+                            out << "LootRefresh: Requires key item " 
+                                << (keyProto ? keyProto->Name1 : "Unknown") << " (ID: " << reqItem << ")";
+                            botAI->TellMaster(out.str());
+                        }
                     }
                     break;
 
@@ -228,6 +292,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             skillId = mappedSkill;
                             reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
                             guid = lootGUID;
+                            if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "LootRefresh: Requires skill " << skillId 
+                                    << " (level " << reqSkillValue << ")";
+                                botAI->TellMaster(out.str());
+                            }
                         }
                         else if (IsAccessibleLockType(lockType))
                         {
@@ -236,6 +307,18 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             skillId = SKILL_NONE; // No skill required
                             reqSkillValue = 0;
                             guid = lootGUID;
+                            if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "LootRefresh: Accessible lock type " << lockType << " - no skill required";
+                                botAI->TellMaster(out.str());
+                            }
+                        }
+                        else if (debugLoot)
+                        {
+                            std::ostringstream out;
+                            out << "LootRefresh: Inaccessible lock type " << lockType << " - bot cannot loot";
+                            botAI->TellMaster(out.str());
                         }
                         // If lock type is not accessible (like LOCKTYPE_DISARM_TRAP without mapping), 
                         // don't set guid - bot won't try to loot it
@@ -244,6 +327,8 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
                 case LOCK_KEY_NONE:
                     guid = lootGUID;
+                    if (debugLoot)
+                        botAI->TellMaster("LootRefresh: No lock required");
                     break;
             }
         }
@@ -358,11 +443,27 @@ bool LootObject::IsLootPossible(Player* bot)
     {
         return false;
     }
+
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
     
-    // Debug: Log when checking if loot is possible
-    std::ostringstream stream;
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "LootPossible: Checking " << worldObj->GetName() 
+            << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+    
     if (reqItem && !bot->HasItemCount(reqItem, 1))
     {
+        if (debugLoot)
+        {
+            const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+            std::ostringstream out;
+            out << "LootPossible: Missing required key " 
+                << (keyProto ? keyProto->Name1 : "Unknown") << " (ID: " << reqItem << ")";
+            botAI->TellMaster(out.str());
+        }
         return false;
     }
 
@@ -385,8 +486,14 @@ bool LootObject::IsLootPossible(Player* bot)
             float destZ = z;
             if (!map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
             {
+                if (debugLoot)
+                    botAI->TellMaster("LootPossible: Cannot reach target - pathfinding failed");
                 return false;
             }
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("LootPossible: Loot in water - allowing swimming access");
         }
         // If loot is in water, allow bot to attempt swimming to it regardless of pathfinding
     }
@@ -396,6 +503,8 @@ bool LootObject::IsLootPossible(Player* bot)
     {
         if (!bot->isAllowedToLoot(creature) && skillId != SKILL_SKINNING)
         {
+            if (debugLoot)
+                botAI->TellMaster("LootPossible: Not allowed to loot creature");
             return false;
         }
     }
@@ -438,27 +547,50 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (skillId == SKILL_NONE)
     {
+        if (debugLoot)
+            botAI->TellMaster("LootPossible: No skill required - loot possible");
         return true;
     }
 
     if (skillId == SKILL_FISHING)
     {
+        if (debugLoot)
+            botAI->TellMaster("LootPossible: Fishing skill required - not supported for looting");
         return false;
     }
 
     if (!botAI->HasSkill((SkillType)skillId))
     {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootPossible: Missing required skill " << skillId;
+            botAI->TellMaster(out.str());
+        }
         return false;
     }
 
     if (!reqSkillValue)
     {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootPossible: Has skill " << skillId << " (any level) - loot possible";
+            botAI->TellMaster(out.str());
+        }
         return true;
     }
 
     uint32 skillValue = uint32(bot->GetSkillValue(skillId));
     if (reqSkillValue > skillValue)
     {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootPossible: Skill " << skillId << " too low (have " 
+                << skillValue << ", need " << reqSkillValue << ")";
+            botAI->TellMaster(out.str());
+        }
         return false;
     }
 
@@ -467,13 +599,25 @@ bool LootObject::IsLootPossible(Player* bot)
         !bot->HasItemCount(2901, 1) && !bot->HasItemCount(9465, 1) && !bot->HasItemCount(20723, 1) &&
         !bot->HasItemCount(40772, 1) && !bot->HasItemCount(40892, 1) && !bot->HasItemCount(40893, 1))
     {
+        if (debugLoot)
+            botAI->TellMaster("LootPossible: Mining skill available but missing mining pick");
         return false;  // Bot is missing a mining pick
     }
 
     if (skillId == SKILL_SKINNING && !bot->HasItemCount(7005, 1) && !bot->HasItemCount(40772, 1) &&
         !bot->HasItemCount(40893, 1) && !bot->HasItemCount(12709, 1) && !bot->HasItemCount(19901, 1))
     {
+        if (debugLoot)
+            botAI->TellMaster("LootPossible: Skinning skill available but missing skinning knife");
         return false;  // Bot is missing a skinning knife
+    }
+
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "LootPossible: All requirements met - skill " << skillId 
+            << " (have " << skillValue << ", need " << reqSkillValue << ")";
+        botAI->TellMaster(out.str());
     }
 
     return true;
@@ -570,7 +714,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
 
-    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    PlayerbotAI* botAI = bot->GetPlayerbotAI();
     bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
     
     if (debugLoot && !availableLoot.empty())
