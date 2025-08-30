@@ -663,9 +663,10 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                             uint32 creatureType = nearbyUnit->ToCreature()->GetCreatureTemplate()->type;
                             if (creatureType == requiredType)
                             {
-                                // Check distance using SmartAI-aware range detection
+                                // Check distance using spell range (more accurate than SmartAI search range)
                                 float distance = caster->GetDistance(nearbyUnit);
-                                float maxDistance = GetSmartAIInteractionRange(requiredEntry);
+                                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                                float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
                                 
                                 if (distance <= maxDistance)
                                 {
@@ -733,9 +734,10 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                         if (!nearbyUnit || nearbyUnit->GetEntry() != requiredEntry)
                             continue;
                             
-                        // Check distance using SmartAI-aware range detection
+                        // Check distance using spell range (more accurate than SmartAI search range)
                         float distance = caster->GetDistance(nearbyUnit);
-                        float maxDistance = GetSmartAIInteractionRange(requiredEntry);
+                        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                        float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
                         
                         if (distance <= maxDistance)
                         {
@@ -1999,9 +2001,10 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
                 if (!target || target->GetEntry() != requiredCreatureEntry)
                     continue;
                     
-                // Check distance using SmartAI-aware range detection
+                // Check distance using spell range (more accurate than SmartAI search range)
                 float distance = bot->GetDistance(target);
-                float maxDistance = GetSmartAIInteractionRange(requiredCreatureEntry);
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
                 
                 if (distance > maxDistance)
                     continue;
@@ -2024,44 +2027,3 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
     return nullptr;
 }
 
-float QuestItemHelper::GetSmartAIInteractionRange(uint32 creatureEntry)
-{
-    // Get SmartAI script for this creature
-    SmartAIEventList scripts = sSmartScriptMgr->GetScript(creatureEntry, SMART_SCRIPT_TYPE_CREATURE);
-    
-    float maxRange = sPlayerbotAIConfig->grindDistance; // Default fallback
-    
-    for (SmartScriptHolder const& script : scripts)
-    {
-        // Look for MOVE_TO_POS_TARGET action (type 201) which responds to gameobjects
-        if (script.action.type == SMART_ACTION_MOVE_TO_POS_TARGET)
-        {
-            // Check different target types that might have distance parameters
-            switch (script.target.type)
-            {
-                case SMART_TARGET_GAMEOBJECT_DISTANCE:
-                case SMART_TARGET_CREATURE_DISTANCE:
-                {
-                    // target_param2 typically contains the search distance
-                    float distance = static_cast<float>(script.target.unitDistance.dist);
-                    if (distance > 0.0f && distance > maxRange)
-                        maxRange = distance;
-                    break;
-                }
-                case SMART_TARGET_GAMEOBJECT_RANGE:
-                case SMART_TARGET_CREATURE_RANGE:
-                {
-                    // For range targets, param3 is typically the max range
-                    float distance = static_cast<float>(script.target.unitRange.maxDist);
-                    if (distance > 0.0f && distance > maxRange)
-                        maxRange = distance;
-                    break;
-                }
-                default:
-                    break;
-            }
-        }
-    }
-    
-    return maxRange;
-}
