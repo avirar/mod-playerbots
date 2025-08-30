@@ -127,26 +127,7 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     if (!object)
         return false;
         
-    // Check if we're close enough for interaction - if so, validate LOS
-    float currentDistance = bot->GetDistance(object);
-    if (currentDistance <= INTERACTION_DISTANCE)
-    {
-        if (!bot->IsWithinLOSInMap(object))
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} NPC/GO at interaction distance but no LOS, trying alternative approach", 
-                     bot->GetName());
-            
-            // Try alternative approach angles for better LOS
-            float altX, altY, altZ;
-            if (TryAlternativeApproachForLOS(guid, altX, altY, altZ))
-            {
-                return MoveTo(object->GetMapId(), altX, altY, altZ, false, false, false, true);
-            }
-            
-            // If no alternative found, try to get closer
-            distance = std::min(distance, INTERACTION_DISTANCE * 0.5f);
-        }
-    }
+    // Simple upstream approach - no complex LOS handling
         
     float objectX = object->GetPositionX();
     float objectY = object->GetPositionY();
@@ -164,27 +145,12 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     float y = objectY + sin(angle) * distance * rnd;
     float z = objectZ;
 
-    // Use NPC-aware height calculation to ensure we move to the same elevation as the target
-    float properZ = GetProperFloorHeightNearNPC(bot, x, y, objectZ, guid);
-    if (properZ != INVALID_HEIGHT && properZ != VMAP_INVALID_HEIGHT_VALUE)
+    // Use upstream's simple collision check
+    if (!object->GetMap()->CheckCollisionAndGetValidCoords(object, objectX, objectY, objectZ, x, y, z))
     {
-        z = properZ;
-    }
-
-    // Validate collision, but preserve Z coordinate from NPC level
-    float validX = x, validY = y, validZ = z;
-    if (!object->GetMap()->CheckCollisionAndGetValidCoords(object, objectX, objectY, objectZ, validX, validY, validZ))
-    {
-        // If collision check fails, try moving closer to the object at its Z level
-        x = objectX + cos(angle) * (distance * 0.5f);
-        y = objectY + sin(angle) * (distance * 0.5f);
+        x = objectX;
+        y = objectY;
         z = objectZ;
-    }
-    else
-    {
-        x = validX;
-        y = validY;
-        z = validZ;
     }
     
     return MoveTo(mapId, x, y, z, false, false, false, true);
@@ -209,12 +175,6 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
         float dx = x + distance * cos(angle);
         float dy = y + distance * sin(angle);
         float dz = z;
-        // Use Floor Z instead of Ground Z for better exploration quest handling
-        float floorZ = GetProperFloorHeight(bot, dx, dy, dz);
-        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
-        {
-            dz = floorZ;
-        }
 
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
@@ -760,16 +720,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
-        // Check elevation difference - prefer NPCs on similar elevation
-        float elevationPenalty = 0.0f;
-        if (IsNPCOnDifferentElevation(object, bot->GetPositionZ(), 15.0f))
-        {
-            elevationPenalty = 50.0f; // Add distance penalty for different elevations
-        }
-
         if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
         {
-            float adjustedDistance = bot->GetExactDist(object) + elevationPenalty;
+            float adjustedDistance = bot->GetExactDist(object);
             if (adjustedDistance < nearestDistance)
             {
                 nearestObject = object;
@@ -792,16 +745,9 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
-        // Check elevation difference for GameObjects too
-        float elevationPenalty = 0.0f;
-        if (IsNPCOnDifferentElevation(object, bot->GetPositionZ(), 15.0f))
-        {
-            elevationPenalty = 50.0f;
-        }
-
         if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
         {
-            float adjustedDistance = bot->GetExactDist(object) + elevationPenalty;
+            float adjustedDistance = bot->GetExactDist(object);
             if (adjustedDistance < nearestDistance)
             {
                 nearestObject = object;
@@ -980,7 +926,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (bot->GetDistance2d(dx, dy) >= 2500.0f)
                 continue;
 
-            float dz = GetProperFloorHeight(bot, dx, dy, MAX_HEIGHT);
+            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
+                               bot->GetMap()->GetWaterLevel(dx, dy));
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 continue;
@@ -1061,7 +1008,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float radius = fields[3].Get<float>();
             LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB", bot->GetName());
             // Use the center of the area trigger as POI
-            float dz = GetProperFloorHeightNearNPC(bot, x, y, z);
+            float dz = std::max(bot->GetMap()->GetHeight(x, y, MAX_HEIGHT), 
+                               bot->GetMap()->GetWaterLevel(x, y));
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z for area trigger at ({}, {})", bot->GetName(), x, y);
@@ -1114,9 +1062,9 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             continue;
         }
         
-        // Use the random point for all subsequent operations and look for nearby NPCs for Z reference
-        ObjectGuid nearbyNPC = FindNearbyQuestNPC(questId, randomX, randomY, 100.0f);
-        float dz = GetProperFloorHeightNearNPC(bot, randomX, randomY, MAX_HEIGHT, nearbyNPC);
+        // Use upstream clean approach for Z calculation
+        float dz = std::max(bot->GetMap()->GetHeight(randomX, randomY, MAX_HEIGHT), 
+                           bot->GetMap()->GetWaterLevel(randomX, randomY));
         
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
@@ -1540,199 +1488,6 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
     return false;
 }
 
-float NewRpgBaseAction::GetProperFloorHeight(Player* bot, float dx, float dy, float dz)
-{
-    float groundHeight = bot->GetMap()->GetGridHeight(dx, dy);
-    
-    // Get VMAP height for more accurate positioning
-    float vmapHeight = bot->GetMap()->GetHeight(dx, dy, dz + 10.0f, true, 50.0f);
-    
-    // Use VMAP height if valid, otherwise fall back to ground height
-    if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
-    {
-        return vmapHeight;
-    }
-    
-    return groundHeight;
-}
-
-float NewRpgBaseAction::GetProperFloorHeightNearNPC(Player* bot, float dx, float dy, float referenceZ, ObjectGuid npcGuid)
-{
-    // If we have a specific NPC, try to match its elevation
-    if (!npcGuid.IsEmpty())
-    {
-        WorldObject* npc = ObjectAccessor::GetWorldObject(*bot, npcGuid);
-        if (npc)
-        {
-            float npcZ = npc->GetPositionZ();
-            float distance2D = bot->GetDistance2d(npc);
-            
-            // If we're moving close to the NPC, try to match its Z level
-            if (distance2D < 50.0f)
-            {
-                // Check if the NPC's Z level is reachable from our position
-                float heightDiff = abs(npcZ - bot->GetPositionZ());
-                if (heightDiff < 100.0f) // Reasonable elevation difference
-                {
-                    // Use NPC's Z level with slight VMAP adjustment
-                    float vmapHeight = bot->GetMap()->GetHeight(dx, dy, npcZ + 5.0f, true, 10.0f);
-                    if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
-                    {
-                        return vmapHeight;
-                    }
-                    return npcZ;
-                }
-            }
-        }
-    }
-    
-    // If no NPC context or NPC method failed, use reference Z with validation
-    if (referenceZ > INVALID_HEIGHT && referenceZ != VMAP_INVALID_HEIGHT_VALUE)
-    {
-        float vmapHeight = bot->GetMap()->GetHeight(dx, dy, referenceZ + 5.0f, true, 10.0f);
-        if (vmapHeight > INVALID_HEIGHT && vmapHeight != VMAP_INVALID_HEIGHT_VALUE)
-        {
-            return vmapHeight;
-        }
-        return referenceZ;
-    }
-    
-    // Fallback to standard height calculation
-    return GetProperFloorHeight(bot, dx, dy, bot->GetPositionZ());
-}
-
-bool NewRpgBaseAction::IsNPCOnDifferentElevation(WorldObject* npc, float botZ, float tolerance)
-{
-    if (!npc)
-        return false;
-        
-    float heightDiff = abs(npc->GetPositionZ() - botZ);
-    return heightDiff > tolerance;
-}
-
-bool NewRpgBaseAction::ValidateReachability(WorldPosition dest, ObjectGuid targetNpc)
-{
-    if (dest == WorldPosition())
-        return false;
-        
-    // Basic distance check
-    float distance = bot->GetDistance(dest);
-    if (distance > 2500.0f)
-        return false;
-        
-    // If we have a target NPC, check if the destination is on a reasonable elevation
-    if (!targetNpc.IsEmpty())
-    {
-        WorldObject* npc = ObjectAccessor::GetWorldObject(*bot, targetNpc);
-        if (npc)
-        {
-            float npcZ = npc->GetPositionZ();
-            float destZ = dest.GetPositionZ();
-            float elevationDiff = abs(destZ - npcZ);
-            
-            // If destination is far from NPC elevation, it might not be reachable
-            if (elevationDiff > 50.0f)
-            {
-                LOG_DEBUG("playerbots", "[New RPG] {} destination Z ({}) too far from NPC Z ({}), elevation diff: {}",
-                         bot->GetName(), destZ, npcZ, elevationDiff);
-                return false;
-            }
-        }
-    }
-    
-    // Basic pathfinding check for short distances
-    if (distance < pathFinderDis)
-    {
-        PathGenerator path(bot);
-        path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
-        PathType type = path.GetPathType();
-        uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
-        return !(type & (~typeOk));
-    }
-    
-    return true; // Assume reachable for long distances (will be handled by MoveFarTo logic)
-}
-
-ObjectGuid NewRpgBaseAction::FindNearbyQuestNPC(uint32 questId, float x, float y, float searchRadius)
-{
-    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-    if (!quest)
-        return ObjectGuid();
-
-    // Use non-LOS search for quest NPCs to find NPCs in multi-level areas
-    GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
-    ObjectGuid closestNPC;
-    float closestDistance = searchRadius;
-
-    for (ObjectGuid& guid : possibleTargets)
-    {
-        WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
-        if (!object || !object->IsInWorld())
-            continue;
-
-        Creature* creature = object->ToCreature();
-        if (!creature)
-            continue;
-
-        float distance2D = sqrt((creature->GetPositionX() - x) * (creature->GetPositionX() - x) +
-                               (creature->GetPositionY() - y) * (creature->GetPositionY() - y));
-
-        if (distance2D < closestDistance)
-        {
-            // Check if this NPC is related to the quest (quest giver, objective, etc.)
-            if (CanInteractWithQuestGiver(creature))
-            {
-                closestNPC = guid;
-                closestDistance = distance2D;
-            }
-        }
-    }
-
-    return closestNPC;
-}
-
-bool NewRpgBaseAction::TryAlternativeApproachForLOS(ObjectGuid guid, float& bestX, float& bestY, float& bestZ)
-{
-    WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
-    if (!object)
-        return false;
-        
-    float objectX = object->GetPositionX();
-    float objectY = object->GetPositionY();
-    float objectZ = object->GetPositionZ();
-    
-    // Try different approach angles around the NPC/GO to find LOS
-    float testDistance = INTERACTION_DISTANCE * 0.8f;
-    int attempts = 8; // Test 8 different angles around the object
-    
-    for (int i = 0; i < attempts; ++i)
-    {
-        float angle = (2.0f * M_PI / attempts) * i;
-        float testX = objectX + cos(angle) * testDistance;
-        float testY = objectY + sin(angle) * testDistance;
-        float testZ = GetProperFloorHeightNearNPC(bot, testX, testY, objectZ, guid);
-        
-        if (testZ == INVALID_HEIGHT || testZ == VMAP_INVALID_HEIGHT_VALUE)
-            continue;
-            
-        // Create temporary position to test LOS from
-        WorldPosition testPos(bot->GetMapId(), testX, testY, testZ);
-        
-        // Check if this position would have LOS to the object
-        // We can't easily test LOS from arbitrary positions, so just check if it's reachable
-        if (ValidateReachability(testPos, guid))
-        {
-            bestX = testX;
-            bestY = testY;
-            bestZ = testZ;
-            LOG_DEBUG("playerbots", "[New RPG] {} Found alternative approach angle {} for better LOS to {}", 
-                     bot->GetName(), i, guid.ToString());
-            return true;
-        }
-    }
-    
-    return false;
-}
 
 // Helper function to generate a random point inside a convex polygon
 bool NewRpgBaseAction::GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY)
