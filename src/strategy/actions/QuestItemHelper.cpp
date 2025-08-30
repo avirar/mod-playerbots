@@ -1445,9 +1445,42 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                     // For self-cast spells, only consider quest items or items with quest-specific properties
                     if (!spellInfo->NeedsExplicitUnitTarget())
                     {
-                        // Only treat as quest item if it's actually a quest item class
-                        // ITEM_FLAG_PLAYERCAST is too broad (includes consumables like sharpening stones)
-                        bool isActualQuestItem = (itemTemplate->Class == ITEM_CLASS_QUEST);
+                        // Check if this spell actually has quest-related effects rather than just being a consumable
+                        bool isActualQuestItem = false;
+                        
+                        // Method 1: Check if it's a quest item class
+                        if (itemTemplate->Class == ITEM_CLASS_QUEST)
+                        {
+                            isActualQuestItem = true;
+                        }
+                        else
+                        {
+                            // Method 2: Check if the spell has quest-specific effects (summons, quest credit, etc.)
+                            for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                            {
+                                uint32 effect = spellInfo->Effects[i].Effect;
+                                if (effect == SPELL_EFFECT_SUMMON_OBJECT_WILD ||    // Creates gameobjects (common for quest items)
+                                    effect == SPELL_EFFECT_SUMMON_OBJECT_SLOT1 ||
+                                    effect == SPELL_EFFECT_SUMMON_OBJECT_SLOT2 ||
+                                    effect == SPELL_EFFECT_SUMMON_OBJECT_SLOT3 ||
+                                    effect == SPELL_EFFECT_SUMMON_OBJECT_SLOT4 ||
+                                    effect == SPELL_EFFECT_QUEST_COMPLETE ||       // Directly completes quests
+                                    effect == SPELL_EFFECT_SEND_EVENT ||           // Triggers quest events
+                                    effect == SPELL_EFFECT_KILL_CREDIT ||          // Gives kill credit
+                                    effect == SPELL_EFFECT_KILL_CREDIT_PERSONAL || // Personal kill credit
+                                    effect == SPELL_EFFECT_CREATE_ITEM)            // Creates quest items
+                                {
+                                    isActualQuestItem = true;
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: " << itemTemplate->Name1 << " has quest effect " << effect << " on spell " << spellId;
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
                         
                         if (isActualQuestItem)
                         {
@@ -1463,7 +1496,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                         else if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                         {
                             std::ostringstream out;
-                            out << "QuestItem: Skipping regular consumable " << itemTemplate->Name1 << " - not quest class (class:" << itemTemplate->Class << " flags:" << itemTemplate->Flags << ")";
+                            out << "QuestItem: Skipping regular consumable " << itemTemplate->Name1 << " - no quest effects (class:" << itemTemplate->Class << " spell:" << spellId << ")";
                             botAI->TellMaster(out.str());
                         }
                     }
