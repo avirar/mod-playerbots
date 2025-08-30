@@ -68,7 +68,7 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
     {
         case RPG_IDLE:
         {
-            // PRIORITY: Go near Vendor NPC if bags are almost full to prevent looting issues
+            // PRIORITY: Find vendor when bags are almost full to prevent looting issues
             if (AI_VALUE(uint8, "bag space") > 80)
             {
                 GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
@@ -87,6 +87,13 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
                             return true;
                         }
                     }
+                }
+                // Fallback: Go to camp if no nearby vendor found
+                WorldPosition campPos = SelectRandomCampPos(bot);
+                if (campPos != WorldPosition())
+                {
+                    info.ChangeToGoCamp(campPos);
+                    return true;
                 }
             }
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
