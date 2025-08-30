@@ -1442,17 +1442,30 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                 // Check if spell location requirements are met
                 if (CheckSpellLocationRequirements(player, spellId))
                 {
-                    // For self-cast spells, assume they might be needed (like area effect quest items)
+                    // For self-cast spells, only consider quest items or items with quest-specific properties
                     if (!spellInfo->NeedsExplicitUnitTarget())
                     {
-                        itemNeededForActiveQuest = true;
-                        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                        // Only treat as quest item if it's actually a quest item class or has quest-related flags
+                        bool isActualQuestItem = (itemTemplate->Class == ITEM_CLASS_QUEST) || 
+                                                (itemTemplate->Flags & ITEM_FLAG_PLAYERCAST);
+                        
+                        if (isActualQuestItem)
+                        {
+                            itemNeededForActiveQuest = true;
+                            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                            {
+                                std::ostringstream out;
+                                out << "QuestItem: Self-cast item " << itemTemplate->Name1 << " might be needed for quest " << questId;
+                                botAI->TellMaster(out.str());
+                            }
+                            break;
+                        }
+                        else if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                         {
                             std::ostringstream out;
-                            out << "QuestItem: Self-cast item " << itemTemplate->Name1 << " might be needed for quest " << questId;
+                            out << "QuestItem: Skipping regular consumable " << itemTemplate->Name1 << " - not a quest item (class:" << itemTemplate->Class << " flags:" << itemTemplate->Flags << ")";
                             botAI->TellMaster(out.str());
                         }
-                        break;
                     }
                     else
                     {
