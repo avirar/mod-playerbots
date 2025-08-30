@@ -71,4 +71,13 @@ public:
     std::string const getName() override { return "debug newrpg"; }
 };
 
+class DebugLootStrategy : public Strategy
+{
+public:
+    DebugLootStrategy(PlayerbotAI* botAI) : Strategy(botAI) { }
+
+    uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT | STRATEGY_TYPE_COMBAT; }
+    std::string const getName() override { return "debug loot"; }
+};
+
 #endif
