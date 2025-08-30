@@ -375,7 +375,21 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     break;
 
                 default:
-                    // LOCK_KEY_NONE (0) and other undefined types are ignored, just like server
+                    // LOCK_KEY_NONE (0) and other undefined types - match server behavior
+                    if (lockInfo->Type[i] != LOCK_KEY_SKILL)
+                    {
+                        // SERVER BEHAVIOR: Stop processing remaining lock options for non-skill types
+                        // This matches GameObject::GetSpellForLock() early break logic
+                        if (debugLoot && lockInfo->Type[i] != 0)
+                        {
+                            std::ostringstream out;
+                            out << "LootRefresh: Lock option " << (i+1) << " - non-skill type " << lockInfo->Type[i] 
+                                << " (stopping processing like server)";
+                            botAI->TellMaster(out.str());
+                        }
+                        break; // Stop processing remaining slots like server does
+                    }
+                    
                     if (debugLoot && lockInfo->Type[i] != 0)
                     {
                         std::ostringstream out;
