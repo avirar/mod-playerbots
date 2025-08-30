@@ -1631,7 +1631,7 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
         if (bot->GetDistance(creature) > 200.0f) continue;
 
         // Use the server's built-in quest loot detection system!
-        if (sLootMgr->GetLootStore(LOOT_CORPSE)->HaveQuestLootForPlayer(creature->GetEntry(), bot))
+        if (LootTemplates_Creature.HaveQuestLootForPlayer(creature->GetEntry(), bot))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} Found quest item dropper {} (server confirmed quest loot)", 
                      bot->GetName(), creature->GetName());
