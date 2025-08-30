@@ -551,17 +551,12 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        float dz = bot->GetMap()->GetGridHeight(dx, dy);
         
-        // Look for nearby quest giver for reward to get proper Z reference
-        ObjectGuid nearbyNPC = FindNearbyQuestNPC(questId, dx, dy, 100.0f);
-        float floorZ = GetProperFloorHeightNearNPC(bot, dx, dy, dz, nearbyNPC);
-        if (floorZ != INVALID_HEIGHT && floorZ != VMAP_INVALID_HEIGHT_VALUE)
-        {
-            dz = floorZ;
-        }
+        // Use upstream's clean approach - no fancy Z calculations
+        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
+                           bot->GetMap()->GetWaterLevel(dx, dy));
 
-        // double check for GetQuestPOIPosAndObjectiveIdx
+        // double check for upstream POI logic
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             return false;
 
