@@ -663,10 +663,12 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                             uint32 creatureType = nearbyUnit->ToCreature()->GetCreatureTemplate()->type;
                             if (creatureType == requiredType)
                             {
-                                // Check distance using spell range (more accurate than SmartAI search range)
+                                // Check distance using spell range with buffer for reliable casting
                                 float distance = caster->GetDistance(nearbyUnit);
                                 SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                                float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
+                                float maxDistance = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
+                                if (maxDistance <= 0.0f)
+                                    maxDistance = 1.0f; // Minimum safe distance
                                 
                                 if (distance <= maxDistance)
                                 {
@@ -734,10 +736,12 @@ bool QuestItemHelper::CheckSpellConditions(uint32 spellId, Unit* target, Player*
                         if (!nearbyUnit || nearbyUnit->GetEntry() != requiredEntry)
                             continue;
                             
-                        // Check distance using spell range (more accurate than SmartAI search range)
+                        // Check distance using spell range with buffer for reliable casting
                         float distance = caster->GetDistance(nearbyUnit);
                         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                        float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
+                        float maxDistance = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
+                        if (maxDistance <= 0.0f)
+                            maxDistance = 1.0f; // Minimum safe distance
                         
                         if (distance <= maxDistance)
                         {
@@ -2001,10 +2005,12 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
                 if (!target || target->GetEntry() != requiredCreatureEntry)
                     continue;
                     
-                // Check distance using spell range (more accurate than SmartAI search range)
+                // Check distance using spell range with buffer for reliable casting
                 float distance = bot->GetDistance(target);
                 SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-                float maxDistance = spellInfo ? spellInfo->GetMaxRange() : sPlayerbotAIConfig->grindDistance;
+                float maxDistance = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
+                if (maxDistance <= 0.0f)
+                    maxDistance = 1.0f; // Minimum safe distance
                 
                 if (distance > maxDistance)
                     continue;
