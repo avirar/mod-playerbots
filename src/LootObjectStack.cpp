@@ -416,7 +416,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         }
         
         // Apply the best lock option found, or allow access if no actual requirements exist
-        if (foundAccessibleLock || bestReqItem > 0 || !hasActualRequirements)
+        if (foundAccessibleLock || !hasActualRequirements)
         {
             skillId = bestSkillId;
             reqSkillValue = bestReqSkillValue;
