@@ -433,41 +433,13 @@ bool StoreLootAction::Execute(Event event)
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
-            // Check if this is a quest-related item that should be prioritized
-            bool isQuestItem = (proto->Class == ITEM_CLASS_QUEST);
-            
-            // Also check if item is needed for any active quests
-            bool isNeededForQuest = false;
-            QuestStatusMap& questMap = bot->getQuestStatusMap();
-            for (auto& questPair : questMap)
-            {
-                Quest const* quest = sObjectMgr->GetQuestTemplate(questPair.first);
-                if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
-                    continue;
-                    
-                // Check if this item is required for the quest
-                for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
-                {
-                    if (quest->RequiredSourceItemId[i] == itemid)
-                    {
-                        isNeededForQuest = true;
-                        break;
-                    }
-                }
-                
-                if (isNeededForQuest)
-                    break;
-            }
-            
-            // Also check if item has useful purpose (not just vendor/AH trash)
-            bool isUsefulItem = false;
+            // Check item usage to determine if it should be prioritized
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", itemid);
-            if (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
-            {
-                isUsefulItem = true;
-            }
             
-            if (isQuestItem || isNeededForQuest || isUsefulItem)
+            // Prioritize useful items (anything not vendor trash, AH items, or completely useless)
+            bool isUsefulItem = (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH);
+            
+            if (isUsefulItem)
             {
                 // Check if bot has any free bag slots for important items
                 // (quest items, useful equipment, skill items, consumables, etc.)
