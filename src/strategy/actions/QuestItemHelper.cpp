@@ -1445,9 +1445,9 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                     // For self-cast spells, only consider quest items or items with quest-specific properties
                     if (!spellInfo->NeedsExplicitUnitTarget())
                     {
-                        // Only treat as quest item if it's actually a quest item class or has quest-related flags
-                        bool isActualQuestItem = (itemTemplate->Class == ITEM_CLASS_QUEST) || 
-                                                (itemTemplate->Flags & ITEM_FLAG_PLAYERCAST);
+                        // Only treat as quest item if it's actually a quest item class
+                        // ITEM_FLAG_PLAYERCAST is too broad (includes consumables like sharpening stones)
+                        bool isActualQuestItem = (itemTemplate->Class == ITEM_CLASS_QUEST);
                         
                         if (isActualQuestItem)
                         {
@@ -1463,7 +1463,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                         else if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                         {
                             std::ostringstream out;
-                            out << "QuestItem: Skipping regular consumable " << itemTemplate->Name1 << " - not a quest item (class:" << itemTemplate->Class << " flags:" << itemTemplate->Flags << ")";
+                            out << "QuestItem: Skipping regular consumable " << itemTemplate->Name1 << " - not quest class (class:" << itemTemplate->Class << " flags:" << itemTemplate->Flags << ")";
                             botAI->TellMaster(out.str());
                         }
                     }
