@@ -433,25 +433,94 @@ bool StoreLootAction::Execute(Event event)
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
-            uint32 maxStack = proto->GetMaxStackSize();
-            if (maxStack == 1)
-                continue;
-
-            std::vector<Item*> found = parseItems(chat->FormatItem(proto));
-
-            bool hasFreeStack = false;
-
-            for (auto stack : found)
+            // Check if this is a quest-related item that should be prioritized
+            bool isQuestItem = (proto->Class == ITEM_CLASS_QUEST);
+            
+            // Also check if item is needed for any active quests
+            bool isNeededForQuest = false;
+            QuestStatusMap& questMap = bot->getQuestStatusMap();
+            for (auto& questPair : questMap)
             {
-                if (stack->GetCount() + itemcount < maxStack)
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questPair.first);
+                if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
+                    continue;
+                    
+                // Check if this item is required for the quest
+                for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
                 {
-                    hasFreeStack = true;
-                    break;
+                    if (quest->RequiredSourceItemId[i] == itemid)
+                    {
+                        isNeededForQuest = true;
+                        break;
+                    }
                 }
+                
+                if (isNeededForQuest)
+                    break;
             }
+            
+            // Also check if item has useful purpose (not just vendor/AH trash)
+            bool isUsefulItem = false;
+            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", itemid);
+            if (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
+            {
+                isUsefulItem = true;
+            }
+            
+            if (isQuestItem || isNeededForQuest || isUsefulItem)
+            {
+                // Check if bot has any free bag slots for important items
+                // (quest items, useful equipment, skill items, consumables, etc.)
+                uint32 totalfree = 0;
+                
+                // Check main bag slots
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; slot++)
+                {
+                    if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                        ++totalfree;
+                }
+                
+                // Check additional bag slots
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    const Bag* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+                    if (pBag)
+                    {
+                        ItemTemplate const* pBagProto = pBag->GetTemplate();
+                        if (pBagProto->Class == ITEM_CLASS_CONTAINER && pBagProto->SubClass == ITEM_SUBCLASS_CONTAINER)
+                        {
+                            totalfree += pBag->GetFreeSlots();
+                        }
+                    }
+                }
+                
+                // Allow important item if there's any free space
+                if (totalfree == 0)
+                    continue; // Skip only if absolutely no space
+            }
+            else
+            {
+                // Apply normal restrictions for non-quest items
+                uint32 maxStack = proto->GetMaxStackSize();
+                if (maxStack == 1)
+                    continue;
 
-            if (!hasFreeStack)
-                continue;
+                std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+
+                bool hasFreeStack = false;
+
+                for (auto stack : found)
+                {
+                    if (stack->GetCount() + itemcount < maxStack)
+                    {
+                        hasFreeStack = true;
+                        break;
+                    }
+                }
+
+                if (!hasFreeStack)
+                    continue;
+            }
         }
 
         Player* master = botAI->GetMaster();
