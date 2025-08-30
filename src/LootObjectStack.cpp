@@ -8,9 +8,12 @@
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
+#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
 #include "Unit.h"
+#include <iomanip>
+#include <sstream>
 
 #define MAX_LOOT_OBJECT_COUNT 200
 
@@ -478,27 +481,75 @@ bool LootObject::IsLootPossible(Player* bot)
 
 bool LootObjectStack::Add(ObjectGuid guid)
 {
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
     {
+        if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "LootStack: Shrinking loot list (size: " << availableLoot.size() << " >= max: " << MAX_LOOT_OBJECT_COUNT << ")";
+            botAI->TellMaster(out.str());
+        }
         availableLoot.shrink(time(nullptr) - 30);
     }
 
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
     {
+        if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "LootStack: Clearing all loot (still size: " << availableLoot.size() << " >= max: " << MAX_LOOT_OBJECT_COUNT << ")";
+            botAI->TellMaster(out.str());
+        }
         availableLoot.clear();
     }
 
     if (!availableLoot.insert(guid).second)
+    {
+        if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+        {
+            WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+            std::ostringstream out;
+            out << "LootStack: Duplicate loot target " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+            botAI->TellMaster(out.str());
+        }
         return false;
+    }
+
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Added loot target " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ") - total: " << availableLoot.size();
+        botAI->TellMaster(out.str());
+    }
 
     return true;
 }
 
 void LootObjectStack::Remove(ObjectGuid guid)
 {
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
     LootTargetList::iterator i = availableLoot.find(guid);
     if (i != availableLoot.end())
+    {
+        if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+        {
+            WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+            std::ostringstream out;
+            out << "LootStack: Removed loot target " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ") - remaining: " << (availableLoot.size() - 1);
+            botAI->TellMaster(out.str());
+        }
         availableLoot.erase(i);
+    }
+    else if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "LootStack: Attempted to remove non-existent loot target (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
 }
 
 void LootObjectStack::Clear() { availableLoot.clear(); }
@@ -519,8 +570,23 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 {
     availableLoot.shrink(time(nullptr) - 30);
 
+    PlayerbotAI* botAI = bot->GetPlayerbotAI();
+    bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    if (debugLoot && !availableLoot.empty())
+    {
+        std::ostringstream out;
+        out << "LootStack: Evaluating " << availableLoot.size() << " loot targets";
+        if (maxDistance > 0)
+            out << " (max distance: " << maxDistance << "yd)";
+        botAI->TellMaster(out.str());
+    }
+
     LootObject nearest;
     float nearestDistance = std::numeric_limits<float>::max();
+    uint32 evaluatedCount = 0;
+    uint32 skippedDistance = 0;
+    uint32 skippedLootPossible = 0;
 
     LootTargetList safeCopy(availableLoot);
     for (LootTargetList::iterator i = safeCopy.begin(); i != safeCopy.end(); i++)
@@ -532,17 +598,49 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
             continue;
 
         float distance = bot->GetDistance(worldObj);
+        evaluatedCount++;
 
         if (distance >= nearestDistance || (maxDistance && distance > maxDistance))
+        {
+            if (debugLoot)
+                skippedDistance++;
             continue;
+        }
 
         LootObject lootObject(bot, guid);
 
         if (!lootObject.IsLootPossible(bot))
+        {
+            if (debugLoot)
+                skippedLootPossible++;
             continue;
+        }
+
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "LootStack: Selected " << worldObj->GetName() 
+                << " at " << std::fixed << std::setprecision(1) << distance << "yd";
+            botAI->TellMaster(out.str());
+        }
 
         nearestDistance = distance;
         nearest = lootObject;
+    }
+
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "LootStack: Evaluated " << evaluatedCount << " targets";
+        if (skippedDistance > 0)
+            out << ", skipped " << skippedDistance << " (distance)";
+        if (skippedLootPossible > 0)
+            out << ", skipped " << skippedLootPossible << " (not lootable)";
+        if (!nearest.IsEmpty())
+            out << " - selected target at " << std::fixed << std::setprecision(1) << nearestDistance << "yd";
+        else
+            out << " - no valid loot found";
+        botAI->TellMaster(out.str());
     }
 
     return nearest;
