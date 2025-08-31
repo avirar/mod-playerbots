@@ -238,7 +238,9 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
                 botAI->TellMaster(out.str());
             }
             
-            bool result = botAI->CastSpell(keySpell, bot);
+            // For key spells, we need to cast without a unit target since the spell
+            // will automatically target the GameObject from the loot target
+            bool result = botAI->CastSpell(keySpell, (Unit*)nullptr);
             if (debugLoot)
             {
                 std::ostringstream out;
