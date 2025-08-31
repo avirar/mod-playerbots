@@ -525,6 +525,7 @@ public:
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
     bool CastSpell(uint32 spellId, Unit* target, Item* itemTarget = nullptr);
+    bool CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem = nullptr);
     bool CastSpell(uint32 spellId, float x, float y, float z, Item* itemTarget = nullptr);
     bool canDispel(SpellInfo const* spellInfo, uint32 dispelType);
 
