@@ -12,6 +12,7 @@
 #include "QuestItemHelper.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "WorldObject.h"
 
 // Use the same range as grinding distance for quest target search
 
@@ -61,7 +62,7 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
     
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
     {
         return false;
@@ -118,7 +119,7 @@ bool MoveToQuestItemTargetAction::isUseful()
         return false;
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
         return false;
 
