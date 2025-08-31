@@ -29,7 +29,7 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
     }
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
     {
         return false;
@@ -79,7 +79,7 @@ bool UseQuestItemOnTargetAction::isUseful()
     }
 
     // Check if there are valid targets available
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     bool useful = (target != nullptr);
     
     
@@ -145,13 +145,6 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         return false;
     }
 
-    // For quest items, we need to bypass normal spell checks
-    // and send the item use packet directly with the target
-    uint8 spell_index = 0;
-    uint8 cast_count = 1;
-    uint32 glyphIndex = 0;
-    uint8 castFlags = 0;
-
     // Get the spell ID from the item
     uint32 spellId = 0;
     for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
@@ -163,14 +156,6 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         }
     }
 
-    // Create the item use packet
-    WorldPacket packet(CMSG_USE_ITEM);
-    packet << bagIndex << slot << cast_count << spellId << itemGuid << glyphIndex << castFlags;
-
-    // Add target information
-    uint32 targetFlag = TARGET_FLAG_UNIT;
-    packet << targetFlag << target->GetGUID().WriteAsPacked();
-
     // Clear movement states like other item uses do
     bot->ClearUnitState(UNIT_STATE_CHASE);
     bot->ClearUnitState(UNIT_STATE_FOLLOW);
@@ -181,6 +166,41 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
         return false;
     }
+
+    // Check if target is a GameObject (for OPEN_LOCK spells)
+    GameObject* gameObject = target->ToGameObject();
+    if (gameObject)
+    {
+        // Record pending cast before using spell
+        QuestItemHelper::RecordPendingQuestItemCast(botAI, target, spellId);
+
+        // Use PlayerbotAI's GameObject casting method
+        bool result = botAI->CastSpell(spellId, gameObject, item);
+        
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "Using " << chat->FormatItem(itemTemplate) << " on GameObject " << gameObject->GetName() 
+                << " (result: " << (result ? "success" : "failed") << ")";
+            botAI->TellMaster(out.str());
+        }
+        
+        return result;
+    }
+
+    // For regular unit targets, use the original packet-based approach
+    uint8 spell_index = 0;
+    uint8 cast_count = 1;
+    uint32 glyphIndex = 0;
+    uint8 castFlags = 0;
+
+    // Create the item use packet
+    WorldPacket packet(CMSG_USE_ITEM);
+    packet << bagIndex << slot << cast_count << spellId << itemGuid << glyphIndex << castFlags;
+
+    // Add target information
+    uint32 targetFlag = TARGET_FLAG_UNIT;
+    packet << targetFlag << target->GetGUID().WriteAsPacked();
 
     // Record pending cast before sending packet
     QuestItemHelper::RecordPendingQuestItemCast(botAI, target, spellId);
