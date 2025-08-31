@@ -231,21 +231,51 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         uint32 keySpell = GetKeySpell(lootObject.reqItem);
         if (keySpell)
         {
-            // Find the key item in bot's inventory
+            // Find the key item in bot's inventory (check keyring first, then fallback to bags)
             Item* keyItem = nullptr;
-            for (uint8 bag = INVENTORY_SLOT_ITEM_START; bag < INVENTORY_SLOT_ITEM_END; ++bag)
+            
+            // Check keyring slots first (keys are automatically stored here)
+            for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
             {
-                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
                 {
                     if (item->GetEntry() == lootObject.reqItem)
                     {
                         keyItem = item;
+                        if (debugLoot)
+                        {
+                            std::ostringstream out;
+                            out << "DoLoot: Found key item " << lootObject.reqItem << " in keyring slot " << slot;
+                            botAI->TellMaster(out.str());
+                        }
                         break;
                     }
                 }
             }
             
-            // Check bags too
+            // Fallback: Check main inventory slots if not in keyring
+            if (!keyItem)
+            {
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+                {
+                    if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    {
+                        if (item->GetEntry() == lootObject.reqItem)
+                        {
+                            keyItem = item;
+                            if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "DoLoot: Found key item " << lootObject.reqItem << " in main inventory slot " << slot;
+                                botAI->TellMaster(out.str());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Final fallback: Check bags if still not found
             if (!keyItem)
             {
                 for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
@@ -259,6 +289,12 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
                                 if (item->GetEntry() == lootObject.reqItem)
                                 {
                                     keyItem = item;
+                                    if (debugLoot)
+                                    {
+                                        std::ostringstream out;
+                                        out << "DoLoot: Found key item " << lootObject.reqItem << " in bag " << bag << " slot " << slot;
+                                        botAI->TellMaster(out.str());
+                                    }
                                     break;
                                 }
                             }
