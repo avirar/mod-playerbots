@@ -41,6 +41,7 @@ public:
     uint32 skillId;
     uint32 reqSkillValue;
     uint32 reqItem;
+    bool isAccessible;
 
 private:
     static bool IsNeededForQuest(Player* bot, uint32 itemId);
