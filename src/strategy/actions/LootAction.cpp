@@ -225,6 +225,36 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
     }
 
+    // For key-locked chests, find and cast the key's spell
+    if (go && lootObject.reqItem > 0 && bot->HasItemCount(lootObject.reqItem, 1))
+    {
+        uint32 keySpell = GetKeySpell(lootObject.reqItem);
+        if (keySpell)
+        {
+            if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "DoLoot: Casting key spell " << keySpell << " for key item " << lootObject.reqItem;
+                botAI->TellMaster(out.str());
+            }
+            
+            bool result = botAI->CastSpell(keySpell, go);
+            if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "DoLoot: Key spell cast result: " << (result ? "SUCCESS" : "FAILED");
+                botAI->TellMaster(out.str());
+            }
+            return result;
+        }
+        else if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "DoLoot: No spell found for key item " << lootObject.reqItem;
+            botAI->TellMaster(out.str());
+        }
+    }
+    
     uint32 spellId = GetOpeningSpell(lootObject);
     if (!spellId)
     {
@@ -316,6 +346,59 @@ uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject, GameObject* go)
     }
 
     return sPlayerbotAIConfig->openGoSpell;
+}
+
+uint32 OpenLootAction::GetKeySpell(uint32 keyItemId)
+{
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    ItemTemplate const* keyItem = sObjectMgr->GetItemTemplate(keyItemId);
+    if (!keyItem)
+    {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "GetKeySpell: Key item " << keyItemId << " not found in database";
+            botAI->TellMaster(out.str());
+        }
+        return 0;
+    }
+    
+    // Check all spell entries in the key item
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        uint32 spellId = keyItem->Spells[i].SpellId;
+        if (!spellId)
+            continue;
+            
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+            
+        // Look for opening spells (SPELL_EFFECT_OPEN_LOCK)
+        for (uint8 effIndex = 0; effIndex < MAX_SPELL_EFFECTS; ++effIndex)
+        {
+            if (spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_OPEN_LOCK)
+            {
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "GetKeySpell: Found opening spell " << spellId << " in key item " << keyItemId;
+                    botAI->TellMaster(out.str());
+                }
+                return spellId;
+            }
+        }
+    }
+    
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "GetKeySpell: No opening spell found in key item " << keyItemId;
+        botAI->TellMaster(out.str());
+    }
+    
+    return 0;
 }
 
 bool OpenLootAction::CanOpenLock(LootObject& /*lootObject*/, SpellInfo const* spellInfo, GameObject* go)
