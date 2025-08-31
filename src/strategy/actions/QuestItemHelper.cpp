@@ -225,7 +225,7 @@ WorldObject* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uin
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             botAI->TellMaster("QuestItem: Detected OPEN_LOCK spell, looking for gameobject targets");
         
-        Unit* gameObjectTarget = FindGameObjectForLockSpell(botAI, spellId, questItem);
+        WorldObject* gameObjectTarget = FindGameObjectForLockSpell(botAI, spellId, questItem);
         if (gameObjectTarget)
         {
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -276,7 +276,7 @@ WorldObject* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uin
     float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
 
     // First, try to find targets using database conditions (quest-aware targeting)
-    Unit* conditionTarget = FindTargetUsingSpellConditions(botAI, spellId);
+    WorldObject* conditionTarget = FindTargetUsingSpellConditions(botAI, spellId);
     if (conditionTarget)
     {
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -2031,7 +2031,7 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
     return false;
 }
 
-Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
+WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
 {
     if (!botAI)
         return nullptr;
@@ -2123,7 +2123,7 @@ bool QuestItemHelper::IsOpenLockSpell(uint32 spellId)
     return false;
 }
 
-Unit* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
+WorldObject* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
 {
     if (!botAI || !questItem || !IsOpenLockSpell(spellId))
         return nullptr;
