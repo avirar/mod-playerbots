@@ -33,7 +33,7 @@
 struct PendingQuestItemCast
 {
     std::string key;      // spell_target key (without bot GUID)
-    Unit* target;         // Target pointer (for validation)
+    WorldObject* target;  // Target pointer (for validation)
     ObjectGuid targetGuid; // Target GUID for safety
     time_t castTime;      // When cast was initiated
 };
