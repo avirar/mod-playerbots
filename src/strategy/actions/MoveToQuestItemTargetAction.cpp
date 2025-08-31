@@ -61,7 +61,7 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
     
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
     {
         return false;
@@ -118,7 +118,7 @@ bool MoveToQuestItemTargetAction::isUseful()
         return false;
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
         return false;
 
