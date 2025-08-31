@@ -3439,9 +3439,33 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         GameObject* go = GetGameObject(loot.guid);
         if (go && go->isSpawned())
         {
-            WorldPacket packetgouse(CMSG_GAMEOBJ_USE, 8);
-            packetgouse << loot.guid;
-            bot->GetSession()->HandleGameObjectUseOpcode(packetgouse);
+            // Check if this is a key spell for a key-locked chest
+            bool isKeySpell = false;
+            if (loot.reqItem > 0 && bot->HasItemCount(loot.reqItem, 1))
+            {
+                // Check if this spell comes from the key item
+                ItemTemplate const* keyItem = sObjectMgr->GetItemTemplate(loot.reqItem);
+                if (keyItem)
+                {
+                    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+                    {
+                        if (keyItem->Spells[i].SpellId == spellId)
+                        {
+                            isKeySpell = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Only send CMSG_GAMEOBJ_USE for non-key spells
+            if (!isKeySpell)
+            {
+                WorldPacket packetgouse(CMSG_GAMEOBJ_USE, 8);
+                packetgouse << loot.guid;
+                bot->GetSession()->HandleGameObjectUseOpcode(packetgouse);
+            }
+            
             targets.SetGOTarget(go);
             faceTo = go;
         }
