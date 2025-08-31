@@ -541,6 +541,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         // if quest is completed, back to poi with -1 idx to reward
         BroadcastHelper::BroadcastQuestUpdateComplete(botAI, bot, quest);
         botAI->rpgStatistic.questCompleted++;
+        botAI->rpgStatistic.questCompletedByID[questId]++;
         std::vector<POIInfo> poiInfo;
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
         {
