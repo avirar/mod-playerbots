@@ -3215,8 +3215,51 @@ void RandomPlayerbotMgr::PrintStats()
                  rpgStatusCount[RPG_DO_QUEST], rpgStatusCount[RPG_TRAVEL_FLIGHT]);
 
         LOG_INFO("playerbots", "Bots total quests:");
-        LOG_INFO("playerbots", "    Accepted: {}, Rewarded: {}, Dropped: {}", rpgStasticTotal.questAccepted,
-                 rpgStasticTotal.questRewarded, rpgStasticTotal.questDropped);
+        LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}", rpgStasticTotal.questAccepted,
+                 rpgStasticTotal.questCompleted, rpgStasticTotal.questRewarded);
+        LOG_INFO("playerbots", "    Abandoned: {}, Dropped: {}", rpgStasticTotal.questAbandoned, rpgStasticTotal.questDropped);
+        
+        // Show quest completion analysis
+        if (!rpgStasticTotal.questCompletedByID.empty() || !rpgStasticTotal.questDroppedByID.empty())
+        {
+            LOG_INFO("playerbots", "Quest Analysis:");
+            
+            // Most dropped quests (problems)
+            if (!rpgStasticTotal.questDroppedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> droppedSorted(rpgStasticTotal.questDroppedByID.begin(), rpgStasticTotal.questDroppedByID.end());
+                std::sort(droppedSorted.begin(), droppedSorted.end(), 
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second; // Sort by count descending
+                    });
+                
+                LOG_INFO("playerbots", "  Most Dropped Quests (need fixing):");
+                for (size_t i = 0; i < std::min(size_t(10), droppedSorted.size()); ++i)
+                {
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(droppedSorted[i].first);
+                    LOG_INFO("playerbots", "    QuestID {}: {} (dropped {} times)", 
+                        droppedSorted[i].first, quest ? quest->GetTitle() : "Unknown Quest", droppedSorted[i].second);
+                }
+            }
+            
+            // Most completed quests (working well)  
+            if (!rpgStasticTotal.questCompletedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> completedSorted(rpgStasticTotal.questCompletedByID.begin(), rpgStasticTotal.questCompletedByID.end());
+                std::sort(completedSorted.begin(), completedSorted.end(),
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second; // Sort by count descending  
+                    });
+                
+                LOG_INFO("playerbots", "  Most Completed Quests (working well):");
+                for (size_t i = 0; i < std::min(size_t(10), completedSorted.size()); ++i)
+                {
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(completedSorted[i].first);
+                    LOG_INFO("playerbots", "    QuestID {}: {} (completed {} times)",
+                        completedSorted[i].first, quest ? quest->GetTitle() : "Unknown Quest", completedSorted[i].second);
+                }
+            }
+        }
     }
 
     LOG_INFO("playerbots", "Bots engine:", dead);
