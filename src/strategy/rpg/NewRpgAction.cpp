@@ -323,7 +323,7 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     // --- Step 5: Handle Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
-        botAI->DoSpecificAction("sell", Event("sell", "*"));
+        botAI->DoSpecificAction("sell", Event("sell", "vendor"));
         botAI->DoSpecificAction("buy", Event("buy", "vendor"));
         interacted = true;
     }
