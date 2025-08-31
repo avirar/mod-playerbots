@@ -119,7 +119,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
 
         // Most importantly: Check if there are valid targets for this specific spell
-        Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId, item);
+        WorldObject* testTarget = FindBestTargetForQuestItem(botAI, spellId, item);
         if (testTarget)
         {
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -1770,7 +1770,7 @@ static std::map<std::string, time_t> s_questItemUsageTracker;
 // PendingQuestItemCast struct now defined in QuestItemHelper.h
 // Individual bot maps are now stored as member variables in PlayerbotAI
 
-bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return false;
@@ -1833,7 +1833,7 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     return true;
 }
 
-void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return;
@@ -1859,7 +1859,7 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
     }
 }
 
-void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return;
