@@ -620,6 +620,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
                 botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             botAI->rpgStatistic.questDroppedByID[questId]++;
+            botAI->rpgStatistic.questDropReasons["not_worth_or_capable_or_failed"]++;
             dropped++;
         }
     }
@@ -646,6 +647,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
                 botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
             botAI->rpgStatistic.questDroppedByID[questId]++;
+            botAI->rpgStatistic.questDropReasons["wrong_zone"]++;
             dropped++;
         }
     }
@@ -669,6 +671,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
         botAI->rpgStatistic.questDropped++;
         botAI->rpgStatistic.questDroppedByID[questId]++;
+        botAI->rpgStatistic.questDropReasons["clear_log"]++;
     }
 
     return true;
