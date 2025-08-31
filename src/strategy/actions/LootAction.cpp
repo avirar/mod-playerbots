@@ -87,9 +87,22 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (lootObject.IsEmpty())
         return false;
 
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Attempting to loot " << lootObject.guid.ToString();
+        botAI->TellMaster(out.str());
+    }
+
     Creature* creature = botAI->GetCreature(lootObject.guid);
     if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Creature too far away");
         return false;
+    }
 
     // Dismount if the bot is mounted
     if (bot->IsMounted())
@@ -134,7 +147,23 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
     if (go && bot->GetDistance(go) > INTERACTION_DISTANCE - 2.0f)
+    {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "DoLoot: GameObject too far away (distance: " << bot->GetDistance(go) << ")";
+            botAI->TellMaster(out.str());
+        }
         return false;
+    }
+    
+    if (go && debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Found GameObject " << go->GetName() << " (Entry: " << go->GetEntry() 
+            << ", Type: " << go->GetGoType() << ", State: " << go->GetGoState() << ")";
+        botAI->TellMaster(out.str());
+    }
 
     if (go && (go->GetGoState() != GO_STATE_READY))
         return false;
@@ -172,28 +201,83 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     
         if (!canLootForQuest)
         {
+            if (debugLoot)
+                botAI->TellMaster("DoLoot: Cannot loot chest - no quest requirement met and has interaction flags");
             return false;
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("DoLoot: Chest accessible for quest");
         }
     }
 
     if (lootObject.skillId == SKILL_MINING)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Attempting mining");
         return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
+    }
 
     if (lootObject.skillId == SKILL_HERBALISM)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Attempting herbalism");
         return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
+    }
 
     uint32 spellId = GetOpeningSpell(lootObject);
     if (!spellId)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: No opening spell found for object");
         return false;
+    }
     
-    return botAI->CastSpell(spellId, bot);
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Casting opening spell " << spellId << " on target " << lootObject.guid.ToString();
+        botAI->TellMaster(out.str());
+    }
+    
+    bool result = botAI->CastSpell(spellId, bot);
+    
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Spell cast result: " << (result ? "SUCCESS" : "FAILED");
+        botAI->TellMaster(out.str());
+    }
+    
+    return result;
 }
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
 {
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
     if (GameObject* go = botAI->GetGameObject(lootObject.guid))
+    {
         if (go->isSpawned())
-            return GetOpeningSpell(lootObject, go);
+        {
+            uint32 spell = GetOpeningSpell(lootObject, go);
+            if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "GetOpeningSpell: Found spell " << spell << " for GameObject " << go->GetName();
+                botAI->TellMaster(out.str());
+            }
+            return spell;
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("GetOpeningSpell: GameObject not spawned");
+        }
+    }
+    else if (debugLoot)
+    {
+        botAI->TellMaster("GetOpeningSpell: GameObject not found");
+    }
 
     return 0;
 }
