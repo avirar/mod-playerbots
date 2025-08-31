@@ -196,7 +196,7 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     return false;
 }
 
-Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
+WorldObject* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
 {
     if (!botAI)
         return nullptr;
@@ -2183,8 +2183,8 @@ Unit* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spe
                     botAI->TellMaster(out.str());
                 }
                 
-                // Return as Unit* - this will be cast back to GameObject* in the action
-                return static_cast<Unit*>(go);
+                // Return as WorldObject* - can be cast to GameObject* in the action
+                return static_cast<WorldObject*>(go);
             }
         }
     }
