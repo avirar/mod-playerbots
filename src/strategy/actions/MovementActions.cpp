@@ -2971,7 +2971,7 @@ bool MovementAction::IsTargetUnderwater(WorldObject* target)
         
     LiquidData liquidData = target->GetLiquidData();
     return liquidData.Status == LIQUID_MAP_UNDER_WATER || 
-           (liquidData.Status == LIQUID_MAP_IN_WATER && target->GetPositionZ() < liquidData.level - 2.0f);
+           (liquidData.Status == LIQUID_MAP_IN_WATER && target->GetPositionZ() < liquidData.Level - 2.0f);
 }
 
 bool MovementAction::MoveToUnderwater(WorldObject* target, float distance, MovementPriority priority)
