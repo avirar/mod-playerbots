@@ -619,7 +619,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
                 botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
-            botAI->rpgStatistic.questDroppedByID[questId]++
+            botAI->rpgStatistic.questDroppedByID[questId]++;
             dropped++;
         }
     }
@@ -645,7 +645,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
                 botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
             botAI->rpgStatistic.questDropped++;
-            botAI->rpgStatistic.questDroppedByID[questId]++
+            botAI->rpgStatistic.questDroppedByID[questId]++;
             dropped++;
         }
     }
