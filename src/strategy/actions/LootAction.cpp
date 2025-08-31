@@ -225,29 +225,74 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
     }
 
-    // For key-locked chests, find and cast the key's spell
+    // For key-locked chests, find and cast the key's spell using the key item
     if (go && lootObject.reqItem > 0 && bot->HasItemCount(lootObject.reqItem, 1))
     {
         uint32 keySpell = GetKeySpell(lootObject.reqItem);
         if (keySpell)
         {
-            if (debugLoot)
+            // Find the key item in bot's inventory
+            Item* keyItem = nullptr;
+            for (uint8 bag = INVENTORY_SLOT_ITEM_START; bag < INVENTORY_SLOT_ITEM_END; ++bag)
             {
-                std::ostringstream out;
-                out << "DoLoot: Casting key spell " << keySpell << " for key item " << lootObject.reqItem;
-                botAI->TellMaster(out.str());
+                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
+                {
+                    if (item->GetEntry() == lootObject.reqItem)
+                    {
+                        keyItem = item;
+                        break;
+                    }
+                }
             }
             
-            // For key spells, we need to cast without a unit target since the spell
-            // will automatically target the GameObject from the loot target
-            bool result = botAI->CastSpell(keySpell, (Unit*)nullptr);
-            if (debugLoot)
+            // Check bags too
+            if (!keyItem)
+            {
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    if (Bag* pBag = bot->GetBagByPos(bag))
+                    {
+                        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                        {
+                            if (Item* item = pBag->GetItemByPos(slot))
+                            {
+                                if (item->GetEntry() == lootObject.reqItem)
+                                {
+                                    keyItem = item;
+                                    break;
+                                }
+                            }
+                        }
+                        if (keyItem) break;
+                    }
+                }
+            }
+            
+            if (keyItem)
+            {
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "DoLoot: Casting key spell " << keySpell << " for key item " << lootObject.reqItem << " on GameObject " << go->GetName();
+                    botAI->TellMaster(out.str());
+                }
+                
+                // Use the new GameObject-specific CastSpell method with the key item
+                bool result = botAI->CastSpell(keySpell, go, keyItem);
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "DoLoot: Key spell cast result: " << (result ? "SUCCESS" : "FAILED");
+                    botAI->TellMaster(out.str());
+                }
+                return result;
+            }
+            else if (debugLoot)
             {
                 std::ostringstream out;
-                out << "DoLoot: Key spell cast result: " << (result ? "SUCCESS" : "FAILED");
+                out << "DoLoot: Could not find key item " << lootObject.reqItem << " in inventory";
                 botAI->TellMaster(out.str());
             }
-            return result;
         }
         else if (debugLoot)
         {
