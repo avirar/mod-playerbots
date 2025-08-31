@@ -113,6 +113,10 @@ struct NewRpgStatistic
     std::map<uint32, uint32> questCompletedByID;   // quests that were completed successfully
     std::map<uint32, uint32> questDroppedByID;     // quests that were dropped/abandoned
     std::map<uint32, uint32> questRewardedByID;    // quests that were turned in for rewards
+    
+    // Reason tracking - maps reason to count
+    std::map<std::string, uint32> questDropReasons;
+    std::map<std::string, uint32> questAbandonReasons;
     NewRpgStatistic operator+(const NewRpgStatistic& other) const
     {
         NewRpgStatistic result;
@@ -126,12 +130,18 @@ struct NewRpgStatistic
         result.questCompletedByID = this->questCompletedByID;
         result.questDroppedByID = this->questDroppedByID;
         result.questRewardedByID = this->questRewardedByID;
+        result.questDropReasons = this->questDropReasons;
+        result.questAbandonReasons = this->questAbandonReasons;
         for (const auto& [questId, count] : other.questCompletedByID)
             result.questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
             result.questDroppedByID[questId] += count;
         for (const auto& [questId, count] : other.questRewardedByID)
             result.questRewardedByID[questId] += count;
+        for (const auto& [reason, count] : other.questDropReasons)
+            result.questDropReasons[reason] += count;
+        for (const auto& [reason, count] : other.questAbandonReasons)
+            result.questAbandonReasons[reason] += count;
             
         return result;
     }
@@ -150,6 +160,10 @@ struct NewRpgStatistic
             this->questDroppedByID[questId] += count;
         for (const auto& [questId, count] : other.questRewardedByID)
             this->questRewardedByID[questId] += count;
+        for (const auto& [reason, count] : other.questDropReasons)
+            this->questDropReasons[reason] += count;
+        for (const auto& [reason, count] : other.questAbandonReasons)
+            this->questAbandonReasons[reason] += count;
             
         return *this;
     }
