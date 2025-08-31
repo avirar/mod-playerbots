@@ -15,7 +15,7 @@
 #include "QuestItemHelper.h"
 #include "SpellInfo.h"
 #include "Unit.h"
-#include "WorldObject.h"
+#include "Object.h"
 
 // Use the same range as grinding distance for quest target search
 
