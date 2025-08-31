@@ -7,6 +7,7 @@
 
 #include "ChatHelper.h"
 #include "Event.h"
+#include "GameObject.h"
 #include "Item.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -14,6 +15,7 @@
 #include "QuestItemHelper.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "WorldObject.h"
 
 // Use the same range as grinding distance for quest target search
 
@@ -29,7 +31,7 @@ bool UseQuestItemOnTargetAction::Execute(Event event)
     }
 
     // Find the best target for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     if (!target)
     {
         return false;
@@ -79,7 +81,7 @@ bool UseQuestItemOnTargetAction::isUseful()
     }
 
     // Check if there are valid targets available
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     bool useful = (target != nullptr);
     
     
@@ -91,7 +93,7 @@ bool UseQuestItemOnTargetAction::isPossible()
     return true;
 }
 
-bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
+bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, WorldObject* target)
 {
     if (!item || !target)
         return false;
@@ -188,6 +190,11 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         return result;
     }
 
+    // Cast to Unit for regular target handling
+    Unit* unitTarget = target->ToUnit();
+    if (!unitTarget)
+        return false;
+
     // For regular unit targets, use the original packet-based approach
     uint8 spell_index = 0;
     uint8 cast_count = 1;
@@ -200,10 +207,10 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
 
     // Add target information
     uint32 targetFlag = TARGET_FLAG_UNIT;
-    packet << targetFlag << target->GetGUID().WriteAsPacked();
+    packet << targetFlag << unitTarget->GetGUID().WriteAsPacked();
 
     // Record pending cast before sending packet
-    QuestItemHelper::RecordPendingQuestItemCast(botAI, target, spellId);
+    QuestItemHelper::RecordPendingQuestItemCast(botAI, unitTarget, spellId);
 
     // Send the packet
     bot->GetSession()->HandleUseItemOpcode(packet);
@@ -215,7 +222,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
-            out << "Used quest item on " << target->GetName() << " (item was consumed/invalidated)";
+            out << "Used quest item on " << unitTarget->GetName() << " (item was consumed/invalidated)";
             botAI->TellMaster(out.str());
         }
         return true;
@@ -228,7 +235,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
-            out << "Used quest item (unknown) on " << target->GetName();
+            out << "Used quest item (unknown) on " << unitTarget->GetName();
             botAI->TellMaster(out.str());
         }
         return true;
@@ -237,7 +244,7 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
-        out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
+        out << "Using " << chat->FormatItem(postUseTemplate) << " on " << unitTarget->GetName();
         botAI->TellMaster(out.str());
     }
 
