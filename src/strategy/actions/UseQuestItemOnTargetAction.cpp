@@ -214,9 +214,12 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, Unit* target)
         return true;
     }
 
-    std::ostringstream out;
-    out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
-    botAI->TellMaster(out.str());
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "Using " << chat->FormatItem(postUseTemplate) << " on " << target->GetName();
+        botAI->TellMaster(out.str());
+    }
 
     // NOTE: Do not record usage immediately - let the pending system handle it
     // based on server response (success/failure)
