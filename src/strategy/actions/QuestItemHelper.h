@@ -11,6 +11,7 @@ class Item;
 class Player;
 class PlayerbotAI;
 class Unit;
+class WorldObject;
 
 /**
  * @brief Utility class for quest item operations to eliminate code duplication
