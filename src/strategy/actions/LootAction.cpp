@@ -238,7 +238,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
                 botAI->TellMaster(out.str());
             }
             
-            bool result = botAI->CastSpell(keySpell, go);
+            bool result = botAI->CastSpell(keySpell, bot);
             if (debugLoot)
             {
                 std::ostringstream out;
