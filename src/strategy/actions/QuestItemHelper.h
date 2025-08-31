@@ -43,9 +43,9 @@ public:
      * @param botAI Bot AI instance for target searching
      * @param spellId Spell ID to validate targets against
      * @param questItem Optional quest item for OPEN_LOCK spell targeting (default nullptr)
-     * @return Best target unit or nullptr if none found
+     * @return Best target (Unit or GameObject) or nullptr if none found
      */
-    static Unit* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem = nullptr);
+    static WorldObject* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem = nullptr);
 
     /**
      * @brief Check if a target is valid for a specific quest spell
