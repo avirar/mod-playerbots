@@ -1906,20 +1906,11 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
         if (timeSinceCast >= PENDING_TIMEOUT)
         {
             // Cast is old enough - assume it succeeded and convert to cooldown
-            // Validate target still exists first
+            // Look up target by GUID instead of using potentially dangling pointer
             Unit* target = nullptr;
-            if (pending.target)
+            if (pending.targetGuid)
             {
-                // Basic pointer validation - check if target still has same GUID
-                try 
-                {
-                    if (pending.target->GetGUID() == pending.targetGuid)
-                        target = pending.target;
-                }
-                catch (...)
-                {
-                    // Target pointer is invalid
-                }
+                target = ObjectAccessor::GetUnit(*botAI->GetBot(), pending.targetGuid);
             }
             
             if (target)
