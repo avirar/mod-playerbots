@@ -111,7 +111,8 @@ struct NewRpgStatistic
     
     // Quest-specific tracking - maps questId to count
     std::map<uint32, uint32> questCompletedByID;   // quests that were completed successfully
-    std::map<uint32, uint32> questDroppedByID;     // quests that were dropped/abandoned
+    std::map<uint32, uint32> questDroppedByID;     // quests that were dropped
+    std::map<uint32, uint32> questAbandonedByID;   // quests that were abandoned
     std::map<uint32, uint32> questRewardedByID;    // quests that were turned in for rewards
     
     // Reason tracking - maps reason to count
@@ -129,6 +130,7 @@ struct NewRpgStatistic
         // Merge quest-specific maps
         result.questCompletedByID = this->questCompletedByID;
         result.questDroppedByID = this->questDroppedByID;
+        result.questAbandonedByID = this->questAbandonedByID;
         result.questRewardedByID = this->questRewardedByID;
         result.questDropReasons = this->questDropReasons;
         result.questAbandonReasons = this->questAbandonReasons;
@@ -136,6 +138,8 @@ struct NewRpgStatistic
             result.questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
             result.questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questAbandonedByID)
+            result.questAbandonedByID[questId] += count;
         for (const auto& [questId, count] : other.questRewardedByID)
             result.questRewardedByID[questId] += count;
         for (const auto& [reason, count] : other.questDropReasons)
@@ -158,6 +162,8 @@ struct NewRpgStatistic
             this->questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
             this->questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questAbandonedByID)
+            this->questAbandonedByID[questId] += count;
         for (const auto& [questId, count] : other.questRewardedByID)
             this->questRewardedByID[questId] += count;
         for (const auto& [reason, count] : other.questDropReasons)
