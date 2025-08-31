@@ -74,7 +74,7 @@ public:
      * @param target Target that was used
      * @param spellId Spell ID that was used
      */
-    static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static void RecordQuestItemUsage(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
 
     /**
      * @brief Record a pending quest item cast (before server confirmation)
@@ -82,7 +82,7 @@ public:
      * @param target Target that was targeted
      * @param spellId Spell ID that was cast
      */
-    static void RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static void RecordPendingQuestItemCast(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
 
     /**
      * @brief Handle spell failure notification for quest items
@@ -157,7 +157,7 @@ private:
      * @param spellId Spell ID to check cooldown for
      * @return true if target can be used, false if recently used
      */
-    static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
 
     /**
      * @brief Check if a spell has OPEN_LOCK effect
