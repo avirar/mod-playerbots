@@ -6,6 +6,7 @@
 #include "QuestItemHelper.h"
 
 #include "ConditionMgr.h"
+#include "GameObject.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Player.h"
@@ -14,6 +15,7 @@
 #include "SmartScriptMgr.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "DBCStores.h"
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
@@ -116,7 +118,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
 
         // Most importantly: Check if there are valid targets for this specific spell
-        Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId);
+        Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId, item);
         if (testTarget)
         {
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -194,7 +196,7 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     return false;
 }
 
-Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId)
+Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
 {
     if (!botAI)
         return nullptr;
@@ -214,6 +216,27 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
         std::ostringstream debugOut;
         debugOut << "QuestItem: Spell " << spellId << " targets=" << spellInfo->Targets << " needsTarget=" << spellInfo->NeedsExplicitUnitTarget();
         botAI->TellMaster(debugOut.str());
+    }
+
+    // NEW: Check for OPEN_LOCK spells first - these need gameobject targets, not self-cast
+    if (IsOpenLockSpell(spellId) && questItem)
+    {
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            botAI->TellMaster("QuestItem: Detected OPEN_LOCK spell, looking for gameobject targets");
+        
+        Unit* gameObjectTarget = FindGameObjectForLockSpell(botAI, spellId, questItem);
+        if (gameObjectTarget)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: Found gameobject target for OPEN_LOCK spell");
+            return gameObjectTarget;
+        }
+        else
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: No gameobject found for OPEN_LOCK spell");
+            return nullptr;
+        }
     }
 
     // If spell doesn't need an explicit target, return the bot as self-target
@@ -2081,6 +2104,94 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         botAI->TellMaster("QuestItem: No valid targets found using spell conditions");
         
+    return nullptr;
+}
+
+bool QuestItemHelper::IsOpenLockSpell(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+    
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (spellInfo->Effects[i].Effect == SPELL_EFFECT_OPEN_LOCK)
+            return true;
+    }
+    
+    return false;
+}
+
+Unit* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
+{
+    if (!botAI || !questItem || !IsOpenLockSpell(spellId))
+        return nullptr;
+        
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return nullptr;
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Looking for gameobject that can be unlocked with item " << questItem->GetEntry();
+        botAI->TellMaster(out.str());
+    }
+    
+    // Search nearby gameobjects for matching locks
+    GuidVector nearbyGameObjects = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects")->Get();
+    
+    for (ObjectGuid goGuid : nearbyGameObjects)
+    {
+        GameObject* go = botAI->GetGameObject(goGuid);
+        if (!go || !go->isSpawned())
+            continue;
+            
+        // Check if bot is within interaction range
+        if (bot->GetDistance(go) > INTERACTION_DISTANCE)
+            continue;
+            
+        uint32 lockId = go->GetGOInfo()->GetLockId();
+        if (!lockId)
+            continue;
+            
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking gameobject " << go->GetName() << " (entry " << go->GetEntry() << ") with lock " << lockId;
+            botAI->TellMaster(out.str());
+        }
+        
+        LockEntry const* lock = sLockStore.LookupEntry(lockId);
+        if (!lock)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: Lock entry not found in DBC");
+            continue;
+        }
+        
+        // Check if this gameobject's lock requires our quest item
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+        {
+            if (lock->Type[i] == LOCK_KEY_ITEM && 
+                lock->Index[i] == questItem->GetEntry())
+            {
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found matching gameobject " << go->GetName() << " that requires item " << questItem->GetEntry();
+                    botAI->TellMaster(out.str());
+                }
+                
+                // Return as Unit* - this will be cast back to GameObject* in the action
+                return static_cast<Unit*>(go);
+            }
+        }
+    }
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        botAI->TellMaster("QuestItem: No matching gameobject found for lock spell");
+    
     return nullptr;
 }
 
