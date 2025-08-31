@@ -149,6 +149,27 @@ ItemUsage ItemUsageValue::Calculate()
         return ITEM_USAGE_NONE;
     }
     
+    // Check if bot has exact quest requirement amount - keep it to prevent sell/buy cycle
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 entry = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = sObjectMgr->GetQuestTemplate(entry);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < 4; i++)
+        {
+            if (quest->RequiredItemId[i] == proto->ItemId)
+            {
+                uint32 currentCount = AI_VALUE2(uint32, "item count", proto->Name1);
+                uint32 requiredCount = quest->RequiredItemCount[i];
+                
+                if (currentCount == requiredCount)
+                    return ITEM_USAGE_KEEP; // Have exact amount needed, keep it
+            }
+        }
+    }
+    
     // If the bot itself needs the item for a quest, allow looting
     if (botNeedsItemForQuest)
     {
