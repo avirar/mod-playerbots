@@ -421,6 +421,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             skillId = bestSkillId;
             reqSkillValue = bestReqSkillValue;
             reqItem = bestReqItem;
+            isAccessible = true;
             guid = lootGUID;
             
             if (debugLoot)
@@ -446,9 +447,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 botAI->TellMaster(out.str());
             }
         }
-        else if (debugLoot)
+        else
         {
-            botAI->TellMaster("LootRefresh: No accessible lock options found - bot cannot loot this object");
+            // Object is not accessible - bot cannot satisfy lock requirements
+            isAccessible = false;
+            if (debugLoot)
+            {
+                botAI->TellMaster("LootRefresh: No accessible lock options found - bot cannot loot this object");
+            }
         }
     }
 }
@@ -663,55 +669,30 @@ bool LootObject::IsLootPossible(Player* bot)
         }
     }
 
-    if (skillId == SKILL_NONE)
-    {
-        if (debugLoot)
-            botAI->TellMaster("LootPossible: No skill required - loot possible");
-        return true;
-    }
-
-    if (skillId == SKILL_FISHING)
-    {
-        if (debugLoot)
-            botAI->TellMaster("LootPossible: Fishing skill required - not supported for looting");
-        return false;
-    }
-
-    if (!botAI->HasSkill((SkillType)skillId))
+    // Use the accessibility result calculated during Refresh()
+    if (!isAccessible)
     {
         if (debugLoot)
         {
-            std::ostringstream out;
-            out << "LootPossible: Missing required skill " << skillId;
-            botAI->TellMaster(out.str());
+            if (skillId == SKILL_NONE)
+                botAI->TellMaster("LootPossible: Object not accessible (no lock requirements found)");
+            else
+            {
+                std::ostringstream out;
+                out << "LootPossible: Object not accessible (skill " << skillId;
+                if (reqSkillValue > 0)
+                {
+                    uint32 skillValue = botAI->HasSkill((SkillType)skillId) ? uint32(bot->GetSkillValue(skillId)) : 0;
+                    out << " - have " << skillValue << ", need " << reqSkillValue;
+                }
+                out << ")";
+                botAI->TellMaster(out.str());
+            }
         }
         return false;
     }
 
-    if (!reqSkillValue)
-    {
-        if (debugLoot)
-        {
-            std::ostringstream out;
-            out << "LootPossible: Has skill " << skillId << " (any level) - loot possible";
-            botAI->TellMaster(out.str());
-        }
-        return true;
-    }
-
-    uint32 skillValue = uint32(bot->GetSkillValue(skillId));
-    if (reqSkillValue > skillValue)
-    {
-        if (debugLoot)
-        {
-            std::ostringstream out;
-            out << "LootPossible: Skill " << skillId << " too low (have " 
-                << skillValue << ", need " << reqSkillValue << ")";
-            botAI->TellMaster(out.str());
-        }
-        return false;
-    }
-
+    // Check for required tools (real-time check since tool availability can change)
     if (skillId == SKILL_MINING && !bot->HasItemCount(756, 1) && !bot->HasItemCount(778, 1) &&
         !bot->HasItemCount(1819, 1) && !bot->HasItemCount(1893, 1) && !bot->HasItemCount(1959, 1) &&
         !bot->HasItemCount(2901, 1) && !bot->HasItemCount(9465, 1) && !bot->HasItemCount(20723, 1) &&
@@ -732,10 +713,14 @@ bool LootObject::IsLootPossible(Player* bot)
 
     if (debugLoot)
     {
-        std::ostringstream out;
-        out << "LootPossible: All requirements met - skill " << skillId 
-            << " (have " << skillValue << ", need " << reqSkillValue << ")";
-        botAI->TellMaster(out.str());
+        if (skillId == SKILL_NONE)
+            botAI->TellMaster("LootPossible: Object accessible (no skill required)");
+        else
+        {
+            std::ostringstream out;
+            out << "LootPossible: Object accessible (skill " << skillId << " satisfied)";
+            botAI->TellMaster(out.str());
+        }
     }
 
     return true;
