@@ -108,6 +108,11 @@ struct NewRpgStatistic
     uint32 questAbandoned{0};
     uint32 questRewarded{0};
     uint32 questDropped{0};
+    
+    // Quest-specific tracking - maps questId to count
+    std::map<uint32, uint32> questCompletedByID;   // quests that were completed successfully
+    std::map<uint32, uint32> questDroppedByID;     // quests that were dropped/abandoned
+    std::map<uint32, uint32> questRewardedByID;    // quests that were turned in for rewards
     NewRpgStatistic operator+(const NewRpgStatistic& other) const
     {
         NewRpgStatistic result;
@@ -116,6 +121,18 @@ struct NewRpgStatistic
         result.questAbandoned = this->questAbandoned + other.questAbandoned;
         result.questRewarded = this->questRewarded + other.questRewarded;
         result.questDropped = this->questDropped + other.questDropped;
+        
+        // Merge quest-specific maps
+        result.questCompletedByID = this->questCompletedByID;
+        result.questDroppedByID = this->questDroppedByID;
+        result.questRewardedByID = this->questRewardedByID;
+        for (const auto& [questId, count] : other.questCompletedByID)
+            result.questCompletedByID[questId] += count;
+        for (const auto& [questId, count] : other.questDroppedByID)
+            result.questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questRewardedByID)
+            result.questRewardedByID[questId] += count;
+            
         return result;
     }
     NewRpgStatistic& operator+=(const NewRpgStatistic& other)
@@ -125,6 +142,15 @@ struct NewRpgStatistic
         this->questAbandoned += other.questAbandoned;
         this->questRewarded += other.questRewarded;
         this->questDropped += other.questDropped;
+        
+        // Merge quest-specific maps
+        for (const auto& [questId, count] : other.questCompletedByID)
+            this->questCompletedByID[questId] += count;
+        for (const auto& [questId, count] : other.questDroppedByID)
+            this->questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questRewardedByID)
+            this->questRewardedByID[questId] += count;
+            
         return *this;
     }
 };
