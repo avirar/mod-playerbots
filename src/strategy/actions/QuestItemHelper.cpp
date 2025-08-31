@@ -994,17 +994,23 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             float distance = bot->GetDistance(unit);
             bool alive = unit->IsAlive();
             
-            std::ostringstream out;
-            out << "QuestItem: Found creature " << creatureEntry << " (" << unit->GetName() 
-                << ") at " << distance << "y, alive:" << (alive ? "true" : "false");
-            botAI->TellMaster(out.str());
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Found creature " << creatureEntry << " (" << unit->GetName() 
+                    << ") at " << distance << "y, alive:" << (alive ? "true" : "false");
+                botAI->TellMaster(out.str());
+            }
             
             // Check distance requirement
             if (distance > maxDistance)
             {
-                out.str("");
-                out << "QuestItem: Creature too far (" << distance << " > " << maxDistance << ")";
-                botAI->TellMaster(out.str());
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    out.str("");
+                    out << "QuestItem: Creature too far (" << distance << " > " << maxDistance << ")";
+                    botAI->TellMaster(out.str());
+                }
                 continue;
             }
                 
@@ -1024,19 +1030,25 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             if (aliveRequirementMet)
             {
                 validCount++;
-                out.str("");
-                out << "QuestItem: FOUND valid creature " << unit->GetName() 
-                    << " (entry:" << creatureEntry << ") at " << distance << "y";
-                botAI->TellMaster(out.str());
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    out.str("");
+                    out << "QuestItem: FOUND valid creature " << unit->GetName() 
+                        << " (entry:" << creatureEntry << ") at " << distance << "y";
+                    botAI->TellMaster(out.str());
+                }
                 return true;
             }
             else
             {
-                out.str("");
-                out << "QuestItem: Creature " << unit->GetName() 
-                    << " doesn't meet alive requirement (alive:" << (alive ? "true" : "false") 
-                    << ", required:" << (requireAlive ? "alive" : "any") << ")";
-                botAI->TellMaster(out.str());
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    out.str("");
+                    out << "QuestItem: Creature " << unit->GetName() 
+                        << " doesn't meet alive requirement (alive:" << (alive ? "true" : "false") 
+                        << ", required:" << (requireAlive ? "alive" : "any") << ")";
+                    botAI->TellMaster(out.str());
+                }
             }
         }
     }
@@ -1290,9 +1302,12 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
                 
                 if (foundExistingSummon)
                 {
-                    std::ostringstream out;
-                    out << "QuestItem: Summon creature " << summonEntry << " already exists nearby - preventing recast";
-                    botAI->TellMaster(out.str());
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Summon creature " << summonEntry << " already exists nearby - preventing recast";
+                        botAI->TellMaster(out.str());
+                    }
                     return false;
                 }
                 else
