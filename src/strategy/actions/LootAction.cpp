@@ -229,8 +229,26 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (!spellId)
     {
         if (debugLoot)
-            botAI->TellMaster("DoLoot: No opening spell found for object");
-        return false;
+            botAI->TellMaster("DoLoot: No opening spell needed - trying direct interaction");
+        
+        // Try direct interaction with the gameobject (for key-locked chests)
+        if (GameObject* go = botAI->GetGameObject(lootObject.guid))
+        {
+            if (debugLoot)
+                botAI->TellMaster("DoLoot: Attempting direct GameObject interaction");
+            
+            WorldPacket* packet = new WorldPacket(CMSG_GAMEOBJ_USE, 8);
+            *packet << lootObject.guid;
+            bot->GetSession()->QueuePacket(packet);
+            botAI->SetNextCheckDelay(sPlayerbotAIConfig->lootDelay);
+            return true;
+        }
+        else
+        {
+            if (debugLoot)
+                botAI->TellMaster("DoLoot: GameObject not found for direct interaction");
+            return false;
+        }
     }
     
     if (debugLoot)
@@ -284,6 +302,46 @@ uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject, GameObject* go)
 {
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    // First, check if this chest requires a key item instead of a spell
+    uint32 lockId = go->GetGOInfo()->GetLockId();
+    if (lockId)
+    {
+        LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
+        if (lockInfo)
+        {
+            for (uint8 j = 0; j < 8; ++j)
+            {
+                if (lockInfo->Type[j] == LOCK_KEY_ITEM)
+                {
+                    uint32 keyItem = lockInfo->Index[j];
+                    if (debugLoot)
+                    {
+                        std::ostringstream out;
+                        out << "GetOpeningSpell: Chest requires key item " << keyItem 
+                            << " (bot has: " << (bot->HasItemCount(keyItem, 1) ? "YES" : "NO") << ")";
+                        botAI->TellMaster(out.str());
+                    }
+                    
+                    // If chest requires key item, don't use spells - let server handle key interaction
+                    if (bot->HasItemCount(keyItem, 1))
+                    {
+                        if (debugLoot)
+                            botAI->TellMaster("GetOpeningSpell: Using key item interaction - no spell needed");
+                        return 0; // No spell needed, server will handle key item
+                    }
+                    else
+                    {
+                        if (debugLoot)
+                            botAI->TellMaster("GetOpeningSpell: Missing required key - cannot open");
+                        return 0; // No spell can open this without the key
+                    }
+                }
+            }
+        }
+    }
+
     for (PlayerSpellMap::iterator itr = bot->GetSpellMap().begin(); itr != bot->GetSpellMap().end(); ++itr)
     {
         uint32 spellId = itr->first;
