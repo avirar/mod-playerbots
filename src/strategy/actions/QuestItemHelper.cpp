@@ -1007,7 +1007,7 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             {
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
-                    out.str("");
+                    std::ostringstream out;
                     out << "QuestItem: Creature too far (" << distance << " > " << maxDistance << ")";
                     botAI->TellMaster(out.str());
                 }
@@ -1032,7 +1032,7 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
                 validCount++;
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
-                    out.str("");
+                    std::ostringstream out;
                     out << "QuestItem: FOUND valid creature " << unit->GetName() 
                         << " (entry:" << creatureEntry << ") at " << distance << "y";
                     botAI->TellMaster(out.str());
@@ -1043,7 +1043,7 @@ bool QuestItemHelper::IsNearCreature(PlayerbotAI* botAI, uint32 creatureEntry, f
             {
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
-                    out.str("");
+                    std::ostringstream out;
                     out << "QuestItem: Creature " << unit->GetName() 
                         << " doesn't meet alive requirement (alive:" << (alive ? "true" : "false") 
                         << ", required:" << (requireAlive ? "alive" : "any") << ")";
