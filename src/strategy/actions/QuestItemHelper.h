@@ -42,9 +42,10 @@ public:
      * @brief Find the best target for a quest item spell within grind distance
      * @param botAI Bot AI instance for target searching
      * @param spellId Spell ID to validate targets against
+     * @param questItem Optional quest item for OPEN_LOCK spell targeting (default nullptr)
      * @return Best target unit or nullptr if none found
      */
-    static Unit* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId);
+    static Unit* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem = nullptr);
 
     /**
      * @brief Check if a target is valid for a specific quest spell
@@ -156,6 +157,22 @@ private:
      * @return true if target can be used, false if recently used
      */
     static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+
+    /**
+     * @brief Check if a spell has OPEN_LOCK effect
+     * @param spellId Spell ID to check
+     * @return true if spell has SPELL_EFFECT_OPEN_LOCK
+     */
+    static bool IsOpenLockSpell(uint32 spellId);
+
+    /**
+     * @brief Find gameobject that can be unlocked with the specified quest item
+     * @param botAI Bot AI instance for accessing nearby gameobjects  
+     * @param spellId Spell ID of the quest item
+     * @param questItem The quest item that should unlock the gameobject
+     * @return GameObject that matches the lock requirements or nullptr
+     */
+    static Unit* FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem);
 
     /**
      * @brief Check for creatures that give KillCredit for a specific entry (trigger creature system)
