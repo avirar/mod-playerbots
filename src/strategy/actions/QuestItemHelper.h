@@ -173,7 +173,7 @@ private:
      * @param questItem The quest item that should unlock the gameobject
      * @return GameObject that matches the lock requirements or nullptr
      */
-    static Unit* FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem);
+    static WorldObject* FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem);
 
     /**
      * @brief Check for creatures that give KillCredit for a specific entry (trigger creature system)
@@ -187,9 +187,9 @@ private:
      * @brief Find valid target for quest spell using database conditions
      * @param botAI Bot AI instance for accessing nearby units
      * @param spellId Spell ID to find targets for
-     * @return Valid target unit or nullptr if none found
+     * @return Valid target (Unit or GameObject) or nullptr if none found
      */
-    static Unit* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
+    static WorldObject* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
 
 
 };
