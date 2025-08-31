@@ -9,6 +9,7 @@
 #include "GameObject.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "Object.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
