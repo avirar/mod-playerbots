@@ -393,6 +393,7 @@ void PlayerbotHolder::LogoutPlayerBot(ObjectGuid guid)
         {
             botAI->TellMaster("Goodbye!");
             RemoveFromPlayerbotsMap(guid);                  // deletes bot player ptr inside this WorldSession PlayerBotMap
+            bot->CleanupsBeforeDelete();             // gracefully clean up the bot's state
             botWorldSessionPtr->LogoutPlayer(true);  // this will delete the bot Player object and PlayerbotAI object
             delete botWorldSessionPtr;               // finally delete the bot's WorldSession
         }
