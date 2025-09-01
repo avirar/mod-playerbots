@@ -30,6 +30,7 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "World.h"
+#include "PossibleRpgTargetsValue.h"
 
 bool TellRpgStatusAction::Execute(Event event)
 {
@@ -312,12 +313,41 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     std::string npcName = creature->GetName();
     uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
 
-    // --- Step 4: Handle Trainers, limited to class trainers for the moment ---
-    if (creature->IsValidTrainerForPlayer(bot) && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
+    // --- Step 4: Handle Trainers ---
+    if (creature->IsValidTrainerForPlayer(bot))
     {
-        bot->SetSelection(info.wander_npc.npcOrGo);
-        botAI->DoSpecificAction("trainer", Event("trainer"));
-        interacted = true;
+        bool shouldInteract = false;
+        
+        // Always interact with class trainers
+        if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
+        {
+            shouldInteract = true;
+            LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with class trainer: {}", 
+                      bot->GetName(), creature->GetName());
+        }
+        // For profession trainers, use our secondary trainer classification
+        else if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+        {
+            static TrainerClassifier classifier;
+            if (classifier.IsValidSecondaryTrainer(bot, creature))
+            {
+                shouldInteract = true;
+                LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with secondary trainer: {}", 
+                          bot->GetName(), creature->GetName());
+            }
+            else
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} - Skipping primary profession trainer: {}", 
+                          bot->GetName(), creature->GetName());
+            }
+        }
+        
+        if (shouldInteract)
+        {
+            bot->SetSelection(info.wander_npc.npcOrGo);
+            botAI->DoSpecificAction("trainer", Event("trainer"));
+            interacted = true;
+        }
     }
 
     // --- Step 5: Handle Vendors ---
