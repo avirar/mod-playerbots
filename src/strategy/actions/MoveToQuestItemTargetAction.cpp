@@ -34,9 +34,8 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
             float distance = bot->GetDistance(spellFocus);
             if (distance > requiredRange)
             {
-                // Move to the spell focus object
-                return MoveTo(spellFocus->GetMapId(), spellFocus->GetPosition().GetPositionX(),
-                             spellFocus->GetPosition().GetPositionY(), spellFocus->GetPosition().GetPositionZ());
+                // Move to the spell focus object using WorldObject-based movement for underwater support
+                return MoveTo(spellFocus, 0.0f);
             }
             else
             {
@@ -85,9 +84,9 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
     }
     
 
-    // Use the MovementAction's move functionality
-    return MoveTo(target->GetMapId(), target->GetPosition().GetPositionX(), 
-                  target->GetPosition().GetPositionY(), target->GetPosition().GetPositionZ());
+    // Use the MovementAction's WorldObject-based move functionality
+    // This handles underwater movement correctly by calculating proper Z coordinates
+    return MoveTo(target, 0.0f);
 }
 
 bool MoveToQuestItemTargetAction::isUseful()
