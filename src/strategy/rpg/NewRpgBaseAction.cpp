@@ -753,7 +753,52 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
+        // Check if it's a questgiver or a quest objective gameobject
+        bool isValidTarget = false;
+        
         if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
+        {
+            isValidTarget = true;
+        }
+        else if (GameObject* go = object->ToGameObject())
+        {
+            // For quest objective gameobjects, check if they're needed for current quests
+            if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+            {
+                int32 goEntry = go->GetEntry();
+                
+                // Check if this gameobject is required by any active quest
+                for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                {
+                    uint32 questId = bot->GetQuestSlotQuestId(slot);
+                    if (!questId)
+                        continue;
+                        
+                    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                    if (!quest)
+                        continue;
+                    
+                    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    {
+                        int32 requiredEntry = quest->RequiredNpcOrGo[i];
+                        if ((requiredEntry < 0 && -requiredEntry == goEntry) && quest->RequiredNpcOrGoCount[i] > 0)
+                        {
+                            // Check if this objective is not yet completed
+                            QuestStatusData const& q_status = bot->getQuestStatusMap().at(questId);
+                            if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                            {
+                                isValidTarget = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isValidTarget)
+                        break;
+                }
+            }
+        }
+        
+        if (isValidTarget)
         {
             float adjustedDistance = bot->GetExactDist(object);
             if (adjustedDistance < nearestDistance)
@@ -761,7 +806,18 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                 nearestObject = object;
                 nearestDistance = adjustedDistance;
             }
+            
+            if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[Debug RPG Target] {} Selected gameobject {} (distance: {})", 
+                          bot->GetName(), object->GetName(), adjustedDistance);
+            }
             break;
+        }
+        else if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[Debug RPG Target] {} Gameobject {} not a valid target", 
+                      bot->GetName(), object->GetName());
         }
     }
 
