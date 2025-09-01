@@ -1034,17 +1034,20 @@ void LootObjectStack::ProcessPartialLootExpiry()
 
 void LootObjectStack::ClearPartialLootOnBagSpaceChange()
 {
-    uint8 currentBagSpace = bot->GetFreeBagSpace();
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return;
     
-    // Check if bag space dropped below 80% threshold (assuming 80% of max space)
+    uint8 currentBagSpace = botAI->GetAiObjectContext()->GetValue<uint8>("bag space")->Get();
+    
+    // Check if bag space changed
     if (currentBagSpace != lastBagSpaceCheck)
     {
         lastBagSpaceCheck = currentBagSpace;
         
-        // If bag space improved significantly (more than 5 free slots compared to 80% full threshold)
-        if (currentBagSpace > 5) // Threshold check - adjust based on typical bag sizes
+        // If bag space improved significantly (below 80% threshold)
+        if (currentBagSpace < 80) // Below the 80% restriction threshold
         {
-            PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
             bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
             
             if (debugLoot && !partiallyLootedObjects.empty())
