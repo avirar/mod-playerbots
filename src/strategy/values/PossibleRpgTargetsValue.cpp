@@ -181,9 +181,9 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
                                   bot->GetName(), trainer->GetName());
-                        continue; // Skip this trainer - teaches primary professions
+                        return false; // Reject this trainer entirely
                     }
                     else
                     {
@@ -267,9 +267,9 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
                                   bot->GetName(), trainer->GetName());
-                        continue; // Skip this trainer - teaches primary professions
+                        return false; // Reject this trainer entirely
                     }
                     else
                     {
@@ -347,9 +347,9 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
                                   bot->GetName(), trainer->GetName());
-                        continue; // Skip this trainer - teaches primary professions
+                        return false; // Reject this trainer entirely
                     }
                     else
                     {
