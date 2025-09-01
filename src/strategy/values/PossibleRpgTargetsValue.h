@@ -12,6 +12,9 @@
 #include "SharedDefines.h"
 
 class PlayerbotAI;
+class Player;
+class Creature;
+struct TrainerSpell;
 
 /**
  * @brief Trainer classification helper for RPG target filtering
