@@ -361,6 +361,20 @@ bool NewRpgWanderNpcAction::Execute(Event event)
             LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with class trainer: {}", 
                       bot->GetName(), creature->GetName());
         }
+        // Always interact with mount trainers (riding trainers)
+        else if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_MOUNTS)
+        {
+            shouldInteract = true;
+            LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with riding trainer: {}", 
+                      bot->GetName(), creature->GetName());
+        }
+        // Always interact with pet trainers (for hunters)
+        else if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_PETS)
+        {
+            shouldInteract = true;
+            LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pet trainer: {}", 
+                      bot->GetName(), creature->GetName());
+        }
         // For profession trainers, we already validated them in Step 2
         else if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
         {
