@@ -12,7 +12,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "Playerbots.h"
-#include "Quest.h"
+#include "QuestDef.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "NearestGameObjects.h"
