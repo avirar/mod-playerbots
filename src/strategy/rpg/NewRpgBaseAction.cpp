@@ -683,7 +683,24 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
     if (ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract(true, 80.0f))
     {
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, npcOrGo);
+        bool canInteract = false;
+        
+        // Check if it's a regular questgiver
         if (bot->CanInteractWithQuestGiver(object))
+        {
+            canInteract = true;
+        }
+        // Check if it's a quest objective gameobject
+        else if (GameObject* go = object->ToGameObject())
+        {
+            if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+            {
+                // This will be a quest objective gameobject, let InteractWithNpcOrGameObjectForQuest handle it
+                canInteract = true;
+            }
+        }
+        
+        if (canInteract)
         {
             InteractWithNpcOrGameObjectForQuest(npcOrGo);
             ForceToWait(5000);
