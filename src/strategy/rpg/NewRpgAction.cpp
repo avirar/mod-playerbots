@@ -287,33 +287,69 @@ bool NewRpgWanderNpcAction::Execute(Event event)
 
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.wander_npc.npcOrGo);
 
-    // --- Step 1: Ensure bot is close enough to interact ---
-    if (!object || bot->GetDistance(object) > INTERACTION_DISTANCE)
+    // --- Step 1: Validate the target before moving ---
+    if (!object || !object->IsInWorld())
+    {
+        // Target no longer exists, find a new one
+        info.wander_npc.npcOrGo = ObjectGuid();
+        info.wander_npc.lastReach = 0;
+        return true;
+    }
+
+    // --- Step 2: Pre-validate trainers to avoid wasting time moving to unusable ones ---
+    Creature* creature = object->ToCreature();
+    if (creature && creature->IsValidTrainerForPlayer(bot))
+    {
+        // For profession trainers, check if we should skip them entirely
+        if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+        {
+            static TrainerClassifier classifier;
+            if (!classifier.IsValidSecondaryTrainer(bot, creature))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} - Pre-filtering primary profession trainer: {}, finding new target", 
+                          bot->GetName(), creature->GetName());
+                
+                // Mark this NPC as recently visited to avoid re-selecting it immediately
+                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
+                
+                // Reset and find a new target
+                info.wander_npc.npcOrGo = ObjectGuid();
+                info.wander_npc.lastReach = 0;
+                return true;
+            }
+        }
+    }
+
+    // --- Step 3: Ensure bot is close enough to interact ---
+    if (bot->GetDistance(object) > INTERACTION_DISTANCE)
     {
         return MoveWorldObjectTo(info.wander_npc.npcOrGo);
     }
 
     bool interacted = false;  // Track if the bot has interacted with the NPC
 
-    // --- Step 2: Handle Quest NPCs ---
+    // --- Step 4: Handle Quest NPCs ---
     if (bot->CanInteractWithQuestGiver(object))
     {
         InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
         interacted = true;
     }
 
-    // --- Step 3: Detect NPC and Retrieve Details ---
-    Creature* creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
+    // --- Step 5: Handle NPCs (re-get creature since we validated earlier) ---
+    creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
 
     if (!creature)
     {
+        // Not a valid NPC for interaction, move to next target
+        info.wander_npc.npcOrGo = ObjectGuid();
+        info.wander_npc.lastReach = 0;
         return true;
     }
 
     std::string npcName = creature->GetName();
     uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
 
-    // --- Step 4: Handle Trainers ---
+    // --- Step 6: Handle Trainers (we already pre-validated above) ---
     if (creature->IsValidTrainerForPlayer(bot))
     {
         bool shouldInteract = false;
@@ -325,21 +361,12 @@ bool NewRpgWanderNpcAction::Execute(Event event)
             LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with class trainer: {}", 
                       bot->GetName(), creature->GetName());
         }
-        // For profession trainers, use our secondary trainer classification
+        // For profession trainers, we already validated them in Step 2
         else if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
         {
-            static TrainerClassifier classifier;
-            if (classifier.IsValidSecondaryTrainer(bot, creature))
-            {
-                shouldInteract = true;
-                LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with secondary trainer: {}", 
-                          bot->GetName(), creature->GetName());
-            }
-            else
-            {
-                LOG_DEBUG("playerbots", "[New RPG] {} - Skipping primary profession trainer: {}", 
-                          bot->GetName(), creature->GetName());
-            }
+            shouldInteract = true; // We already validated this is a secondary trainer
+            LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pre-validated secondary trainer: {}", 
+                      bot->GetName(), creature->GetName());
         }
         
         if (shouldInteract)
@@ -350,7 +377,7 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         }
     }
 
-    // --- Step 5: Handle Vendors ---
+    // --- Step 7: Handle Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
         botAI->DoSpecificAction("sell", Event("sell", "vendor"));
@@ -358,7 +385,7 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         interacted = true;
     }
 
-    // --- Step 6: Handle Repair Vendors ---
+    // --- Step 8: Handle Repair Vendors ---
     if (npcFlags & UNIT_NPC_FLAG_REPAIR)
     {
         bot->SetSelection(info.wander_npc.npcOrGo);
@@ -366,10 +393,10 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         interacted = true;
     }
 
-    // --- Step 7: Apply Waiting Logic (EVEN IF NO INTERACTION) ---
+    // --- Step 9: Apply Waiting Logic ---
     if (!info.wander_npc.lastReach)
     {
-        info.wander_npc.lastReach = getMSTime();  // Set once for ALL cases
+        info.wander_npc.lastReach = getMSTime();
         return false;
     }
     else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
@@ -377,7 +404,7 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         return false;
     }
 
-    // --- Step 8: Reset & Move to Next Target ---
+    // --- Step 10: Reset & Move to Next Target ---
     info.wander_npc.npcOrGo = ObjectGuid();
     info.wander_npc.lastReach = 0;
     info.recentNpcVisits[creature->GetGUID()] = getMSTime();
