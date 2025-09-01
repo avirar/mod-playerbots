@@ -695,8 +695,21 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         {
             if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
             {
-                // This will be a quest objective gameobject, let InteractWithNpcOrGameObjectForQuest handle it
-                canInteract = true;
+                // Check if we're close enough to interact
+                if (IsWithinInteractionDist(go))
+                {
+                    canInteract = true;
+                }
+                else
+                {
+                    // We need to move closer first
+                    if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Need to move closer to gameobject {} (distance: {})", 
+                                  bot->GetName(), go->GetName(), bot->GetDistance(go));
+                    }
+                    return MoveWorldObjectTo(npcOrGo);
+                }
             }
         }
         
