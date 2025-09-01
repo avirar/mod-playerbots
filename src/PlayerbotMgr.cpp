@@ -392,6 +392,30 @@ void PlayerbotHolder::LogoutPlayerBot(ObjectGuid guid)
         else if (bot && (logout || !botWorldSessionPtr->isLogingOut()))
         {
             botAI->TellMaster("Goodbye!");
+            
+            // === ENHANCED CLEANUP SEQUENCE ===
+            // 1. Stop all activities
+            bot->StopMoving();
+            bot->GetMotionMaster()->Clear();
+            
+            // 2. Clear all spell effects
+            bot->RemoveAllAuras();
+            bot->InterruptNonMeleeSpells(true);
+            bot->ClearComboPointHolders();
+            
+            // 3. Ensure safe state (prevent death processing)
+            if (bot->isDead())
+            {
+                bot->SetHealth(bot->GetMaxHealth());  // Set to 100% HP
+                bot->ResurrectPlayer(1.0f);
+            }
+            bot->RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST);
+            
+            // 4. Clear combat and pets
+            if (bot->IsInCombat())
+                bot->ClearInCombat();
+            bot->UnsummonPetTemporaryIfAny();
+            
             RemoveFromPlayerbotsMap(guid);                  // deletes bot player ptr inside this WorldSession PlayerBotMap
             bot->CleanupsBeforeDelete();             // gracefully clean up the bot's state
             botWorldSessionPtr->LogoutPlayer(true);  // this will delete the bot Player object and PlayerbotAI object
