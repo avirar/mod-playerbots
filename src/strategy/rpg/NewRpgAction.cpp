@@ -318,6 +318,19 @@ bool NewRpgWanderNpcAction::Execute(Event event)
                 return true;
             }
         }
+        
+        // Log all trainer types we encounter for debugging
+        uint32 trainerType = creature->GetCreatureTemplate()->trainer_type;
+        std::string trainerTypeName = "UNKNOWN";
+        switch (trainerType)
+        {
+            case TRAINER_TYPE_CLASS: trainerTypeName = "CLASS"; break;
+            case TRAINER_TYPE_MOUNTS: trainerTypeName = "MOUNTS/RIDING"; break;
+            case TRAINER_TYPE_PETS: trainerTypeName = "PETS"; break;
+            case TRAINER_TYPE_TRADESKILLS: trainerTypeName = "TRADESKILLS"; break;
+        }
+        LOG_DEBUG("playerbots", "[New RPG] {} - Found trainer {} with type {} ({})", 
+                  bot->GetName(), creature->GetName(), trainerType, trainerTypeName);
     }
 
     // --- Step 3: Ensure bot is close enough to interact ---
