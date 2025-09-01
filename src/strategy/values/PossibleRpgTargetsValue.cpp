@@ -9,7 +9,10 @@
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "ObjectGuid.h"
+#include "ObjectMgr.h"
+#include "Player.h"
 #include "Playerbots.h"
+#include "Quest.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "NearestGameObjects.h"
@@ -232,6 +235,46 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
         
         if (!ignoreLos && !bot->IsWithinLOSInMap(go))
             continue;
+        
+        // For GOOBER type gameobjects, check if they're required by an active quest
+        if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            bool isQuestObjective = false;
+            int32 goEntry = go->GetEntry();
+            
+            // Check if this gameobject is required by any active quest
+            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            {
+                uint32 questId = bot->GetQuestSlotQuestId(slot);
+                if (!questId)
+                    continue;
+                    
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (!quest)
+                    continue;
+                
+                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    // Handle negative gameobject IDs (quest->RequiredNpcOrGo[i] < 0 means gameobject)
+                    int32 requiredEntry = quest->RequiredNpcOrGo[i];
+                    if ((requiredEntry < 0 && -requiredEntry == goEntry) && quest->RequiredNpcOrGoCount[i] > 0)
+                    {
+                        // Check if this objective is not yet completed
+                        QuestStatusData const& q_status = bot->getQuestStatusMap().at(questId);
+                        if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                        {
+                            isQuestObjective = true;
+                            break;
+                        }
+                    }
+                }
+                if (isQuestObjective)
+                    break;
+            }
+            
+            if (!isQuestObjective)
+                continue;
+        }
         
         guidDistancePairs.push_back({go->GetGUID(), bot->GetExactDist(go)});
     }
