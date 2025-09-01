@@ -108,7 +108,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                 if (CreatureTemplate->rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite"))
                     continue;
 
-        if (!bot->IsWithinLOSInMap(unit))
+        // Let the bots cheat a little to find quest targets in caves/towers/keeps/etc
+        if (!bot->IsWithinLOSInMap(unit) && !needForQuest(unit))
         {
             continue;
         }
