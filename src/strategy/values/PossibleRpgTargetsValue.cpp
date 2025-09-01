@@ -60,13 +60,21 @@ void RpgNpcFlags::InitializeFlags()
 bool TrainerClassifier::IsValidSecondaryTrainer(Player* bot, Creature* trainer)
 {
     if (!trainer->IsValidTrainerForPlayer(bot)) {
+        LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} not valid for player", 
+                  bot->GetName(), trainer->GetName());
         return false;
     }
     
     TrainerSpellData const* trainer_spells = trainer->GetTrainerSpells();
-    if (!trainer_spells) return false;
+    if (!trainer_spells) {
+        LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} has no spells", 
+                  bot->GetName(), trainer->GetName());
+        return false;
+    }
     
     bool hasLearnableSpells = false;
+    uint32 greenSpellCount = 0;
+    uint32 primaryProfessionSpellCount = 0;
     
     for (TrainerSpellMap::const_iterator itr = trainer_spells->spellList.begin();
          itr != trainer_spells->spellList.end(); ++itr) {
@@ -77,22 +85,35 @@ bool TrainerClassifier::IsValidSecondaryTrainer(Player* bot, Creature* trainer)
         TrainerSpellState state = bot->GetTrainerSpellState(tSpell);
         if (state == TRAINER_SPELL_GREEN) {
             hasLearnableSpells = true;
+            greenSpellCount++;
             
             // Check if this GREEN spell teaches primary profession skills
             if (TeachesPrimaryProfession(tSpell)) {
+                primaryProfessionSpellCount++;
+                LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} teaches primary profession spell {} (skill: {})", 
+                          bot->GetName(), trainer->GetName(), tSpell->spell, tSpell->reqSkill);
                 return false; // Immediate exclusion
             }
         }
     }
     
-    return hasLearnableSpells;
+    bool result = hasLearnableSpells;
+    LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} validation result: {} (GREEN spells: {}, primary profession spells: {})", 
+              bot->GetName(), trainer->GetName(), result ? "VALID" : "INVALID", greenSpellCount, primaryProfessionSpellCount);
+    
+    return result;
 }
 
 bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
 {
     // Check ReqSkillLine category
-    if (tSpell->reqSkill > 0 && GetSkillCategory(tSpell->reqSkill) == SKILL_CATEGORY_PROFESSION) {
-        return true;
+    if (tSpell->reqSkill > 0) {
+        uint32 category = GetSkillCategory(tSpell->reqSkill);
+        if (category == SKILL_CATEGORY_PROFESSION) {
+            LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires skill {} (category {}=PROFESSION)", 
+                      tSpell->spell, tSpell->reqSkill, category);
+            return true;
+        }
     }
     
     // Check spell effects for apprentice spells
@@ -103,7 +124,10 @@ bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
                 spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL) {
                 
                 uint32 skillId = spellInfo->Effects[j].MiscValue;
-                if (GetSkillCategory(skillId) == SKILL_CATEGORY_PROFESSION) {
+                uint32 category = GetSkillCategory(skillId);
+                if (category == SKILL_CATEGORY_PROFESSION) {
+                    LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches skill {} (category {}=PROFESSION) via effect", 
+                              tSpell->spell, skillId, category);
                     return true;
                 }
             }
@@ -157,7 +181,14 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                         continue; // Skip this trainer - teaches primary professions
+                    }
+                    else
+                    {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                     }
                 }
             }
@@ -236,7 +267,14 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                         continue; // Skip this trainer - teaches primary professions
+                    }
+                    else
+                    {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                     }
                 }
             }
@@ -309,7 +347,14 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Skipping primary profession trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                         continue; // Skip this trainer - teaches primary professions
+                    }
+                    else
+                    {
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                  bot->GetName(), trainer->GetName());
                     }
                 }
             }
