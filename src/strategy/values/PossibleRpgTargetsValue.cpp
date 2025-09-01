@@ -375,7 +375,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
     Cell::VisitObjects(bot, searcher, range);
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-    if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+    if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
     {
         LOG_DEBUG("playerbots", "[Debug RPG GO] {} Found {} gameobjects in range {}", 
                   bot->GetName(), targets.size(), range);
@@ -385,7 +385,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
     std::vector<std::pair<ObjectGuid, float>> guidDistancePairs;
     for (GameObject* go : targets)
     {
-        if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+        if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
         {
             LOG_DEBUG("playerbots", "[Debug RPG GO] {} Checking gameobject {} (entry: {}, type: {})", 
                       bot->GetName(), go->GetName(), go->GetEntry(), go->GetGoType());
@@ -402,7 +402,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
         }
         if (!flagCheck)
         {
-            if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} failed type check (type: {})", 
                           bot->GetName(), go->GetName(), go->GetGoType());
@@ -451,14 +451,14 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
             
             if (!isQuestObjective)
             {
-                if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
                 {
                     LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} not a quest objective", 
                               bot->GetName(), go->GetName());
                 }
                 continue;
             }
-            else if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            else if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} is a valid quest objective", 
                           bot->GetName(), go->GetName());
