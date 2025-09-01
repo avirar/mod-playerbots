@@ -108,6 +108,13 @@ bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
 {
     // Check ReqSkillLine category
     if (tSpell->reqSkill > 0) {
+        // Riding skill (762) should not be treated as a primary profession
+        if (tSpell->reqSkill == 762) { // SKILL_RIDING
+            LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires riding skill (762), NOT a primary profession", 
+                      tSpell->spell);
+            return false;
+        }
+        
         uint32 category = GetSkillCategory(tSpell->reqSkill);
         if (category == SKILL_CATEGORY_PROFESSION) {
             LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires skill {} (category {}=PROFESSION)", 
@@ -124,6 +131,14 @@ bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
                 spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL) {
                 
                 uint32 skillId = spellInfo->Effects[j].MiscValue;
+                
+                // Riding skill (762) should not be treated as a primary profession
+                if (skillId == 762) { // SKILL_RIDING
+                    LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches riding skill (762) via effect, NOT a primary profession", 
+                              tSpell->spell);
+                    return false;
+                }
+                
                 uint32 category = GetSkillCategory(skillId);
                 if (category == SKILL_CATEGORY_PROFESSION) {
                     LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches skill {} (category {}=PROFESSION) via effect", 
