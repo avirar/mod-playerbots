@@ -29,7 +29,7 @@ bool QuestItemUsableTrigger::IsActive()
     }
 
     // Check if there are valid targets for this quest item
-    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     bool hasValidTarget = (target != nullptr);
     
     
@@ -86,7 +86,7 @@ WorldObject* FarFromQuestItemTargetTrigger::FindBestQuestItemTarget() const
     if (!questItem)
         return nullptr;
 
-    return QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    return QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
 }
 
 
@@ -99,7 +99,7 @@ bool QuestItemTargetAvailableTrigger::IsActive()
         return false;
 
     // Check if there are valid targets nearby
-    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     return (target != nullptr);
 }
 
