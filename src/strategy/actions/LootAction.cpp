@@ -76,7 +76,8 @@ bool OpenLootAction::Execute(Event /*event*/)
     bool result = DoLoot(lootObject);
     if (result)
     {
-        AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
+        // Mark as pending instead of removing immediately
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
     return result;
@@ -773,7 +774,8 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
-    AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    // Mark loot as completed now that we've successfully processed the server response
+    AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(guid);
 
     // release loot
     WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);
