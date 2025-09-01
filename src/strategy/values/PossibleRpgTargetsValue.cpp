@@ -16,6 +16,8 @@
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "NearestGameObjects.h"
+#include "DBCStores.h"
+#include "SpellMgr.h"
 
 // Static member initialization
 std::vector<uint32> RpgNpcFlags::standardFlags;
@@ -53,6 +55,70 @@ void RpgNpcFlags::InitializeFlags()
     };
 }
 
+// TrainerClassifier implementation
+bool TrainerClassifier::IsValidSecondaryTrainer(Player* bot, Creature* trainer)
+{
+    if (!trainer->IsValidTrainerForPlayer(bot)) {
+        return false;
+    }
+    
+    TrainerSpellData const* trainer_spells = trainer->GetTrainerSpells();
+    if (!trainer_spells) return false;
+    
+    bool hasLearnableSpells = false;
+    
+    for (TrainerSpellMap::const_iterator itr = trainer_spells->spellList.begin();
+         itr != trainer_spells->spellList.end(); ++itr) {
+        
+        TrainerSpell const* tSpell = &itr->second;
+        if (!tSpell) continue;
+        
+        TrainerSpellState state = bot->GetTrainerSpellState(tSpell);
+        if (state == TRAINER_SPELL_GREEN) {
+            hasLearnableSpells = true;
+            
+            // Check if this GREEN spell teaches primary profession skills
+            if (TeachesPrimaryProfession(tSpell)) {
+                return false; // Immediate exclusion
+            }
+        }
+    }
+    
+    return hasLearnableSpells;
+}
+
+bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
+{
+    // Check ReqSkillLine category
+    if (tSpell->reqSkill > 0 && GetSkillCategory(tSpell->reqSkill) == SKILL_CATEGORY_PROFESSION) {
+        return true;
+    }
+    
+    // Check spell effects for apprentice spells
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(tSpell->spell);
+    if (spellInfo) {
+        for (uint8 j = 0; j < 3; ++j) {
+            if (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP || 
+                spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL) {
+                
+                uint32 skillId = spellInfo->Effects[j].MiscValue;
+                if (GetSkillCategory(skillId) == SKILL_CATEGORY_PROFESSION) {
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+uint32 TrainerClassifier::GetSkillCategory(uint32 skillId)
+{
+    // Use the cached DBC store - elegant and fast
+    SkillLineEntry const* skillInfo = sSkillLineStore.LookupEntry(skillId);
+    return skillInfo ? skillInfo->categoryId : 0;
+}
+
 PossibleRpgTargetsValue::PossibleRpgTargetsValue(PlayerbotAI* botAI, float range)
     : NearestUnitsValue(botAI, "possible rpg targets", range, true)
 {
@@ -80,7 +146,22 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
     for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
+        {
+            // Additional filtering for profession trainers
+            if (npcFlag == UNIT_NPC_FLAG_TRAINER_PROFESSION && unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* trainer = unit->ToCreature();
+                if (trainer && trainer->IsTrainer())
+                {
+                    static TrainerClassifier classifier;
+                    if (!classifier.IsValidSecondaryTrainer(bot, trainer))
+                    {
+                        continue; // Skip this trainer - teaches primary professions
+                    }
+                }
+            }
             return true;
+        }
     }
 
     TravelTarget* travelTarget = context->GetValue<TravelTarget*>("travel target")->Get();
@@ -144,7 +225,22 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
     for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
+        {
+            // Additional filtering for profession trainers
+            if (npcFlag == UNIT_NPC_FLAG_TRAINER_PROFESSION && unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* trainer = unit->ToCreature();
+                if (trainer && trainer->IsTrainer())
+                {
+                    static TrainerClassifier classifier;
+                    if (!classifier.IsValidSecondaryTrainer(bot, trainer))
+                    {
+                        continue; // Skip this trainer - teaches primary professions
+                    }
+                }
+            }
             return true;
+        }
     }
 
     return false;
@@ -202,7 +298,22 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
     for (uint32 npcFlag : RpgNpcFlags::GetStandardRpgFlags())
     {
         if (unit->HasFlag(UNIT_NPC_FLAGS, npcFlag))
+        {
+            // Additional filtering for profession trainers
+            if (npcFlag == UNIT_NPC_FLAG_TRAINER_PROFESSION && unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* trainer = unit->ToCreature();
+                if (trainer && trainer->IsTrainer())
+                {
+                    static TrainerClassifier classifier;
+                    if (!classifier.IsValidSecondaryTrainer(bot, trainer))
+                    {
+                        continue; // Skip this trainer - teaches primary professions
+                    }
+                }
+            }
             return true;
+        }
     }
 
     return false;
