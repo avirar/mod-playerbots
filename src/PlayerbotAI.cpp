@@ -485,6 +485,11 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     masterIncomingPacketHandlers.Handle(helper);
     masterOutgoingPacketHandlers.Handle(helper);
 
+    // Process pending loot timeouts to recover from interruptions
+    LootObjectStack* lootStack = AI_VALUE(LootObjectStack*, "available loot");
+    if (lootStack)
+        lootStack->ProcessPendingTimeouts();
+
     DoNextAction(minimal);
 
     if (pmo)
