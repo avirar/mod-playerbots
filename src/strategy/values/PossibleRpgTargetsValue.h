@@ -103,6 +103,7 @@ public:
         if (allowedGOFlags.empty())
         {
             allowedGOFlags.push_back(GAMEOBJECT_TYPE_QUESTGIVER);
+            allowedGOFlags.push_back(GAMEOBJECT_TYPE_GOOBER);
         }
     }
     
