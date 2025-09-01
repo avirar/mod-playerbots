@@ -82,8 +82,12 @@ public:
     
     void MarkAsPending(ObjectGuid guid);
     void MarkAsCompleted(ObjectGuid guid);
+    void MarkAsPartiallyLooted(ObjectGuid guid);
     void ProcessPendingTimeouts();
+    void ProcessPartialLootExpiry();
+    void ClearPartialLootOnBagSpaceChange();
     bool IsPending(ObjectGuid guid) const;
+    bool IsPartiallyLooted(ObjectGuid guid) const;
 
 private:
     LootObject GetNearest(float maxDistance = 0);
@@ -91,6 +95,8 @@ private:
     Player* bot;
     LootTargetList availableLoot;
     LootTargetList pendingLoot;
+    LootTargetList partiallyLootedObjects;
+    uint8 lastBagSpaceCheck;
 };
 
 #endif
