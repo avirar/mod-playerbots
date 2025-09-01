@@ -79,12 +79,18 @@ public:
     void Clear();
     bool CanLoot(float maxDistance);
     LootObject GetLoot(float maxDistance = 0);
+    
+    void MarkAsPending(ObjectGuid guid);
+    void MarkAsCompleted(ObjectGuid guid);
+    void ProcessPendingTimeouts();
+    bool IsPending(ObjectGuid guid) const;
 
 private:
     LootObject GetNearest(float maxDistance = 0);
 
     Player* bot;
     LootTargetList availableLoot;
+    LootTargetList pendingLoot;
 };
 
 #endif
