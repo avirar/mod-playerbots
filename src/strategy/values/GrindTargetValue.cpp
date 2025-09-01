@@ -75,7 +75,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             continue;
         }
 
-        if (!bot->isHonorOrXPTarget(unit))
+        if (!bot->isHonorOrXPTarget(unit) && !needForQuest(unit))
         {
             continue;
         }
