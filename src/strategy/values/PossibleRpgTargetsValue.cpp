@@ -18,6 +18,7 @@
 #include "NearestGameObjects.h"
 #include "DBCStores.h"
 #include "SpellMgr.h"
+#include "CreatureData.h"
 
 // Static member initialization
 std::vector<uint32> RpgNpcFlags::standardFlags;
