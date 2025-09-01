@@ -799,7 +799,11 @@ void LootObjectStack::Remove(ObjectGuid guid)
     }
 }
 
-void LootObjectStack::Clear() { availableLoot.clear(); }
+void LootObjectStack::Clear() 
+{ 
+    availableLoot.clear(); 
+    pendingLoot.clear(); 
+}
 
 bool LootObjectStack::CanLoot(float maxDistance)
 {
@@ -891,4 +895,79 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
     }
 
     return nearest;
+}
+
+void LootObjectStack::MarkAsPending(ObjectGuid guid)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
+    // Add to pending loot list
+    pendingLoot.insert(LootTarget(guid));
+    
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Marked loot target as pending " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+}
+
+void LootObjectStack::MarkAsCompleted(ObjectGuid guid)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
+    // Remove from both available and pending lists
+    availableLoot.erase(guid);
+    pendingLoot.erase(guid);
+    
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Marked loot target as completed " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+}
+
+void LootObjectStack::ProcessPendingTimeouts()
+{
+    time_t currentTime = time(nullptr);
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    for (auto it = pendingLoot.begin(); it != pendingLoot.end();)
+    {
+        // If pending loot is older than 10 seconds, move it back to available
+        if (currentTime - it->asOfTime > 10)
+        {
+            ObjectGuid guid = it->guid;
+            
+            // Check if the object still exists and is valid
+            WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+            if (obj)
+            {
+                // Move back to available loot
+                availableLoot.insert(LootTarget(guid));
+                
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "LootStack: Pending loot timeout, moved back to available: " << obj->GetName() << " (GUID: " << guid.ToString() << ")";
+                    botAI->TellMaster(out.str());
+                }
+            }
+            
+            it = pendingLoot.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+bool LootObjectStack::IsPending(ObjectGuid guid) const
+{
+    return pendingLoot.find(guid) != pendingLoot.end();
 }
