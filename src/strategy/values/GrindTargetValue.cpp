@@ -48,7 +48,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         return unit;
     }
 
-    GuidVector targets = *context->GetValue<GuidVector>("possible targets");
+    GuidVector targets = *context->GetValue<GuidVector>("all targets");
     if (targets.empty())
         return nullptr;
 
