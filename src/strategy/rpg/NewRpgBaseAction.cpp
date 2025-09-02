@@ -2364,3 +2364,4 @@ bool NewRpgBaseAction::IsWithinPOIBoundary(float x, float y, float tolerance)
     
     return distanceFromStart <= tolerance;
 }
+
