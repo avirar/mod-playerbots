@@ -62,12 +62,15 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.stuckAttempts = 0;
         const AreaTableEntry* entry = sAreaTableStore.LookupEntry(bot->GetZoneId());
         std::string zone_name = PlayerbotAI::GetLocalizedAreaName(entry);
-        LOG_DEBUG(
-            "playerbots",
-            "[New RPG] Teleport {} from ({},{},{},{}) to ({},{},{},{}) as it stuck when moving far - Zone: {} ({})",
-            bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetMapId(),
-            dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.getMapId(), bot->GetZoneId(),
-            zone_name);
+        if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG(
+                "playerbots",
+                "[New RPG] Teleport {} from ({},{},{},{}) to ({},{},{},{}) as it stuck when moving far - Zone: {} ({})",
+                bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetMapId(),
+                dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.getMapId(), bot->GetZoneId(),
+                zone_name);
+        }
         return bot->TeleportTo(dest);
     }
 
@@ -216,24 +219,38 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 /// Quest related method refer to TalkToQuestGiverAction.h
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 {
-    LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest called with GUID {}", 
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest called with GUID {}", 
              bot->GetName(), guid.ToString());
+    }
              
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
     if (!object)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Object with GUID {} not found", bot->GetName(), guid.ToString());
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Object with GUID {} not found", bot->GetName(), guid.ToString());
+        }
         return false;
     }
     
-    LOG_DEBUG("playerbots", "[New RPG] {} Found object: {}", bot->GetName(), object->GetName());
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Found object: {}", bot->GetName(), object->GetName());
+    }
         
     // Final LOS check before interaction - only fail if we're close enough to interact
     float distance = bot->GetDistance(object);
     /*
     if (distance <= INTERACTION_DISTANCE && !bot->IsWithinLOSInMap(object))
     {
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
         LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with NPC/GO {} - no LOS at interaction distance", 
+    }
+    }
+    }
                  bot->GetName(), guid.ToString());
         return false;
     }
@@ -241,14 +258,20 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
     // Handle GameObject quest objectives that need to be used directly
     if (GameObject* go = object->ToGameObject())
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest: Processing GameObject {} (type {})", 
-                 bot->GetName(), go->GetGOInfo()->name, go->GetGoType());
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest: Processing GameObject {} (type {})", 
+                     bot->GetName(), go->GetGOInfo()->name, go->GetGoType());
+        }
         
         // Check if this GameObject is a quest objective that should be used directly
         if (go->GetGoType() != GAMEOBJECT_TYPE_QUESTGIVER)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} GameObject is not a quest giver, checking for quest objectives", 
-                     bot->GetName());
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} GameObject is not a quest giver, checking for quest objectives", 
+                         bot->GetName());
+            }
             
             // Check if this GameObject is required for any active quest
             QuestStatusMap& questMap = bot->getQuestStatusMap();
@@ -258,8 +281,11 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                 if (!quest || questPair.second.Status != QUEST_STATUS_INCOMPLETE)
                     continue;
                     
-                LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for GameObject requirements", 
-                         bot->GetName(), questPair.first);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for GameObject requirements", 
+                             bot->GetName(), questPair.first);
+                }
                     
                 // Check if this GameObject is a quest objective
                 for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
@@ -271,13 +297,19 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                         uint32 currentCount = questPair.second.CreatureOrGOCount[i];
                         uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
                         
-                        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: current {} / required {}", 
-                                 bot->GetName(), questPair.first, i, currentCount, requiredCount);
+                        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: current {} / required {}", 
+                                     bot->GetName(), questPair.first, i, currentCount, requiredCount);
+                        }
                         
                         if (currentCount < requiredCount)
                         {
-                            LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
-                                     bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
+                            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                            {
+                                LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
+                                         bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
+                            }
 
                             // Use proper packet-based GameObject interaction
                             WorldPacket packet(CMSG_GAMEOBJ_USE);
@@ -287,15 +319,21 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                         }
                         else
                         {
-                            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} objective already complete for quest {}", 
-                                     bot->GetName(), go->GetGOInfo()->name, questPair.first);
+                            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                            {
+                                LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} objective already complete for quest {}", 
+                                         bot->GetName(), go->GetGOInfo()->name, questPair.first);
+                            }
                         }
                     }
                 }
             }
             
-            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} not required for any active quest", 
-                     bot->GetName(), go->GetGOInfo()->name);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} not required for any active quest", 
+                         bot->GetName(), go->GetGOInfo()->name);
+            }
         }
     }
 
@@ -304,34 +342,49 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
     Creature* creature = object->ToCreature();
     if (creature)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} for quest objective interaction", 
-                 bot->GetName(), creature->GetName());
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} for quest objective interaction", 
+                     bot->GetName(), creature->GetName());
+        }
                  
         if (IsRequiredQuestObjectiveNPC(creature))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
-                      bot->GetName(), creature->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
+                          bot->GetName(), creature->GetName());
+            }
             
             // Set target and use existing gossip hello action
             bot->SetSelection(creature->GetGUID());
             
             bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
-            LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
-                     bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
+                         bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
+            }
             return true;
         }
         else
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is not a required quest objective NPC", 
-                     bot->GetName(), creature->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is not a required quest objective NPC", 
+                         bot->GetName(), creature->GetName());
+            }
         }
     }
 
     // Handle regular quest giver interaction
     if (!bot->CanInteractWithQuestGiver(object))
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Object {} is not a regular quest giver", 
-                 bot->GetName(), object->GetName());
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Object {} is not a regular quest giver", 
+                     bot->GetName(), object->GetName());
+        }
         return false;
     }
 
@@ -364,7 +417,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                 botAI->TellMaster("Quest accepted " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
-            LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
+            }
         }
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
         {
@@ -374,7 +430,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
             botAI->rpgStatistic.questRewarded++;
             botAI->rpgStatistic.questRewardedByID[quest->GetQuestId()]++;
-            LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
+            }
         }
     }
 
@@ -633,13 +692,14 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
 bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
 {
     if (!creature)
-    {
-        LOG_DEBUG("playerbots", "[New RPG] {} IsRequiredQuestObjectiveNPC: creature is null", bot->GetName());
         return false;
-    }
 
-    LOG_DEBUG("playerbots", "[New RPG] {} Checking if NPC {} (entry {}) is required quest objective", 
-             bot->GetName(), creature->GetName(), creature->GetEntry());
+    
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking if NPC {} (entry {}) is required quest objective", 
+            bot->GetName(), creature->GetName(), creature->GetEntry());
+    }
     
     // First, let's see all active quests
     int activeQuestCount = 0;
@@ -649,20 +709,27 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
         if (questId > 0)
         {
             QuestStatus status = bot->GetQuestStatus(questId);
-            LOG_DEBUG("playerbots", "[New RPG] {} Quest slot {}: ID {}, status {}", 
-                     bot->GetName(), slot, questId, (int)status);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest slot {}: ID {}, status {}", 
+                    bot->GetName(), slot, questId, (int)status);
+            }
             if (status == QUEST_STATUS_INCOMPLETE)
                 activeQuestCount++;
         }
     }
-    LOG_DEBUG("playerbots", "[New RPG] {} Total incomplete quests: {}", bot->GetName(), activeQuestCount);
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Total incomplete quests: {}", bot->GetName(), activeQuestCount);
+    }
 
     // Only check friendly/neutral creatures (hostile ones are handled by grind strategy)
     ReputationRank reaction = creature->GetReactionTo(bot);
     if (reaction < REP_NEUTRAL)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} NPC {} has hostile reaction {}, skipping", 
-                 bot->GetName(), creature->GetName(), (int)reaction);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} NPC {} has hostile reaction {}, skipping", 
+                     bot->GetName(), creature->GetName(), (int)reaction);
         return false;
     }
 
@@ -678,35 +745,41 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
         if (!quest)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} not found in ObjectMgr", bot->GetName(), questId);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} not found in ObjectMgr", bot->GetName(), questId);
             continue;
         }
         
         QuestStatus questStatus = bot->GetQuestStatus(questId);
         if (questStatus != QUEST_STATUS_INCOMPLETE)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} status is {} (not incomplete)", 
-                     bot->GetName(), questId, (int)questStatus);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} status is {} (not incomplete)", 
+                         bot->GetName(), questId, (int)questStatus);
             continue;
         }
         
-        LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for SPEAKTO flag", bot->GetName(), questId);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for SPEAKTO flag", bot->GetName(), questId);
         
         // Check if this quest has SPEAKTO flag or similar talk requirements
         if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} does not have SPEAKTO flag", bot->GetName(), questId);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} does not have SPEAKTO flag", bot->GetName(), questId);
             continue;
         }
         
-        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} HAS SPEAKTO flag, checking objectives", bot->GetName(), questId);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} HAS SPEAKTO flag, checking objectives", bot->GetName(), questId);
             
         // Check if this creature is a required objective
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
             int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
-            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: RequiredNpcOrGo = {}, checking against creature entry {}", 
-                     bot->GetName(), questId, i, requiredNpcOrGo, creatureEntry);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: RequiredNpcOrGo = {}, checking against creature entry {}", 
+                         bot->GetName(), questId, i, requiredNpcOrGo, creatureEntry);
                      
             if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
             {
@@ -715,26 +788,31 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
                 uint32 currentCount = q_status.CreatureOrGOCount[i];
                 uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
                 
-                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} match! Current count: {}, Required count: {}", 
-                         bot->GetName(), questId, i, currentCount, requiredCount);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} match! Current count: {}, Required count: {}", 
+                             bot->GetName(), questId, i, currentCount, requiredCount);
                 
                 if (currentCount < requiredCount)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} IS REQUIRED for SPEAKTO quest {} (objective {}) - RETURNING TRUE", 
-                             bot->GetName(), creature->GetName(), questId, i);
+                    // Keep this as high-level info for generic debug
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[New RPG] {} NPC {} IS REQUIRED for SPEAKTO quest {} (objective {})", 
+                                 bot->GetName(), creature->GetName(), questId, i);
                     return true;
                 }
                 else
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} objective already complete for quest {} ({}/{})", 
-                             bot->GetName(), creature->GetName(), questId, currentCount, requiredCount);
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[New RPG] {} NPC {} objective already complete for quest {} ({}/{})", 
+                                 bot->GetName(), creature->GetName(), questId, currentCount, requiredCount);
                 }
             }
         }
     }
     
-    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} is NOT required for any quest objective", 
-             bot->GetName(), creature->GetName());
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        LOG_DEBUG("playerbots", "[New RPG] {} NPC {} is NOT required for any quest objective", 
+                 bot->GetName(), creature->GetName());
     return false;
 }
 
@@ -743,16 +821,18 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest || objectiveIdx >= QUEST_OBJECTIVES_COUNT) 
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Invalid quest {} or objective index {}", 
-                 bot->GetName(), questId, objectiveIdx);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Invalid quest {} or objective index {}", 
+                     bot->GetName(), questId, objectiveIdx);
         return false;
     }
     
     int32 requiredNpcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
     if (requiredNpcOrGo == 0) 
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} has no required NPC or GO", 
-                 bot->GetName(), questId, objectiveIdx);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} has no required NPC or GO", 
+                     bot->GetName(), questId, objectiveIdx);
         return false;
     }
     
@@ -760,9 +840,10 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
     const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
     if (q_status.CreatureOrGOCount[objectiveIdx] >= quest->RequiredNpcOrGoCount[objectiveIdx])
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} already complete ({}/{})", 
-                 bot->GetName(), questId, objectiveIdx, 
-                 q_status.CreatureOrGOCount[objectiveIdx], quest->RequiredNpcOrGoCount[objectiveIdx]);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} already complete ({}/{})", 
+                     bot->GetName(), questId, objectiveIdx, 
+                     q_status.CreatureOrGOCount[objectiveIdx], quest->RequiredNpcOrGoCount[objectiveIdx]);
         return false;
     }
     
@@ -773,8 +854,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
     {
         // Search for NPC
         uint32 targetEntry = (uint32)requiredNpcOrGo;
-        LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective NPC entry {}", 
-                 bot->GetName(), targetEntry);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective NPC entry {}", 
+                     bot->GetName(), targetEntry);
                  
         GuidVector nearbyNPCs = AI_VALUE(GuidVector, "nearest npcs");
         for (const ObjectGuid& guid : nearbyNPCs) 
@@ -783,8 +865,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
             if (creature && creature->GetEntry() == targetEntry) 
             {
                 target = creature;
-                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f}", 
-                         bot->GetName(), creature->GetName(), bot->GetDistance(creature));
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f}", 
+                             bot->GetName(), creature->GetName(), bot->GetDistance(creature));
                 break;
             }
         }
@@ -793,8 +876,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
     {
         // Search for GameObject  
         uint32 targetEntry = (uint32)(-requiredNpcOrGo);
-        LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective GameObject entry {}", 
-                 bot->GetName(), targetEntry);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective GameObject entry {}", 
+                     bot->GetName(), targetEntry);
                  
         GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
         for (const ObjectGuid& guid : nearbyGOs) 
@@ -803,8 +887,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
             if (go && go->GetEntry() == targetEntry) 
             {
                 target = go;
-                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective GameObject {} at distance {:.1f}", 
-                         bot->GetName(), go->GetGOInfo()->name, bot->GetDistance(go));
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective GameObject {} at distance {:.1f}", 
+                             bot->GetName(), go->GetGOInfo()->name, bot->GetDistance(go));
                 break;
             }
         }
@@ -812,8 +897,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
     
     if (!target) 
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Quest objective target not found for quest {} objective {}", 
-                 bot->GetName(), questId, objectiveIdx);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest objective target not found for quest {} objective {}", 
+                     bot->GetName(), questId, objectiveIdx);
         return false;
     }
     
@@ -828,8 +914,9 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
         {
             float distance = bot->GetDistance(creature);
             canInteract = distance <= INTERACTION_DISTANCE;
-            LOG_DEBUG("playerbots", "[New RPG] {} NPC {} interaction check: distance {:.1f}, can interact: {}", 
-                     bot->GetName(), creature->GetName(), distance, canInteract);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                LOG_DEBUG("playerbots", "[New RPG] {} NPC {} interaction check: distance {:.1f}, can interact: {}", 
+                         bot->GetName(), creature->GetName(), distance, canInteract);
         }
     } 
     else 
@@ -837,22 +924,25 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
         // GameObject interaction check  
         GameObject* go = target->ToGameObject();
         canInteract = go && IsWithinInteractionDist(go);
-        LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} interaction check: can interact: {}", 
-                 bot->GetName(), go->GetGOInfo()->name, canInteract);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} interaction check: can interact: {}", 
+                     bot->GetName(), go->GetGOInfo()->name, canInteract);
     }
     
     if (canInteract) 
     {
-        // Interact with the target
-        LOG_DEBUG("playerbots", "[New RPG] {} Interacting with quest objective {}", 
-                 bot->GetName(), target->GetName());
+        // High-level interaction log for generic debug
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Interacting with quest objective {}", 
+                     bot->GetName(), target->GetName());
         return InteractWithNpcOrGameObjectForQuest(target->GetGUID());
     } 
     else 
     {
-        // Move closer to the target
-        LOG_DEBUG("playerbots", "[New RPG] {} Moving closer to quest objective {}", 
-                 bot->GetName(), target->GetName());
+        // High-level movement log for generic debug  
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            LOG_DEBUG("playerbots", "[New RPG] {} Moving closer to quest objective {}", 
+                     bot->GetName(), target->GetName());
         return MoveWorldObjectTo(target->GetGUID());
     }
 }
@@ -884,7 +974,10 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         if (!IsQuestWorthDoing(quest) || !IsQuestCapableDoing(quest) ||
             bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+            }
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
@@ -911,7 +1004,10 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
         if (quest->GetZoneOrSort() < 0 || (quest->GetZoneOrSort() > 0 && quest->GetZoneOrSort() != bot->GetZoneId()))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+            }
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
             bot->GetSession()->HandleQuestLogRemoveQuest(packet);
@@ -935,7 +1031,10 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
-        LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+		if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+		{
+			LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+		}
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)i;
         bot->GetSession()->HandleQuestLogRemoveQuest(packet);
@@ -951,7 +1050,10 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
 bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 {
-    LOG_DEBUG("playerbots", "[New RPG] {} SearchQuestGiverAndAcceptOrReward called", bot->GetName());
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SearchQuestGiverAndAcceptOrReward called", bot->GetName());
+    }
     
     OrganizeQuestLog();
     if (ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract(true, 80.0f))
@@ -963,14 +1065,20 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         if (bot->CanInteractWithQuestGiver(object))
         {
             canInteract = true;
-            LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a regular quest giver", 
-                     bot->GetName(), object->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a regular quest giver", 
+                         bot->GetName(), object->GetName());
+            }
         }
         // Check if it's a quest objective NPC that needs gossip interaction
         else if (Creature* creature = object->ToCreature())
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} in SearchQuestGiverAndAcceptOrReward", 
-                     bot->GetName(), creature->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} in SearchQuestGiverAndAcceptOrReward", 
+                         bot->GetName(), creature->GetName());
+            }
             if (IsRequiredQuestObjectiveNPC(creature))
             {
                 // For quest objective NPCs, always try interaction (will handle distance automatically)
@@ -993,20 +1101,29 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
                         int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
                         if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
                         {
-                            LOG_DEBUG("playerbots", "[New RPG] {} Using unified quest objective interaction for quest {} objective {}", 
-                                     bot->GetName(), questId, i);
+                            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                            {
+                                LOG_DEBUG("playerbots", "[New RPG] {} Using unified quest objective interaction for quest {} objective {}", 
+                                         bot->GetName(), questId, i);
+                            }
                             return TryInteractWithQuestObjective(questId, i);
                         }
                     }
                 }
                 
-                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC but no matching quest found", 
-                         bot->GetName(), creature->GetName());
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC but no matching quest found", 
+                             bot->GetName(), creature->GetName());
+                }
             }
             else
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is NOT a quest objective NPC", 
-                         bot->GetName(), creature->GetName());
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Object {} is NOT a quest objective NPC", 
+                             bot->GetName(), creature->GetName());
+                }
             }
         }
         // Check if it's a quest objective gameobject
@@ -1022,7 +1139,7 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
                 else
                 {
                     // We need to move closer first
-                    if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                    if (botAI && botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
                     {
                         LOG_DEBUG("playerbots", "[New RPG] {} Need to move closer to gameobject {} (distance: {})", 
                                   bot->GetName(), go->GetName(), bot->GetDistance(go));
@@ -1034,16 +1151,22 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         
         if (canInteract)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Can interact with object {}, calling InteractWithNpcOrGameObjectForQuest", 
+			if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+			{
+				LOG_DEBUG("playerbots", "[New RPG] {} Can interact with object {}, calling InteractWithNpcOrGameObjectForQuest", 
                      bot->GetName(), object->GetName());
+			}
             InteractWithNpcOrGameObjectForQuest(npcOrGo);
             ForceToWait(5000);
             return true;
         }
         else
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with object {}, moving closer", 
+			if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+			{
+				LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with object {}, moving closer", 
                      bot->GetName(), object->GetName());
+			}
         }
         return MoveWorldObjectTo(npcOrGo);
     }
@@ -1052,25 +1175,36 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 
 ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly, float distanceLimit)
 {
-    LOG_DEBUG("playerbots", "[New RPG] {} ChooseNpcOrGameObjectToInteract called (questgiverOnly: {}, distanceLimit: {:.1f})", 
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+		LOG_DEBUG("playerbots", "[New RPG] {} ChooseNpcOrGameObjectToInteract called (questgiverOnly: {}, distanceLimit: {:.1f})", 
              bot->GetName(), questgiverOnly, distanceLimit);
+	}
              
     // First try LOS-based search for nearby NPCs
     GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
     GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
 
-    LOG_DEBUG("playerbots", "[New RPG] {} Found {} possible targets with LOS", bot->GetName(), possibleTargets.size());
-
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+		LOG_DEBUG("playerbots", "[New RPG] {} Found {} possible targets with LOS", bot->GetName(), possibleTargets.size());
+	}
     // If no targets found with LOS, use non-LOS search as fallback
     if (possibleTargets.empty())
     {
         possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
-        LOG_DEBUG("playerbots", "[New RPG] {} Using fallback no-LOS search, found {} targets", bot->GetName(), possibleTargets.size());
+		if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+		{
+			LOG_DEBUG("playerbots", "[New RPG] {} Using fallback no-LOS search, found {} targets", bot->GetName(), possibleTargets.size());
+		}
     }
 
     if (possibleTargets.empty() && possibleGameObjects.empty())
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} No possible targets found", bot->GetName());
+		if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+		{
+			LOG_DEBUG("playerbots", "[New RPG] {} No possible targets found", bot->GetName());
+		}
         return ObjectGuid();
     }
 
@@ -1106,21 +1240,30 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         Creature* creature = object->ToCreature();
         if (creature)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} (entry {}) at distance {:.1f}", 
-                     bot->GetName(), creature->GetName(), creature->GetEntry(), bot->GetDistance(creature));
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} (entry {}) at distance {:.1f}", 
+                         bot->GetName(), creature->GetName(), creature->GetEntry(), bot->GetDistance(creature));
+            }
                      
             if (IsRequiredQuestObjectiveNPC(creature))
             {
                 float adjustedDistance = bot->GetExactDist(creature);
-                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f} (nearest: {:.1f})", 
-                          bot->GetName(), creature->GetName(), adjustedDistance, nearestDistance);
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f} (nearest: {:.1f})", 
+                              bot->GetName(), creature->GetName(), adjustedDistance, nearestDistance);
+                }
                           
                 if (adjustedDistance < nearestDistance)
                 {
                     nearestObject = creature;
                     nearestDistance = adjustedDistance;
-                    LOG_DEBUG("playerbots", "[New RPG] {} Selected quest objective NPC {} as nearest target", 
-                             bot->GetName(), creature->GetName());
+                    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Selected quest objective NPC {} as nearest target", 
+                                 bot->GetName(), creature->GetName());
+                    }
                 }
                 break; // Prioritize quest objectives
             }
@@ -1194,14 +1337,14 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                 nearestDistance = adjustedDistance;
             }
             
-            if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            if (botAI && botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[Debug RPG Target] {} Selected gameobject {} (distance: {})", 
                           bot->GetName(), object->GetName(), adjustedDistance);
             }
             break;
         }
-        else if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+        else if (botAI && botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
         {
             LOG_DEBUG("playerbots", "[Debug RPG Target] {} Gameobject {} not a valid target", 
                       bot->GetName(), object->GetName());
@@ -1210,15 +1353,21 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
     if (nearestObject)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Returning nearest object: {} (distance: {:.1f})", 
-                 bot->GetName(), nearestObject->GetName(), nearestDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Returning nearest object: {} (distance: {:.1f})", 
+                     bot->GetName(), nearestObject->GetName(), nearestDistance);
+        }
         return nearestObject->GetGUID();
     }
 
     // If questgiverOnly is true, we still want to find quest objective NPCs for talk quests
     if (questgiverOnly)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} No quest givers found, checking for quest objective NPCs (questgiverOnly mode)", bot->GetName());
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} No quest givers found, checking for quest objective NPCs (questgiverOnly mode)", bot->GetName());
+        }
         
         // Do a second pass specifically for quest objective NPCs
         for (ObjectGuid& guid : possibleTargets)
@@ -1241,19 +1390,28 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                     nearestObject = creature;
                     nearestDistance = distance;
                 }
-                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} in questgiverOnly mode", 
-                         bot->GetName(), creature->GetName());
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} in questgiverOnly mode", 
+                             bot->GetName(), creature->GetName());
+                }
                 break;
             }
         }
         
         if (nearestObject)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Returning quest objective NPC: {}", bot->GetName(), nearestObject->GetName());
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Returning quest objective NPC: {}", bot->GetName(), nearestObject->GetName());
+            }
             return nearestObject->GetGUID();
         }
         
-        LOG_DEBUG("playerbots", "[New RPG] {} No quest-related NPCs found in questgiverOnly mode", bot->GetName());
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} No quest-related NPCs found in questgiverOnly mode", bot->GetName());
+        }
         return ObjectGuid();
     }
     
@@ -1399,38 +1557,56 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     // Return the highest priority trainer found, prioritizing by importance
     if (bestRidingTrainer)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest riding trainer at {:.1f}yd", 
-                  bot->GetName(), bestRidingDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest riding trainer at {:.1f}yd", 
+                      bot->GetName(), bestRidingDistance);
+        }
         return bestRidingTrainer->GetGUID();
     }
     if (bestClassTrainer)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest class trainer at {:.1f}yd", 
-                  bot->GetName(), bestClassDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest class trainer at {:.1f}yd", 
+                      bot->GetName(), bestClassDistance);
+        }
         return bestClassTrainer->GetGUID();
     }
     if (bestPetTrainer)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest pet trainer at {:.1f}yd", 
-                  bot->GetName(), bestPetDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest pet trainer at {:.1f}yd", 
+                      bot->GetName(), bestPetDistance);
+        }
         return bestPetTrainer->GetGUID();
     }
     if (bestProfessionTrainer)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest profession trainer at {:.1f}yd", 
-                  bot->GetName(), bestProfessionDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest profession trainer at {:.1f}yd", 
+                      bot->GetName(), bestProfessionDistance);
+        }
         return bestProfessionTrainer->GetGUID();
     }
     if (bestVendor)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest vendor at {:.1f}yd", 
-                  bot->GetName(), bestVendorDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest vendor at {:.1f}yd", 
+                      bot->GetName(), bestVendorDistance);
+        }
         return bestVendor->GetGUID();
     }
     if (bestRepairNPC)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest repair NPC at {:.1f}yd", 
-                  bot->GetName(), bestRepairDistance);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest repair NPC at {:.1f}yd", 
+                      bot->GetName(), bestRepairDistance);
+        }
         return bestRepairNPC->GetGUID();
     }
 
@@ -1591,19 +1767,28 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
     {
         if (qPoi.MapId != bot->GetMapId())
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: map mismatch (Bot={}, POI={})", bot->GetName(), bot->GetMapId(), qPoi.MapId);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: map mismatch (Bot={}, POI={})", bot->GetName(), bot->GetMapId(), qPoi.MapId);
+            }
             continue;
         }
     
         bool inComplete = false;
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Exploration quest objective detected, checking for Area Triggers", bot->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Exploration quest objective detected, checking for Area Triggers", bot->GetName());
+            }
             // Query areatrigger_involvedrelation to get the trigger ID
             QueryResult result = WorldDatabase.Query("SELECT id FROM areatrigger_involvedrelation WHERE quest = {}", questId);
             if (!result)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} No area trigger found for exploration quest {}", bot->GetName(), questId);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} No area trigger found for exploration quest {}", bot->GetName(), questId);
+                }
                 continue;
             }
 
@@ -1614,7 +1799,10 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             result = WorldDatabase.Query("SELECT x, y, z, radius FROM areatrigger WHERE entry = {}", triggerId);
             if (!result)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Area trigger data not found for ID {}", bot->GetName(), triggerId);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Area trigger data not found for ID {}", bot->GetName(), triggerId);
+                }
                 continue;
             }
 
@@ -1623,13 +1811,19 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float y = fields[1].Get<float>();
             float z = fields[2].Get<float>();
             float radius = fields[3].Get<float>();
-            LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB", bot->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB", bot->GetName());
+            }
             // Use the center of the area trigger as POI
             float dz = std::max(bot->GetMap()->GetHeight(x, y, MAX_HEIGHT), 
                                bot->GetMap()->GetWaterLevel(x, y));
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z for area trigger at ({}, {})", bot->GetName(), x, y);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z for area trigger at ({}, {})", bot->GetName(), x, y);
+                }
                 continue;
             }
 
@@ -1638,11 +1832,17 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
             if (botZone != poiZone)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Zone mismatch for area trigger POI", bot->GetName());
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Zone mismatch for area trigger POI", bot->GetName());
+                }
                 continue;
             }
 
-            LOG_DEBUG("playerbots", "[New RPG] {} POI accepted (AreaTrigger): {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, x, y, dz);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI accepted (AreaTrigger): {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, x, y, dz);
+            }
             poiInfo.push_back({{x, y}, qPoi.ObjectiveIndex});
             inComplete = true;
         }
@@ -1652,7 +1852,10 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             {
                 if (qPoi.ObjectiveIndex == objective)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} POI ObjectiveIndex {} matched an incomplete objective", bot->GetName(), qPoi.ObjectiveIndex);
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} POI ObjectiveIndex {} matched an incomplete objective", bot->GetName(), qPoi.ObjectiveIndex);
+                    }
                     inComplete = true;
                     break;
                 }
@@ -1661,13 +1864,19 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
    
         if (!inComplete)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: ObjectiveIndex {} not in incomplete list", bot->GetName(), qPoi.ObjectiveIndex);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: ObjectiveIndex {} not in incomplete list", bot->GetName(), qPoi.ObjectiveIndex);
+            }
             continue;
         }
     
         if (qPoi.points.empty())
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: no polygon points", bot->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: no polygon points", bot->GetName());
+            }
             continue;
         }
     
@@ -1675,7 +1884,10 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         float randomX = 0, randomY = 0;
         if (!GetRandomPointInPolygon(qPoi.points, randomX, randomY))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Failed to generate random point in polygon", bot->GetName());
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Failed to generate random point in polygon", bot->GetName());
+            }
             continue;
         }
         
@@ -1685,7 +1897,10 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: invalid Z at ({}, {})", bot->GetName(), randomX, randomY);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: invalid Z at ({}, {})", bot->GetName(), randomX, randomY);
+            }
             continue;
         }
         
@@ -1694,11 +1909,17 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         
         if (botZone != poiZone)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: zone mismatch (Bot={}, POI={})", bot->GetName(), botZone, poiZone);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: zone mismatch (Bot={}, POI={})", bot->GetName(), botZone, poiZone);
+            }
             continue;
         }
         
-        LOG_DEBUG("playerbots", "[New RPG] {} POI accepted: {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, randomX, randomY, dz);
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} POI accepted: {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, randomX, randomY, dz);
+        }
         poiInfo.push_back({{randomX, randomY}, qPoi.ObjectiveIndex});
     }
 
@@ -1764,9 +1985,12 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         uint32 idx = urand(0, lo_prepared_locs.size() - 1);
         dest = lo_prepared_locs[idx];
     }
-    LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
-              bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-              hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
+                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                  hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
+    }
     return dest;
 }
 
@@ -1822,8 +2046,11 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
                 }
             }
             dest = prepared_locs[nearestIdx];
-            LOG_DEBUG("playerbots", "[New RPG] Bot {} selected NEAREST camp at {:.1f}yd (66% chance)", 
-                      bot->GetName(), nearestDistance);
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] Bot {} selected NEAREST camp at {:.1f}yd (66% chance)", 
+                          bot->GetName(), nearestDistance);
+            }
         }
         else
         {
@@ -1831,13 +2058,19 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
             uint32 idx = urand(0, prepared_locs.size() - 1);
             dest = prepared_locs[idx];
             float randomDistance = bot->GetExactDist(dest);
-            LOG_DEBUG("playerbots", "[New RPG] Bot {} selected RANDOM camp at {:.1f}yd (34% chance)", 
-                      bot->GetName(), randomDistance);
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] Bot {} selected RANDOM camp at {:.1f}yd (34% chance)", 
+                          bot->GetName(), randomDistance);
+            }
         }
     }
-    LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
-              bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-              prepared_locs.size(), locs.size());
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
+                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                  prepared_locs.size(), locs.size());
+    }
     return dest;
 }
 
@@ -1918,8 +2151,11 @@ bool NewRpgBaseAction::SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, uint
 
     flightMaster = nearestFlightMaster->GetGUID();
     toNode = availableToNodes[urand(0, availableToNodes.size() - 1)];
-    LOG_DEBUG("playerbots", "[New RPG] Bot {} select random flight taxi node from:{} (node {}) to:{} ({} available)",
-              bot->GetName(), flightMaster.GetEntry(), fromNode, toNode, availableToNodes.size());
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] Bot {} select random flight taxi node from:{} (node {}) to:{} ({} available)",
+                  bot->GetName(), flightMaster.GetEntry(), fromNode, toNode, availableToNodes.size());
+    }
     return true;
 }
 
@@ -2168,7 +2404,10 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest) return false;
 
-    LOG_DEBUG("playerbots", "[New RPG] {} Smart fallback search for quest {}", bot->GetName(), questId);
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Smart fallback search for quest {}", bot->GetName(), questId);
+    }
 
     // Get nearby objects using reliable AI_VALUE calls
     GuidVector nearbyNPCs = AI_VALUE(GuidVector, "nearest npcs");
@@ -2196,8 +2435,11 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
                 
                 if (creature->GetEntry() == targetEntry && bot->GetDistance(creature) <= 200.0f)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} Found direct kill target {} at exact position", 
-                             bot->GetName(), creature->GetName());
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found direct kill target {} at exact position", 
+                                 bot->GetName(), creature->GetName());
+                    }
                     
                     // Use the actual target's position - no Z calculations needed!
                     WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(), 
@@ -2222,8 +2464,11 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
                 
                 if (go->GetEntry() == targetEntry && bot->GetDistance(go) <= 200.0f)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest GameObject {} at exact position", 
-                             bot->GetName(), go->GetGOInfo()->name);
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found quest GameObject {} at exact position", 
+                                 bot->GetName(), go->GetGOInfo()->name);
+                    }
                     
                     WorldPosition targetPos(go->GetMapId(), go->GetPositionX(), 
                                           go->GetPositionY(), go->GetPositionZ());
@@ -2249,8 +2494,12 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
         // Use the server's built-in quest loot detection system!
         if (LootTemplates_Creature.HaveQuestLootForPlayer(creature->GetEntry(), bot))
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} Found quest item dropper {} (server confirmed quest loot)", 
-                     bot->GetName(), creature->GetName());
+            
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Found quest item dropper {} (server confirmed quest loot)", 
+                         bot->GetName(), creature->GetName());
+            }
 
             // Use creature's exact position - no Z calculations needed
             WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(), 
@@ -2364,4 +2613,3 @@ bool NewRpgBaseAction::IsWithinPOIBoundary(float x, float y, float tolerance)
     
     return distanceFromStart <= tolerance;
 }
-
