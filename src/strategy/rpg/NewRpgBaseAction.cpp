@@ -169,13 +169,17 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority)
     const float x = bot->GetPositionX();
     const float y = bot->GetPositionY();
     const float z = bot->GetPositionZ();
-    int attempts = 1;
+    int attempts = 10; // Increase attempts for POI boundary checking
     while (attempts--)
     {
         float angle = (float)rand_norm() * 2 * static_cast<float>(M_PI);
         float dx = x + distance * cos(angle);
         float dy = y + distance * sin(angle);
         float dz = z;
+
+        // Check POI boundary with 40.0f tolerance
+        if (!IsWithinPOIBoundary(dx, dy, 40.0f))
+            continue;
 
         PathGenerator path(bot);
         path.CalculatePath(dx, dy, dz);
@@ -1864,4 +1868,102 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
     }
 
     return false;
+}
+
+bool NewRpgBaseAction::IsWithinPOIBoundary(float x, float y, float tolerance)
+{
+    // Check if bot is doing a quest and has POI data available
+    if (botAI->rpgInfo.status == RPG_DO_QUEST && botAI->rpgInfo.do_quest.questId > 0)
+    {
+        std::vector<POIInfo> poiInfo;
+        if (GetQuestPOIPosAndObjectiveIdx(botAI->rpgInfo.do_quest.questId, poiInfo))
+        {
+            // Check if point is inside any quest POI polygon or within tolerance buffer
+            const QuestPOIVector* poiVector = sObjectMgr->GetQuestPOIVector(botAI->rpgInfo.do_quest.questId);
+            if (poiVector)
+            {
+                for (const QuestPOI& qPoi : *poiVector)
+                {
+                    if (qPoi.MapId != bot->GetMapId())
+                        continue;
+                        
+                    if (qPoi.points.empty())
+                        continue;
+                    
+                    // First check: Is point inside polygon? (ray casting algorithm)
+                    bool inside = false;
+                    size_t j = qPoi.points.size() - 1;
+                    for (size_t i = 0; i < qPoi.points.size(); j = i++)
+                    {
+                        const QuestPOIPoint& pi = qPoi.points[i];
+                        const QuestPOIPoint& pj = qPoi.points[j];
+                        
+                        if (((pi.y > y) != (pj.y > y)) &&
+                            (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x))
+                        {
+                            inside = !inside;
+                        }
+                    }
+                    
+                    // If inside polygon, always allow
+                    if (inside)
+                        return true;
+                    
+                    // If outside polygon, check if within tolerance buffer
+                    float minDistanceToEdge = FLT_MAX;
+                    for (size_t i = 0; i < qPoi.points.size(); ++i)
+                    {
+                        const QuestPOIPoint& p1 = qPoi.points[i];
+                        const QuestPOIPoint& p2 = qPoi.points[(i + 1) % qPoi.points.size()];
+                        
+                        // Distance from point to line segment
+                        float A = x - p1.x;
+                        float B = y - p1.y;
+                        float C = p2.x - p1.x;
+                        float D = p2.y - p1.y;
+                        
+                        float dot = A * C + B * D;
+                        float lenSq = C * C + D * D;
+                        float param = (lenSq != 0) ? dot / lenSq : -1;
+                        
+                        float xx, yy;
+                        if (param < 0)
+                        {
+                            xx = p1.x;
+                            yy = p1.y;
+                        }
+                        else if (param > 1)
+                        {
+                            xx = p2.x;
+                            yy = p2.y;
+                        }
+                        else
+                        {
+                            xx = p1.x + param * C;
+                            yy = p1.y + param * D;
+                        }
+                        
+                        float dx = x - xx;
+                        float dy = y - yy;
+                        float distance = std::sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < minDistanceToEdge)
+                            minDistanceToEdge = distance;
+                    }
+                    
+                    // If within tolerance buffer outside polygon, allow
+                    if (minDistanceToEdge <= tolerance)
+                        return true;
+                }
+            }
+        }
+    }
+    
+    // If no quest POI data available, use zone-based fallback
+    // Stay within reasonable distance of current position (conservative approach)
+    float currentX = bot->GetPositionX();
+    float currentY = bot->GetPositionY();
+    float distanceFromStart = std::sqrt((x - currentX) * (x - currentX) + (y - currentY) * (y - currentY));
+    
+    return distanceFromStart <= tolerance;
 }
