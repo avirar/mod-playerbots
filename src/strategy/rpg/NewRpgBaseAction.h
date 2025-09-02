@@ -59,6 +59,7 @@ protected:
     bool CheckRpgStatusAvailable(NewRpgStatus status);
     bool SearchForActualQuestTargets(uint32 questId);
     bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
+    bool IsWithinPOIBoundary(float x, float y, float tolerance = 40.0f);
 
 protected:
     /* FOR MOVE FAR */
