@@ -973,8 +973,34 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
                      bot->GetName(), creature->GetName());
             if (IsRequiredQuestObjectiveNPC(creature))
             {
-                canInteract = true;
-                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC", 
+                // For quest objective NPCs, always try interaction (will handle distance automatically)
+                uint32 creatureEntry = creature->GetEntry();
+                
+                // Find which quest this NPC belongs to
+                for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                {
+                    uint32 questId = bot->GetQuestSlotQuestId(slot);
+                    if (!questId)
+                        continue;
+                        
+                    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                    if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+                        continue;
+                        
+                    // Find the objective index for this creature
+                    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    {
+                        int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                        if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Using unified quest objective interaction for quest {} objective {}", 
+                                     bot->GetName(), questId, i);
+                            return TryInteractWithQuestObjective(questId, i);
+                        }
+                    }
+                }
+                
+                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC but no matching quest found", 
                          bot->GetName(), creature->GetName());
             }
             else
