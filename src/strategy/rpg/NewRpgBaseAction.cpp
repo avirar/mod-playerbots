@@ -216,9 +216,17 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 /// Quest related method refer to TalkToQuestGiverAction.h
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 {
+    LOG_DEBUG("playerbots", "[New RPG] {} InteractWithNpcOrGameObjectForQuest called with GUID {}", 
+             bot->GetName(), guid.ToString());
+             
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
     if (!object)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Object with GUID {} not found", bot->GetName(), guid.ToString());
         return false;
+    }
+    
+    LOG_DEBUG("playerbots", "[New RPG] {} Found object: {}", bot->GetName(), object->GetName());
         
     // Final LOS check before interaction - only fail if we're close enough to interact
     float distance = bot->GetDistance(object);
