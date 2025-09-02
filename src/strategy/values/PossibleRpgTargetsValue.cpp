@@ -59,16 +59,23 @@ void RpgNpcFlags::InitializeFlags()
 // TrainerClassifier implementation
 bool TrainerClassifier::IsValidSecondaryTrainer(Player* bot, Creature* trainer)
 {
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!trainer->IsValidTrainerForPlayer(bot)) {
-        LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} not valid for player", 
-                  bot->GetName(), trainer->GetName());
+        if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} not valid for player", 
+                      bot->GetName(), trainer->GetName());
+        }
         return false;
     }
     
     TrainerSpellData const* trainer_spells = trainer->GetTrainerSpells();
     if (!trainer_spells) {
-        LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} has no spells", 
-                  bot->GetName(), trainer->GetName());
+        if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} has no spells", 
+                      bot->GetName(), trainer->GetName());
+        }
         return false;
     }
     
@@ -88,37 +95,49 @@ bool TrainerClassifier::IsValidSecondaryTrainer(Player* bot, Creature* trainer)
             greenSpellCount++;
             
             // Check if this GREEN spell teaches primary profession skills
-            if (TeachesPrimaryProfession(tSpell)) {
+            if (TeachesPrimaryProfession(tSpell, botAI)) {
                 primaryProfessionSpellCount++;
-                LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} teaches primary profession spell {} (skill: {})", 
-                          bot->GetName(), trainer->GetName(), tSpell->spell, tSpell->reqSkill);
+                if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} teaches primary profession spell {} (skill: {})", 
+                              bot->GetName(), trainer->GetName(), tSpell->spell, tSpell->reqSkill);
+                }
                 return false; // Immediate exclusion
             }
         }
     }
     
     bool result = hasLearnableSpells;
-    LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} validation result: {} (GREEN spells: {}, primary profession spells: {})", 
-              bot->GetName(), trainer->GetName(), result ? "VALID" : "INVALID", greenSpellCount, primaryProfessionSpellCount);
+    if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[TrainerClassifier] {} - Trainer {} validation result: {} (GREEN spells: {}, primary profession spells: {})", 
+                  bot->GetName(), trainer->GetName(), result ? "VALID" : "INVALID", greenSpellCount, primaryProfessionSpellCount);
+    }
     
     return result;
 }
 
-bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
+bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell, PlayerbotAI* botAI)
 {
     // Check ReqSkillLine category
     if (tSpell->reqSkill > 0) {
         // Riding skill (762) should not be treated as a primary profession
         if (tSpell->reqSkill == 762) { // SKILL_RIDING
-            LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires riding skill (762), NOT a primary profession", 
-                      tSpell->spell);
+            if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires riding skill (762), NOT a primary profession", 
+                          tSpell->spell);
+            }
             return false;
         }
         
         uint32 category = GetSkillCategory(tSpell->reqSkill);
         if (category == SKILL_CATEGORY_PROFESSION) {
-            LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires skill {} (category {}=PROFESSION)", 
-                      tSpell->spell, tSpell->reqSkill, category);
+            if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} requires skill {} (category {}=PROFESSION)", 
+                          tSpell->spell, tSpell->reqSkill, category);
+            }
             return true;
         }
     }
@@ -134,15 +153,21 @@ bool TrainerClassifier::TeachesPrimaryProfession(TrainerSpell const* tSpell)
                 
                 // Riding skill (762) should not be treated as a primary profession
                 if (skillId == 762) { // SKILL_RIDING
-                    LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches riding skill (762) via effect, NOT a primary profession", 
-                              tSpell->spell);
+                    if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches riding skill (762) via effect, NOT a primary profession", 
+                                  tSpell->spell);
+                    }
                     return false;
                 }
                 
                 uint32 category = GetSkillCategory(skillId);
                 if (category == SKILL_CATEGORY_PROFESSION) {
-                    LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches skill {} (category {}=PROFESSION) via effect", 
-                              tSpell->spell, skillId, category);
+                    if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[TrainerClassifier] Spell {} teaches skill {} (category {}=PROFESSION) via effect", 
+                                  tSpell->spell, skillId, category);
+                    }
                     return true;
                 }
             }
@@ -196,14 +221,16 @@ bool PossibleRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                         return false; // Reject this trainer entirely
                     }
                     else
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                     }
                 }
             }
@@ -282,14 +309,16 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                         return false; // Reject this trainer entirely
                     }
                     else
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                     }
                 }
             }
@@ -330,8 +359,9 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                         const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
                         if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
                         {
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {}", 
-                                     bot->GetName(), creature->GetName(), questId);
+                            if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                                LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {}", 
+                                         bot->GetName(), creature->GetName(), questId);
                             return true;
                         }
                     }
@@ -405,14 +435,16 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                     static TrainerClassifier classifier;
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                         return false; // Reject this trainer entirely
                     }
                     else
                     {
-                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
-                                  bot->GetName(), trainer->GetName());
+                        if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                                      bot->GetName(), trainer->GetName());
                     }
                 }
             }
@@ -453,8 +485,9 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                         const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
                         if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
                         {
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {} (no LOS)", 
-                                     bot->GetName(), creature->GetName(), questId);
+                            if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                                LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {} (no LOS)", 
+                                         bot->GetName(), creature->GetName(), questId);
                             return true;
                         }
                     }
@@ -476,7 +509,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
     Cell::VisitObjects(bot, searcher, range);
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
-    if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
+    if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
     {
         LOG_DEBUG("playerbots", "[Debug RPG GO] {} Found {} gameobjects in range {}", 
                   bot->GetName(), targets.size(), range);
@@ -486,7 +519,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
     std::vector<std::pair<ObjectGuid, float>> guidDistancePairs;
     for (GameObject* go : targets)
     {
-        if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
+        if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
         {
             LOG_DEBUG("playerbots", "[Debug RPG GO] {} Checking gameobject {} (entry: {}, type: {})", 
                       bot->GetName(), go->GetName(), go->GetEntry(), go->GetGoType());
@@ -503,7 +536,7 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
         }
         if (!flagCheck)
         {
-            if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
+            if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} failed type check (type: {})", 
                           bot->GetName(), go->GetName(), go->GetGoType());
@@ -552,14 +585,14 @@ GuidVector PossibleNewRpgGameObjectsValue::Calculate()
             
             if (!isQuestObjective)
             {
-                if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
+                if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
                 {
                     LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} not a quest objective", 
                               bot->GetName(), go->GetName());
                 }
                 continue;
             }
-            else if (botAI && botAI->HasStrategy("debug gotargets", BOT_STATE_NON_COMBAT))
+            else if (botAI && botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[Debug RPG GO] {} Gameobject {} is a valid quest objective", 
                           bot->GetName(), go->GetName());
