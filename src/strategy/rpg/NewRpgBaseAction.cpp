@@ -299,9 +299,41 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         }
     }
 
+    // Handle quest objective NPCs that need gossip interaction FIRST
+    // (before checking if they're regular quest givers)
+    Creature* creature = object->ToCreature();
+    if (creature)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} for quest objective interaction", 
+                 bot->GetName(), creature->GetName());
+                 
+        if (IsRequiredQuestObjectiveNPC(creature))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
+                      bot->GetName(), creature->GetName());
+            
+            // Set target and use existing gossip hello action
+            bot->SetSelection(creature->GetGUID());
+            
+            bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
+            LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
+                     bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
+            return true;
+        }
+        else
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is not a required quest objective NPC", 
+                     bot->GetName(), creature->GetName());
+        }
+    }
+
     // Handle regular quest giver interaction
     if (!bot->CanInteractWithQuestGiver(object))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Object {} is not a regular quest giver", 
+                 bot->GetName(), object->GetName());
         return false;
+    }
 
     // Creature* creature = bot->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_NONE);
     // if (creature)
@@ -343,33 +375,6 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             botAI->rpgStatistic.questRewarded++;
             botAI->rpgStatistic.questRewardedByID[quest->GetQuestId()]++;
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
-        }
-    }
-
-    // Handle quest objective NPCs that need gossip interaction
-    Creature* creature = object->ToCreature();
-    if (creature)
-    {
-        LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} for quest objective interaction", 
-                 bot->GetName(), creature->GetName());
-                 
-        if (IsRequiredQuestObjectiveNPC(creature))
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
-                      bot->GetName(), creature->GetName());
-            
-            // Set target and use existing gossip hello action
-            bot->SetSelection(creature->GetGUID());
-            
-            bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
-            LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
-                     bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
-            return true;
-        }
-        else
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is not a required quest objective NPC", 
-                     bot->GetName(), creature->GetName());
         }
     }
 
