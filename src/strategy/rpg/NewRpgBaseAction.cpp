@@ -311,6 +311,19 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                                          bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
                             }
 
+                            if (bot->isMoving())
+                            {
+                                bot->StopMoving();
+                                botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+                                return false;
+                            }
+
+                            if (bot->IsMounted())
+                            {
+                                bot->Dismount();
+                                botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+                            }
+
                             // Use proper packet-based GameObject interaction
                             WorldPacket packet(CMSG_GAMEOBJ_USE);
                             packet << go->GetGUID();
@@ -355,7 +368,20 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                 LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
                           bot->GetName(), creature->GetName());
             }
-            
+
+            if (bot->isMoving())
+            {
+                bot->StopMoving();
+                botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+                return false;
+            }
+
+            if (bot->IsMounted())
+            {
+                bot->Dismount();
+                botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+            }
+
             // Set target and use existing gossip hello action
             bot->SetSelection(creature->GetGUID());
             
