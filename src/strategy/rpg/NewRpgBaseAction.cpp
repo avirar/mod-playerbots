@@ -857,7 +857,22 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     // No questgiver to accept or reward
     if (questgiverOnly)
         return ObjectGuid();
-    // Priority 2–5: Trainers, Vendors, Repairs
+    
+    // Priority-based trainer selection with distance comparison
+    WorldObject* bestRidingTrainer = nullptr;
+    WorldObject* bestClassTrainer = nullptr;
+    WorldObject* bestProfessionTrainer = nullptr;
+    WorldObject* bestPetTrainer = nullptr;
+    WorldObject* bestVendor = nullptr;
+    WorldObject* bestRepairNPC = nullptr;
+    
+    float bestRidingDistance = std::numeric_limits<float>::max();
+    float bestClassDistance = std::numeric_limits<float>::max();
+    float bestProfessionDistance = std::numeric_limits<float>::max();
+    float bestPetDistance = std::numeric_limits<float>::max();
+    float bestVendorDistance = std::numeric_limits<float>::max();
+    float bestRepairDistance = std::numeric_limits<float>::max();
+    
     for (ObjectGuid& guid : possibleTargets)
     {
         if (botAI->rpgInfo.recentNpcVisits.count(guid))
@@ -870,8 +885,11 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(creature) > distanceLimit)
             continue;
 
-        // Class trainer with GREEN spells
-        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
+        float distance = bot->GetExactDist(creature);
+
+        // Priority 1: Riding trainers with GREEN spells (mobility is crucial)
+        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && 
+            creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_MOUNTS)
         {
             const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
             if (trainerSpells)
@@ -879,35 +897,142 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                 for (const auto& [_, tSpell] : trainerSpells->spellList)
                 {
                     if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
-                        return creature->GetGUID();
+                    {
+                        if (distance < bestRidingDistance)
+                        {
+                            bestRidingTrainer = creature;
+                            bestRidingDistance = distance;
+                        }
+                        break;
+                    }
                 }
             }
         }
-
-        /*
-        // Profession trainer with GREEN spells (must know the profession spell)
-        if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot))
+        
+        // Priority 2: Class trainers with GREEN spells
+        else if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && 
+                 creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
         {
             const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
-            if (trainerSpells && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+            if (trainerSpells)
             {
                 for (const auto& [_, tSpell] : trainerSpells->spellList)
                 {
                     if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
-                        return creature->GetGUID();
+                    {
+                        if (distance < bestClassDistance)
+                        {
+                            bestClassTrainer = creature;
+                            bestClassDistance = distance;
+                        }
+                        break;
+                    }
                 }
             }
         }
-        */
+        
+        // Priority 3: Pet trainers with GREEN spells (for hunters)
+        else if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && 
+                 creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_PETS)
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                    {
+                        if (distance < bestPetDistance)
+                        {
+                            bestPetTrainer = creature;
+                            bestPetDistance = distance;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
-        // Vendor if bags > 50% full
+        // Priority 4: Profession trainers with GREEN spells (secondary professions only)
+        else if (creature->IsTrainer() && creature->IsValidTrainerForPlayer(bot) && 
+                 creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+        {
+            const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+            if (trainerSpells)
+            {
+                for (const auto& [_, tSpell] : trainerSpells->spellList)
+                {
+                    if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                    {
+                        if (distance < bestProfessionDistance)
+                        {
+                            bestProfessionTrainer = creature;
+                            bestProfessionDistance = distance;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Priority 5: Vendors if bags > 50% full
         if (AI_VALUE(uint8, "bag space") > 50 && creature->IsVendor())
-            return creature->GetGUID();
+        {
+            if (distance < bestVendorDistance)
+            {
+                bestVendor = creature;
+                bestVendorDistance = distance;
+            }
+        }
 
-        // Repair if any item < 50% durability
+        // Priority 6: Repair NPCs if any item < 50% durability
         if (AI_VALUE(uint8, "durability") < 50 &&
             creature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_REPAIR))
-            return creature->GetGUID();
+        {
+            if (distance < bestRepairDistance)
+            {
+                bestRepairNPC = creature;
+                bestRepairDistance = distance;
+            }
+        }
+    }
+    
+    // Return the highest priority trainer found, prioritizing by importance
+    if (bestRidingTrainer)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest riding trainer at {:.1f}yd", 
+                  bot->GetName(), bestRidingDistance);
+        return bestRidingTrainer->GetGUID();
+    }
+    if (bestClassTrainer)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest class trainer at {:.1f}yd", 
+                  bot->GetName(), bestClassDistance);
+        return bestClassTrainer->GetGUID();
+    }
+    if (bestPetTrainer)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest pet trainer at {:.1f}yd", 
+                  bot->GetName(), bestPetDistance);
+        return bestPetTrainer->GetGUID();
+    }
+    if (bestProfessionTrainer)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest profession trainer at {:.1f}yd", 
+                  bot->GetName(), bestProfessionDistance);
+        return bestProfessionTrainer->GetGUID();
+    }
+    if (bestVendor)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest vendor at {:.1f}yd", 
+                  bot->GetName(), bestVendorDistance);
+        return bestVendor->GetGUID();
+    }
+    if (bestRepairNPC)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} - Selected closest repair NPC at {:.1f}yd", 
+                  bot->GetName(), bestRepairDistance);
+        return bestRepairNPC->GetGUID();
     }
 
     if (possibleTargets.empty())
