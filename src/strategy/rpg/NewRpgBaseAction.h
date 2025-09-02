@@ -43,6 +43,7 @@ protected:
     uint32 BestRewardIndex(Quest const* quest);
     bool IsQuestWorthDoing(Quest const* quest);
     bool IsQuestCapableDoing(Quest const* quest);
+    bool IsRequiredQuestObjectiveNPC(Creature* creature);
 
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
