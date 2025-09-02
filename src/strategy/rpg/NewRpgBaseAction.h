@@ -44,6 +44,7 @@ protected:
     bool IsQuestWorthDoing(Quest const* quest);
     bool IsQuestCapableDoing(Quest const* quest);
     bool IsRequiredQuestObjectiveNPC(Creature* creature);
+    bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
 
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
