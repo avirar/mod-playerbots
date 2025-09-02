@@ -97,36 +97,6 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
                     return true;
                 }
             }
-            
-            // PRIORITY: Check for incomplete SPEAKTO quests that need completion
-            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
-            {
-                uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (!questId)
-                    continue;
-                    
-                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-                if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
-                    continue;
-                    
-                // Check if this is a SPEAKTO quest with incomplete objectives
-                if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
-                {
-                    const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
-                    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
-                    {
-                        int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
-                        if (requiredNpcOrGo > 0 && q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
-                        {
-                            LOG_DEBUG("playerbots", "[New RPG] {} Found incomplete SPEAKTO quest {}, switching to DO_QUEST mode", 
-                                     bot->GetName(), questId);
-                            info.ChangeToDoQuest(questId, i);
-                            return true;
-                        }
-                    }
-                }
-            }
-            
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
                                        RPG_TRAVEL_FLIGHT, RPG_REST});
         }
