@@ -627,6 +627,22 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
 
     LOG_DEBUG("playerbots", "[New RPG] {} Checking if NPC {} (entry {}) is required quest objective", 
              bot->GetName(), creature->GetName(), creature->GetEntry());
+    
+    // First, let's see all active quests
+    int activeQuestCount = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId > 0)
+        {
+            QuestStatus status = bot->GetQuestStatus(questId);
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest slot {}: ID {}, status {}", 
+                     bot->GetName(), slot, questId, (int)status);
+            if (status == QUEST_STATUS_INCOMPLETE)
+                activeQuestCount++;
+        }
+    }
+    LOG_DEBUG("playerbots", "[New RPG] {} Total incomplete quests: {}", bot->GetName(), activeQuestCount);
 
     // Only check friendly/neutral creatures (hostile ones are handled by grind strategy)
     ReputationRank reaction = creature->GetReactionTo(bot);
@@ -821,10 +837,17 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         // Check if it's a quest objective NPC that needs gossip interaction
         else if (Creature* creature = object->ToCreature())
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} in SearchQuestGiverAndAcceptOrReward", 
+                     bot->GetName(), creature->GetName());
             if (IsRequiredQuestObjectiveNPC(creature))
             {
                 canInteract = true;
                 LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC", 
+                         bot->GetName(), creature->GetName());
+            }
+            else
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is NOT a quest objective NPC", 
                          bot->GetName(), creature->GetName());
             }
         }
