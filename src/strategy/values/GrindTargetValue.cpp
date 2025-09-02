@@ -92,7 +92,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         // !sRandomPlayerbotMgr->IsRandomBot(bot)) continue;
 
         // Bots in bot-groups no have a more limited range to look for grind target
-        if (!bot->InBattleground() && master && botAI->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
+        if (!bot->InBattleground() && (master && (master != bot)) && botAI->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
             sServerFacade->GetDistance2d(master, unit) > sPlayerbotAIConfig->lootDistance)
         {
             if (botAI->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
