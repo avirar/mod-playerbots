@@ -352,7 +352,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             
             // Set target and use existing gossip hello action
             bot->SetSelection(creature->GetGUID());
-            botAI->DoSpecificAction("gossip hello", Event("gossip hello"));
+            
+            bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
+            LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
+                     bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
             return true;
         }
         else
