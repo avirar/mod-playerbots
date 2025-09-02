@@ -502,8 +502,6 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     if (botAI->rpgInfo.do_quest.pos != WorldPosition())
     {
         int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
-        LOG_DEBUG("playerbots", "[New RPG] {} Checking objective completion for quest {}, objective index: {}", 
-                  bot->GetName(), questId, currentObjective);
 
         // check if the objective has completed
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
