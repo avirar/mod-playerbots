@@ -169,6 +169,13 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, WorldObject* t
         return false;
     }
 
+    if (bot->IsMounted())
+    {
+        bot->Dismount();
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+    }
+
+
     // Check if target is a GameObject (for OPEN_LOCK spells)
     GameObject* gameObject = target->ToGameObject();
     if (gameObject)
