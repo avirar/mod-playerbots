@@ -48,7 +48,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         return unit;
     }
 
-    GuidVector targets = *context->GetValue<GuidVector>("all targets");
+    GuidVector targets = *context->GetValue<GuidVector>("possible targets");
     if (targets.empty())
         return nullptr;
 
@@ -82,7 +82,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
         // Allow targeting flying creatures - all classes have some ranged abilities, 25yds, -2 for buffer)
         // Use spell distance since even melee classes have ranged attacks (Heroic Throw, ranged weapons, etc.)
-        if ((abs(bot->GetPositionZ() - unit->GetPositionZ()) > 23.0f) && !needForQuest(unit))
+        if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > 23.0f)
             continue;
 
         if (!bot->InBattleground() && GetTargetingPlayerCount(unit) > assistCount)
@@ -92,7 +92,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         // !sRandomPlayerbotMgr->IsRandomBot(bot)) continue;
 
         // Bots in bot-groups no have a more limited range to look for grind target
-        if (!bot->InBattleground() && (master && (master != bot)) && botAI->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
+        if (!bot->InBattleground() && master && botAI->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
             sServerFacade->GetDistance2d(master, unit) > sPlayerbotAIConfig->lootDistance)
         {
             if (botAI->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
