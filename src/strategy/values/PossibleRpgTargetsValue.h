@@ -41,9 +41,10 @@ private:
      * @brief Check if a trainer spell teaches primary profession skills
      * 
      * @param tSpell The trainer spell to check
+     * @param botAI The PlayerbotAI for debug strategy checking
      * @return true if spell teaches SKILL_CATEGORY_PROFESSION skills
      */
-    bool TeachesPrimaryProfession(TrainerSpell const* tSpell);
+    bool TeachesPrimaryProfession(TrainerSpell const* tSpell, PlayerbotAI* botAI);
     
     /**
      * @brief Get skill category using cached DBC store
