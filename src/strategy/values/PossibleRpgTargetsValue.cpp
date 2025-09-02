@@ -297,6 +297,49 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
         }
     }
 
+    // Check if this creature is a quest objective NPC that needs to be talked to
+    if (unit->GetTypeId() == TYPEID_UNIT)
+    {
+        Creature* creature = unit->ToCreature();
+        if (creature && !creature->IsHostileTo(bot))
+        {
+            uint32 creatureEntry = creature->GetEntry();
+            
+            // Check all active quests for this creature as a talk objective
+            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            {
+                uint32 questId = bot->GetQuestSlotQuestId(slot);
+                if (!questId)
+                    continue;
+                    
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+                    continue;
+                    
+                // Check if this quest has SPEAKTO flag
+                if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+                    continue;
+                    
+                // Check if this creature is a required objective
+                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                    if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                    {
+                        // Check if we still need this objective
+                        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                        if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                        {
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {}", 
+                                     bot->GetName(), creature->GetName(), questId);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return false;
 }
 
@@ -374,6 +417,49 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                 }
             }
             return true;
+        }
+    }
+
+    // Check if this creature is a quest objective NPC that needs to be talked to
+    if (unit->GetTypeId() == TYPEID_UNIT)
+    {
+        Creature* creature = unit->ToCreature();
+        if (creature && !creature->IsHostileTo(bot))
+        {
+            uint32 creatureEntry = creature->GetEntry();
+            
+            // Check all active quests for this creature as a talk objective
+            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            {
+                uint32 questId = bot->GetQuestSlotQuestId(slot);
+                if (!questId)
+                    continue;
+                    
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+                    continue;
+                    
+                // Check if this quest has SPEAKTO flag
+                if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+                    continue;
+                    
+                // Check if this creature is a required objective
+                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                {
+                    int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                    if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                    {
+                        // Check if we still need this objective
+                        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                        if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                        {
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting quest objective NPC {} for SPEAKTO quest {} (no LOS)", 
+                                     bot->GetName(), creature->GetName(), questId);
+                            return true;
+                        }
+                    }
+                }
+            }
         }
     }
 
