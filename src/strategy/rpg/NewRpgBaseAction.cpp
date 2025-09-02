@@ -734,8 +734,6 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     if (possibleTargets.empty())
     {
         possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
-        LOG_DEBUG("playerbots", "[New RPG] {} Using non-LOS search fallback, found {} targets", 
-                 bot->GetName(), possibleTargets.size());
     }
 
     if (possibleTargets.empty() && possibleGameObjects.empty())
@@ -1197,7 +1195,6 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         }
     
         bool inComplete = false;
-        LOG_DEBUG("playerbots", "[New RPG] {} Checking for Exploration quest objective", bot->GetName());
         if (qPoi.ObjectiveIndex == 16 && (quest->GetFlags() & QUEST_FLAGS_EXPLORATION))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} Exploration quest objective detected, checking for Area Triggers", bot->GetName());
@@ -1205,7 +1202,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             QueryResult result = WorldDatabase.Query("SELECT id FROM areatrigger_involvedrelation WHERE quest = {}", questId);
             if (!result)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} No area trigger found for quest {}", bot->GetName(), questId);
+                LOG_DEBUG("playerbots", "[New RPG] {} No area trigger found for exploration quest {}", bot->GetName(), questId);
                 continue;
             }
 
