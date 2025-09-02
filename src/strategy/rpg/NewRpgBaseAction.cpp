@@ -1985,12 +1985,10 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         uint32 idx = urand(0, lo_prepared_locs.size() - 1);
         dest = lo_prepared_locs[idx];
     }
-    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-    {
-        LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
-                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-                  hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
-    }
+    // Note: Cannot add debug strategy check here as this is a static function
+    // LOG_DEBUG("playerbots", "[New RPG] Bot {} select random grind pos Map:{} X:{} Y:{} Z:{} ({}+{} available in {})",
+    //           bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+    //           hi_prepared_locs.size(), lo_prepared_locs.size() - hi_prepared_locs.size(), locs.size());
     return dest;
 }
 
@@ -2046,11 +2044,9 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
                 }
             }
             dest = prepared_locs[nearestIdx];
-            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-            {
-                LOG_DEBUG("playerbots", "[New RPG] Bot {} selected NEAREST camp at {:.1f}yd (66% chance)", 
-                          bot->GetName(), nearestDistance);
-            }
+            // Note: Cannot add debug strategy check here as this is a static function
+            // LOG_DEBUG("playerbots", "[New RPG] Bot {} selected NEAREST camp at {:.1f}yd (66% chance)", 
+            //           bot->GetName(), nearestDistance);
         }
         else
         {
@@ -2058,19 +2054,15 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
             uint32 idx = urand(0, prepared_locs.size() - 1);
             dest = prepared_locs[idx];
             float randomDistance = bot->GetExactDist(dest);
-            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-            {
-                LOG_DEBUG("playerbots", "[New RPG] Bot {} selected RANDOM camp at {:.1f}yd (34% chance)", 
-                          bot->GetName(), randomDistance);
-            }
+            // Note: Cannot add debug strategy check here as this is a static function
+            // LOG_DEBUG("playerbots", "[New RPG] Bot {} selected RANDOM camp at {:.1f}yd (34% chance)", 
+            //           bot->GetName(), randomDistance);
         }
     }
-    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-    {
-        LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
-                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
-                  prepared_locs.size(), locs.size());
-    }
+    // Note: Cannot add debug strategy check here as this is a static function
+    // LOG_DEBUG("playerbots", "[New RPG] Bot {} select random inn keeper pos Map:{} X:{} Y:{} Z:{} ({} available in {})",
+    //           bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+    //           prepared_locs.size(), locs.size());
     return dest;
 }
 
