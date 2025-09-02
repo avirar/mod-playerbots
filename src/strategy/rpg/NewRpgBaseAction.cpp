@@ -337,6 +337,20 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
         }
     }
+
+    // Handle quest objective NPCs that need gossip interaction
+    Creature* creature = object->ToCreature();
+    if (creature && IsRequiredQuestObjectiveNPC(creature))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
+                  bot->GetName(), creature->GetName());
+        
+        // Set target and use existing gossip hello action
+        bot->SetSelection(creature->GetGUID());
+        botAI->DoSpecificAction("gossip hello", Event("gossip hello"));
+        return true;
+    }
+
     return true;
 }
 
@@ -589,6 +603,52 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     return true;
 }
 
+bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
+{
+    if (!creature)
+        return false;
+
+    // Only check friendly/neutral creatures (hostile ones are handled by grind strategy)
+    if (creature->GetReactionTo(bot) < REP_NEUTRAL)
+        return false;
+
+    uint32 creatureEntry = creature->GetEntry();
+    
+    // Check all active quests for this creature as a talk objective
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+            
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+            continue;
+            
+        // Check if this quest has SPEAKTO flag or similar talk requirements
+        if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+            continue;
+            
+        // Check if this creature is a required objective
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+            if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+            {
+                // Check if we still need this objective
+                const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} is required for SPEAKTO quest {} (objective {})", 
+                             bot->GetName(), creature->GetName(), questId, i);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool NewRpgBaseAction::OrganizeQuestLog()
 {
     int32 freeSlotNum = 0;
@@ -769,6 +829,21 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
                 nearestDistance = adjustedDistance;
             }
             break;
+        }
+
+        // Priority: Quest objective NPCs that need to be talked to
+        Creature* creature = object->ToCreature();
+        if (creature && IsRequiredQuestObjectiveNPC(creature))
+        {
+            float adjustedDistance = bot->GetExactDist(creature);
+            if (adjustedDistance < nearestDistance)
+            {
+                nearestObject = creature;
+                nearestDistance = adjustedDistance;
+            }
+            LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} for talk requirement", 
+                      bot->GetName(), creature->GetName());
+            break; // Prioritize quest objectives
         }
     }
 
