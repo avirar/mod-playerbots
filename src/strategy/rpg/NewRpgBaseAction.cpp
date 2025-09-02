@@ -691,14 +691,14 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
                 
                 if (currentCount < requiredCount)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} IS REQUIRED for SPEAKTO quest {} (objective {})", 
+                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} IS REQUIRED for SPEAKTO quest {} (objective {}) - RETURNING TRUE", 
                              bot->GetName(), creature->GetName(), questId, i);
                     return true;
                 }
                 else
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} objective already complete for quest {}", 
-                             bot->GetName(), creature->GetName(), questId);
+                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} objective already complete for quest {} ({}/{})", 
+                             bot->GetName(), creature->GetName(), questId, currentCount, requiredCount);
                 }
             }
         }
@@ -815,6 +815,18 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         if (bot->CanInteractWithQuestGiver(object))
         {
             canInteract = true;
+            LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a regular quest giver", 
+                     bot->GetName(), object->GetName());
+        }
+        // Check if it's a quest objective NPC that needs gossip interaction
+        else if (Creature* creature = object->ToCreature())
+        {
+            if (IsRequiredQuestObjectiveNPC(creature))
+            {
+                canInteract = true;
+                LOG_DEBUG("playerbots", "[New RPG] {} Object {} is a quest objective NPC", 
+                         bot->GetName(), creature->GetName());
+            }
         }
         // Check if it's a quest objective gameobject
         else if (GameObject* go = object->ToGameObject())
@@ -841,9 +853,16 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         
         if (canInteract)
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} Can interact with object {}, calling InteractWithNpcOrGameObjectForQuest", 
+                     bot->GetName(), object->GetName());
             InteractWithNpcOrGameObjectForQuest(npcOrGo);
             ForceToWait(5000);
             return true;
+        }
+        else
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Cannot interact with object {}, moving closer", 
+                     bot->GetName(), object->GetName());
         }
         return MoveWorldObjectTo(npcOrGo);
     }
