@@ -738,6 +738,125 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
     return false;
 }
 
+bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest || objectiveIdx >= QUEST_OBJECTIVES_COUNT) 
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Invalid quest {} or objective index {}", 
+                 bot->GetName(), questId, objectiveIdx);
+        return false;
+    }
+    
+    int32 requiredNpcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+    if (requiredNpcOrGo == 0) 
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} has no required NPC or GO", 
+                 bot->GetName(), questId, objectiveIdx);
+        return false;
+    }
+    
+    // Check if objective is already complete
+    const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+    if (q_status.CreatureOrGOCount[objectiveIdx] >= quest->RequiredNpcOrGoCount[objectiveIdx])
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} already complete ({}/{})", 
+                 bot->GetName(), questId, objectiveIdx, 
+                 q_status.CreatureOrGOCount[objectiveIdx], quest->RequiredNpcOrGoCount[objectiveIdx]);
+        return false;
+    }
+    
+    // Search for the target
+    WorldObject* target = nullptr;
+    
+    if (requiredNpcOrGo > 0) 
+    {
+        // Search for NPC
+        uint32 targetEntry = (uint32)requiredNpcOrGo;
+        LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective NPC entry {}", 
+                 bot->GetName(), targetEntry);
+                 
+        GuidVector nearbyNPCs = AI_VALUE(GuidVector, "nearest npcs");
+        for (const ObjectGuid& guid : nearbyNPCs) 
+        {
+            Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+            if (creature && creature->GetEntry() == targetEntry) 
+            {
+                target = creature;
+                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f}", 
+                         bot->GetName(), creature->GetName(), bot->GetDistance(creature));
+                break;
+            }
+        }
+    } 
+    else 
+    {
+        // Search for GameObject  
+        uint32 targetEntry = (uint32)(-requiredNpcOrGo);
+        LOG_DEBUG("playerbots", "[New RPG] {} Searching for quest objective GameObject entry {}", 
+                 bot->GetName(), targetEntry);
+                 
+        GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
+        for (const ObjectGuid& guid : nearbyGOs) 
+        {
+            GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+            if (go && go->GetEntry() == targetEntry) 
+            {
+                target = go;
+                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective GameObject {} at distance {:.1f}", 
+                         bot->GetName(), go->GetGOInfo()->name, bot->GetDistance(go));
+                break;
+            }
+        }
+    }
+    
+    if (!target) 
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Quest objective target not found for quest {} objective {}", 
+                 bot->GetName(), questId, objectiveIdx);
+        return false;
+    }
+    
+    // Check if we can interact
+    bool canInteract = false;
+    
+    if (requiredNpcOrGo > 0) 
+    {
+        // NPC interaction check
+        Creature* creature = target->ToCreature();
+        if (creature && IsRequiredQuestObjectiveNPC(creature)) 
+        {
+            float distance = bot->GetDistance(creature);
+            canInteract = distance <= INTERACTION_DISTANCE;
+            LOG_DEBUG("playerbots", "[New RPG] {} NPC {} interaction check: distance {:.1f}, can interact: {}", 
+                     bot->GetName(), creature->GetName(), distance, canInteract);
+        }
+    } 
+    else 
+    {
+        // GameObject interaction check  
+        GameObject* go = target->ToGameObject();
+        canInteract = go && IsWithinInteractionDist(go);
+        LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} interaction check: can interact: {}", 
+                 bot->GetName(), go->GetGOInfo()->name, canInteract);
+    }
+    
+    if (canInteract) 
+    {
+        // Interact with the target
+        LOG_DEBUG("playerbots", "[New RPG] {} Interacting with quest objective {}", 
+                 bot->GetName(), target->GetName());
+        return InteractWithNpcOrGameObjectForQuest(target->GetGUID());
+    } 
+    else 
+    {
+        // Move closer to the target
+        LOG_DEBUG("playerbots", "[New RPG] {} Moving closer to quest objective {}", 
+                 bot->GetName(), target->GetName());
+        return MoveWorldObjectTo(target->GetGUID());
+    }
+}
+
 bool NewRpgBaseAction::OrganizeQuestLog()
 {
     int32 freeSlotNum = 0;
