@@ -310,19 +310,12 @@ bool NewRpgWanderNpcAction::Execute(Event event)
             case TRAINER_TYPE_TRADESKILLS: trainerTypeName = "TRADESKILLS"; break;
         }
         
-        // Log all trainer types we encounter for debugging
-        LOG_DEBUG("playerbots", "[New RPG] {} - Found trainer {} with type {} ({})", 
-                  bot->GetName(), creature->GetName(), trainerType, trainerTypeName);
-        
         // For profession trainers, check if we should skip them entirely
         if (trainerType == TRAINER_TYPE_TRADESKILLS)
         {
             static TrainerClassifier classifier;
             if (!classifier.IsValidSecondaryTrainer(bot, creature))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} - Pre-filtering primary profession trainer: {}, finding new target", 
-                          bot->GetName(), creature->GetName());
-                
                 // Mark this NPC as recently visited to avoid re-selecting it immediately
                 info.recentNpcVisits[creature->GetGUID()] = getMSTime();
                 
@@ -349,8 +342,6 @@ bool NewRpgWanderNpcAction::Execute(Event event)
             
             if (!hasGreenSpells)
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} - Trainer {} has no GREEN spells, finding new target", 
-                          bot->GetName(), creature->GetName());
                 
                 // Mark this NPC as recently visited to avoid re-selecting it
                 info.recentNpcVisits[creature->GetGUID()] = getMSTime();
@@ -360,9 +351,6 @@ bool NewRpgWanderNpcAction::Execute(Event event)
                 info.wander_npc.lastReach = 0;
                 return true;
             }
-            
-            LOG_DEBUG("playerbots", "[New RPG] {} - Trainer {} has GREEN spells available, proceeding", 
-                      bot->GetName(), creature->GetName());
         }
     }
 
@@ -454,14 +442,20 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     }
 
     // --- Step 9: Apply Waiting Logic ---
+    // If we haven't interacted yet, record the time and stay
     if (!info.wander_npc.lastReach)
     {
-        info.wander_npc.lastReach = getMSTime();
-        return false;
+        if (interacted)
+        {
+            // We just interacted, start the waiting timer
+            info.wander_npc.lastReach = getMSTime();
+        }
+        return false; // Stay regardless, either to interact or to wait after interaction
     }
+    // If we're in waiting period after interaction
     else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
     {
-        return false;
+        return false; // Continue waiting
     }
 
     // --- Step 10: Reset & Move to Next Target ---
