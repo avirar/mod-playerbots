@@ -300,8 +300,22 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     Creature* creature = object->ToCreature();
     if (creature && creature->IsValidTrainerForPlayer(bot))
     {
+        uint32 trainerType = creature->GetCreatureTemplate()->trainer_type;
+        std::string trainerTypeName = "UNKNOWN";
+        switch (trainerType)
+        {
+            case TRAINER_TYPE_CLASS: trainerTypeName = "CLASS"; break;
+            case TRAINER_TYPE_MOUNTS: trainerTypeName = "MOUNTS/RIDING"; break;
+            case TRAINER_TYPE_PETS: trainerTypeName = "PETS"; break;
+            case TRAINER_TYPE_TRADESKILLS: trainerTypeName = "TRADESKILLS"; break;
+        }
+        
+        // Log all trainer types we encounter for debugging
+        LOG_DEBUG("playerbots", "[New RPG] {} - Found trainer {} with type {} ({})", 
+                  bot->GetName(), creature->GetName(), trainerType, trainerTypeName);
+        
         // For profession trainers, check if we should skip them entirely
-        if (creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_TRADESKILLS)
+        if (trainerType == TRAINER_TYPE_TRADESKILLS)
         {
             static TrainerClassifier classifier;
             if (!classifier.IsValidSecondaryTrainer(bot, creature))
@@ -319,18 +333,37 @@ bool NewRpgWanderNpcAction::Execute(Event event)
             }
         }
         
-        // Log all trainer types we encounter for debugging
-        uint32 trainerType = creature->GetCreatureTemplate()->trainer_type;
-        std::string trainerTypeName = "UNKNOWN";
-        switch (trainerType)
+        // Check if this trainer has any GREEN spells available
+        const TrainerSpellData* trainerSpells = creature->GetTrainerSpells();
+        if (trainerSpells)
         {
-            case TRAINER_TYPE_CLASS: trainerTypeName = "CLASS"; break;
-            case TRAINER_TYPE_MOUNTS: trainerTypeName = "MOUNTS/RIDING"; break;
-            case TRAINER_TYPE_PETS: trainerTypeName = "PETS"; break;
-            case TRAINER_TYPE_TRADESKILLS: trainerTypeName = "TRADESKILLS"; break;
+            bool hasGreenSpells = false;
+            for (const auto& [_, tSpell] : trainerSpells->spellList)
+            {
+                if (bot->GetTrainerSpellState(&tSpell) == TRAINER_SPELL_GREEN)
+                {
+                    hasGreenSpells = true;
+                    break;
+                }
+            }
+            
+            if (!hasGreenSpells)
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} - Trainer {} has no GREEN spells, finding new target", 
+                          bot->GetName(), creature->GetName());
+                
+                // Mark this NPC as recently visited to avoid re-selecting it
+                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
+                
+                // Reset and find a new target
+                info.wander_npc.npcOrGo = ObjectGuid();
+                info.wander_npc.lastReach = 0;
+                return true;
+            }
+            
+            LOG_DEBUG("playerbots", "[New RPG] {} - Trainer {} has GREEN spells available, proceeding", 
+                      bot->GetName(), creature->GetName());
         }
-        LOG_DEBUG("playerbots", "[New RPG] {} - Found trainer {} with type {} ({})", 
-                  bot->GetName(), creature->GetName(), trainerType, trainerTypeName);
     }
 
     // --- Step 3: Ensure bot is close enough to interact ---
