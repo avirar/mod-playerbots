@@ -340,15 +340,26 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 
     // Handle quest objective NPCs that need gossip interaction
     Creature* creature = object->ToCreature();
-    if (creature && IsRequiredQuestObjectiveNPC(creature))
+    if (creature)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
-                  bot->GetName(), creature->GetName());
-        
-        // Set target and use existing gossip hello action
-        bot->SetSelection(creature->GetGUID());
-        botAI->DoSpecificAction("gossip hello", Event("gossip hello"));
-        return true;
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} for quest objective interaction", 
+                 bot->GetName(), creature->GetName());
+                 
+        if (IsRequiredQuestObjectiveNPC(creature))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Initiating gossip with quest objective NPC {}", 
+                      bot->GetName(), creature->GetName());
+            
+            // Set target and use existing gossip hello action
+            bot->SetSelection(creature->GetGUID());
+            botAI->DoSpecificAction("gossip hello", Event("gossip hello"));
+            return true;
+        }
+        else
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is not a required quest objective NPC", 
+                     bot->GetName(), creature->GetName());
+        }
     }
 
     return true;
@@ -606,11 +617,22 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
 bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
 {
     if (!creature)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} IsRequiredQuestObjectiveNPC: creature is null", bot->GetName());
         return false;
+    }
+
+    LOG_DEBUG("playerbots", "[New RPG] {} Checking if NPC {} (entry {}) is required quest objective", 
+             bot->GetName(), creature->GetName(), creature->GetEntry());
 
     // Only check friendly/neutral creatures (hostile ones are handled by grind strategy)
-    if (creature->GetReactionTo(bot) < REP_NEUTRAL)
+    ReputationRank reaction = creature->GetReactionTo(bot);
+    if (reaction < REP_NEUTRAL)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NPC {} has hostile reaction {}, skipping", 
+                 bot->GetName(), creature->GetName(), (int)reaction);
         return false;
+    }
 
     uint32 creatureEntry = creature->GetEntry();
     
@@ -622,30 +644,65 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
             continue;
             
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-        if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+        if (!quest)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} not found in ObjectMgr", bot->GetName(), questId);
             continue;
-            
+        }
+        
+        QuestStatus questStatus = bot->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} status is {} (not incomplete)", 
+                     bot->GetName(), questId, (int)questStatus);
+            continue;
+        }
+        
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for SPEAKTO flag", bot->GetName(), questId);
+        
         // Check if this quest has SPEAKTO flag or similar talk requirements
         if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} does not have SPEAKTO flag", bot->GetName(), questId);
             continue;
+        }
+        
+        LOG_DEBUG("playerbots", "[New RPG] {} Quest {} HAS SPEAKTO flag, checking objectives", bot->GetName(), questId);
             
         // Check if this creature is a required objective
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
             int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {}: RequiredNpcOrGo = {}, checking against creature entry {}", 
+                     bot->GetName(), questId, i, requiredNpcOrGo, creatureEntry);
+                     
             if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
             {
                 // Check if we still need this objective
                 const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
-                if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                uint32 currentCount = q_status.CreatureOrGOCount[i];
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objective {} match! Current count: {}, Required count: {}", 
+                         bot->GetName(), questId, i, currentCount, requiredCount);
+                
+                if (currentCount < requiredCount)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} is required for SPEAKTO quest {} (objective {})", 
+                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} IS REQUIRED for SPEAKTO quest {} (objective {})", 
                              bot->GetName(), creature->GetName(), questId, i);
                     return true;
+                }
+                else
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} objective already complete for quest {}", 
+                             bot->GetName(), creature->GetName(), questId);
                 }
             }
         }
     }
+    
+    LOG_DEBUG("playerbots", "[New RPG] {} NPC {} is NOT required for any quest objective", 
+             bot->GetName(), creature->GetName());
     return false;
 }
 
@@ -743,6 +800,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
 bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 {
+    LOG_DEBUG("playerbots", "[New RPG] {} SearchQuestGiverAndAcceptOrReward called", bot->GetName());
+    
     OrganizeQuestLog();
     if (ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract(true, 80.0f))
     {
@@ -790,18 +849,27 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 
 ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly, float distanceLimit)
 {
+    LOG_DEBUG("playerbots", "[New RPG] {} ChooseNpcOrGameObjectToInteract called (questgiverOnly: {}, distanceLimit: {:.1f})", 
+             bot->GetName(), questgiverOnly, distanceLimit);
+             
     // First try LOS-based search for nearby NPCs
     GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
     GuidVector possibleGameObjects = AI_VALUE(GuidVector, "possible new rpg game objects");
+
+    LOG_DEBUG("playerbots", "[New RPG] {} Found {} possible targets with LOS", bot->GetName(), possibleTargets.size());
 
     // If no targets found with LOS, use non-LOS search as fallback
     if (possibleTargets.empty())
     {
         possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets no los");
+        LOG_DEBUG("playerbots", "[New RPG] {} Using fallback no-LOS search, found {} targets", bot->GetName(), possibleTargets.size());
     }
 
     if (possibleTargets.empty() && possibleGameObjects.empty())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} No possible targets found", bot->GetName());
         return ObjectGuid();
+    }
 
     WorldObject* nearestObject = nullptr;
     float nearestDistance = std::numeric_limits<float>::max();
@@ -833,17 +901,26 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
         // Priority: Quest objective NPCs that need to be talked to
         Creature* creature = object->ToCreature();
-        if (creature && IsRequiredQuestObjectiveNPC(creature))
+        if (creature)
         {
-            float adjustedDistance = bot->GetExactDist(creature);
-            if (adjustedDistance < nearestDistance)
+            LOG_DEBUG("playerbots", "[New RPG] {} Checking creature {} (entry {}) at distance {:.1f}", 
+                     bot->GetName(), creature->GetName(), creature->GetEntry(), bot->GetDistance(creature));
+                     
+            if (IsRequiredQuestObjectiveNPC(creature))
             {
-                nearestObject = creature;
-                nearestDistance = adjustedDistance;
+                float adjustedDistance = bot->GetExactDist(creature);
+                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} at distance {:.1f} (nearest: {:.1f})", 
+                          bot->GetName(), creature->GetName(), adjustedDistance, nearestDistance);
+                          
+                if (adjustedDistance < nearestDistance)
+                {
+                    nearestObject = creature;
+                    nearestDistance = adjustedDistance;
+                    LOG_DEBUG("playerbots", "[New RPG] {} Selected quest objective NPC {} as nearest target", 
+                             bot->GetName(), creature->GetName());
+                }
+                break; // Prioritize quest objectives
             }
-            LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} for talk requirement", 
-                      bot->GetName(), creature->GetName());
-            break; // Prioritize quest objectives
         }
     }
 
@@ -929,11 +1006,53 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     }
 
     if (nearestObject)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Returning nearest object: {} (distance: {:.1f})", 
+                 bot->GetName(), nearestObject->GetName(), nearestDistance);
         return nearestObject->GetGUID();
+    }
 
-    // No questgiver to accept or reward
+    // If questgiverOnly is true, we still want to find quest objective NPCs for talk quests
     if (questgiverOnly)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} No quest givers found, checking for quest objective NPCs (questgiverOnly mode)", bot->GetName());
+        
+        // Do a second pass specifically for quest objective NPCs
+        for (ObjectGuid& guid : possibleTargets)
+        {
+            if (botAI->rpgInfo.recentNpcVisits.count(guid))
+                continue;
+
+            Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+            if (!creature || !creature->IsInWorld())
+                continue;
+
+            if (distanceLimit && bot->GetDistance(creature) > distanceLimit)
+                continue;
+
+            if (IsRequiredQuestObjectiveNPC(creature))
+            {
+                float distance = bot->GetExactDist(creature);
+                if (distance < nearestDistance)
+                {
+                    nearestObject = creature;
+                    nearestDistance = distance;
+                }
+                LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective NPC {} in questgiverOnly mode", 
+                         bot->GetName(), creature->GetName());
+                break;
+            }
+        }
+        
+        if (nearestObject)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Returning quest objective NPC: {}", bot->GetName(), nearestObject->GetName());
+            return nearestObject->GetGUID();
+        }
+        
+        LOG_DEBUG("playerbots", "[New RPG] {} No quest-related NPCs found in questgiverOnly mode", bot->GetName());
         return ObjectGuid();
+    }
     
     // Priority-based trainer selection with distance comparison
     WorldObject* bestRidingTrainer = nullptr;
