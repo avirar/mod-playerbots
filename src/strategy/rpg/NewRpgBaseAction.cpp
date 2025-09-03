@@ -305,6 +305,25 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                         
                         if (currentCount < requiredCount)
                         {
+                            // CHECK LOCK REQUIREMENTS BEFORE USING GAMEOBJECT
+                            if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                            {
+                                uint32 reqItem, skillId, reqSkillValue;
+                                if (!CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue) && reqItem > 0)
+                                {
+                                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                    {
+                                        ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                                        LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} requires key item {} ({}), cannot interact yet", 
+                                                 bot->GetName(), go->GetGOInfo()->name, reqItem, 
+                                                 keyProto ? keyProto->Name1 : "Unknown");
+                                    }
+                                    
+                                    // Cannot use this GameObject yet - need key item first
+                                    continue;
+                                }
+                            }
+                            
                             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
                             {
                                 LOG_DEBUG("playerbots", "[New RPG] {} Using GameObject {} for quest {} objective {}", 
