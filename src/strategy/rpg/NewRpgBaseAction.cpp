@@ -927,6 +927,28 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
                 if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
                     LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective GameObject {} at distance {:.1f}", 
                              bot->GetName(), go->GetGOInfo()->name, bot->GetDistance(go));
+                
+                // CHECK LOCK REQUIREMENTS FOR GOOBER OBJECTS
+                if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                {
+                    uint32 reqItem, skillId, reqSkillValue;
+                    bool canAccess = CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue);
+                    
+                    if (!canAccess && reqItem > 0)
+                    {
+                        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        {
+                            ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                            LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} requires key item {} before interaction", 
+                                     bot->GetName(), go->GetGOInfo()->name, 
+                                     keyProto ? keyProto->Name1 : "Unknown");
+                        }
+                        
+                        // Quest objective requires a key item we don't have
+                        // This should trigger getting the key item first
+                        return false;
+                    }
+                }
                 break;
             }
         }
@@ -2641,4 +2663,136 @@ bool NewRpgBaseAction::IsWithinPOIBoundary(float x, float y, float tolerance)
     float distanceFromStart = std::sqrt((x - currentX) * (x - currentX) + (y - currentY) * (y - currentY));
     
     return distanceFromStart <= tolerance;
+}
+
+bool NewRpgBaseAction::CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue)
+{
+    // Only check GOOBER type objects (type 10)
+    if (go->GetGoType() != GAMEOBJECT_TYPE_GOOBER)
+        return true; // Non-GOOBER objects are always accessible
+        
+    // Get lock info from Data0 field
+    uint32 lockId = go->GetGOInfo()->goober.lockId; // Data0 for type 10
+    if (lockId == 0)
+        return true; // No lock requirements
+        
+    // Use existing lock logic from LootObjectStack
+    LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
+    if (!lockInfo)
+        return true;
+        
+    // Find best lock option (adapted from LootObjectStack logic)
+    bool foundAccessibleLock = false;
+    uint32 bestReqItem = 0;
+    uint32 bestSkillId = SKILL_NONE;
+    uint32 bestReqSkillValue = 0;
+    
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Checking lock {} for GameObject {}", 
+                 bot->GetName(), lockId, go->GetGOInfo()->name);
+    }
+    
+    for (uint8 i = 0; i < 8; ++i)
+    {
+        switch (lockInfo->Type[i])
+        {
+            case LOCK_KEY_ITEM:
+                if (lockInfo->Index[i] > 0)
+                {
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(lockInfo->Index[i]);
+                        LOG_DEBUG("playerbots", "[New RPG] {} Lock requires key item {} ({})", 
+                                 bot->GetName(), lockInfo->Index[i], 
+                                 keyProto ? keyProto->Name1 : "Unknown");
+                    }
+                    
+                    if (bot->HasItemCount(lockInfo->Index[i], 1))
+                    {
+                        // Bot has the key - this is accessible
+                        reqItem = lockInfo->Index[i];
+                        skillId = SKILL_NONE;
+                        reqSkillValue = 0;
+                        
+                        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Bot has required key item - GameObject is accessible", 
+                                     bot->GetName());
+                        }
+                        return true;
+                    }
+                    else
+                    {
+                        // Remember this requirement for later
+                        bestReqItem = lockInfo->Index[i];
+                        
+                        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                        {
+                            LOG_DEBUG("playerbots", "[New RPG] {} Bot does not have required key item", bot->GetName());
+                        }
+                    }
+                }
+                break;
+                
+            case LOCK_KEY_SKILL:
+                // Add skill-based unlocking logic if needed in the future
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Lock requires skill {} (not implemented)", 
+                             bot->GetName(), lockInfo->Index[i]);
+                }
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    // Return the requirements found
+    reqItem = bestReqItem;
+    skillId = bestSkillId;  
+    reqSkillValue = bestReqSkillValue;
+    
+    // Object is not currently accessible
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} GameObject {} is not accessible - missing requirements", 
+                 bot->GetName(), go->GetGOInfo()->name);
+    }
+    return false;
+}
+
+bool NewRpgBaseAction::CanAccessLockedGameObject(GameObject* go)
+{
+    uint32 reqItem, skillId, reqSkillValue;
+    return CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue);
+}
+
+bool NewRpgBaseAction::HasRequiredKeyItem(uint32 itemId)
+{
+    return bot->HasItemCount(itemId, 1);
+}
+
+bool NewRpgBaseAction::HasQuestItemInDropTable(uint32 questId, uint32 itemId)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+        return false;
+        
+    // Check ItemDrop fields
+    for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
+    {
+        if (quest->ItemDrop[i] == itemId)
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has item {} in ItemDrop[{}]", 
+                         bot->GetName(), questId, itemId, i);
+            }
+            return true;
+        }
+    }
+    
+    return false;
 }
