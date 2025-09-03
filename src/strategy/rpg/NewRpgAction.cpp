@@ -603,13 +603,55 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         return MoveFarTo(botAI->rpgInfo.do_quest.pos);
     }
 
-    // Now we are near the quest objective - try direct interaction first
+    // Now we are near the quest objective - check for locked GameObject requirements first
     if (!botAI->rpgInfo.do_quest.lastReachPOI)
     {
         if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} Arrived at quest POI for quest {}", bot->GetName(), questId);
         }
+        
+        // CHECK IF THIS QUEST OBJECTIVE INVOLVES A LOCKED GAMEOBJECT
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        int32 objectiveIdx = botAI->rpgInfo.do_quest.objectiveIdx;
+        
+        if (quest && objectiveIdx >= 0 && objectiveIdx < QUEST_OBJECTIVES_COUNT)
+        {
+            int32 requiredNpcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+            if (requiredNpcOrGo < 0) // GameObject objective
+            {
+                uint32 goEntry = (uint32)(-requiredNpcOrGo);
+                GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
+                
+                for (const ObjectGuid& guid : nearbyGOs)
+                {
+                    GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+                    if (go && go->GetEntry() == goEntry && go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                    {
+                        uint32 reqItem, skillId, reqSkillValue;
+                        if (!CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue) && reqItem > 0)
+                        {
+                            // Need to get the key item first - check if we can get it from quest drops
+                            if (HasQuestItemInDropTable(questId, reqItem))
+                            {
+                                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                {
+                                    ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                                    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} requires key item {} ({}) - switching to kill objectives first", 
+                                             bot->GetName(), questId, reqItem, 
+                                             keyProto ? keyProto->Name1 : "Unknown");
+                                }
+                                
+                                // Switch to hunting for the drop item instead
+                                return SearchForActualQuestTargets(questId);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
         botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
         
         // Try immediate interaction with quest objectives (unified approach for NPCs and GOs)
