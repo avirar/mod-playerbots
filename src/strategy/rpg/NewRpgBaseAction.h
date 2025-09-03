@@ -46,6 +46,12 @@ protected:
     bool IsRequiredQuestObjectiveNPC(Creature* creature);
     bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
 
+    /* LOCK SYSTEM INTEGRATION */
+    bool CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue);
+    bool CanAccessLockedGameObject(GameObject* go);
+    bool HasRequiredKeyItem(uint32 itemId);
+    bool HasQuestItemInDropTable(uint32 questId, uint32 itemId);
+
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
     bool AcceptQuest(Quest const* quest, ObjectGuid guid);
