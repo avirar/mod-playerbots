@@ -39,6 +39,15 @@ bool GossipHelloAction::Execute(Event event)
         return false;
     }
 
+    // Add additional safety check for creature validity
+    if (!pCreature->IsInWorld())
+    {
+        LOG_DEBUG("playerbots",
+                  "[PlayerbotMgr]: HandleMasterIncomingPacket - Received CMSG_GOSSIP_HELLO for creature {} that is not in world",
+                  guid.ToString().c_str());
+        return false;
+    }
+
     GossipMenuItemsMapBounds pMenuItemBounds =
         sObjectMgr->GetGossipMenuItemsMapBounds(pCreature->GetCreatureTemplate()->GossipMenuId);
     if (pMenuItemBounds.first == pMenuItemBounds.second)
