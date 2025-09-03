@@ -17,7 +17,7 @@ bool GossipHelloAction::Execute(Event event)
     if (p.empty())
     {
         Player* master = GetMaster();
-        if (master)
+        if (master && master->IsInWorld())
             guid = master->GetTarget();
     }
     else
@@ -111,7 +111,14 @@ void GossipHelloAction::TellGossipMenus()
     if (!bot->PlayerTalkClass)
         return;
 
-    Creature* pCreature = bot->GetNPCIfCanInteractWith(GetMaster()->GetTarget(), UNIT_NPC_FLAG_NONE);
+    Player* master = GetMaster();
+    if (!master || !master->IsInWorld())
+    {
+        LOG_DEBUG("playerbots", "TellGossipMenus: Master is null or not in world");
+        return;
+    }
+
+    Creature* pCreature = bot->GetNPCIfCanInteractWith(master->GetTarget(), UNIT_NPC_FLAG_NONE);
     GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
     if (pCreature)
     {
@@ -138,10 +145,17 @@ bool GossipHelloAction::ProcessGossip(int32 menuToSelect)
         return false;
     }
 
+    Player* master = GetMaster();
+    if (!master || !master->IsInWorld())
+    {
+        LOG_DEBUG("playerbots", "ProcessGossip: Master is null or not in world");
+        return false;
+    }
+
     // GossipMenuItem const* item = menu.GetItem(menuToSelect); //not used, line marked for removal.
     WorldPacket p;
     std::string code;
-    p << GetMaster()->GetTarget();
+    p << master->GetTarget();
     p << menu.GetMenuId() << menuToSelect;
     p << code;
     bot->GetSession()->HandleGossipSelectOptionOpcode(p);
