@@ -17,8 +17,10 @@ bool GossipHelloAction::Execute(Event event)
     if (p.empty())
     {
         Player* master = GetMaster();
-        if (master && master->IsInWorld())
+        if (master && master->IsInWorld() && master != bot)
             guid = master->GetTarget();
+        else
+            guid = bot->GetTarget(); // Solo bot or self-bot case
     }
     else
     {
@@ -112,13 +114,17 @@ void GossipHelloAction::TellGossipMenus()
         return;
 
     Player* master = GetMaster();
-    if (!master || !master->IsInWorld())
-    {
-        LOG_DEBUG("playerbots", "TellGossipMenus: Master is null or not in world");
-        return;
-    }
+    ObjectGuid targetGuid;
+    
+    if (master && master->IsInWorld() && master != bot)
+        targetGuid = master->GetTarget();
+    else
+        targetGuid = bot->GetTarget(); // Solo bot or self-bot case
 
-    Creature* pCreature = bot->GetNPCIfCanInteractWith(master->GetTarget(), UNIT_NPC_FLAG_NONE);
+    if (!targetGuid)
+        return;
+
+    Creature* pCreature = bot->GetNPCIfCanInteractWith(targetGuid, UNIT_NPC_FLAG_NONE);
     GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
     if (pCreature)
     {
@@ -146,16 +152,23 @@ bool GossipHelloAction::ProcessGossip(int32 menuToSelect)
     }
 
     Player* master = GetMaster();
-    if (!master || !master->IsInWorld())
+    ObjectGuid targetGuid;
+    
+    if (master && master->IsInWorld() && master != bot)
+        targetGuid = master->GetTarget();
+    else
+        targetGuid = bot->GetTarget(); // Solo bot or self-bot case
+
+    if (!targetGuid)
     {
-        LOG_DEBUG("playerbots", "ProcessGossip: Master is null or not in world");
+        LOG_DEBUG("playerbots", "ProcessGossip: No valid target found");
         return false;
     }
 
     // GossipMenuItem const* item = menu.GetItem(menuToSelect); //not used, line marked for removal.
     WorldPacket p;
     std::string code;
-    p << master->GetTarget();
+    p << targetGuid;
     p << menu.GetMenuId() << menuToSelect;
     p << code;
     bot->GetSession()->HandleGossipSelectOptionOpcode(p);
