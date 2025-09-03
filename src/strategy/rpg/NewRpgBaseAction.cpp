@@ -383,6 +383,17 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             }
 
             // Set target and use existing gossip hello action
+            // Add safety check for creature validity
+            if (!creature || !creature->IsInWorld())
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Creature {} is invalid or not in world", 
+                             bot->GetName(), creature->GetName());
+                }
+                return false;
+            }
+            
             bot->SetSelection(creature->GetGUID());
             
             bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
