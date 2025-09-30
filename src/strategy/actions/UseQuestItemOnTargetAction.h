@@ -11,6 +11,7 @@
 class Item;
 class PlayerbotAI;
 class Unit;
+class WorldObject;
 
 /**
  * @brief Action that automatically uses quest items with spells on valid targets
@@ -35,7 +36,7 @@ public:
     bool isPossible() override;
 
 private:
-    bool UseQuestItemOnTarget(Item* item, Unit* target);
+    bool UseQuestItemOnTarget(Item* item, WorldObject* target);
 };
 
 #endif

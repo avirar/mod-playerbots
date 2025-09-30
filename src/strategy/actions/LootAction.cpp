@@ -76,7 +76,8 @@ bool OpenLootAction::Execute(Event /*event*/)
     bool result = DoLoot(lootObject);
     if (result)
     {
-        AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
+        // Mark as pending instead of removing immediately
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
     return result;
@@ -656,6 +657,9 @@ bool StoreLootAction::Execute(Event event)
         // bot->GetSession()->HandleLootMoneyOpcode(packet);
     }
 
+    uint8 totalAvailableItems = items;
+    uint8 itemsSkipped = 0;
+    
     for (uint8 i = 0; i < items; ++i)
     {
         uint32 itemid;
@@ -672,14 +676,23 @@ bool StoreLootAction::Execute(Event event)
         p >> lootslot_type;     // 0 = can get, 1 = look only, 2 = master get
 
         if (lootslot_type != LOOT_SLOT_TYPE_ALLOW_LOOT && lootslot_type != LOOT_SLOT_TYPE_OWNER)
+        {
+            itemsSkipped++;
             continue;
+        }
 
         if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemid, botAI))
+        {
+            itemsSkipped++;
             continue;
+        }
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemid);
         if (!proto)
+        {
+            itemsSkipped++;
             continue;
+        }
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
@@ -718,14 +731,20 @@ bool StoreLootAction::Execute(Event event)
                 
                 // Allow important item if there's any free space
                 if (totalfree == 0)
+                {
+                    itemsSkipped++;
                     continue; // Skip only if absolutely no space
+                }
             }
             else
             {
                 // Apply normal restrictions for non-quest items
                 uint32 maxStack = proto->GetMaxStackSize();
                 if (maxStack == 1)
+                {
+                    itemsSkipped++;
                     continue;
+                }
 
                 std::vector<Item*> found = parseItems(chat->FormatItem(proto));
 
@@ -741,7 +760,10 @@ bool StoreLootAction::Execute(Event event)
                 }
 
                 if (!hasFreeStack)
+                {
+                    itemsSkipped++;
                     continue;
+                }
             }
         }
 
@@ -773,7 +795,17 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
-    AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    // Mark loot based on whether items were skipped
+    if (itemsSkipped > 0 && totalAvailableItems > 0)
+    {
+        // Some items were left behind, mark as partially looted
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPartiallyLooted(guid);
+    }
+    else
+    {
+        // All items were taken or no items were available, mark as completed
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(guid);
+    }
 
     // release loot
     WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);

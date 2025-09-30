@@ -6,6 +6,7 @@
 #include "QuestItemTriggers.h"
 
 #include "Item.h"
+#include "Object.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
@@ -28,7 +29,7 @@ bool QuestItemUsableTrigger::IsActive()
     }
 
     // Check if there are valid targets for this quest item
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     bool hasValidTarget = (target != nullptr);
     
     
@@ -63,7 +64,7 @@ bool FarFromQuestItemTargetTrigger::IsActive()
         return false;
 
     // Find the best available target
-    Unit* target = FindBestQuestItemTarget();
+    WorldObject* target = FindBestQuestItemTarget();
     if (!target)
         return false;
 
@@ -78,14 +79,14 @@ bool FarFromQuestItemTargetTrigger::IsActive()
     return bot->GetDistance(target) > range;
 }
 
-Unit* FarFromQuestItemTargetTrigger::FindBestQuestItemTarget() const
+WorldObject* FarFromQuestItemTargetTrigger::FindBestQuestItemTarget() const
 {
     uint32 spellId = 0;
     Item* questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
     if (!questItem)
         return nullptr;
 
-    return QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    return QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
 }
 
 
@@ -98,7 +99,7 @@ bool QuestItemTargetAvailableTrigger::IsActive()
         return false;
 
     // Check if there are valid targets nearby
-    Unit* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId);
+    WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     return (target != nullptr);
 }
 

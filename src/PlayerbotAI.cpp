@@ -485,6 +485,15 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     masterIncomingPacketHandlers.Handle(helper);
     masterOutgoingPacketHandlers.Handle(helper);
 
+    // Process loot timeouts and bag space changes
+    LootObjectStack* lootStack = aiObjectContext->GetValue<LootObjectStack*>("available loot")->Get();
+    if (lootStack)
+    {
+        lootStack->ProcessPendingTimeouts();
+        lootStack->ProcessPartialLootExpiry();
+        lootStack->ClearPartialLootOnBagSpaceChange();
+    }
+
     DoNextAction(minimal);
 
     if (pmo)

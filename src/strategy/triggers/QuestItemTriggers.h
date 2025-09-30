@@ -11,6 +11,7 @@
 class PlayerbotAI;
 class Unit;
 class Item;
+class WorldObject;
 
 /**
  * @brief Trigger that activates when quest items can be used on nearby valid targets
@@ -43,7 +44,7 @@ public:
     bool IsActive() override;
 
 private:
-    Unit* FindBestQuestItemTarget() const;
+    WorldObject* FindBestQuestItemTarget() const;
 };
 
 /**

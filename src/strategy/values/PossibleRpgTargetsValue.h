@@ -12,6 +12,48 @@
 #include "SharedDefines.h"
 
 class PlayerbotAI;
+class Player;
+class Creature;
+struct TrainerSpell;
+
+/**
+ * @brief Trainer classification helper for RPG target filtering
+ * 
+ * Uses AzerothCore's cached DBC stores to determine if a trainer teaches
+ * primary profession skills (SKILL_CATEGORY_PROFESSION) which should be
+ * excluded from "new RPG" strategy interactions.
+ */
+class TrainerClassifier
+{
+public:
+    /**
+     * @brief Determine if a trainer is valid for secondary skill learning
+     * 
+     * @param bot The player bot
+     * @param trainer The trainer creature to evaluate
+     * @return true if trainer teaches secondary skills and has learnable spells
+     * @return false if trainer teaches primary professions or has no learnable spells
+     */
+    bool IsValidSecondaryTrainer(Player* bot, Creature* trainer);
+
+private:
+    /**
+     * @brief Check if a trainer spell teaches primary profession skills
+     * 
+     * @param tSpell The trainer spell to check
+     * @param botAI The PlayerbotAI for debug strategy checking
+     * @return true if spell teaches SKILL_CATEGORY_PROFESSION skills
+     */
+    bool TeachesPrimaryProfession(TrainerSpell const* tSpell, PlayerbotAI* botAI);
+    
+    /**
+     * @brief Get skill category using cached DBC store
+     * 
+     * @param skillId The skill ID to look up
+     * @return Skill category ID, or 0 if not found
+     */
+    uint32 GetSkillCategory(uint32 skillId);
+};
 
 /**
  * @brief Standard RPG NPC types that bots should interact with
@@ -103,6 +145,7 @@ public:
         if (allowedGOFlags.empty())
         {
             allowedGOFlags.push_back(GAMEOBJECT_TYPE_QUESTGIVER);
+            allowedGOFlags.push_back(GAMEOBJECT_TYPE_GOOBER);
         }
     }
     

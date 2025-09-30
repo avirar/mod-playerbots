@@ -6,14 +6,17 @@
 #include "QuestItemHelper.h"
 
 #include "ConditionMgr.h"
+#include "GameObject.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "Object.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "SmartScriptMgr.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "DBCStores.h"
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
@@ -116,7 +119,7 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
 
         // Most importantly: Check if there are valid targets for this specific spell
-        Unit* testTarget = FindBestTargetForQuestItem(botAI, spellId);
+        WorldObject* testTarget = FindBestTargetForQuestItem(botAI, spellId, item);
         if (testTarget)
         {
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -194,7 +197,7 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     return false;
 }
 
-Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId)
+WorldObject* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
 {
     if (!botAI)
         return nullptr;
@@ -214,6 +217,27 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
         std::ostringstream debugOut;
         debugOut << "QuestItem: Spell " << spellId << " targets=" << spellInfo->Targets << " needsTarget=" << spellInfo->NeedsExplicitUnitTarget();
         botAI->TellMaster(debugOut.str());
+    }
+
+    // NEW: Check for OPEN_LOCK spells first - these need gameobject targets, not self-cast
+    if (IsOpenLockSpell(spellId) && questItem)
+    {
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            botAI->TellMaster("QuestItem: Detected OPEN_LOCK spell, looking for gameobject targets");
+        
+        WorldObject* gameObjectTarget = FindGameObjectForLockSpell(botAI, spellId, questItem);
+        if (gameObjectTarget)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: Found gameobject target for OPEN_LOCK spell");
+            return gameObjectTarget;
+        }
+        else
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: No gameobject found for OPEN_LOCK spell");
+            return nullptr;
+        }
     }
 
     // If spell doesn't need an explicit target, return the bot as self-target
@@ -252,7 +276,7 @@ Unit* QuestItemHelper::FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spe
     float closestDistance = sPlayerbotAIConfig->grindDistance; // Reuse grind distance for quest target search
 
     // First, try to find targets using database conditions (quest-aware targeting)
-    Unit* conditionTarget = FindTargetUsingSpellConditions(botAI, spellId);
+    WorldObject* conditionTarget = FindTargetUsingSpellConditions(botAI, spellId);
     if (conditionTarget)
     {
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
@@ -373,6 +397,22 @@ bool QuestItemHelper::IsTargetValidForSpell(Unit* target, uint32 spellId, Player
             botAI->TellMaster(out.str());
         }
         return false;
+    }
+
+    // Check for friendly spells being cast on hostile targets
+    if (caster && spellInfo->IsPositive() && target->GetTypeId() != TYPEID_PLAYER)
+    {
+        // If this is a beneficial spell and target is hostile to caster, reject it
+        if (target->IsHostileTo(caster))
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Cannot cast beneficial spell " << spellId << " on hostile target " << target->GetName();
+                botAI->TellMaster(out.str());
+            }
+            return false;
+        }
     }
 
     // Also check for common quest-related auras that indicate the target has been "used"
@@ -1323,6 +1363,162 @@ bool QuestItemHelper::CanUseQuestItem(PlayerbotAI* botAI, Player* player, uint32
         }
     }
 
+    // Check for spell reagent requirements
+    for (uint8 i = 0; i < MAX_SPELL_REAGENTS; i++)
+    {
+        if (spellInfo->ReagentCount[i] > 0 && spellInfo->Reagent[i])
+        {
+            uint32 requiredReagentId = spellInfo->Reagent[i];
+            uint32 requiredCount = spellInfo->ReagentCount[i];
+            uint32 currentCount = player->GetItemCount(requiredReagentId, false);
+            
+            if (currentCount < requiredCount)
+            {
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    ItemTemplate const* reagentTemplate = sObjectMgr->GetItemTemplate(requiredReagentId);
+                    std::ostringstream out;
+                    out << "QuestItem: Missing reagent for spell " << spellId << " - need " 
+                        << requiredCount << " of " << (reagentTemplate ? reagentTemplate->Name1 : "Unknown Item")
+                        << " (ID:" << requiredReagentId << "), have " << currentCount;
+                    botAI->TellMaster(out.str());
+                }
+                return false;
+            }
+        }
+    }
+
+    // Check if the casting item itself will be consumed (spellcharges == -1)
+    // If so, we need to ensure we have enough of that item beyond what's needed as reagents
+    // Get the item that will be used for casting - passed through the calling context
+    // We need to find which quest item is being evaluated for this spell
+    uint32 castingItemId = 0;
+    
+    // Find the casting item by checking which quest item has this spell
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        Item* testItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!testItem)
+            continue;
+        
+        const ItemTemplate* testTemplate = testItem->GetTemplate();
+        if (!testTemplate)
+            continue;
+            
+        // Check if this item has the spell we're validating
+        for (uint8 j = 0; j < MAX_ITEM_PROTO_SPELLS; ++j)
+        {
+            if (testTemplate->Spells[j].SpellId == spellId)
+            {
+                castingItemId = testTemplate->ItemId;
+                
+                // Check if this item will be consumed (spellcharges == -1)
+                if (testTemplate->Spells[j].SpellCharges == -1)
+                {
+                    uint32 currentCount = player->GetItemCount(castingItemId, false);
+                    uint32 totalRequired = 1; // Need at least 1 for casting
+                    
+                    // If this casting item is also used as a reagent, we need additional copies
+                    for (uint8 k = 0; k < MAX_SPELL_REAGENTS; k++)
+                    {
+                        if (spellInfo->ReagentCount[k] > 0 && spellInfo->Reagent[k] == castingItemId)
+                        {
+                            totalRequired += spellInfo->ReagentCount[k];
+                            break;
+                        }
+                    }
+                    
+                    if (currentCount < totalRequired)
+                    {
+                        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                        {
+                            std::ostringstream out;
+                            out << "QuestItem: Insufficient casting item for spell " << spellId 
+                                << " - need " << totalRequired << " of " << testTemplate->Name1
+                                << " (ID:" << castingItemId << "), have " << currentCount 
+                                << " (1 for casting + reagents)";
+                            botAI->TellMaster(out.str());
+                        }
+                        return false;
+                    }
+                }
+                break;
+            }
+        }
+        
+        if (castingItemId != 0)
+            break;
+    }
+    
+    // Also check bag slots for the casting item
+    if (castingItemId == 0)
+    {
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        {
+            Bag* pBag = (Bag*)player->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+            if (!pBag)
+                continue;
+
+            for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+            {
+                Item* testItem = pBag->GetItemByPos(slot);
+                if (!testItem)
+                    continue;
+                    
+                const ItemTemplate* testTemplate = testItem->GetTemplate();
+                if (!testTemplate)
+                    continue;
+                    
+                // Check if this item has the spell we're validating
+                for (uint8 j = 0; j < MAX_ITEM_PROTO_SPELLS; ++j)
+                {
+                    if (testTemplate->Spells[j].SpellId == spellId)
+                    {
+                        castingItemId = testTemplate->ItemId;
+                        
+                        // Check if this item will be consumed (spellcharges == -1)
+                        if (testTemplate->Spells[j].SpellCharges == -1)
+                        {
+                            uint32 currentCount = player->GetItemCount(castingItemId, false);
+                            uint32 totalRequired = 1; // Need at least 1 for casting
+                            
+                            // If this casting item is also used as a reagent, we need additional copies
+                            for (uint8 k = 0; k < MAX_SPELL_REAGENTS; k++)
+                            {
+                                if (spellInfo->ReagentCount[k] > 0 && spellInfo->Reagent[k] == castingItemId)
+                                {
+                                    totalRequired += spellInfo->ReagentCount[k];
+                                    break;
+                                }
+                            }
+                            
+                            if (currentCount < totalRequired)
+                            {
+                                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                {
+                                    std::ostringstream out;
+                                    out << "QuestItem: Insufficient casting item for spell " << spellId 
+                                        << " - need " << totalRequired << " of " << testTemplate->Name1
+                                        << " (ID:" << castingItemId << "), have " << currentCount 
+                                        << " (1 for casting + reagents)";
+                                    botAI->TellMaster(out.str());
+                                }
+                                return false;
+                            }
+                        }
+                        break;
+                    }
+                }
+                
+                if (castingItemId != 0)
+                    break;
+            }
+            
+            if (castingItemId != 0)
+                break;
+        }
+    }
+
     // Check for other spell effects that should prevent recasting
     // Future: Add checks for:
     // - SPELL_EFFECT_APPLY_AURA with specific aura types
@@ -1746,7 +1942,7 @@ static std::map<std::string, time_t> s_questItemUsageTracker;
 // PendingQuestItemCast struct now defined in QuestItemHelper.h
 // Individual bot maps are now stored as member variables in PlayerbotAI
 
-bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return false;
@@ -1809,7 +2005,7 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, 
     return true;
 }
 
-void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return;
@@ -1835,7 +2031,7 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uin
     }
 }
 
-void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId)
+void QuestItemHelper::RecordPendingQuestItemCast(PlayerbotAI* botAI, WorldObject* target, uint32 spellId)
 {
     if (!botAI || !target)
         return;
@@ -2007,7 +2203,7 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
     return false;
 }
 
-Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
+WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
 {
     if (!botAI)
         return nullptr;
@@ -2081,6 +2277,105 @@ Unit* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         botAI->TellMaster("QuestItem: No valid targets found using spell conditions");
         
+    return nullptr;
+}
+
+bool QuestItemHelper::IsOpenLockSpell(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+    
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (spellInfo->Effects[i].Effect == SPELL_EFFECT_OPEN_LOCK)
+            return true;
+    }
+    
+    return false;
+}
+
+WorldObject* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem)
+{
+    if (!botAI || !questItem || !IsOpenLockSpell(spellId))
+        return nullptr;
+        
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return nullptr;
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Looking for gameobject that can be unlocked with item " << questItem->GetEntry();
+        botAI->TellMaster(out.str());
+    }
+    
+    // Search nearby gameobjects for matching locks
+    GuidVector nearbyGameObjects = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest game objects")->Get();
+    
+    for (ObjectGuid goGuid : nearbyGameObjects)
+    {
+        GameObject* go = botAI->GetGameObject(goGuid);
+        if (!go || !go->isSpawned())
+            continue;
+            
+        // Check if bot is within quest search range (larger than interaction range for movement targeting)
+        float searchRange = sPlayerbotAIConfig->grindDistance; // Use grind distance for quest target search
+        float distance = bot->GetDistance(go);
+        
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "QuestItem: Distance to " << go->GetName() << ": " 
+                << std::fixed << std::setprecision(2) << distance << " yards (search range: " << searchRange << ")";
+            botAI->TellMaster(out.str());
+        }
+        
+        if (distance > searchRange)
+            continue;
+            
+        uint32 lockId = go->GetGOInfo()->GetLockId();
+        if (!lockId)
+            continue;
+            
+        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "QuestItem: Checking gameobject " << go->GetName() << " (entry " << go->GetEntry() << ") with lock " << lockId;
+            botAI->TellMaster(out.str());
+        }
+        
+        LockEntry const* lock = sLockStore.LookupEntry(lockId);
+        if (!lock)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                botAI->TellMaster("QuestItem: Lock entry not found in DBC");
+            continue;
+        }
+        
+        // Check if this gameobject's lock requires our quest item
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+        {
+            if (lock->Type[i] == LOCK_KEY_ITEM && 
+                lock->Index[i] == questItem->GetEntry())
+            {
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Found matching gameobject " << go->GetName() << " that requires item " << questItem->GetEntry();
+                    botAI->TellMaster(out.str());
+                }
+                
+                // Return as WorldObject* - can be cast to GameObject* in the action
+                return static_cast<WorldObject*>(go);
+            }
+        }
+    }
+    
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        botAI->TellMaster("QuestItem: No matching gameobject found for lock spell");
+    
     return nullptr;
 }
 

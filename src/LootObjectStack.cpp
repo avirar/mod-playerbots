@@ -799,7 +799,12 @@ void LootObjectStack::Remove(ObjectGuid guid)
     }
 }
 
-void LootObjectStack::Clear() { availableLoot.clear(); }
+void LootObjectStack::Clear() 
+{ 
+    availableLoot.clear(); 
+    pendingLoot.clear(); 
+    partiallyLootedObjects.clear();
+}
 
 bool LootObjectStack::CanLoot(float maxDistance)
 {
@@ -839,6 +844,10 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
     for (LootTargetList::iterator i = safeCopy.begin(); i != safeCopy.end(); i++)
     {
         ObjectGuid guid = i->guid;
+
+        // Skip partially looted objects
+        if (IsPartiallyLooted(guid))
+            continue;
 
         WorldObject* worldObj = ObjectAccessor::GetWorldObject(*bot, guid);
         if (!worldObj)
@@ -891,4 +900,180 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
     }
 
     return nearest;
+}
+
+void LootObjectStack::MarkAsPending(ObjectGuid guid)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
+    // Add to pending loot list
+    pendingLoot.insert(LootTarget(guid));
+    
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Marked loot target as pending " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+}
+
+void LootObjectStack::MarkAsCompleted(ObjectGuid guid)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
+    // Remove from both available and pending lists
+    availableLoot.erase(guid);
+    pendingLoot.erase(guid);
+    
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Marked loot target as completed " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+}
+
+void LootObjectStack::ProcessPendingTimeouts()
+{
+    time_t currentTime = time(nullptr);
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    for (auto it = pendingLoot.begin(); it != pendingLoot.end();)
+    {
+        // If pending loot is older than 10 seconds, move it back to available
+        if (currentTime - it->asOfTime > 10)
+        {
+            ObjectGuid guid = it->guid;
+            
+            // Check if the object still exists and is valid
+            WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+            if (obj)
+            {
+                // Move back to available loot
+                availableLoot.insert(LootTarget(guid));
+                
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "LootStack: Pending loot timeout, moved back to available: " << obj->GetName() << " (GUID: " << guid.ToString() << ")";
+                    botAI->TellMaster(out.str());
+                }
+            }
+            
+            it = pendingLoot.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+bool LootObjectStack::IsPending(ObjectGuid guid) const
+{
+    return pendingLoot.find(guid) != pendingLoot.end();
+}
+
+void LootObjectStack::MarkAsPartiallyLooted(ObjectGuid guid)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    
+    // Remove from available and pending, add to partially looted
+    availableLoot.erase(guid);
+    pendingLoot.erase(guid);
+    partiallyLootedObjects.insert(LootTarget(guid));
+    
+    if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+        std::ostringstream out;
+        out << "LootStack: Marked as partially looted " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << guid.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+}
+
+void LootObjectStack::ProcessPartialLootExpiry()
+{
+    time_t currentTime = time(nullptr);
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    for (auto it = partiallyLootedObjects.begin(); it != partiallyLootedObjects.end();)
+    {
+        // If partially looted object is older than 3 minutes (180 seconds), make it available again
+        if (currentTime - it->asOfTime > 180)
+        {
+            ObjectGuid guid = it->guid;
+            
+            // Check if the object still exists and is valid
+            WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+            if (obj)
+            {
+                // Move back to available loot
+                availableLoot.insert(LootTarget(guid));
+                
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "LootStack: Partially looted object expired, moved back to available: " << obj->GetName() << " (GUID: " << guid.ToString() << ")";
+                    botAI->TellMaster(out.str());
+                }
+            }
+            
+            it = partiallyLootedObjects.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void LootObjectStack::ClearPartialLootOnBagSpaceChange()
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return;
+    
+    uint8 currentBagSpace = botAI->GetAiObjectContext()->GetValue<uint8>("bag space")->Get();
+    
+    // Check if bag space changed
+    if (currentBagSpace != lastBagSpaceCheck)
+    {
+        lastBagSpaceCheck = currentBagSpace;
+        
+        // If bag space improved significantly (below 80% threshold)
+        if (currentBagSpace < 80) // Below the 80% restriction threshold
+        {
+            bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+            
+            if (debugLoot && !partiallyLootedObjects.empty())
+            {
+                std::ostringstream out;
+                out << "LootStack: Bag space improved, clearing " << partiallyLootedObjects.size() << " partially looted objects";
+                botAI->TellMaster(out.str());
+            }
+            
+            // Move all partially looted objects back to available
+            for (const auto& lootTarget : partiallyLootedObjects)
+            {
+                ObjectGuid guid = lootTarget.guid;
+                WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
+                if (obj)
+                {
+                    availableLoot.insert(LootTarget(guid));
+                }
+            }
+            
+            partiallyLootedObjects.clear();
+        }
+    }
+}
+
+bool LootObjectStack::IsPartiallyLooted(ObjectGuid guid) const
+{
+    return partiallyLootedObjects.find(guid) != partiallyLootedObjects.end();
 }

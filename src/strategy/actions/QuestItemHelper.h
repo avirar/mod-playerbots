@@ -11,6 +11,7 @@ class Item;
 class Player;
 class PlayerbotAI;
 class Unit;
+class WorldObject;
 
 /**
  * @brief Utility class for quest item operations to eliminate code duplication
@@ -42,9 +43,10 @@ public:
      * @brief Find the best target for a quest item spell within grind distance
      * @param botAI Bot AI instance for target searching
      * @param spellId Spell ID to validate targets against
-     * @return Best target unit or nullptr if none found
+     * @param questItem Optional quest item for OPEN_LOCK spell targeting (default nullptr)
+     * @return Best target (Unit or GameObject) or nullptr if none found
      */
-    static Unit* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId);
+    static WorldObject* FindBestTargetForQuestItem(PlayerbotAI* botAI, uint32 spellId, Item* questItem = nullptr);
 
     /**
      * @brief Check if a target is valid for a specific quest spell
@@ -72,7 +74,7 @@ public:
      * @param target Target that was used
      * @param spellId Spell ID that was used
      */
-    static void RecordQuestItemUsage(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static void RecordQuestItemUsage(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
 
     /**
      * @brief Record a pending quest item cast (before server confirmation)
@@ -80,7 +82,7 @@ public:
      * @param target Target that was targeted
      * @param spellId Spell ID that was cast
      */
-    static void RecordPendingQuestItemCast(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static void RecordPendingQuestItemCast(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
 
     /**
      * @brief Handle spell failure notification for quest items
@@ -155,7 +157,23 @@ private:
      * @param spellId Spell ID to check cooldown for
      * @return true if target can be used, false if recently used
      */
-    static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, Unit* target, uint32 spellId);
+    static bool CanUseQuestItemOnTarget(PlayerbotAI* botAI, WorldObject* target, uint32 spellId);
+
+    /**
+     * @brief Check if a spell has OPEN_LOCK effect
+     * @param spellId Spell ID to check
+     * @return true if spell has SPELL_EFFECT_OPEN_LOCK
+     */
+    static bool IsOpenLockSpell(uint32 spellId);
+
+    /**
+     * @brief Find gameobject that can be unlocked with the specified quest item
+     * @param botAI Bot AI instance for accessing nearby gameobjects  
+     * @param spellId Spell ID of the quest item
+     * @param questItem The quest item that should unlock the gameobject
+     * @return GameObject that matches the lock requirements or nullptr
+     */
+    static WorldObject* FindGameObjectForLockSpell(PlayerbotAI* botAI, uint32 spellId, Item* questItem);
 
     /**
      * @brief Check for creatures that give KillCredit for a specific entry (trigger creature system)
@@ -169,9 +187,9 @@ private:
      * @brief Find valid target for quest spell using database conditions
      * @param botAI Bot AI instance for accessing nearby units
      * @param spellId Spell ID to find targets for
-     * @return Valid target unit or nullptr if none found
+     * @return Valid target (Unit or GameObject) or nullptr if none found
      */
-    static Unit* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
+    static WorldObject* FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId);
 
 
 };
