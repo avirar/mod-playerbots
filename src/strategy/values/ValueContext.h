@@ -119,6 +119,7 @@ public:
         creators["all targets"] = &ValueContext::all_targets;
         creators["possible rpg targets"] = &ValueContext::possible_rpg_targets;
         creators["possible new rpg targets"] = &ValueContext::possible_new_rpg_targets;
+        creators["possible new rpg targets no los"] = &ValueContext::possible_new_rpg_targets_no_los;
         creators["possible new rpg game objects"] = &ValueContext::possible_new_rpg_game_objects;
         creators["nearest adds"] = &ValueContext::nearest_adds;
         creators["nearest corpses"] = &ValueContext::nearest_corpses;
@@ -233,6 +234,7 @@ public:
         creators["travel target"] = &ValueContext::travel_target;
         creators["talk target"] = &ValueContext::talk_target;
         creators["pull target"] = &ValueContext::pull_target;
+        creators["spell focus target"] = &ValueContext::spell_focus_target;
         creators["group"] = &ValueContext::group;
         creators["range"] = &ValueContext::range;
         creators["inside target"] = &ValueContext::inside_target;
@@ -412,6 +414,7 @@ private:
     static UntypedValue* nearest_corpses(PlayerbotAI* botAI) { return new NearestCorpsesValue(botAI); }
     static UntypedValue* possible_rpg_targets(PlayerbotAI* botAI) { return new PossibleRpgTargetsValue(botAI); }
     static UntypedValue* possible_new_rpg_targets(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsValue(botAI); }
+    static UntypedValue* possible_new_rpg_targets_no_los(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsNoLosValue(botAI); }
     static UntypedValue* possible_new_rpg_game_objects(PlayerbotAI* botAI) { return new PossibleNewRpgGameObjectsValue(botAI); }
     static UntypedValue* possible_targets(PlayerbotAI* botAI) { return new PossibleTargetsValue(botAI); }
     static UntypedValue* possible_triggers(PlayerbotAI* botAI) { return new PossibleTriggersValue(botAI); }
@@ -479,6 +482,7 @@ private:
     static UntypedValue* next_rpg_action(PlayerbotAI* botAI) { return new NextRpgActionValue(botAI); }
     static UntypedValue* travel_target(PlayerbotAI* botAI) { return new TravelTargetValue(botAI); }
     static UntypedValue* pull_target(PlayerbotAI* botAI) { return new PullTargetValue(botAI); }
+    static UntypedValue* spell_focus_target(PlayerbotAI* botAI) { return new SpellFocusTargetValue(botAI); }
 
     static UntypedValue* bg_master(PlayerbotAI* botAI) { return new BgMasterValue(botAI); }
     static UntypedValue* bg_role(PlayerbotAI* botAI) { return new BgRoleValue(botAI); }

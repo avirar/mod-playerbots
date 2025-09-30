@@ -43,6 +43,14 @@ protected:
     uint32 BestRewardIndex(Quest const* quest);
     bool IsQuestWorthDoing(Quest const* quest);
     bool IsQuestCapableDoing(Quest const* quest);
+    bool IsRequiredQuestObjectiveNPC(Creature* creature);
+    bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
+
+    /* LOCK SYSTEM INTEGRATION */
+    bool CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue);
+    bool CanAccessLockedGameObject(GameObject* go);
+    bool HasRequiredKeyItem(uint32 itemId);
+    bool HasQuestItemInDropTable(uint32 questId, uint32 itemId);
 
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
@@ -57,6 +65,9 @@ protected:
     bool SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, uint32& fromNode, uint32& toNode);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    bool SearchForActualQuestTargets(uint32 questId);
+    bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
+    bool IsWithinPOIBoundary(float x, float y, float tolerance = 40.0f);
 
 protected:
     /* FOR MOVE FAR */

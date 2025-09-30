@@ -445,7 +445,7 @@ bool UseRandomRecipe::Execute(Event event)
 
 bool UseRandomQuestItem::isUseful()
 {
-    return !botAI->HasActivePlayerMaster() && !bot->InBattleground() && !bot->HasUnitState(UNIT_STATE_IN_FLIGHT);
+    return /*!botAI->HasActivePlayerMaster() &&*/ !bot->InBattleground() && !bot->HasUnitState(UNIT_STATE_IN_FLIGHT);
 }
 
 bool UseRandomQuestItem::isPossible() { return AI_VALUE2(uint32, "item count", "quest") > 0; }

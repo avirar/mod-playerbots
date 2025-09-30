@@ -252,6 +252,8 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
 
         switch (pItem->GetTemplate()->SubClass)
         {
+            // Shoot WEAPON_TYPE spells are now rolled-up into just shoot, with the exception of Throw
+            /*
             case ITEM_SUBCLASS_WEAPON_GUN:
                 spell += " gun";
                 break;
@@ -261,8 +263,49 @@ CastShootAction::CastShootAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "s
             case ITEM_SUBCLASS_WEAPON_CROSSBOW:
                 spell += " crossbow";
                 break;
+            */
+            case ITEM_SUBCLASS_WEAPON_THROWN:
+                spell = "throw";
+                break;
         }
     }
+}
+
+NextAction** CastShootAction::getPrerequisites()
+{
+    // No prerequisites - let strategy triggers handle positioning
+    // The "enemy unreachable" trigger will only fire when appropriate
+    return nullptr;
+}
+
+bool CastShootAction::isUseful()
+{
+    // First check basic spell requirements
+    if (!CastSpellAction::isUseful())
+    {
+        return false;
+    }
+        
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+    {
+        return false;
+    }
+    
+    // Since the trigger already determined the target is unreachable, just return true
+    // The trigger logic handles all the unreachable detection
+    uint8 botClass = bot->getClass();
+    
+    // For ranged classes, always allow shooting
+    if (botClass == CLASS_HUNTER || botClass == CLASS_MAGE || botClass == CLASS_WARLOCK || 
+        botClass == CLASS_PRIEST)
+    {
+        return true;
+    }
+    
+    // For melee classes, if this action is being considered by the strategy,
+    // it means the "enemy unreachable" trigger fired, so allow shooting
+    return true;
 }
 
 NextAction** CastSpellAction::getPrerequisites()

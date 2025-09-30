@@ -25,6 +25,18 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
+#include <map>
+#include <string>
+#include <ctime>
+
+// Structure to track pending quest item casts per bot
+struct PendingQuestItemCast
+{
+    std::string key;      // spell_target key (without bot GUID)
+    WorldObject* target;  // Target pointer (for validation)
+    ObjectGuid targetGuid; // Target GUID for safety
+    time_t castTime;      // When cast was initiated
+};
 
 class AiObjectContext;
 class Creature;
@@ -414,6 +426,9 @@ public:
     BotState GetState() { return currentState; };
     void ResetStrategies(bool load = false);
     void ReInitCurrentEngine();
+    
+    // Quest item pending casts accessors
+    std::map<std::string, PendingQuestItemCast>& GetPendingQuestItemCasts() { return pendingQuestItemCasts; }
     void Reset(bool full = false);
     static bool IsTank(Player* player, bool bySpec = false);
     static bool IsHeal(Player* player, bool bySpec = false);
@@ -510,6 +525,7 @@ public:
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
     bool CastSpell(uint32 spellId, Unit* target, Item* itemTarget = nullptr);
+    bool CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem = nullptr);
     bool CastSpell(uint32 spellId, float x, float y, float z, Item* itemTarget = nullptr);
     bool canDispel(SpellInfo const* spellInfo, uint32 dispelType);
 
@@ -640,6 +656,7 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    std::map<std::string, PendingQuestItemCast> pendingQuestItemCasts;
 };
 
 #endif

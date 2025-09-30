@@ -8,6 +8,7 @@
 #include "ChatHelper.h"
 #include "Event.h"
 #include "Playerbots.h"
+#include "QuestItemHelper.h"
 
 bool TellCastFailedAction::Execute(Event event)
 {
@@ -17,6 +18,12 @@ bool TellCastFailedAction::Execute(Event event)
     uint32 spellId;
     p >> castCount >> spellId >> result;
     botAI->SpellInterrupted(spellId);
+
+    // Notify quest item system about spell failure (only if spell actually failed)
+    if (result != SPELL_CAST_OK)
+    {
+        QuestItemHelper::OnQuestItemSpellFailed(botAI, spellId);
+    }
 
     if (result == SPELL_CAST_OK)
         return false;

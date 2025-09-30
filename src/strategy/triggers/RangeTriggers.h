@@ -145,4 +145,12 @@ public:
     bool TooFarFromPlayerWithAura(uint32 spellId, float range, bool selfInclude = false);
 };
 
+class EnemyUnreachableTrigger : public Trigger
+{
+public:
+    EnemyUnreachableTrigger(PlayerbotAI* botAI) : Trigger(botAI, "enemy unreachable") {}
+
+    bool IsActive() override;
+};
+
 #endif

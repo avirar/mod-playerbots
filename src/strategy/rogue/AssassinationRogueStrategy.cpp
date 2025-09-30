@@ -109,6 +109,6 @@ void AssassinationRogueStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
 
     triggers.push_back(new TriggerNode(
         "enemy out of melee",
-        NextAction::array(0, new NextAction("stealth", ACTION_HIGH + 3), new NextAction("sprint", ACTION_HIGH + 2),
-                          new NextAction("reach melee", ACTION_HIGH + 1), NULL)));
+        NextAction::array(0, new NextAction("stealth", ACTION_HIGH + 4), new NextAction("sprint", ACTION_HIGH + 3),
+                          new NextAction("reach melee", ACTION_HIGH + 2), new NextAction("shoot", ACTION_HIGH + 1), NULL)));
 }

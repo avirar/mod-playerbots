@@ -485,6 +485,15 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     masterIncomingPacketHandlers.Handle(helper);
     masterOutgoingPacketHandlers.Handle(helper);
 
+    // Process loot timeouts and bag space changes
+    LootObjectStack* lootStack = aiObjectContext->GetValue<LootObjectStack*>("available loot")->Get();
+    if (lootStack)
+    {
+        lootStack->ProcessPendingTimeouts();
+        lootStack->ProcessPartialLootExpiry();
+        lootStack->ClearPartialLootOnBagSpaceChange();
+    }
+
     DoNextAction(minimal);
 
     if (pmo)
@@ -3440,9 +3449,33 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         GameObject* go = GetGameObject(loot.guid);
         if (go && go->isSpawned())
         {
-            WorldPacket packetgouse(CMSG_GAMEOBJ_USE, 8);
-            packetgouse << loot.guid;
-            bot->GetSession()->HandleGameObjectUseOpcode(packetgouse);
+            // Check if this is a key spell for a key-locked chest
+            bool isKeySpell = false;
+            if (loot.reqItem > 0 && bot->HasItemCount(loot.reqItem, 1))
+            {
+                // Check if this spell comes from the key item
+                ItemTemplate const* keyItem = sObjectMgr->GetItemTemplate(loot.reqItem);
+                if (keyItem)
+                {
+                    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+                    {
+                        if (keyItem->Spells[i].SpellId == spellId)
+                        {
+                            isKeySpell = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Only send CMSG_GAMEOBJ_USE for non-key spells
+            if (!isKeySpell)
+            {
+                WorldPacket packetgouse(CMSG_GAMEOBJ_USE, 8);
+                packetgouse << loot.guid;
+                bot->GetSession()->HandleGameObjectUseOpcode(packetgouse);
+            }
+            
             targets.SetGOTarget(go);
             faceTo = go;
         }
@@ -3584,6 +3617,46 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     }
 
     return true;
+}
+
+bool PlayerbotAI::CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem)
+{
+    if (!spellId || !goTarget)
+        return false;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+
+    if (bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
+        return false;
+
+    // Set facing to GameObject
+    if (!bot->HasInArc(CAST_ANGLE_IN_FRONT, goTarget) && (spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT))
+    {
+        sServerFacade->SetFacingTo(bot, goTarget);
+        SetNextCheckDelay(sPlayerbotAIConfig->reactDelay);
+        return false;
+    }
+
+    // Use the server's built-in GameObject spell casting mechanism
+    SpellCastResult result = bot->CastSpell(goTarget, spellId, false, castItem);
+    
+    if (HasStrategy("debug spell", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        if (result == SPELL_CAST_OK)
+        {
+            out << "Successfully cast spell " << spellId << " (" << ChatHelper::FormatSpell(spellInfo) << ") on GameObject " << goTarget->GetName();
+        }
+        else
+        {
+            out << "Failed to cast spell " << spellId << " (" << ChatHelper::FormatSpell(spellInfo) << ") on GameObject " << goTarget->GetName() << " - Error: " << static_cast<int>(result);
+        }
+        TellMaster(out.str());
+    }
+
+    return result == SPELL_CAST_OK;
 }
 
 bool PlayerbotAI::CastSpell(uint32 spellId, float x, float y, float z, Item* itemTarget)

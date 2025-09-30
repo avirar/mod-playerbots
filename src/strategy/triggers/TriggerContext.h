@@ -20,6 +20,7 @@
 #include "RtiTriggers.h"
 #include "StuckTriggers.h"
 #include "TravelTriggers.h"
+#include "QuestItemTriggers.h"
 
 class PlayerbotAI;
 
@@ -102,6 +103,7 @@ public:
         creators["enemy too close for melee"] = &TriggerContext::enemy_too_close_for_melee;
         creators["enemy is close"] = &TriggerContext::enemy_is_close;
         creators["enemy within melee"] = &TriggerContext::enemy_within_melee;
+        creators["enemy unreachable"] = &TriggerContext::enemy_unreachable;
         creators["party member to heal out of spell range"] = &TriggerContext::party_member_to_heal_out_of_spell_range;
 
         creators["combo points available"] = &TriggerContext::ComboPointsAvailable;
@@ -228,6 +230,9 @@ public:
         creators["travel flight status"] = &TriggerContext::travel_flight_status;
         creators["can self resurrect"] = &TriggerContext::can_self_resurrect;
         creators["new pet"] = &TriggerContext::new_pet;
+        creators["quest item usable"] = &TriggerContext::quest_item_usable;
+        creators["far from quest item target"] = &TriggerContext::far_from_quest_item_target;
+        creators["quest item target available"] = &TriggerContext::quest_item_target_available;
     }
 
 private:
@@ -333,6 +338,7 @@ private:
     static Trigger* enemy_too_close_for_melee(PlayerbotAI* botAI) { return new EnemyTooCloseForMeleeTrigger(botAI); }
     static Trigger* enemy_is_close(PlayerbotAI* botAI) { return new EnemyIsCloseTrigger(botAI); }
     static Trigger* enemy_within_melee(PlayerbotAI* botAI) { return new EnemyWithinMeleeTrigger(botAI); }
+    static Trigger* enemy_unreachable(PlayerbotAI* botAI) { return new EnemyUnreachableTrigger(botAI); }
     static Trigger* party_member_to_heal_out_of_spell_range(PlayerbotAI* botAI)
     {
         return new PartyMemberToHealOutOfSpellRangeTrigger(botAI);
@@ -427,6 +433,9 @@ private:
     static Trigger* travel_flight_status(PlayerbotAI* botAI) { return new NewRpgStatusTrigger(botAI, RPG_TRAVEL_FLIGHT); }
     static Trigger* can_self_resurrect(PlayerbotAI* ai) { return new SelfResurrectTrigger(ai); }
     static Trigger* new_pet(PlayerbotAI* ai) { return new NewPetTrigger(ai); }
+    static Trigger* quest_item_usable(PlayerbotAI* botAI) { return new QuestItemUsableTrigger(botAI); }
+    static Trigger* far_from_quest_item_target(PlayerbotAI* botAI) { return new FarFromQuestItemTargetTrigger(botAI); }
+    static Trigger* quest_item_target_available(PlayerbotAI* botAI) { return new QuestItemTargetAvailableTrigger(botAI); }
 };
 
 #endif

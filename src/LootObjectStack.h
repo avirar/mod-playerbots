@@ -7,6 +7,7 @@
 #define _PLAYERBOT_LOOTOBJECTSTACK_H
 
 #include "ObjectGuid.h"
+#include "SharedDefines.h"
 
 class AiObjectContext;
 class Player;
@@ -40,9 +41,11 @@ public:
     uint32 skillId;
     uint32 reqSkillValue;
     uint32 reqItem;
+    bool isAccessible;
 
 private:
     static bool IsNeededForQuest(Player* bot, uint32 itemId);
+    static bool IsAccessibleLockType(LockType lockType);
 };
 
 class LootTarget
@@ -76,12 +79,24 @@ public:
     void Clear();
     bool CanLoot(float maxDistance);
     LootObject GetLoot(float maxDistance = 0);
+    
+    void MarkAsPending(ObjectGuid guid);
+    void MarkAsCompleted(ObjectGuid guid);
+    void MarkAsPartiallyLooted(ObjectGuid guid);
+    void ProcessPendingTimeouts();
+    void ProcessPartialLootExpiry();
+    void ClearPartialLootOnBagSpaceChange();
+    bool IsPending(ObjectGuid guid) const;
+    bool IsPartiallyLooted(ObjectGuid guid) const;
 
 private:
     LootObject GetNearest(float maxDistance = 0);
 
     Player* bot;
     LootTargetList availableLoot;
+    LootTargetList pendingLoot;
+    LootTargetList partiallyLootedObjects;
+    uint8 lastBagSpaceCheck;
 };
 
 #endif

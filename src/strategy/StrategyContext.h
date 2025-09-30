@@ -50,6 +50,7 @@
 #include "UseFoodStrategy.h"
 #include "UsePotionsStrategy.h"
 #include "WorldPacketHandlerStrategy.h"
+#include "UseQuestItemsStrategy.h"
 
 class StrategyContext : public NamedObjectContext<Strategy>
 {
@@ -110,6 +111,10 @@ public:
         creators["debug rpg"] = &StrategyContext::debug_rpg;
         creators["debug spell"] = &StrategyContext::debug_spell;
         creators["debug quest"] = &StrategyContext::debug_quest;
+        creators["debug questitems"] = &StrategyContext::debug_questitems;
+        creators["debug newrpg"] = &StrategyContext::debug_newrpg;
+        creators["debug loot"] = &StrategyContext::debug_loot;
+        creators["debug targets"] = &StrategyContext::debug_targets;
         creators["maintenance"] = &StrategyContext::maintenance;
         creators["group"] = &StrategyContext::group;
         creators["guild"] = &StrategyContext::guild;
@@ -120,6 +125,7 @@ public:
         creators["formation"] = &StrategyContext::combat_formation;
         creators["move from group"] = &StrategyContext::move_from_group;
         creators["worldbuff"] = &StrategyContext::world_buff;
+        creators["questitems"] = &StrategyContext::quest_items;
     }
 
 private:
@@ -178,6 +184,10 @@ private:
     static Strategy* debug_rpg(PlayerbotAI* botAI) { return new DebugRpgStrategy(botAI); }
     static Strategy* debug_spell(PlayerbotAI* botAI) { return new DebugSpellStrategy(botAI); }
     static Strategy* debug_quest(PlayerbotAI* botAI) { return new DebugQuestStrategy(botAI); }
+    static Strategy* debug_questitems(PlayerbotAI* botAI) { return new DebugQuestItemsStrategy(botAI); }
+    static Strategy* debug_newrpg(PlayerbotAI* botAI) { return new DebugNewRpgStrategy(botAI); }
+    static Strategy* debug_loot(PlayerbotAI* botAI) { return new DebugLootStrategy(botAI); }
+    static Strategy* debug_targets(PlayerbotAI* botAI) { return new DebugTargetsStrategy(botAI); }
     static Strategy* maintenance(PlayerbotAI* botAI) { return new MaintenanceStrategy(botAI); }
     static Strategy* group(PlayerbotAI* botAI) { return new GroupStrategy(botAI); }
     static Strategy* guild (PlayerbotAI* botAI) { return new GuildStrategy(botAI); }
@@ -188,6 +198,7 @@ private:
     static Strategy* combat_formation(PlayerbotAI* botAI) { return new CombatFormationStrategy(botAI); }
     static Strategy* move_from_group(PlayerbotAI* botAI) { return new MoveFromGroupStrategy(botAI); }
     static Strategy* world_buff(PlayerbotAI* botAI) { return new WorldBuffStrategy(botAI); }
+    static Strategy* quest_items(PlayerbotAI* botAI) { return new UseQuestItemsStrategy(botAI); }
 };
 
 class MovementStrategyContext : public NamedObjectContext<Strategy>

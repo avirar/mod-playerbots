@@ -3337,8 +3337,69 @@ void RandomPlayerbotMgr::PrintStats()
                  rpgStatusCount[RPG_DO_QUEST], rpgStatusCount[RPG_TRAVEL_FLIGHT]);
 
         LOG_INFO("playerbots", "Bots total quests:");
-        LOG_INFO("playerbots", "    Accepted: {}, Rewarded: {}, Dropped: {}", rpgStasticTotal.questAccepted,
-                 rpgStasticTotal.questRewarded, rpgStasticTotal.questDropped);
+        LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}", rpgStasticTotal.questAccepted,
+                 rpgStasticTotal.questCompleted, rpgStasticTotal.questRewarded);
+        LOG_INFO("playerbots", "    Abandoned: {}, Dropped: {}", rpgStasticTotal.questAbandoned, rpgStasticTotal.questDropped);
+        
+        // Show drop/abandon reasons
+        if (!rpgStasticTotal.questDropReasons.empty())
+        {
+            LOG_INFO("playerbots", "  Quest Drop Reasons:");
+            for (const auto& [reason, count] : rpgStasticTotal.questDropReasons)
+            {
+                LOG_INFO("playerbots", "    {}: {}", reason, count);
+            }
+        }
+        if (!rpgStasticTotal.questAbandonReasons.empty())
+        {
+            LOG_INFO("playerbots", "  Quest Abandon Reasons:");
+            for (const auto& [reason, count] : rpgStasticTotal.questAbandonReasons)
+            {
+                LOG_INFO("playerbots", "    {}: {}", reason, count);
+            }
+        }
+        
+        // Show quest problem analysis
+        if (!rpgStasticTotal.questDroppedByID.empty() || !rpgStasticTotal.questAbandonedByID.empty())
+        {
+            LOG_INFO("playerbots", "Quest Problem Analysis:");
+            
+            // Most dropped quests (problems)
+            if (!rpgStasticTotal.questDroppedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> droppedSorted(rpgStasticTotal.questDroppedByID.begin(), rpgStasticTotal.questDroppedByID.end());
+                std::sort(droppedSorted.begin(), droppedSorted.end(), 
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second; // Sort by count descending
+                    });
+                
+                LOG_INFO("playerbots", "  Most Dropped Quests (need fixing):");
+                for (size_t i = 0; i < std::min(size_t(10), droppedSorted.size()); ++i)
+                {
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(droppedSorted[i].first);
+                    LOG_INFO("playerbots", "    QuestID {}: {} (dropped {} times)", 
+                        droppedSorted[i].first, quest ? quest->GetTitle() : "Unknown Quest", droppedSorted[i].second);
+                }
+            }
+            
+            // Most abandoned quests (problems)
+            if (!rpgStasticTotal.questAbandonedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> abandonedSorted(rpgStasticTotal.questAbandonedByID.begin(), rpgStasticTotal.questAbandonedByID.end());
+                std::sort(abandonedSorted.begin(), abandonedSorted.end(), 
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second; // Sort by count descending
+                    });
+                
+                LOG_INFO("playerbots", "  Most Abandoned Quests (need fixing):");
+                for (size_t i = 0; i < std::min(size_t(10), abandonedSorted.size()); ++i)
+                {
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(abandonedSorted[i].first);
+                    LOG_INFO("playerbots", "    QuestID {}: {} (abandoned {} times)", 
+                        abandonedSorted[i].first, quest ? quest->GetTitle() : "Unknown Quest", abandonedSorted[i].second);
+                }
+            }
+        }
     }
 
     LOG_INFO("playerbots", "Bots engine:", dead);

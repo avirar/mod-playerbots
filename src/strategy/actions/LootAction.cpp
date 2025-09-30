@@ -76,7 +76,8 @@ bool OpenLootAction::Execute(Event /*event*/)
     bool result = DoLoot(lootObject);
     if (result)
     {
-        AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
+        // Mark as pending instead of removing immediately
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
     return result;
@@ -87,9 +88,22 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (lootObject.IsEmpty())
         return false;
 
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Attempting to loot " << lootObject.guid.ToString();
+        botAI->TellMaster(out.str());
+    }
+
     Creature* creature = botAI->GetCreature(lootObject.guid);
     if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Creature too far away");
         return false;
+    }
 
     // Dismount if the bot is mounted
     if (bot->IsMounted())
@@ -134,37 +148,250 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
     if (go && bot->GetDistance(go) > INTERACTION_DISTANCE - 2.0f)
+    {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "DoLoot: GameObject too far away (distance: " << bot->GetDistance(go) << ")";
+            botAI->TellMaster(out.str());
+        }
         return false;
+    }
+    
+    if (go && debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Found GameObject " << go->GetName() << " (Entry: " << go->GetEntry() 
+            << ", Type: " << go->GetGoType() << ", State: " << go->GetGoState() << ")";
+        botAI->TellMaster(out.str());
+    }
 
     if (go && (go->GetGoState() != GO_STATE_READY))
         return false;
 
     // This prevents dungeon chests like Tribunal Chest (Halls of Stone) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND))
-        return false;
-
     // This prevents raid chests like Gunship Armory (ICC) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE))
-        return false;
+    // Allows quest objects
+    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+    {
+        bool canLootForQuest = false;
+    
+        // Only check for chest/goober types!
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST || go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            uint32 questId = 0;
+            uint32 lootId = 0;
+    
+            if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+            {
+                questId = go->GetGOInfo()->chest.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+            else if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+            {
+                questId = go->GetGOInfo()->goober.questId;
+                lootId = go->GetGOInfo()->GetLootId();
+            }
+    
+            if ((questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE) ||
+                LootTemplates_Gameobject.HaveQuestLootForPlayer(lootId, bot))
+            {
+                canLootForQuest = true;
+            }
+        }
+    
+        if (!canLootForQuest)
+        {
+            if (debugLoot)
+                botAI->TellMaster("DoLoot: Cannot loot chest - no quest requirement met and has interaction flags");
+            return false;
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("DoLoot: Chest accessible for quest");
+        }
+    }
 
     if (lootObject.skillId == SKILL_MINING)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Attempting mining");
         return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
+    }
 
     if (lootObject.skillId == SKILL_HERBALISM)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: Attempting herbalism");
         return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
+    }
 
+    // For key-locked chests, find and cast the key's spell using the key item
+    if (go && lootObject.reqItem > 0 && bot->HasItemCount(lootObject.reqItem, 1))
+    {
+        uint32 keySpell = GetKeySpell(lootObject.reqItem);
+        if (keySpell)
+        {
+            // Find the key item in bot's inventory (check keyring first, then fallback to bags)
+            Item* keyItem = nullptr;
+            
+            // Check keyring slots first (keys are automatically stored here)
+            for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+            {
+                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                {
+                    if (item->GetEntry() == lootObject.reqItem)
+                    {
+                        keyItem = item;
+                        if (debugLoot)
+                        {
+                            std::ostringstream out;
+                            out << "DoLoot: Found key item " << lootObject.reqItem << " in keyring slot " << slot;
+                            botAI->TellMaster(out.str());
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Fallback: Check main inventory slots if not in keyring
+            if (!keyItem)
+            {
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+                {
+                    if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    {
+                        if (item->GetEntry() == lootObject.reqItem)
+                        {
+                            keyItem = item;
+                            if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "DoLoot: Found key item " << lootObject.reqItem << " in main inventory slot " << slot;
+                                botAI->TellMaster(out.str());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Final fallback: Check bags if still not found
+            if (!keyItem)
+            {
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    if (Bag* pBag = bot->GetBagByPos(bag))
+                    {
+                        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                        {
+                            if (Item* item = pBag->GetItemByPos(slot))
+                            {
+                                if (item->GetEntry() == lootObject.reqItem)
+                                {
+                                    keyItem = item;
+                                    if (debugLoot)
+                                    {
+                                        std::ostringstream out;
+                                        out << "DoLoot: Found key item " << lootObject.reqItem << " in bag " << bag << " slot " << slot;
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        if (keyItem) break;
+                    }
+                }
+            }
+            
+            if (keyItem)
+            {
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "DoLoot: Casting key spell " << keySpell << " for key item " << lootObject.reqItem << " on GameObject " << go->GetName();
+                    botAI->TellMaster(out.str());
+                }
+                
+                // Use the new GameObject-specific CastSpell method with the key item
+                bool result = botAI->CastSpell(keySpell, go, keyItem);
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "DoLoot: Key spell cast result: " << (result ? "SUCCESS" : "FAILED");
+                    botAI->TellMaster(out.str());
+                }
+                return result;
+            }
+            else if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "DoLoot: Could not find key item " << lootObject.reqItem << " in inventory";
+                botAI->TellMaster(out.str());
+            }
+        }
+        else if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "DoLoot: No spell found for key item " << lootObject.reqItem;
+            botAI->TellMaster(out.str());
+        }
+    }
+    
     uint32 spellId = GetOpeningSpell(lootObject);
     if (!spellId)
+    {
+        if (debugLoot)
+            botAI->TellMaster("DoLoot: No opening spell found for object");
         return false;
+    }
 
-    return botAI->CastSpell(spellId, bot);
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Casting opening spell " << spellId << " on target " << lootObject.guid.ToString();
+        botAI->TellMaster(out.str());
+    }
+
+    bool result = botAI->CastSpell(spellId, bot);
+
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "DoLoot: Spell cast result: " << (result ? "SUCCESS" : "FAILED");
+        botAI->TellMaster(out.str());
+    }
+
+    return result;
 }
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
 {
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
     if (GameObject* go = botAI->GetGameObject(lootObject.guid))
+    {
         if (go->isSpawned())
-            return GetOpeningSpell(lootObject, go);
+        {
+            uint32 spell = GetOpeningSpell(lootObject, go);
+            if (debugLoot)
+            {
+                std::ostringstream out;
+                out << "GetOpeningSpell: Found spell " << spell << " for GameObject " << go->GetName();
+                botAI->TellMaster(out.str());
+            }
+            return spell;
+        }
+        else if (debugLoot)
+        {
+            botAI->TellMaster("GetOpeningSpell: GameObject not spawned");
+        }
+    }
+    else if (debugLoot)
+    {
+        botAI->TellMaster("GetOpeningSpell: GameObject not found");
+    }
 
     return 0;
 }
@@ -203,6 +430,59 @@ uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject, GameObject* go)
     }
 
     return sPlayerbotAIConfig->openGoSpell;
+}
+
+uint32 OpenLootAction::GetKeySpell(uint32 keyItemId)
+{
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+    
+    ItemTemplate const* keyItem = sObjectMgr->GetItemTemplate(keyItemId);
+    if (!keyItem)
+    {
+        if (debugLoot)
+        {
+            std::ostringstream out;
+            out << "GetKeySpell: Key item " << keyItemId << " not found in database";
+            botAI->TellMaster(out.str());
+        }
+        return 0;
+    }
+    
+    // Check all spell entries in the key item
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        uint32 spellId = keyItem->Spells[i].SpellId;
+        if (!spellId)
+            continue;
+            
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+            
+        // Look for opening spells (SPELL_EFFECT_OPEN_LOCK)
+        for (uint8 effIndex = 0; effIndex < MAX_SPELL_EFFECTS; ++effIndex)
+        {
+            if (spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_OPEN_LOCK)
+            {
+                if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "GetKeySpell: Found opening spell " << spellId << " in key item " << keyItemId;
+                    botAI->TellMaster(out.str());
+                }
+                return spellId;
+            }
+        }
+    }
+    
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "GetKeySpell: No opening spell found in key item " << keyItemId;
+        botAI->TellMaster(out.str());
+    }
+    
+    return 0;
 }
 
 bool OpenLootAction::CanOpenLock(LootObject& /*lootObject*/, SpellInfo const* spellInfo, GameObject* go)
@@ -377,6 +657,9 @@ bool StoreLootAction::Execute(Event event)
         // bot->GetSession()->HandleLootMoneyOpcode(packet);
     }
 
+    uint8 totalAvailableItems = items;
+    uint8 itemsSkipped = 0;
+    
     for (uint8 i = 0; i < items; ++i)
     {
         uint32 itemid;
@@ -393,36 +676,95 @@ bool StoreLootAction::Execute(Event event)
         p >> lootslot_type;     // 0 = can get, 1 = look only, 2 = master get
 
         if (lootslot_type != LOOT_SLOT_TYPE_ALLOW_LOOT && lootslot_type != LOOT_SLOT_TYPE_OWNER)
+        {
+            itemsSkipped++;
             continue;
+        }
 
         if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemid, botAI))
+        {
+            itemsSkipped++;
             continue;
+        }
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemid);
         if (!proto)
+        {
+            itemsSkipped++;
             continue;
+        }
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
-            uint32 maxStack = proto->GetMaxStackSize();
-            if (maxStack == 1)
-                continue;
-
-            std::vector<Item*> found = parseItems(chat->FormatItem(proto));
-
-            bool hasFreeStack = false;
-
-            for (auto stack : found)
+            // Check item usage to determine if it should be prioritized
+            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", itemid);
+            
+            // Prioritize useful items (anything not vendor trash, AH items, or completely useless)
+            bool isUsefulItem = (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH);
+            
+            if (isUsefulItem)
             {
-                if (stack->GetCount() + itemcount < maxStack)
+                // Check if bot has any free bag slots for important items
+                // (quest items, useful equipment, skill items, consumables, etc.)
+                uint32 totalfree = 0;
+                
+                // Check main bag slots
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; slot++)
                 {
-                    hasFreeStack = true;
-                    break;
+                    if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                        ++totalfree;
+                }
+                
+                // Check additional bag slots
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    const Bag* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+                    if (pBag)
+                    {
+                        ItemTemplate const* pBagProto = pBag->GetTemplate();
+                        if (pBagProto->Class == ITEM_CLASS_CONTAINER && pBagProto->SubClass == ITEM_SUBCLASS_CONTAINER)
+                        {
+                            totalfree += pBag->GetFreeSlots();
+                        }
+                    }
+                }
+                
+                // Allow important item if there's any free space
+                if (totalfree == 0)
+                {
+                    itemsSkipped++;
+                    continue; // Skip only if absolutely no space
                 }
             }
+            else
+            {
+                // Apply normal restrictions for non-quest items
+                uint32 maxStack = proto->GetMaxStackSize();
+                if (maxStack == 1)
+                {
+                    itemsSkipped++;
+                    continue;
+                }
 
-            if (!hasFreeStack)
-                continue;
+                std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+
+                bool hasFreeStack = false;
+
+                for (auto stack : found)
+                {
+                    if (stack->GetCount() + itemcount < maxStack)
+                    {
+                        hasFreeStack = true;
+                        break;
+                    }
+                }
+
+                if (!hasFreeStack)
+                {
+                    itemsSkipped++;
+                    continue;
+                }
+            }
         }
 
         Player* master = botAI->GetMaster();
@@ -453,7 +795,17 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
-    AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    // Mark loot based on whether items were skipped
+    if (itemsSkipped > 0 && totalAvailableItems > 0)
+    {
+        // Some items were left behind, mark as partially looted
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPartiallyLooted(guid);
+    }
+    else
+    {
+        // All items were taken or no items were available, mark as completed
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(guid);
+    }
 
     // release loot
     WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);
