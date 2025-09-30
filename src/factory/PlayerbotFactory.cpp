@@ -2561,7 +2561,7 @@ void PlayerbotFactory::InitAvailableSpells()
             bool learn = true;
             for (uint8 j = 0; j < 3; ++j)
             {
-                if (!tSpell->learnedSpell[j] && !bot->IsSpellFitByClassAndRace(tSpell->learnedSpell[j]))
+                if (!tSpell->learnedSpell[j] || !bot->IsSpellFitByClassAndRace(tSpell->learnedSpell[j]))
                     continue;
 
                 if (spellInfo->Effects[j].Effect == SPELL_EFFECT_PROFICIENCY ||
@@ -2581,32 +2581,7 @@ void PlayerbotFactory::InitAvailableSpells()
             if (tSpell->IsCastable())
                 bot->CastSpell(bot, tSpell->spell, true);
             else
-            {
-                // Additional validation for skill-teaching spells
-                bool canLearnSkill = true;
-                for (uint8 j = 0; j < 3; ++j)
-                {
-                    if (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP)
-                    {
-                        uint32 skillId = spellInfo->Effects[j].MiscValue;
-                        
-                        // Check if SKILL_THROWN (176) is being taught to invalid classes
-                        if (skillId == SKILL_THROWN && 
-                            bot->getClass() != CLASS_WARRIOR && 
-                            bot->getClass() != CLASS_HUNTER && 
-                            bot->getClass() != CLASS_ROGUE)
-                        {
-                            canLearnSkill = false;
-                            break;
-                        }
-                    }
-                }
-                
-                if (canLearnSkill)
-                {
-                    bot->learnSpell(tSpell->learnedSpell[0], false);
-                }
-            }
+                bot->learnSpell(tSpell->learnedSpell[0], false);
         }
     }
 }

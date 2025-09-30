@@ -1064,6 +1064,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             botAI->rpgStatistic.questDropped++;
             botAI->rpgStatistic.questDroppedByID[questId]++;
             botAI->rpgStatistic.questDropReasons["not_worth_or_capable_or_failed"]++;
+            botAI->rpgStatistic.questDropReasonsByID[questId]["not_worth_or_capable_or_failed"]++;
             dropped++;
         }
     }
@@ -1094,6 +1095,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             botAI->rpgStatistic.questDropped++;
             botAI->rpgStatistic.questDroppedByID[questId]++;
             botAI->rpgStatistic.questDropReasons["wrong_zone"]++;
+            botAI->rpgStatistic.questDropReasonsByID[questId]["wrong_zone"]++;
             dropped++;
         }
     }
@@ -1121,6 +1123,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         botAI->rpgStatistic.questDropped++;
         botAI->rpgStatistic.questDroppedByID[questId]++;
         botAI->rpgStatistic.questDropReasons["clear_log"]++;
+        botAI->rpgStatistic.questDropReasonsByID[questId]["clear_log"]++;
     }
 
     return true;

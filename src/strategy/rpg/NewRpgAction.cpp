@@ -730,6 +730,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
             botAI->rpgStatistic.questAbandoned++;
             botAI->rpgStatistic.questAbandonedByID[questId]++;
             botAI->rpgStatistic.questAbandonReasons["no_progression"]++;
+            botAI->rpgStatistic.questAbandonReasonsByID[questId]["no_progression"]++;
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
@@ -808,6 +809,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         botAI->rpgStatistic.questAbandoned++;
         botAI->rpgStatistic.questAbandonedByID[questId]++;
         botAI->rpgStatistic.questAbandonReasons["reward_issue"]++;
+        botAI->rpgStatistic.questAbandonReasonsByID[questId]["reward_issue"]++;
         if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);

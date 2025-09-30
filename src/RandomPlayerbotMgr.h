@@ -125,6 +125,7 @@ public:
     std::vector<Player*> GetPlayers() { return players; };
     PlayerBotMap GetAllBots() { return playerBots; };
     void PrintStats();
+    void PrintQuestStats();
     double GetBuyMultiplier(Player* bot);
     double GetSellMultiplier(Player* bot);
     void AddTradeDiscount(Player* bot, Player* master, int32 value);

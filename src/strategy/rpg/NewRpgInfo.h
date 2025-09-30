@@ -114,10 +114,14 @@ struct NewRpgStatistic
     std::map<uint32, uint32> questDroppedByID;     // quests that were dropped
     std::map<uint32, uint32> questAbandonedByID;   // quests that were abandoned
     std::map<uint32, uint32> questRewardedByID;    // quests that were turned in for rewards
-    
+
     // Reason tracking - maps reason to count
     std::map<std::string, uint32> questDropReasons;
     std::map<std::string, uint32> questAbandonReasons;
+
+    // Reason tracking per quest - maps questId to map of (reason -> count)
+    std::map<uint32, std::map<std::string, uint32>> questDropReasonsByID;
+    std::map<uint32, std::map<std::string, uint32>> questAbandonReasonsByID;
     NewRpgStatistic operator+(const NewRpgStatistic& other) const
     {
         NewRpgStatistic result;
@@ -134,6 +138,8 @@ struct NewRpgStatistic
         result.questRewardedByID = this->questRewardedByID;
         result.questDropReasons = this->questDropReasons;
         result.questAbandonReasons = this->questAbandonReasons;
+        result.questDropReasonsByID = this->questDropReasonsByID;
+        result.questAbandonReasonsByID = this->questAbandonReasonsByID;
         for (const auto& [questId, count] : other.questCompletedByID)
             result.questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
@@ -146,6 +152,12 @@ struct NewRpgStatistic
             result.questDropReasons[reason] += count;
         for (const auto& [reason, count] : other.questAbandonReasons)
             result.questAbandonReasons[reason] += count;
+        for (const auto& [questId, reasonMap] : other.questDropReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                result.questDropReasonsByID[questId][reason] += count;
+        for (const auto& [questId, reasonMap] : other.questAbandonReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                result.questAbandonReasonsByID[questId][reason] += count;
             
         return result;
     }
@@ -170,6 +182,12 @@ struct NewRpgStatistic
             this->questDropReasons[reason] += count;
         for (const auto& [reason, count] : other.questAbandonReasons)
             this->questAbandonReasons[reason] += count;
+        for (const auto& [questId, reasonMap] : other.questDropReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                this->questDropReasonsByID[questId][reason] += count;
+        for (const auto& [questId, reasonMap] : other.questAbandonReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                this->questAbandonReasonsByID[questId][reason] += count;
             
         return *this;
     }
