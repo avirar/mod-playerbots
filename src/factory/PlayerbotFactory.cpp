@@ -2496,6 +2496,21 @@ void PlayerbotFactory::InitSkills()
 
 void PlayerbotFactory::SetRandomSkill(uint16 id)
 {
+    // SKILL_THROWN (176) validation workaround:
+    // The playercreateinfo_skills table has classMask=9 (Warrior+Rogue only) for skill 176,
+    // but spell 2567 (which teaches this skill) is being assigned to invalid race/class combinations.
+    // This causes errors: "Player X has spell (2567) that teach skill (176) which is invalid for
+    // the race/class combination. Will be deleted." and duplicate entry errors on character login.
+    // Only Warriors (1), Hunters (4), and Rogues (8) should have access to thrown weapons.
+    // This validation prevents invalid classes from receiving the skill until the database is fixed.
+    if (id == SKILL_THROWN &&
+        bot->getClass() != CLASS_WARRIOR &&
+        bot->getClass() != CLASS_HUNTER &&
+        bot->getClass() != CLASS_ROGUE)
+    {
+        return; // Don't set invalid skill
+    }
+
     uint32 maxValue = level * 5;
 
     // do not let skill go beyond limit even if maxlevel > blizzlike
@@ -2559,6 +2574,19 @@ void PlayerbotFactory::InitAvailableSpells()
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(tSpell->spell);
             bool learn = true;
+
+            // Block spell 2567 (Thrown weapon proficiency) for invalid classes.
+            // This spell has ClassMask=0 in skilllineability_dbc which causes IsSpellFitByClassAndRace()
+            // to incorrectly return true for all classes. Only Warriors, Hunters, and Rogues should learn it.
+            // The EffectMiscValue is 0 (not 176), so we must check the spell ID directly.
+            if (tSpell->spell == 2567 &&
+                bot->getClass() != CLASS_WARRIOR &&
+                bot->getClass() != CLASS_HUNTER &&
+                bot->getClass() != CLASS_ROGUE)
+            {
+                learn = false;
+            }
+
             for (uint8 j = 0; j < 3; ++j)
             {
                 if (!tSpell->learnedSpell[j] || !bot->IsSpellFitByClassAndRace(tSpell->learnedSpell[j]))

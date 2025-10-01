@@ -27,6 +27,17 @@ void TrainerAction::Learn(uint32 cost, TrainerSpell const* tSpell, std::ostrings
     if (!spellInfo)
         return;
 
+    // Block spell 2567 (Thrown weapon proficiency) for invalid classes.
+    // This spell has ClassMask=0 in skilllineability_dbc which causes IsSpellFitByClassAndRace()
+    // to incorrectly return true for all classes. Only Warriors, Hunters, and Rogues should learn it.
+    if (tSpell->spell == 2567 &&
+        bot->getClass() != CLASS_WARRIOR &&
+        bot->getClass() != CLASS_HUNTER &&
+        bot->getClass() != CLASS_ROGUE)
+    {
+        return;
+    }
+
     bool learned = false;
     for (uint8 j = 0; j < 3; ++j)
     {
@@ -43,30 +54,7 @@ void TrainerAction::Learn(uint32 cost, TrainerSpell const* tSpell, std::ostrings
 
     if (!learned && !bot->HasSpell(tSpell->spell))
     {
-        // Check if this spell teaches a skill that's invalid for the bot's class
-        bool canLearnSkill = true;
-        for (uint8 j = 0; j < 3; ++j)
-        {
-            if (spellInfo->Effects[j].Effect == SPELL_EFFECT_SKILL_STEP)
-            {
-                uint32 skillId = spellInfo->Effects[j].MiscValue;
-                
-                // Check if SKILL_THROWN (176) is being taught to invalid classes
-                if (skillId == SKILL_THROWN && 
-                    bot->getClass() != CLASS_WARRIOR && 
-                    bot->getClass() != CLASS_HUNTER && 
-                    bot->getClass() != CLASS_ROGUE)
-                {
-                    canLearnSkill = false;
-                    break;
-                }
-            }
-        }
-        
-        if (canLearnSkill)
-        {
-            bot->learnSpell(tSpell->spell);
-        }
+        bot->learnSpell(tSpell->spell);
     }
 
     msg << " - learned";
