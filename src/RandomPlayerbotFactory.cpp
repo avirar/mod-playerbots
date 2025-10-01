@@ -543,33 +543,52 @@ void RandomPlayerbotFactory::CreateRandomBots()
         std::vector<uint32> botAccounts;
         std::vector<uint32> botFriends;
 
-        // Calculates the total number of required accounts.
-        uint32 totalAccountCount = CalculateTotalAccountCount();
+        LOG_INFO("playerbots", "Deleting all random bot characters and accounts...");
 
-        for (uint32 accountNumber = 0; accountNumber < totalAccountCount; ++accountNumber)
+        // First, query the auth database to get all bot account IDs
+        // This works even when auth database is on a different server
+        QueryResult accountResults = LoginDatabase.Query("SELECT id FROM account WHERE username LIKE '{}%%'",
+            sPlayerbotAIConfig->randomBotAccountPrefix.c_str());
+
+        if (accountResults)
         {
-            std::ostringstream out;
-            out << sPlayerbotAIConfig->randomBotAccountPrefix << accountNumber;
-            std::string const accountName = out.str();
-
-            if (uint32 accountId = AccountMgr::GetId(accountName))
-                botAccounts.push_back(accountId);
+            do
+            {
+                Field* fields = accountResults->Fetch();
+                botAccounts.push_back(fields[0].Get<uint32>());
+            } while (accountResults->NextRow());
         }
 
-        LOG_INFO("playerbots", "Deleting all random bot characters and accounts...");
+        // If no bot accounts found, nothing to delete
+        if (botAccounts.empty())
+        {
+            LOG_INFO("playerbots", "No bot accounts found to delete.");
+            return;
+        }
+
+        // Build a comma-separated list of account IDs for IN clauses
+        // This allows us to query across split databases (auth on one server, characters on another)
+        std::string accountIdList = "";
+        for (size_t i = 0; i < botAccounts.size(); ++i)
+        {
+            if (i > 0)
+                accountIdList += ",";
+            accountIdList += std::to_string(botAccounts[i]);
+        }
+
+        LOG_INFO("playerbots", "Found {} bot accounts to delete", botAccounts.size());
 
         // First execute all the cleanup SQL commands
         // Clear playerbots_random_bots and playerbots_account_type
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_random_bots");
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_account_type");
 
-        // Get the database names dynamically
-        std::string loginDBName = LoginDatabase.GetConnectionInfo()->database;
+        // Get the character database name for cross-database queries (same server)
         std::string characterDBName = CharacterDatabase.GetConnectionInfo()->database;
 
-        // Delete all characters from bot accounts
-        CharacterDatabase.Execute("DELETE FROM characters WHERE account IN (SELECT id FROM " + loginDBName + ".account WHERE username LIKE '{}%%')",
-            sPlayerbotAIConfig->randomBotAccountPrefix.c_str());
+        // Delete all characters from bot accounts using the account ID list
+        // This avoids cross-database subqueries that fail when auth DB is on a different server
+        CharacterDatabase.Execute("DELETE FROM characters WHERE account IN (" + accountIdList + ")");
 
         // Wait for the characters to be deleted before proceeding to dependent deletes
         while (CharacterDatabase.QueueSize())
@@ -582,8 +601,9 @@ void RandomPlayerbotFactory::CreateRandomBots()
         PlayerbotsDatabase.Execute("DELETE FROM playerbots_guild_tasks WHERE owner NOT IN (SELECT guid FROM " + characterDBName + ".characters)");
 
         // Clean up orphaned entries in playerbots_db_store
-        PlayerbotsDatabase.Execute("DELETE FROM playerbots_db_store WHERE guid NOT IN (SELECT guid FROM " + characterDBName + ".characters WHERE account IN (SELECT id FROM " + loginDBName + ".account WHERE username NOT LIKE '{}%%'))",
-            sPlayerbotAIConfig->randomBotAccountPrefix.c_str());
+        // Delete entries that belong to bot accounts (we're deleting bot characters)
+        // This avoids cross-database subqueries that fail when auth DB is on a different server
+        PlayerbotsDatabase.Execute("DELETE FROM playerbots_db_store WHERE guid IN (SELECT guid FROM " + characterDBName + ".characters WHERE account IN (" + accountIdList + "))");
 
         // Clean up orphaned records in character-related tables
         CharacterDatabase.Execute("DELETE FROM arena_team_member WHERE guid NOT IN (SELECT guid FROM characters)");
@@ -636,19 +656,13 @@ void RandomPlayerbotFactory::CreateRandomBots()
         CharacterDatabase.Execute("DELETE FROM petition_sign WHERE ownerguid NOT IN (SELECT guid FROM characters) OR playerguid NOT IN (SELECT guid FROM characters)");
 
         // Finally, delete the bot accounts themselves
-        LOG_INFO("playerbots", "Deleting random bot accounts...");
-        QueryResult results = LoginDatabase.Query("SELECT id FROM account WHERE username LIKE '{}%%'",
-                                             sPlayerbotAIConfig->randomBotAccountPrefix.c_str());
+        // Reuse the botAccounts vector we populated at the start
+        LOG_INFO("playerbots", "Deleting {} random bot accounts...", botAccounts.size());
         int32 deletion_count = 0;
-        if (results)
+        for (uint32 accId : botAccounts)
         {
-            do
-            {
-                Field* fields = results->Fetch();
-                uint32 accId = fields[0].Get<uint32>();
-                LOG_DEBUG("playerbots", "Deleting account accID: {}({})...", accId, ++deletion_count);
-                AccountMgr::DeleteAccount(accId);
-            } while (results->NextRow());
+            LOG_DEBUG("playerbots", "Deleting account accID: {}({})...", accId, ++deletion_count);
+            AccountMgr::DeleteAccount(accId);
         }
 
         uint32 timer = getMSTime();
