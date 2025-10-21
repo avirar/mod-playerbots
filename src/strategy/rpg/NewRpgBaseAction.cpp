@@ -473,6 +473,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                 botAI->TellMaster("Quest accepted " + ChatHelper::FormatQuest(quest));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
+            botAI->rpgStatistic.questAcceptedByID[quest->GetQuestId()]++;
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
@@ -1073,30 +1074,43 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     if (dropped >= 8)
         return true;
 
-    // remove festival/class quests and quests in different zone
+    // Recalculate free slots after dropping unworthwhile quests
+    freeSlotNum = 0;
     for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
         uint32 questId = bot->GetQuestSlotQuestId(i);
         if (!questId)
-            continue;
+            freeSlotNum++;
+    }
 
-        const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
-        if (quest->GetZoneOrSort() < 0 || (quest->GetZoneOrSort() > 0 && quest->GetZoneOrSort() != bot->GetZoneId()))
+    // Only drop wrong-zone quests if we still don't have enough free slots
+    if (freeSlotNum < 2)
+    {
+        // remove festival/class quests and quests in different zone
+        for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
         {
-            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            uint32 questId = bot->GetQuestSlotQuestId(i);
+            if (!questId)
+                continue;
+
+            const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+            if (quest->GetZoneOrSort() < 0 || (quest->GetZoneOrSort() > 0 && quest->GetZoneOrSort() != bot->GetZoneId()))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} drop quest {} (wrong_zone, free slots: {})", bot->GetName(), questId, freeSlotNum);
+                }
+                WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
+                packet << (uint8)i;
+                bot->GetSession()->HandleQuestLogRemoveQuest(packet);
+                if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+                    botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
+                botAI->rpgStatistic.questDropped++;
+                botAI->rpgStatistic.questDroppedByID[questId]++;
+                botAI->rpgStatistic.questDropReasons["wrong_zone"]++;
+                botAI->rpgStatistic.questDropReasonsByID[questId]["wrong_zone"]++;
+                dropped++;
             }
-            WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
-            packet << (uint8)i;
-            bot->GetSession()->HandleQuestLogRemoveQuest(packet);
-            if (botAI->GetMaster() && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
-                botAI->TellMaster("Quest dropped " + ChatHelper::FormatQuest(quest));
-            botAI->rpgStatistic.questDropped++;
-            botAI->rpgStatistic.questDroppedByID[questId]++;
-            botAI->rpgStatistic.questDropReasons["wrong_zone"]++;
-            botAI->rpgStatistic.questDropReasonsByID[questId]["wrong_zone"]++;
-            dropped++;
         }
     }
 

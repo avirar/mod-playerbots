@@ -110,6 +110,7 @@ struct NewRpgStatistic
     uint32 questDropped{0};
     
     // Quest-specific tracking - maps questId to count
+    std::map<uint32, uint32> questAcceptedByID;    // quests that were accepted
     std::map<uint32, uint32> questCompletedByID;   // quests that were completed successfully
     std::map<uint32, uint32> questDroppedByID;     // quests that were dropped
     std::map<uint32, uint32> questAbandonedByID;   // quests that were abandoned
@@ -132,6 +133,7 @@ struct NewRpgStatistic
         result.questDropped = this->questDropped + other.questDropped;
         
         // Merge quest-specific maps
+        result.questAcceptedByID = this->questAcceptedByID;
         result.questCompletedByID = this->questCompletedByID;
         result.questDroppedByID = this->questDroppedByID;
         result.questAbandonedByID = this->questAbandonedByID;
@@ -140,6 +142,8 @@ struct NewRpgStatistic
         result.questAbandonReasons = this->questAbandonReasons;
         result.questDropReasonsByID = this->questDropReasonsByID;
         result.questAbandonReasonsByID = this->questAbandonReasonsByID;
+        for (const auto& [questId, count] : other.questAcceptedByID)
+            result.questAcceptedByID[questId] += count;
         for (const auto& [questId, count] : other.questCompletedByID)
             result.questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
@@ -170,6 +174,8 @@ struct NewRpgStatistic
         this->questDropped += other.questDropped;
         
         // Merge quest-specific maps
+        for (const auto& [questId, count] : other.questAcceptedByID)
+            this->questAcceptedByID[questId] += count;
         for (const auto& [questId, count] : other.questCompletedByID)
             this->questCompletedByID[questId] += count;
         for (const auto& [questId, count] : other.questDroppedByID)
