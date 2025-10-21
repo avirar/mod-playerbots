@@ -3022,7 +3022,7 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
 
     if (cmd == "questdump")
     {
-        sRandomPlayerbotMgr->ExportQuestStatsToCSV();
+        sRandomPlayerbotMgr->ExportQuestStatsToUnifiedCSV();
         return true;
     }
 
@@ -3724,7 +3724,7 @@ void RandomPlayerbotMgr::PrintQuestStats()
     LOG_INFO("playerbots", "=== END QUEST STATISTICS REPORT ===");
 }
 
-void RandomPlayerbotMgr::ExportQuestStatsToCSV()
+void RandomPlayerbotMgr::ExportQuestStatsToUnifiedCSV()
 {
     if (!sPlayerbotAIConfig->enableNewRpgStrategy)
     {
@@ -3757,151 +3757,169 @@ void RandomPlayerbotMgr::ExportQuestStatsToCSV()
         return value;
     };
 
-    // File 1: Summary Statistics
-    std::string summaryFile = "playerbots_quest_summary_" + timestampStr + ".csv";
-    std::ofstream summary(summaryFile);
-    if (!summary.is_open())
+    // Collect all unique quest IDs from all tracking maps
+    std::set<uint32> allQuestIds;
+    for (const auto& [questId, count] : rpgStasticTotal.questAcceptedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questCompletedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questRewardedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questDroppedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questAbandonedByID)
+        allQuestIds.insert(questId);
+
+    // Define fixed drop reasons in order
+    std::vector<std::string> dropReasons = {
+        "manual_drop",
+        "not_worth_or_capable_or_failed",
+        "wrong_zone",
+        "clear_log"
+    };
+
+    // Define fixed abandon reasons in order
+    std::vector<std::string> abandonReasons = {
+        "no_progression",
+        "reward_issue"
+    };
+
+    // Create unified CSV file
+    std::string unifiedFile = "playerbots_quest_unified_" + timestampStr + ".csv";
+    std::ofstream unified(unifiedFile);
+    if (!unified.is_open())
     {
-        LOG_ERROR("playerbots", "Failed to create file: {}", summaryFile);
+        LOG_ERROR("playerbots", "Failed to create file: {}", unifiedFile);
         return;
     }
 
-    summary << "Metric,Count\n";
-    summary << "Accepted," << rpgStasticTotal.questAccepted << "\n";
-    summary << "Completed," << rpgStasticTotal.questCompleted << "\n";
-    summary << "Rewarded," << rpgStasticTotal.questRewarded << "\n";
-    summary << "Abandoned," << rpgStasticTotal.questAbandoned << "\n";
-    summary << "Dropped," << rpgStasticTotal.questDropped << "\n";
-    summary.close();
+    // Write header - grouped: Completed, Rewarded, then Dropped with reasons, then Abandoned with reasons
+    unified << "QuestID,QuestName,Accepted,Completed,Rewarded,Dropped";
 
-    // File 2: Dropped Quests
-    std::string droppedFile = "playerbots_quest_dropped_" + timestampStr + ".csv";
-    std::ofstream dropped(droppedFile);
-    if (!dropped.is_open())
+    // Add drop reason columns
+    for (const auto& reason : dropReasons)
     {
-        LOG_ERROR("playerbots", "Failed to create file: {}", droppedFile);
-        return;
+        unified << ",drop_" << reason;
     }
 
-    // Collect all unique drop reasons first
-    std::set<std::string> allDropReasons;
-    for (const auto& [questId, reasonMap] : rpgStasticTotal.questDropReasonsByID)
+    // Add abandoned total
+    unified << ",Abandoned";
+
+    // Add abandon reason columns
+    for (const auto& reason : abandonReasons)
     {
-        for (const auto& [reason, count] : reasonMap)
+        unified << ",abandon_" << reason;
+    }
+
+    unified << "\n";
+
+    // Prepare data with total interaction count for sorting
+    struct QuestStats
+    {
+        uint32 questId;
+        std::string questName;
+        uint32 accepted;
+        uint32 completed;
+        uint32 rewarded;
+        uint32 dropped;
+        uint32 abandoned;
+        uint32 totalInteractions;
+        std::map<std::string, uint32> dropReasons;
+        std::map<std::string, uint32> abandonReasons;
+    };
+
+    std::vector<QuestStats> questDataList;
+
+    for (uint32 questId : allQuestIds)
+    {
+        QuestStats stats;
+        stats.questId = questId;
+
+        // Get quest name
+        const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+        stats.questName = quest ? quest->GetTitle() : "Unknown Quest";
+
+        // Get counts from maps (default to 0 if not found)
+        auto acceptedIt = rpgStasticTotal.questAcceptedByID.find(questId);
+        stats.accepted = (acceptedIt != rpgStasticTotal.questAcceptedByID.end()) ? acceptedIt->second : 0;
+
+        auto completedIt = rpgStasticTotal.questCompletedByID.find(questId);
+        stats.completed = (completedIt != rpgStasticTotal.questCompletedByID.end()) ? completedIt->second : 0;
+
+        auto rewardedIt = rpgStasticTotal.questRewardedByID.find(questId);
+        stats.rewarded = (rewardedIt != rpgStasticTotal.questRewardedByID.end()) ? rewardedIt->second : 0;
+
+        auto droppedIt = rpgStasticTotal.questDroppedByID.find(questId);
+        stats.dropped = (droppedIt != rpgStasticTotal.questDroppedByID.end()) ? droppedIt->second : 0;
+
+        auto abandonedIt = rpgStasticTotal.questAbandonedByID.find(questId);
+        stats.abandoned = (abandonedIt != rpgStasticTotal.questAbandonedByID.end()) ? abandonedIt->second : 0;
+
+        // Calculate total interactions for sorting
+        stats.totalInteractions = stats.completed + stats.rewarded + stats.dropped + stats.abandoned;
+
+        // Get drop reasons for this quest
+        auto dropReasonsIt = rpgStasticTotal.questDropReasonsByID.find(questId);
+        if (dropReasonsIt != rpgStasticTotal.questDropReasonsByID.end())
         {
-            allDropReasons.insert(reason);
+            stats.dropReasons = dropReasonsIt->second;
         }
-    }
 
-    // Write header with dynamic reason columns
-    dropped << "QuestID,QuestName,TotalDrops";
-    for (const auto& reason : allDropReasons)
-    {
-        dropped << "," << reason;
-    }
-    dropped << "\n";
-
-    if (!rpgStasticTotal.questDroppedByID.empty())
-    {
-        std::vector<std::pair<uint32, uint32>> droppedSorted(rpgStasticTotal.questDroppedByID.begin(), rpgStasticTotal.questDroppedByID.end());
-        std::sort(droppedSorted.begin(), droppedSorted.end(),
-            [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
-                return a.second > b.second;
-            });
-
-        for (const auto& [questId, count] : droppedSorted)
+        // Get abandon reasons for this quest
+        auto abandonReasonsIt = rpgStasticTotal.questAbandonReasonsByID.find(questId);
+        if (abandonReasonsIt != rpgStasticTotal.questAbandonReasonsByID.end())
         {
-            const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
-            std::string questName = quest ? quest->GetTitle() : "Unknown Quest";
-
-            dropped << questId << "," << escapeCSV(questName) << "," << count;
-
-            // Add count for each reason column
-            auto reasonsIt = rpgStasticTotal.questDropReasonsByID.find(questId);
-            for (const auto& reason : allDropReasons)
-            {
-                uint32 reasonCount = 0;
-                if (reasonsIt != rpgStasticTotal.questDropReasonsByID.end())
-                {
-                    auto reasonCountIt = reasonsIt->second.find(reason);
-                    if (reasonCountIt != reasonsIt->second.end())
-                    {
-                        reasonCount = reasonCountIt->second;
-                    }
-                }
-                dropped << "," << reasonCount;
-            }
-            dropped << "\n";
+            stats.abandonReasons = abandonReasonsIt->second;
         }
-    }
-    dropped.close();
 
-    // File 3: Abandoned Quests
-    std::string abandonedFile = "playerbots_quest_abandoned_" + timestampStr + ".csv";
-    std::ofstream abandoned(abandonedFile);
-    if (!abandoned.is_open())
-    {
-        LOG_ERROR("playerbots", "Failed to create file: {}", abandonedFile);
-        return;
+        questDataList.push_back(stats);
     }
 
-    // Collect all unique abandon reasons first
-    std::set<std::string> allAbandonReasons;
-    for (const auto& [questId, reasonMap] : rpgStasticTotal.questAbandonReasonsByID)
+    // Sort by total interactions descending
+    std::sort(questDataList.begin(), questDataList.end(),
+        [](const QuestStats& a, const QuestStats& b) {
+            return a.totalInteractions > b.totalInteractions;
+        });
+
+    // Write data rows
+    for (const auto& stats : questDataList)
     {
-        for (const auto& [reason, count] : reasonMap)
+        unified << stats.questId << ","
+                << escapeCSV(stats.questName) << ","
+                << stats.accepted << ","
+                << stats.completed << ","
+                << stats.rewarded << ","
+                << stats.dropped;
+
+        // Write drop reason counts (grouped with Dropped)
+        for (const auto& reason : dropReasons)
         {
-            allAbandonReasons.insert(reason);
+            auto it = stats.dropReasons.find(reason);
+            uint32 count = (it != stats.dropReasons.end()) ? it->second : 0;
+            unified << "," << count;
         }
-    }
 
-    // Write header with dynamic reason columns
-    abandoned << "QuestID,QuestName,TotalAbandons";
-    for (const auto& reason : allAbandonReasons)
-    {
-        abandoned << "," << reason;
-    }
-    abandoned << "\n";
+        // Write abandoned total
+        unified << "," << stats.abandoned;
 
-    if (!rpgStasticTotal.questAbandonedByID.empty())
-    {
-        std::vector<std::pair<uint32, uint32>> abandonedSorted(rpgStasticTotal.questAbandonedByID.begin(), rpgStasticTotal.questAbandonedByID.end());
-        std::sort(abandonedSorted.begin(), abandonedSorted.end(),
-            [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
-                return a.second > b.second;
-            });
-
-        for (const auto& [questId, count] : abandonedSorted)
+        // Write abandon reason counts (grouped with Abandoned)
+        for (const auto& reason : abandonReasons)
         {
-            const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
-            std::string questName = quest ? quest->GetTitle() : "Unknown Quest";
-
-            abandoned << questId << "," << escapeCSV(questName) << "," << count;
-
-            // Add count for each reason column
-            auto reasonsIt = rpgStasticTotal.questAbandonReasonsByID.find(questId);
-            for (const auto& reason : allAbandonReasons)
-            {
-                uint32 reasonCount = 0;
-                if (reasonsIt != rpgStasticTotal.questAbandonReasonsByID.end())
-                {
-                    auto reasonCountIt = reasonsIt->second.find(reason);
-                    if (reasonCountIt != reasonsIt->second.end())
-                    {
-                        reasonCount = reasonCountIt->second;
-                    }
-                }
-                abandoned << "," << reasonCount;
-            }
-            abandoned << "\n";
+            auto it = stats.abandonReasons.find(reason);
+            uint32 count = (it != stats.abandonReasons.end()) ? it->second : 0;
+            unified << "," << count;
         }
-    }
-    abandoned.close();
 
-    LOG_INFO("playerbots", "Quest statistics exported successfully:");
-    LOG_INFO("playerbots", "  - {}", summaryFile);
-    LOG_INFO("playerbots", "  - {}", droppedFile);
-    LOG_INFO("playerbots", "  - {}", abandonedFile);
+        unified << "\n";
+    }
+
+    unified.close();
+
+    LOG_INFO("playerbots", "Unified quest statistics exported successfully:");
+    LOG_INFO("playerbots", "  - {}", unifiedFile);
+    LOG_INFO("playerbots", "  Total quests tracked: {}", allQuestIds.size());
+    LOG_INFO("playerbots", "  Drop reason columns: {}", dropReasons.size());
+    LOG_INFO("playerbots", "  Abandon reason columns: {}", abandonReasons.size());
 }
 
 double RandomPlayerbotMgr::GetBuyMultiplier(Player* bot)
