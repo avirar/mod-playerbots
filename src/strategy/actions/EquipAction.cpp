@@ -271,18 +271,47 @@ void EquipAction::EquipItem(Item* item)
             {
                 if (equippedItems[1])
                 {
-                    // Both slots are full - pick the worst item to replace
+                    // Both slots are full - pick the worst item to replace, but only if new item is better
                     StatsWeightCalculator calc(bot);
                     calc.SetItemSetBonus(false);
                     calc.SetOverflowPenalty(false);
 
-                    float firstItemScore = calc.CalculateItem(equippedItems[0]->GetTemplate()->ItemId);
-                    float secondItemScore = calc.CalculateItem(equippedItems[1]->GetTemplate()->ItemId);
+                    // Calculate new item score with random properties
+                    int32 newItemRandomProp = item->GetItemRandomPropertyId();
+                    float newItemScore = calc.CalculateItem(itemId, newItemRandomProp);
 
-                    // If the second slot is worse, place the new item there
-                    if (firstItemScore > secondItemScore)
+                    // Calculate equipped items scores with random properties
+                    int32 firstRandomProp = equippedItems[0]->GetItemRandomPropertyId();
+                    int32 secondRandomProp = equippedItems[1]->GetItemRandomPropertyId();
+                    float firstItemScore = calc.CalculateItem(equippedItems[0]->GetTemplate()->ItemId, firstRandomProp);
+                    float secondItemScore = calc.CalculateItem(equippedItems[1]->GetTemplate()->ItemId, secondRandomProp);
+
+                    // Determine which slot (if any) should be replaced
+                    bool betterThanFirst = newItemScore > firstItemScore;
+                    bool betterThanSecond = newItemScore > secondItemScore;
+
+                    if (betterThanFirst && betterThanSecond)
                     {
+                        // New item is better than both - replace the worse of the two equipped items
+                        if (firstItemScore > secondItemScore)
+                        {
+                            dstSlot++; // Replace second slot (worse)
+                        }
+                        // else: keep dstSlot as-is (replace first slot)
+                    }
+                    else if (betterThanSecond && !betterThanFirst)
+                    {
+                        // Only better than second slot - replace it
                         dstSlot++;
+                    }
+                    else if (betterThanFirst && !betterThanSecond)
+                    {
+                        // Only better than first slot - replace it (dstSlot already points to it)
+                    }
+                    else
+                    {
+                        // New item is not better than either equipped item - don't equip
+                        return;
                     }
                 }
                 else
