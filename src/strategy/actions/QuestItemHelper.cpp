@@ -2212,13 +2212,18 @@ WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI,
     if (!bot)
         return nullptr;
         
-    // Query conditions for spell implicit targets (type 13)
+    // Query conditions for spell implicit targets (type 13) and spell casting (type 17)
+    // Type 13 is used for some spells, type 17 is used for quest item spells like parachutes
     ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
-    
+    ConditionList spellConditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+
+    // Merge both condition lists
+    conditions.insert(conditions.end(), spellConditions.begin(), spellConditions.end());
+
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
         std::ostringstream out;
-        out << "QuestItem: Spell " << spellId << " has " << conditions.size() << " conditions";
+        out << "QuestItem: Spell " << spellId << " has " << conditions.size() << " conditions (type 13 + type 17)";
         botAI->TellMaster(out.str());
     }
     
