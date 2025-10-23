@@ -1947,20 +1947,42 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
         {
             continue;
         }
-        if (go->GetGoType() != GAMEOBJECT_TYPE_TRAP)
-        {
-            continue;
-        }
+
+        GameobjectTypes goType = go->GetGoType();
         const GameObjectTemplate* goInfo = go->GetGOInfo();
         if (!goInfo)
         {
             continue;
         }
-        // 0 trap with no despawn after cast. 1 trap despawns after cast. 2 bomb casts on spawn.
-        if (goInfo->trap.type != 0)
-            continue;
 
-        uint32 spellId = goInfo->trap.spellId;
+        // For TRAP type, check if it's a persistent trap (type 0)
+        if (goType == GAMEOBJECT_TYPE_TRAP)
+        {
+            // 0 trap with no despawn after cast. 1 trap despawns after cast. 2 bomb casts on spawn.
+            if (goInfo->trap.type != 0)
+                continue;
+        }
+
+        // Extract spell ID based on GameObject type
+        uint32 spellId = 0;
+        switch (goType)
+        {
+            case GAMEOBJECT_TYPE_TRAP:
+                spellId = goInfo->trap.spellId;
+                break;
+            case GAMEOBJECT_TYPE_GOOBER:
+                spellId = goInfo->goober.spellId;
+                break;
+            case GAMEOBJECT_TYPE_SPELLCASTER:
+                spellId = goInfo->spellcaster.spellId;
+                break;
+            case GAMEOBJECT_TYPE_AURA_GENERATOR:
+                spellId = goInfo->auraGenerator.auraID1; // Use first aura
+                break;
+            default:
+                continue;
+        }
+
         if (!spellId)
         {
             continue;
@@ -1975,7 +1997,43 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
             continue;
         }
 
-        float radius = (float)goInfo->trap.diameter / 2 + go->GetCombatReach();
+        // Calculate radius based on GameObject type
+        float radius = 0.0f;
+        switch (goType)
+        {
+            case GAMEOBJECT_TYPE_TRAP:
+                radius = (float)goInfo->trap.diameter / 2 + go->GetCombatReach();
+                break;
+
+            case GAMEOBJECT_TYPE_AURA_GENERATOR:
+                radius = (float)goInfo->auraGenerator.radius;
+                break;
+
+            case GAMEOBJECT_TYPE_GOOBER:
+            case GAMEOBJECT_TYPE_SPELLCASTER:
+                // For GOOBER and SPELLCASTER, use spell's radius
+                radius = spellInfo->GetMaxRange();
+                if (radius <= 0.0f)
+                {
+                    // Fallback to effect radius if max range is 0
+                    for (int i = 0; i < MAX_SPELL_EFFECTS; i++)
+                    {
+                        if (spellInfo->Effects[i].RadiusEntry)
+                        {
+                            radius = spellInfo->Effects[i].CalcRadius();
+                            break;
+                        }
+                    }
+                }
+                // Add combat reach for safety margin
+                if (radius > 0.0f)
+                    radius += go->GetCombatReach();
+                break;
+
+            default:
+                continue;
+        }
+
         if (!radius || radius > sPlayerbotAIConfig->maxAoeAvoidRadius)
             continue;
 
@@ -1983,8 +2041,9 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
         {
             continue;
         }
+
         std::ostringstream name;
-        name << spellInfo->SpellName[LOCALE_enUS];  // << "] (object)";
+        name << spellInfo->SpellName[LOCALE_enUS];
         if (FleePosition(go->GetPosition(), radius))
         {
             if (sPlayerbotAIConfig->tellWhenAvoidAoe && lastTellTimer < time(NULL) - 10)
@@ -1992,7 +2051,7 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
                 lastTellTimer = time(NULL);
                 lastMoveTimer = getMSTime();
                 std::ostringstream out;
-                out << "I'm avoiding " << name.str() << " (" << spellInfo->Id << ")" << " Radius " << radius << " - [Trap]";
+                out << "I'm avoiding " << name.str() << " (" << spellInfo->Id << ")" << " Radius " << radius;
                 bot->Say(out.str(), LANG_UNIVERSAL);
             }
             return true;

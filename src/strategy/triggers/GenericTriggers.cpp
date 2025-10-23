@@ -13,6 +13,7 @@
 #include "Item.h"
 #include "ItemVisitors.h"
 #include "LastSpellCastValue.h"
+#include "LootObjectStack.h"
 #include "ObjectGuid.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -210,10 +211,11 @@ bool NoTargetTrigger::IsActive()
         return false;
 
     // Conservative approach: Check priorities without recursive trigger calls
-    
+
     // Priority 1: Don't attack if loot is available (loot has 5.0f-8.0f priority)
     try {
-        if (AI_VALUE(bool, "has available loot"))
+        LootObject loot = AI_VALUE(LootObject, "loot target");
+        if (loot.IsLootPossible(bot))
             return false;
     }
     catch (...) {
@@ -231,7 +233,21 @@ bool NoTargetTrigger::IsActive()
     catch (...) {
         // If quest item lookup fails, continue
     }
-        
+
+    // Priority 3: Don't attack if performing critical RPG activities
+    try {
+        // Check if bot is wandering to NPCs (e.g., to sell/repair/clear bags)
+        if (botAI->rpgInfo.status == RPG_WANDER_NPC)
+            return false;
+
+        // Check if bot is going to camp (e.g., to rest/eat/drink)
+        if (botAI->rpgInfo.status == RPG_GO_CAMP)
+            return false;
+    }
+    catch (...) {
+        // If RPG info lookup fails, continue
+    }
+
     return true;
 }
 
