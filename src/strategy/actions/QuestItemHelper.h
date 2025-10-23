@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Define.h"
+#include <vector>
 
 class Item;
 class Player;
@@ -182,6 +183,28 @@ private:
      * @return true if creatures found that give KillCredit for the entry
      */
     static bool CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 killCreditEntry);
+
+    /**
+     * @brief Check if a creature entry is a trigger/credit bunny (invisible quest credit giver)
+     * @param creatureEntry Creature entry ID to check
+     * @return true if creature has CREATURE_FLAG_EXTRA_TRIGGER flag
+     */
+    static bool IsTriggerCreature(uint32 creatureEntry);
+
+    /**
+     * @brief Get valid target creature entries from spell conditions
+     * @param spellId Spell ID to query conditions for
+     * @return Vector of valid creature entry IDs that can be targeted by the spell
+     */
+    static std::vector<uint32> GetValidTargetEntriesFromSpellConditions(uint32 spellId);
+
+    /**
+     * @brief Check if any valid targets from spell conditions are nearby
+     * @param botAI Bot AI instance for accessing nearby creatures
+     * @param spellId Spell ID to check conditions for
+     * @return true if valid targets found nearby
+     */
+    static bool HasValidTargetsFromSpellConditions(PlayerbotAI* botAI, uint32 spellId);
 
     /**
      * @brief Find valid target for quest spell using database conditions

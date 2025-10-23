@@ -20,7 +20,7 @@ bool QuestItemUsableTrigger::IsActive()
 {
     Item* questItem = nullptr;
     uint32 spellId = 0;
-    
+
     // Check if we have a quest item with a spell
     questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
     if (!questItem)
@@ -28,11 +28,17 @@ bool QuestItemUsableTrigger::IsActive()
         return false;
     }
 
+    // Check if item is on cooldown
+    if (bot->HasSpellCooldown(spellId))
+    {
+        return false;
+    }
+
     // Check if there are valid targets for this quest item
     WorldObject* target = QuestItemHelper::FindBestTargetForQuestItem(botAI, spellId, questItem);
     bool hasValidTarget = (target != nullptr);
-    
-    
+
+
     return hasValidTarget;
 }
 

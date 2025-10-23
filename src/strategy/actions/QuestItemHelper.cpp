@@ -17,6 +17,7 @@
 #include "SpellInfo.h"
 #include "Unit.h"
 #include "DBCStores.h"
+#include <vector>
 
 Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
 {
@@ -1728,31 +1729,59 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                             
                             if (currentCount >= reqCount)
                                 continue; // This objective is complete
-                            
-                            // Check if we can find creatures matching this entry nearby
-                            if (IsNearCreature(botAI, requiredEntry, sPlayerbotAIConfig->grindDistance, false))
+
+                            // Check if requiredEntry is a trigger/credit bunny creature
+                            bool isTrigger = IsTriggerCreature(requiredEntry);
+
+                            if (isTrigger)
                             {
-                                foundPotentialTarget = true;
+                                // For trigger creatures, check if spell has valid targets defined in conditions
                                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                                 {
                                     std::ostringstream out;
-                                    out << "QuestItem: Found potential target (entry " << requiredEntry << ") for quest " << questId << " objective " << (int)i;
+                                    out << "QuestItem: Entry " << requiredEntry << " is a trigger creature, checking spell conditions for valid targets";
                                     botAI->TellMaster(out.str());
                                 }
-                                break;
+
+                                if (HasValidTargetsFromSpellConditions(botAI, spellId))
+                                {
+                                    foundPotentialTarget = true;
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: Found valid targets from spell conditions for trigger creature " << requiredEntry;
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
+                                }
                             }
-                            
-                            // ALSO check for creatures that give KillCredit for this entry (trigger creature system)
-                            if (CheckForKillCreditCreatures(botAI, requiredEntry))
+                            else
                             {
-                                foundPotentialTarget = true;
-                                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                // For regular creatures, check if we can find them nearby
+                                if (IsNearCreature(botAI, requiredEntry, sPlayerbotAIConfig->grindDistance, false))
                                 {
-                                    std::ostringstream out;
-                                    out << "QuestItem: Found KillCredit target for entry " << requiredEntry << " for quest " << questId << " objective " << (int)i;
-                                    botAI->TellMaster(out.str());
+                                    foundPotentialTarget = true;
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: Found potential target (entry " << requiredEntry << ") for quest " << questId << " objective " << (int)i;
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
                                 }
-                                break;
+
+                                // ALSO check for creatures that give KillCredit for this entry (trigger creature system)
+                                if (CheckForKillCreditCreatures(botAI, requiredEntry))
+                                {
+                                    foundPotentialTarget = true;
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: Found KillCredit target for entry " << requiredEntry << " for quest " << questId << " objective " << (int)i;
+                                        botAI->TellMaster(out.str());
+                                    }
+                                    break;
+                                }
                             }
                         }
                         
@@ -2203,6 +2232,120 @@ bool QuestItemHelper::CheckForKillCreditCreatures(PlayerbotAI* botAI, uint32 kil
     return false;
 }
 
+bool QuestItemHelper::IsTriggerCreature(uint32 creatureEntry)
+{
+    CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureEntry);
+    if (!creatureTemplate)
+        return false;
+
+    // Check if creature has CREATURE_FLAG_EXTRA_TRIGGER (0x80 = 128)
+    return (creatureTemplate->flags_extra & 0x80) != 0;
+}
+
+std::vector<uint32> QuestItemHelper::GetValidTargetEntriesFromSpellConditions(uint32 spellId)
+{
+    std::vector<uint32> validEntries;
+
+    // Query conditions for spell implicit targets (type 13) and spell casting (type 17)
+    ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL_IMPLICIT_TARGET, spellId);
+    ConditionList spellConditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, spellId);
+
+    // Merge both condition lists
+    conditions.insert(conditions.end(), spellConditions.begin(), spellConditions.end());
+
+    // Extract creature entries from CONDITION_OBJECT_ENTRY_GUID conditions
+    for (Condition const* condition : conditions)
+    {
+        if (condition->ConditionType == CONDITION_OBJECT_ENTRY_GUID)
+        {
+            // ConditionValue1 = TypeID (3 = TYPEID_UNIT)
+            // ConditionValue2 = creature entry
+            uint32 typeId = condition->ConditionValue1;
+            uint32 creatureEntry = condition->ConditionValue2;
+
+            // We only care about unit/creature entries (TYPEID_UNIT = 3)
+            if (typeId == 3 && creatureEntry > 0)
+            {
+                validEntries.push_back(creatureEntry);
+            }
+        }
+    }
+
+    return validEntries;
+}
+
+bool QuestItemHelper::HasValidTargetsFromSpellConditions(PlayerbotAI* botAI, uint32 spellId)
+{
+    if (!botAI)
+        return false;
+
+    Player* bot = botAI->GetBot();
+    if (!bot)
+        return false;
+
+    // Get valid target entries from spell conditions
+    std::vector<uint32> validEntries = GetValidTargetEntriesFromSpellConditions(spellId);
+
+    if (validEntries.empty())
+        return false;
+
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestItem: Spell " << spellId << " has " << validEntries.size() << " valid target entries from conditions";
+        botAI->TellMaster(out.str());
+    }
+
+    // Search for any of the valid target creatures nearby
+    GuidVector npcs = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+
+    for (ObjectGuid guid : npcs)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit)
+            continue;
+
+        uint32 unitEntry = unit->GetEntry();
+
+        // Check if this unit matches any valid entry
+        for (uint32 validEntry : validEntries)
+        {
+            if (unitEntry == validEntry)
+            {
+                // Skip if target already has the aura from this spell
+                if (unit->HasAura(spellId))
+                {
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Skipping " << unit->GetName() << " - already has aura " << spellId;
+                        botAI->TellMaster(out.str());
+                    }
+                    continue;
+                }
+
+                float distance = bot->GetDistance(unit);
+                if (distance <= sPlayerbotAIConfig->grindDistance)
+                {
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Found valid target from spell conditions: " << unit->GetName()
+                            << " (entry " << validEntry << ") at distance " << distance;
+                        botAI->TellMaster(out.str());
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+        botAI->TellMaster("QuestItem: No valid targets from spell conditions found nearby");
+
+    return false;
+}
+
 WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI, uint32 spellId)
 {
     if (!botAI)
@@ -2236,15 +2379,19 @@ WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI,
             botAI->TellMaster(out.str());
         }
         
-        if (condition->ConditionType == CONDITION_CREATURE_TYPE)
+        if (condition->ConditionType == CONDITION_OBJECT_ENTRY_GUID)
         {
-            uint32 requiredCreatureType = condition->ConditionValue1;
+            uint32 typeId = condition->ConditionValue1;
             uint32 requiredCreatureEntry = condition->ConditionValue2;
-            
+
+            // We only care about unit/creature entries (TYPEID_UNIT = 3)
+            if (typeId != 3)
+                continue;
+
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
             {
                 std::ostringstream out;
-                out << "QuestItem: Looking for creature type " << requiredCreatureType << " entry " << requiredCreatureEntry;
+                out << "QuestItem: Looking for creature entry " << requiredCreatureEntry;
                 botAI->TellMaster(out.str());
             }
             
@@ -2256,24 +2403,36 @@ WorldObject* QuestItemHelper::FindTargetUsingSpellConditions(PlayerbotAI* botAI,
                 Unit* target = botAI->GetUnit(guid);
                 if (!target || target->GetEntry() != requiredCreatureEntry)
                     continue;
-                    
+
+                // Skip if target already has the aura from this spell
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                if (spellInfo && target->HasAura(spellId))
+                {
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Skipping " << target->GetName() << " - already has aura " << spellId;
+                        botAI->TellMaster(out.str());
+                    }
+                    continue;
+                }
+
                 // Check distance using spell range with buffer for reliable casting
                 float distance = bot->GetDistance(target);
-                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
                 float maxDistance = spellInfo ? (spellInfo->GetMaxRange() - 2.0f) : (INTERACTION_DISTANCE - 2.0f);
                 if (maxDistance <= 0.0f)
                     maxDistance = 1.0f; // Minimum safe distance
-                
+
                 if (distance > maxDistance)
                     continue;
-                    
+
                 if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                 {
                     std::ostringstream out;
                     out << "QuestItem: Found required creature " << target->GetName() << " (entry " << requiredCreatureEntry << ") at distance " << distance << " (max: " << maxDistance << ")";
                     botAI->TellMaster(out.str());
                 }
-                
+
                 return target;
             }
         }

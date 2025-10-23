@@ -202,6 +202,27 @@ bool UseQuestItemOnTargetAction::UseQuestItemOnTarget(Item* item, WorldObject* t
     if (!unitTarget)
         return false;
 
+    // Check if spell requires facing the target
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (spellInfo && spellInfo->FacingCasterFlags & 0x1) // SPELL_FACING_FLAG_INFRONT
+    {
+        if (!bot->HasInArc(static_cast<float>(M_PI), unitTarget))
+        {
+            // Face the target before casting
+            bot->SetFacingToObject(unitTarget);
+            botAI->SetNextCheckDelay(sPlayerbotAIConfig->globalCoolDown);
+
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "Facing target " << unitTarget->GetName() << " before using quest item";
+                botAI->TellMaster(out.str());
+            }
+
+            return false;
+        }
+    }
+
     // For regular unit targets, use the original packet-based approach
     uint8 spell_index = 0;
     uint8 cast_count = 1;
