@@ -2495,9 +2495,10 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
         LOG_DEBUG("playerbots", "[New RPG] {} Smart fallback search for quest {}", bot->GetName(), questId);
     }
 
-    // Get nearby objects using reliable AI_VALUE calls
-    GuidVector nearbyNPCs = AI_VALUE(GuidVector, "nearest npcs");
-    GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
+    // Use far-range search (300y) to find quest objectives in caves/dungeons
+    // This allows bots to find objectives even when POI points to wrong location (e.g. surface above cave)
+    GuidVector nearbyNPCs = AI_VALUE(GuidVector, "far npcs");
+    GuidVector nearbyGOs = AI_VALUE(GuidVector, "far game objects no los");
 
     // Check direct kill credit requirements first
     for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)

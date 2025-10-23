@@ -103,7 +103,9 @@ public:
         creators["nearest game objects"] = &ValueContext::nearest_game_objects;
         creators["nearest game objects no los"] = &ValueContext::nearest_game_objects_no_los;
         creators["closest game objects"] = &ValueContext::closest_game_objects;
+        creators["far game objects no los"] = &ValueContext::far_game_objects_no_los;
         creators["nearest npcs"] = &ValueContext::nearest_npcs;
+        creators["far npcs"] = &ValueContext::far_npcs;
         creators["nearest hostile npcs"] = &ValueContext::nearest_hostile_npcs;
         creators["nearest totems"] = &ValueContext::nearest_totems;
         creators["nearest vehicles"] = &ValueContext::nearest_vehicles;
@@ -399,8 +401,18 @@ private:
     {
         return new NearestGameObjects(botAI, INTERACTION_DISTANCE);
     }
+    static UntypedValue* far_game_objects_no_los(PlayerbotAI* botAI)
+    {
+        // 300 yard search range, ignores LOS - useful for finding objects in caves/buildings
+        return new NearestGameObjects(botAI, 300.0f, true);
+    }
     static UntypedValue* log_level(PlayerbotAI* botAI) { return new LogLevelValue(botAI); }
     static UntypedValue* nearest_npcs(PlayerbotAI* botAI) { return new NearestNpcsValue(botAI); }
+    static UntypedValue* far_npcs(PlayerbotAI* botAI)
+    {
+        // 300 yard search range - useful for finding NPCs in caves/buildings
+        return new NearestNpcsValue(botAI, 300.0f);
+    }
     static UntypedValue* nearest_hostile_npcs(PlayerbotAI* botAI) { return new NearestHostileNpcsValue(botAI); }
     static UntypedValue* nearest_totems(PlayerbotAI* botAI) { return new NearestTotemsValue(botAI); }
     static UntypedValue* nearest_vehicles(PlayerbotAI* botAI) { return new NearestVehiclesValue(botAI); }
