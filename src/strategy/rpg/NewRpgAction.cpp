@@ -512,34 +512,49 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     {
         int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
 
-        // check if the objective has completed
-        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
-        bool completed = true;
-
-        if (currentObjective < QUEST_OBJECTIVES_COUNT)
+        // For area triggers (encoded as negative), skip objective tracking - server handles completion automatically
+        // The main Execute() function will detect quest completion via bot->GetQuestStatus() and route to DoCompletedQuest()
+        if (currentObjective < -100)
         {
-            if (q_status.CreatureOrGOCount[currentObjective] < quest->RequiredNpcOrGoCount[currentObjective])
-                completed = false;
-        }
-        else if (currentObjective < QUEST_OBJECTIVES_COUNT + QUEST_ITEM_OBJECTIVES_COUNT)
-        {
-            if (q_status.ItemCount[currentObjective - QUEST_OBJECTIVES_COUNT] <
-                quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
-                completed = false;
-        }
-
-        // the current objective is completed, clear and find a new objective later
-        if (completed)
-        {
+            // Area trigger quest - don't try to check individual objectives
+            // Just let the server's area trigger completion update the quest status
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Objective completed, clearing quest state for quest {}", 
+                LOG_DEBUG("playerbots", "[New RPG] {} Area trigger quest {} - waiting for server completion",
                           bot->GetName(), questId);
             }
-            botAI->rpgInfo.do_quest.lastReachPOI = 0;
-            botAI->rpgInfo.do_quest.pos = WorldPosition();
-            botAI->rpgInfo.do_quest.objectiveIdx = 0;
+        }
+        else
+        {
+            // Regular quest objective checking
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+            bool completed = true;
+
+            if (currentObjective < QUEST_OBJECTIVES_COUNT)
+            {
+                if (q_status.CreatureOrGOCount[currentObjective] < quest->RequiredNpcOrGoCount[currentObjective])
+                    completed = false;
+            }
+            else if (currentObjective < QUEST_OBJECTIVES_COUNT + QUEST_ITEM_OBJECTIVES_COUNT)
+            {
+                if (q_status.ItemCount[currentObjective - QUEST_OBJECTIVES_COUNT] <
+                    quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
+                    completed = false;
+            }
+
+            // the current objective is completed, clear and find a new objective later
+            if (completed)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Objective completed, clearing quest state for quest {}",
+                              bot->GetName(), questId);
+                }
+                botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                botAI->rpgInfo.do_quest.pos = WorldPosition();
+                botAI->rpgInfo.do_quest.objectiveIdx = 0;
+            }
         }
     }
 
@@ -550,26 +565,62 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
         if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
             uint32 rndIdx = urand(0, poiInfo.size() - 1);
-            G3D::Vector2 nearestPoi = poiInfo[rndIdx].pos;
-            int32 objectiveIdx = poiInfo[rndIdx].objectiveIdx;
+            POIInfo& selectedPOI = poiInfo[rndIdx];
+            G3D::Vector2 nearestPoi = selectedPOI.pos;
+            int32 objectiveIdx = selectedPOI.objectiveIdx;
 
             float dx = nearestPoi.x, dy = nearestPoi.y;
-            
-            // Use upstream's clean approach - no fancy Z calculations
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
-                               bot->GetMap()->GetWaterLevel(dx, dy));
+            float dz;
+
+            // Check if this POI has a specific Z coordinate (e.g., area triggers)
+            if (selectedPOI.useExactZ)
+            {
+                // Use the exact Z coordinate from the POI (for area triggers in mines, caves, etc.)
+                dz = selectedPOI.z;
+
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Using exact Z coordinate {} from area trigger POI",
+                             bot->GetName(), dz);
+                }
+            }
+            else
+            {
+                // Calculate Z from ground/water level for regular polygon POIs
+                dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
+                             bot->GetMap()->GetWaterLevel(dx, dy));
+            }
 
             if (dz != INVALID_HEIGHT && dz != VMAP_INVALID_HEIGHT_VALUE)
             {
                 WorldPosition pos(bot->GetMapId(), dx, dy, dz);
                 botAI->rpgInfo.do_quest.lastReachPOI = 0;
                 botAI->rpgInfo.do_quest.pos = pos;
-                botAI->rpgInfo.do_quest.objectiveIdx = objectiveIdx;
-                
-                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+
+                // For area triggers, use the radius as objectiveIdx's sign to indicate special handling
+                // Store as negative to signal "move to exact coordinates" vs "move within 10 yards"
+                if (selectedPOI.radius > 0.0f)
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} Set POI position for quest {} at ({}, {}, {})", 
-                              bot->GetName(), questId, dx, dy, dz);
+                    // Area trigger: store radius as-(objectiveIdx + 100) to encode both values
+                    // We'll decode this later to know it's an area trigger with specific radius
+                    botAI->rpgInfo.do_quest.objectiveIdx = -(int32)(selectedPOI.radius * 10.0f + 1000); // Encode radius * 10 + offset
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Set area trigger POI position for quest {} at ({}, {}, {}) - must enter radius {} (encoded as {})",
+                                 bot->GetName(), questId, dx, dy, dz, selectedPOI.radius, botAI->rpgInfo.do_quest.objectiveIdx);
+                    }
+                }
+                else
+                {
+                    // Regular POI
+                    botAI->rpgInfo.do_quest.objectiveIdx = objectiveIdx;
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Set POI position for quest {} at ({}, {}, {})",
+                                  bot->GetName(), questId, dx, dy, dz);
+                    }
                 }
             }
         }
@@ -598,7 +649,23 @@ bool NewRpgDoQuestAction::DoIncompleteQuest()
     }
 
     // Use upstream movement logic - already uses MoveFarTo for proper pathing
-    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > 10.0f && !botAI->rpgInfo.do_quest.lastReachPOI)
+    // Check if this is an area trigger (encoded as negative objectiveIdx)
+    float movementTolerance = 10.0f;
+    if (botAI->rpgInfo.do_quest.objectiveIdx < -100)
+    {
+        // Decode area trigger radius from negative objectiveIdx
+        float radius = (float)(-(botAI->rpgInfo.do_quest.objectiveIdx + 1000)) / 10.0f;
+        // Move to half the radius to ensure we enter the trigger zone
+        movementTolerance = std::max(2.0f, radius * 0.5f);
+
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Area trigger detected, using movement tolerance {} (radius {})",
+                     bot->GetName(), movementTolerance, radius);
+        }
+    }
+
+    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > movementTolerance && !botAI->rpgInfo.do_quest.lastReachPOI)
     {
         return MoveFarTo(botAI->rpgInfo.do_quest.pos);
     }

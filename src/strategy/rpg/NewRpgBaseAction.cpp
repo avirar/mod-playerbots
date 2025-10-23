@@ -1824,7 +1824,14 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
                 continue;
 
-            poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
+            // Create POI entry for quest completion (toComplete=true means going to turn in quest)
+            POIInfo completionPOI;
+            completionPOI.pos = {dx, dy};
+            completionPOI.objectiveIdx = qPoi.ObjectiveIndex;
+            completionPOI.z = 0.0f;
+            completionPOI.useExactZ = false;
+            completionPOI.radius = 0.0f;
+            poiInfo.push_back(completionPOI);
         }
 
         if (poiInfo.empty())
@@ -1908,37 +1915,49 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float radius = fields[3].Get<float>();
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB", bot->GetName());
+                LOG_DEBUG("playerbots", "[New RPG] {} Exploration Area Trigger data retrieved from DB: x={}, y={}, z={}, radius={}",
+                         bot->GetName(), x, y, z, radius);
             }
-            // Use the center of the area trigger as POI
-            float dz = std::max(bot->GetMap()->GetHeight(x, y, MAX_HEIGHT), 
-                               bot->GetMap()->GetWaterLevel(x, y));
+
+            // Use the area trigger's actual Z coordinate from the database, not ground-level height
+            // This is critical for area triggers in mines, caves, or elevated locations
+            float dz = z;
+
+            // Verify the Z coordinate is valid
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             {
                 if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
                 {
-                    LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z for area trigger at ({}, {})", bot->GetName(), x, y);
+                    LOG_DEBUG("playerbots", "[New RPG] {} Invalid Z from area trigger database at ({}, {})", bot->GetName(), x, y);
                 }
                 continue;
             }
 
-            uint32 botZone = bot->GetZoneId();
-            uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), x, y, dz);
-
-            if (botZone != poiZone)
+            // For area triggers, don't reject based on zone mismatch
+            // The bot may need to travel from outside the zone TO the area trigger
+            // Only verify we're on the same map (already checked above)
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
-                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
-                {
-                    LOG_DEBUG("playerbots", "[New RPG] {} Zone mismatch for area trigger POI", bot->GetName());
-                }
-                continue;
+                uint32 botZone = bot->GetZoneId();
+                uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), x, y, dz);
+                LOG_DEBUG("playerbots", "[New RPG] {} Area trigger zone: {} (bot zone: {})",
+                         bot->GetName(), poiZone, botZone);
             }
 
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} POI accepted (AreaTrigger): {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, x, y, dz);
+                LOG_DEBUG("playerbots", "[New RPG] {} POI accepted (AreaTrigger): {} at ({}, {}, {}) with radius {}",
+                         bot->GetName(), qPoi.ObjectiveIndex, x, y, dz, radius);
             }
-            poiInfo.push_back({{x, y}, qPoi.ObjectiveIndex});
+
+            // Store area trigger POI with exact Z coordinate and radius from database
+            POIInfo triggerPOI;
+            triggerPOI.pos = {x, y};
+            triggerPOI.objectiveIdx = qPoi.ObjectiveIndex;
+            triggerPOI.z = dz;
+            triggerPOI.useExactZ = true;  // Use this exact Z instead of recalculating from ground height
+            triggerPOI.radius = radius;   // Store radius so bot can move close enough to enter trigger
+            poiInfo.push_back(triggerPOI);
             inComplete = true;
         }
         else
@@ -2015,7 +2034,15 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         {
             LOG_DEBUG("playerbots", "[New RPG] {} POI accepted: {} at ({}, {}, {})", bot->GetName(), qPoi.ObjectiveIndex, randomX, randomY, dz);
         }
-        poiInfo.push_back({{randomX, randomY}, qPoi.ObjectiveIndex});
+
+        // Create POI entry for regular quest objective
+        POIInfo regularPOI;
+        regularPOI.pos = {randomX, randomY};
+        regularPOI.objectiveIdx = qPoi.ObjectiveIndex;
+        regularPOI.z = 0.0f;
+        regularPOI.useExactZ = false;
+        regularPOI.radius = 0.0f;
+        poiInfo.push_back(regularPOI);
     }
 
 

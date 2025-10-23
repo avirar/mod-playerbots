@@ -15,8 +15,13 @@
 
 struct POIInfo
 {
-    G3D::Vector2 pos;
-    int32 objectiveIdx;
+    G3D::Vector2 pos;         // x, y coordinates
+    int32 objectiveIdx;       // Objective index (16 for exploration)
+    float z;                  // Optional Z coordinate (0.0f = not set, use ground level)
+    bool useExactZ;           // If true, use the specified Z coordinate instead of recalculating from ground height
+    float radius;             // For area triggers, the radius to enter (0.0f = not an area trigger)
+
+    POIInfo() : objectiveIdx(0), z(0.0f), useExactZ(false), radius(0.0f) {}
 };
 
 /// A base (composition) class for all new rpg actions
