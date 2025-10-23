@@ -290,29 +290,19 @@ void EquipAction::EquipItem(Item* item)
                     bool betterThanFirst = newItemScore > firstItemScore;
                     bool betterThanSecond = newItemScore > secondItemScore;
 
+                    // Early return if new item is not better than either equipped item
+                    if (!betterThanFirst && !betterThanSecond)
+                        return;
+
                     if (betterThanFirst && betterThanSecond)
                     {
                         // New item is better than both - replace the worse of the two equipped items
                         if (firstItemScore > secondItemScore)
-                        {
                             dstSlot++; // Replace second slot (worse)
-                        }
                         // else: keep dstSlot as-is (replace first slot)
                     }
-                    else if (betterThanSecond && !betterThanFirst)
-                    {
-                        // Only better than second slot - replace it
-                        dstSlot++;
-                    }
-                    else if (betterThanFirst && !betterThanSecond)
-                    {
-                        // Only better than first slot - replace it (dstSlot already points to it)
-                    }
-                    else
-                    {
-                        // New item is not better than either equipped item - don't equip
-                        return;
-                    }
+                    else if (betterThanSecond)
+                        dstSlot++; // Only better than second slot - replace it
                 }
                 else
                 {
