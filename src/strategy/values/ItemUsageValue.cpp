@@ -7,6 +7,8 @@
 
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "DBCStores.h"
+#include "DBCStructure.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "LootObjectStack.h"
@@ -15,7 +17,10 @@
 #include "Playerbots.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
+#include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include <set>
+#include <sstream>
 
 ItemUsage ItemUsageValue::Calculate()
 {
@@ -595,16 +600,22 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
                 // For items with PLAYERCAST flag, use the existing detailed check
                 if (proto->Flags & ITEM_FLAG_PLAYERCAST)
                 {
+                    // First check if this is a key that unlocks a chest with quest items
+                    if (DoesKeyUnlockQuestChest(player, proto))
+                    {
+                        return true;
+                    }
+
                     bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
-                    
+
                     if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
                     {
                         std::ostringstream out;
-                        out << "QuestLoot: PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                        out << "QuestLoot: PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId
                             << " needed: " << (neededForQuest ? "YES" : "NO");
                         debugAI->TellMaster(out.str());
                     }
-                    
+
                     if (neededForQuest)
                     {
                         return ITEM_USAGE_QUEST;
@@ -747,6 +758,119 @@ bool ItemUsageValue::IsPlayerCastItemNeededForActiveQuests(Player* player, ItemT
     }
     
     return false; // No active quests need this item
+}
+
+bool ItemUsageValue::DoesKeyUnlockQuestChest(Player* player, ItemTemplate const* proto)
+{
+    // This function checks if a quest item (key) is needed to unlock GameObjects (chests)
+    // that contain items required for active quests
+    //
+    // The logic flow is:
+    // 1. Get all required items from active incomplete quests
+    // 2. Find locks in Lock DBC that require THIS specific key item
+    // 3. Query database for chests using those locks that drop required quest items
+    // 4. Return true only if this key actually opens a chest with needed quest loot
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+    if (!botAI)
+        return false;
+
+    // Step 1: Find all active quests and collect items still needed
+    std::set<uint32> requiredItemIds;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = player->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Skip completed quests
+        QuestStatus questStatus = player->GetQuestStatus(questId);
+        if (questStatus == QUEST_STATUS_COMPLETE || questStatus == QUEST_STATUS_NONE)
+            continue;
+
+        // Collect items that are still needed (don't have enough of)
+        for (uint8 i = 0; i < 4; i++)
+        {
+            if (quest->RequiredItemId[i] > 0)
+            {
+                ItemTemplate const* requiredItem = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]);
+                if (!requiredItem)
+                    continue;
+
+                uint32 currentCount = AI_VALUE2(uint32, "item count", requiredItem->Name1);
+                if (currentCount < quest->RequiredItemCount[i])
+                {
+                    requiredItemIds.insert(quest->RequiredItemId[i]);
+                }
+            }
+        }
+    }
+
+    // If no quest items are needed, this key can't help with quests
+    if (requiredItemIds.empty())
+        return false;
+
+    // Step 2: Find locks in Lock DBC that require THIS specific key item
+    std::vector<uint32> matchingLockIds;
+    uint32 numLocks = sLockStore.GetNumRows();
+
+    for (uint32 lockId = 0; lockId < numLocks; ++lockId)
+    {
+        LockEntry const* lockEntry = sLockStore.LookupEntry(lockId);
+        if (!lockEntry)
+            continue;
+
+        // Check all 8 lock cases
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+        {
+            if (lockEntry->Type[i] == LOCK_KEY_ITEM &&
+                lockEntry->Index[i] == proto->ItemId)
+            {
+                matchingLockIds.push_back(lockId);
+                break; // Found this lock uses our key, move to next lock
+            }
+        }
+    }
+
+    if (matchingLockIds.empty())
+        return false; // This key doesn't open any locks
+
+    // Step 3: Build SQL query to check if those locks are on chests with quest loot
+    std::ostringstream lockList, itemList;
+
+    bool firstLock = true;
+    for (uint32 lockId : matchingLockIds)
+    {
+        if (!firstLock)
+            lockList << ",";
+        lockList << lockId;
+        firstLock = false;
+    }
+
+    bool firstItem = true;
+    for (uint32 itemId : requiredItemIds)
+    {
+        if (!firstItem)
+            itemList << ",";
+        itemList << itemId;
+        firstItem = false;
+    }
+
+    // Query to verify this key opens a chest that contains required quest items
+    std::string query =
+        "SELECT 1 FROM gameobject_template gt "
+        "INNER JOIN gameobject_loot_template glt ON gt.Data1 = glt.Entry "
+        "WHERE gt.type IN (3, 10) "           // Type 3 = CHEST, Type 10 = GOOBER
+        "AND gt.Data0 IN (" + lockList.str() + ") "  // Locks that require THIS key
+        "AND glt.Item IN (" + itemList.str() + ") "  // Items needed for active quests
+        "LIMIT 1";
+
+    QueryResult result = WorldDatabase.Query(query.c_str());
+    return result != nullptr;  // True only if this key opens a chest with quest loot
 }
 
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
