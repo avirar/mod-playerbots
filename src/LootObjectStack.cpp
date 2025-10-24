@@ -59,6 +59,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     skillId = SKILL_NONE;
     reqSkillValue = 0;
     reqItem = 0;
+    isAccessible = false;
     guid.Clear();
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
@@ -83,6 +84,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
         {
             guid = lootGUID;
+            isAccessible = true;  // FIX: Mark creature loot as accessible
             if (debugLoot)
                 botAI->TellMaster("LootRefresh: Creature is lootable");
         }
@@ -101,10 +103,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (botAI->HasSkill((SkillType)skillId) && bot->GetSkillValue(skillId) >= reqSkillValue)
             {
                 guid = lootGUID;
+                isAccessible = true;  // FIX: Mark skinnable creature as accessible
                 if (debugLoot)
                 {
                     std::ostringstream out;
-                    out << "LootRefresh: Creature skinnable with skill " << skillId 
+                    out << "LootRefresh: Creature skinnable with skill " << skillId
                         << " (req: " << reqSkillValue << ", have: " << bot->GetSkillValue(skillId) << ")";
                     botAI->TellMaster(out.str());
                 }
@@ -136,6 +139,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
         bool hasNeededQuestItem = false;
+        bool hasAnyLootableItem = false;  // Track if there's at least one item bot can loot
 
         GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
         for (size_t i = 0; i < MAX_GAMEOBJECT_QUEST_ITEMS; i++)
@@ -210,6 +214,28 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     onlyHasQuestItems = false;
                 }
 
+                // FIX: Check if bot already has MaxCount of this item (Unique limit)
+                uint32 maxCount = proto->MaxCount;
+                if (maxCount == 0 || !bot->HasItemCount(itemId, maxCount, true))
+                {
+                    // Bot doesn't have max count, so this item is lootable
+                    hasAnyLootableItem = true;
+                    if (debugLoot)
+                    {
+                        std::ostringstream out;
+                        out << "LootRefresh: Found lootable item " << proto->Name1 << " (ID: " << itemId << ")";
+                        if (maxCount > 0)
+                            out << " - bot has " << bot->GetItemCount(itemId, true) << "/" << maxCount;
+                        botAI->TellMaster(out.str());
+                    }
+                }
+                else if (debugLoot)
+                {
+                    std::ostringstream out;
+                    out << "LootRefresh: Skipping item " << proto->Name1 << " (ID: " << itemId << ") - already have max (" << maxCount << ")";
+                    botAI->TellMaster(out.str());
+                }
+
                 // If this item references another loot table, process it
                 if (const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
                 {
@@ -230,6 +256,27 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         {
                             onlyHasQuestItems = false;
                         }
+
+                        // FIX: Check MaxCount for referenced items too
+                        uint32 refMaxCount = refProto->MaxCount;
+                        if (refMaxCount == 0 || !bot->HasItemCount(refItemId, refMaxCount, true))
+                        {
+                            hasAnyLootableItem = true;
+                            if (debugLoot)
+                            {
+                                std::ostringstream out;
+                                out << "LootRefresh: Found lootable referenced item " << refProto->Name1 << " (ID: " << refItemId << ")";
+                                if (refMaxCount > 0)
+                                    out << " - bot has " << bot->GetItemCount(refItemId, true) << "/" << refMaxCount;
+                                botAI->TellMaster(out.str());
+                            }
+                        }
+                        else if (debugLoot)
+                        {
+                            std::ostringstream out;
+                            out << "LootRefresh: Skipping referenced item " << refProto->Name1 << " (ID: " << refItemId << ") - already have max (" << refMaxCount << ")";
+                            botAI->TellMaster(out.str());
+                        }
                     }
                 }
             }
@@ -238,6 +285,16 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // If gameobject has only quest items that bot doesn't need, skip it.
         if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
         {
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Gameobject has only unneeded quest items - skipping");
+            return;
+        }
+
+        // FIX: If gameobject has no lootable items (all maxcount reached), skip it.
+        if (!hasAnyLootableItem && !hasNeededQuestItem)
+        {
+            if (debugLoot)
+                botAI->TellMaster("LootRefresh: Gameobject has no lootable items (all unique limits reached) - skipping");
             return;
         }
 
@@ -497,10 +554,10 @@ bool LootObject::IsAccessibleLockType(LockType lockType)
     switch (lockType)
     {
         case LOCKTYPE_OPEN:                    // 5  - Basic opening
-        case LOCKTYPE_TREASURE:                // 6  - Treasure chests  
+        case LOCKTYPE_TREASURE:                // 6  - Treasure chests
         case LOCKTYPE_CLOSE:                   // 8  - Closing objects
         case LOCKTYPE_QUICK_OPEN:              // 10 - Quick opening
-        case LOCKTYPE_QUICK_CLOSE:             // 11 - Quick closing  
+        case LOCKTYPE_QUICK_CLOSE:             // 11 - Quick closing
         case LOCKTYPE_OPEN_TINKERING:          // 12 - Engineering opening
         case LOCKTYPE_OPEN_KNEELING:           // 13 - Kneeling opening (quest objects)
         case LOCKTYPE_OPEN_ATTACKING:          // 14 - Combat opening
@@ -509,15 +566,15 @@ bool LootObject::IsAccessibleLockType(LockType lockType)
         case LOCKTYPE_SLOW_CLOSE:              // 18 - Slow closing (visual effect)
         case LOCKTYPE_OPEN_FROM_VEHICLE:       // 21 - Vehicle opening
             return true;
-            
+
         // These lock types should NOT be accessible without proper skills/items
         case LOCKTYPE_PICKLOCK:                // 1  - Requires lockpicking skill
-        case LOCKTYPE_HERBALISM:               // 2  - Requires herbalism skill  
+        case LOCKTYPE_HERBALISM:               // 2  - Requires herbalism skill
         case LOCKTYPE_MINING:                  // 3  - Requires mining skill
         case LOCKTYPE_DISARM_TRAP:             // 4  - Requires trap disarming (not implemented)
         case LOCKTYPE_CALCIFIED_ELVEN_GEMS:    // 7  - Special case (not implemented)
         case LOCKTYPE_ARM_TRAP:                // 9  - Trap arming (not implemented)
-        case LOCKTYPE_GAHZRIDIAN:              // 15 - Special case (not implemented)  
+        case LOCKTYPE_GAHZRIDIAN:              // 15 - Special case (not implemented)
         case LOCKTYPE_FISHING:                 // 19 - Requires fishing skill
         case LOCKTYPE_INSCRIPTION:             // 20 - Requires inscription skill
         default:
@@ -525,15 +582,47 @@ bool LootObject::IsAccessibleLockType(LockType lockType)
     }
 }
 
+bool LootObject::IsStillValid(Player* bot) const
+{
+    if (IsEmpty())
+        return false;
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return false;
+
+    // Check if creature is still valid and lootable (without modifying state)
+    Creature* creature = botAI->GetCreature(guid);
+    if (creature && creature->getDeathState() == DeathState::Corpse)
+    {
+        // Check if still lootable or skinnable
+        if (creature->HasFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE))
+            return true;
+
+        if (creature->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE) && skillId != SKILL_NONE)
+            return true;
+    }
+
+    // Check if game object is still valid and spawned (without modifying state)
+    GameObject* go = botAI->GetGameObject(guid);
+    if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
+        return true;
+
+    return false;
+}
+
 WorldObject* LootObject::GetWorldObject(Player* bot)
 {
-    Refresh(bot, guid);
+    // Check if loot is still valid without modifying state
+    if (!IsStillValid(bot))
+        return nullptr;
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
     {
         return nullptr;
     }
+
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse && creature->IsInWorld())
         return creature;
@@ -850,6 +939,10 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
         if (IsPartiallyLooted(guid))
             continue;
 
+        // Skip pending loot (safety check - shouldn't happen with MarkAsPending fix, but belt & suspenders)
+        if (IsPending(guid))
+            continue;
+
         WorldObject* worldObj = ObjectAccessor::GetWorldObject(*bot, guid);
         if (!worldObj)
             continue;
@@ -907,8 +1000,9 @@ void LootObjectStack::MarkAsPending(ObjectGuid guid)
 {
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
 
-    // Add to pending loot list
+    // Add to pending loot list AND remove from available loot
     pendingLoot.insert(LootTarget(guid));
+    availableLoot.erase(guid);  // FIX: Prevent duplicate selection
 
     if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {

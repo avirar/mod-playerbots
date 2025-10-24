@@ -2676,7 +2676,23 @@ bool MoveToLootAction::Execute(Event event)
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
     if (!loot.IsLootPossible(bot))
+    {
+        // FIX: Clear loot target immediately when we can't loot it
+        // This prevents bot from walking away while loot target is stuck
+        if (!loot.IsEmpty())
+        {
+            if (!loot.IsStillValid(bot))
+            {
+                // Loot is no longer valid, mark as completed to remove from pending
+                AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(loot.guid);
+            }
+            // else: loot is still valid but not reachable right now, leave in pending for timeout
+
+            // IMPORTANT: Clear the loot target value regardless, so bot doesn't get stuck
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+        }
         return false;
+    }
 
     return MoveNear(loot.GetWorldObject(bot), sPlayerbotAIConfig->contactDistance);
 }

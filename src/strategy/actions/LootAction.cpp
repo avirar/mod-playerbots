@@ -44,6 +44,9 @@ bool LootAction::Execute(Event /*event*/)
     else
     {
         context->GetValue<LootObject>("loot target")->Set(lootObject);
+        // FIX: Mark as pending immediately when target is set, not just when OpenLootAction succeeds
+        // This ensures loot is tracked even if bot gets interrupted by combat or other actions
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
         return true;
     }
 }
@@ -76,9 +79,20 @@ bool OpenLootAction::Execute(Event /*event*/)
     bool result = DoLoot(lootObject);
     if (result)
     {
-        // Mark as pending instead of removing immediately
-        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
+        // Loot is already marked as pending by LootAction::Execute
+        // Just clear the loot target since we successfully started opening it
         context->GetValue<LootObject>("loot target")->Set(LootObject());
+    }
+    else if (!lootObject.IsEmpty())
+    {
+        // FIX: If DoLoot failed, check if loot is still valid
+        if (!lootObject.IsStillValid(bot))
+        {
+            // Loot is no longer valid, mark as completed to remove from pending
+            AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(lootObject.guid);
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+        }
+        // else: loot is still valid but we couldn't open it, leave it pending for timeout
     }
     return result;
 }
