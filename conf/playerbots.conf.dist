@@ -827,6 +827,11 @@ AiPlayerbot.AutoLearnTrainerSpells = 1
 # Default: 1 (enabled)
 AiPlayerbot.AutoPickTalents = 1
 
+# Player-controlled bots (e.g., "playerbots bot self") automatically spend talent points on levelup
+# This is separate from AiPlayerbot.AutoPickTalents which applies to random bots
+# Default: 0 (disabled) - players typically want manual control over their own character's talents
+AiPlayerbot.AutoPickTalentsForPlayerBots = 0
+
 # Spells every randombot will learn automatically and every altbot will learn with maintenance (54197 - cold weather flying)
 AiPlayerbot.RandomBotSpellIds = "54197"
 

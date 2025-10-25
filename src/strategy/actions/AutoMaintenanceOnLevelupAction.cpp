@@ -33,7 +33,10 @@ void AutoMaintenanceOnLevelupAction::AutoTeleportForLevel()
 
 void AutoMaintenanceOnLevelupAction::AutoPickTalents()
 {
-    if (!sPlayerbotAIConfig->autoPickTalents || !sRandomPlayerbotMgr->IsRandomBot(bot))
+    bool isRandomBot = sRandomPlayerbotMgr->IsRandomBot(bot);
+    bool allowPlayerBotTalents = sPlayerbotAIConfig->autoPickTalentsForPlayerBots && !isRandomBot;
+
+    if (!sPlayerbotAIConfig->autoPickTalents || !(isRandomBot || allowPlayerBotTalents))
         return;
 
     if (bot->GetFreeTalentPoints() <= 0)
