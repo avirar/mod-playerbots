@@ -3505,9 +3505,25 @@ void RandomPlayerbotMgr::PrintStats()
                  rpgStatusCount[RPG_DO_QUEST], rpgStatusCount[RPG_TRAVEL_FLIGHT]);
 
         LOG_INFO("playerbots", "Bots total quests:");
-        LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}", rpgStasticTotal.questAccepted,
-                 rpgStasticTotal.questCompleted, rpgStasticTotal.questRewarded);
-        LOG_INFO("playerbots", "    Abandoned: {}, Dropped: {}", rpgStasticTotal.questAbandoned, rpgStasticTotal.questDropped);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Accepted:", rpgStasticTotal.questAccepted);
+        if (rpgStasticTotal.questAccepted > 0)
+        {
+            float completedPct = (rpgStasticTotal.questCompleted * 100.0f) / rpgStasticTotal.questAccepted;
+            float rewardedPct = (rpgStasticTotal.questRewarded * 100.0f) / rpgStasticTotal.questAccepted;
+            float abandonedPct = (rpgStasticTotal.questAbandoned * 100.0f) / rpgStasticTotal.questAccepted;
+            float droppedPct = (rpgStasticTotal.questDropped * 100.0f) / rpgStasticTotal.questAccepted;
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Completed:", rpgStasticTotal.questCompleted, completedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Rewarded:", rpgStasticTotal.questRewarded, rewardedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Abandoned:", rpgStasticTotal.questAbandoned, abandonedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Dropped:", rpgStasticTotal.questDropped, droppedPct);
+        }
+        else
+        {
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Completed:", rpgStasticTotal.questCompleted);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Rewarded:", rpgStasticTotal.questRewarded);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Abandoned:", rpgStasticTotal.questAbandoned);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Dropped:", rpgStasticTotal.questDropped);
+        }
         
         // Show drop/abandon reasons
         if (!rpgStasticTotal.questDropReasons.empty())
@@ -3637,9 +3653,25 @@ void RandomPlayerbotMgr::PrintQuestStats()
     LOG_INFO("playerbots", "=== QUEST STATISTICS REPORT ===");
     LOG_INFO("playerbots", "");
     LOG_INFO("playerbots", "Bots total quests:");
-    LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}", rpgStasticTotal.questAccepted,
-             rpgStasticTotal.questCompleted, rpgStasticTotal.questRewarded);
-    LOG_INFO("playerbots", "    Abandoned: {}, Dropped: {}", rpgStasticTotal.questAbandoned, rpgStasticTotal.questDropped);
+    LOG_INFO("playerbots", "    {:10} {:>5}", "Accepted:", rpgStasticTotal.questAccepted);
+    if (rpgStasticTotal.questAccepted > 0)
+    {
+        float completedPct = (rpgStasticTotal.questCompleted * 100.0f) / rpgStasticTotal.questAccepted;
+        float rewardedPct = (rpgStasticTotal.questRewarded * 100.0f) / rpgStasticTotal.questAccepted;
+        float abandonedPct = (rpgStasticTotal.questAbandoned * 100.0f) / rpgStasticTotal.questAccepted;
+        float droppedPct = (rpgStasticTotal.questDropped * 100.0f) / rpgStasticTotal.questAccepted;
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Completed:", rpgStasticTotal.questCompleted, completedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Rewarded:", rpgStasticTotal.questRewarded, rewardedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Abandoned:", rpgStasticTotal.questAbandoned, abandonedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Dropped:", rpgStasticTotal.questDropped, droppedPct);
+    }
+    else
+    {
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Completed:", rpgStasticTotal.questCompleted);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Rewarded:", rpgStasticTotal.questRewarded);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Abandoned:", rpgStasticTotal.questAbandoned);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Dropped:", rpgStasticTotal.questDropped);
+    }
     LOG_INFO("playerbots", "");
 
     // Show drop/abandon reasons
