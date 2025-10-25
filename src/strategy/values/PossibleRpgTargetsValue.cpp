@@ -310,19 +310,61 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
                         if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}",
                                       bot->GetName(), trainer->GetName());
                         return false; // Reject this trainer entirely
                     }
                     else
                     {
                         if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}",
                                       bot->GetName(), trainer->GetName());
                     }
                 }
             }
             return true;
+        }
+    }
+
+    // Filter out combat creatures without NPC flags before checking quest objectives (Option 1)
+    // This prevents bots from moving toward neutral enemies like Kobold Vermin/Worker
+    if (unit->GetTypeId() == TYPEID_UNIT)
+    {
+        Creature* creature = unit->ToCreature();
+        if (creature)
+        {
+            CreatureTemplate const* cInfo = creature->GetCreatureTemplate();
+
+            // If the creature has no NPC interaction flags, apply stricter filtering
+            if (cInfo->npcflag == 0)
+            {
+                // Reject critters (type 8) - they're never valid RPG targets
+                if (cInfo->type == CREATURE_TYPE_CRITTER)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting critter: {}",
+                                  bot->GetName(), creature->GetName());
+                    return false;
+                }
+
+                // Reject low-level combat creatures (beasts and humanoids) without NPC flags
+                // These are typically starting zone enemies like Kobolds, Wolves, Young Boars, etc.
+                if (cInfo->type == CREATURE_TYPE_BEAST && creature->GetLevel() <= 15)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting low-level beast without NPC flags: {} (level {})",
+                                  bot->GetName(), creature->GetName(), creature->GetLevel());
+                    return false;
+                }
+
+                if (cInfo->type == CREATURE_TYPE_HUMANOID && cInfo->rank == CREATURE_ELITE_NORMAL && creature->GetLevel() <= 15)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting low-level humanoid without NPC flags: {} (level {})",
+                                  bot->GetName(), creature->GetName(), creature->GetLevel());
+                    return false;
+                }
+            }
         }
     }
 
@@ -436,19 +478,61 @@ bool PossibleNewRpgTargetsNoLosValue::AcceptUnit(Unit* unit)
                     if (!classifier.IsValidSecondaryTrainer(bot, trainer))
                     {
                         if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}", 
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Rejecting primary profession trainer: {}",
                                       bot->GetName(), trainer->GetName());
                         return false; // Reject this trainer entirely
                     }
                     else
                     {
                         if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
-                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}", 
+                            LOG_DEBUG("playerbots", "[RPG Targets] {} - Accepting secondary trainer: {}",
                                       bot->GetName(), trainer->GetName());
                     }
                 }
             }
             return true;
+        }
+    }
+
+    // Filter out combat creatures without NPC flags before checking quest objectives (Option 1)
+    // This prevents bots from moving toward neutral enemies like Kobold Vermin/Worker
+    if (unit->GetTypeId() == TYPEID_UNIT)
+    {
+        Creature* creature = unit->ToCreature();
+        if (creature)
+        {
+            CreatureTemplate const* cInfo = creature->GetCreatureTemplate();
+
+            // If the creature has no NPC interaction flags, apply stricter filtering
+            if (cInfo->npcflag == 0)
+            {
+                // Reject critters (type 8) - they're never valid RPG targets
+                if (cInfo->type == CREATURE_TYPE_CRITTER)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets No LOS] {} - Rejecting critter: {}",
+                                  bot->GetName(), creature->GetName());
+                    return false;
+                }
+
+                // Reject low-level combat creatures (beasts and humanoids) without NPC flags
+                // These are typically starting zone enemies like Kobolds, Wolves, Young Boars, etc.
+                if (cInfo->type == CREATURE_TYPE_BEAST && creature->GetLevel() <= 15)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets No LOS] {} - Rejecting low-level beast without NPC flags: {} (level {})",
+                                  bot->GetName(), creature->GetName(), creature->GetLevel());
+                    return false;
+                }
+
+                if (cInfo->type == CREATURE_TYPE_HUMANOID && cInfo->rank == CREATURE_ELITE_NORMAL && creature->GetLevel() <= 15)
+                {
+                    if (botAI->HasStrategy("debug targets", BOT_STATE_NON_COMBAT))
+                        LOG_DEBUG("playerbots", "[RPG Targets No LOS] {} - Rejecting low-level humanoid without NPC flags: {} (level {})",
+                                  bot->GetName(), creature->GetName(), creature->GetLevel());
+                    return false;
+                }
+            }
         }
     }
 
