@@ -429,4 +429,22 @@ public:
 private:
     std::string name;
 };
+
+class FindItemStackByMinCountVisitor : public FindItemVisitor
+{
+public:
+    FindItemStackByMinCountVisitor(uint32 itemId, uint32 minCount)
+        : FindItemVisitor(), itemId(itemId), minCount(minCount) {}
+
+    bool Accept(ItemTemplate const* proto) override { return proto->ItemId == itemId; }
+
+    bool Visit(Item* item) override;
+
+    // Get the largest stack that meets minCount requirement
+    Item* GetLargestStack();
+
+private:
+    uint32 itemId;
+    uint32 minCount;
+};
 #endif

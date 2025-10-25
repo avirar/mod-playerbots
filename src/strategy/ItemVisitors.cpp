@@ -93,3 +93,36 @@ bool FindUsableNamedItemVisitor::Accept(ItemTemplate const* proto)
 {
     return proto && !proto->Name1.empty() && strstri(proto->Name1.c_str(), name.c_str());
 }
+
+bool FindItemStackByMinCountVisitor::Visit(Item* item)
+{
+    if (!Accept(item->GetTemplate()))
+        return true;
+
+    // Only collect stacks that meet the minimum count requirement
+    if (item->GetCount() >= minCount)
+    {
+        // Call base class Visit to add to result
+        FindItemVisitor::Visit(item);
+    }
+
+    return true;
+}
+
+Item* FindItemStackByMinCountVisitor::GetLargestStack()
+{
+    std::vector<Item*>& results = GetResult();
+
+    if (results.empty())
+        return nullptr;
+
+    // Find the stack with the largest count
+    Item* largest = results[0];
+    for (size_t i = 1; i < results.size(); ++i)
+    {
+        if (results[i]->GetCount() > largest->GetCount())
+            largest = results[i];
+    }
+
+    return largest;
+}

@@ -20,6 +20,9 @@ public:
     bool Execute(Event event) override;
     void Sell(FindItemVisitor* visitor);
     void Sell(Item* item);
+
+private:
+    uint32 GetQuestItemRequirement(uint32 itemId);
 };
 
 #endif
