@@ -508,6 +508,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         {
             // Object is not accessible - bot cannot satisfy lock requirements
             isAccessible = false;
+            guid.Clear(); // Clear guid so this object is marked as invalid
             if (debugLoot)
             {
                 botAI->TellMaster("LootRefresh: No accessible lock options found - bot cannot loot this object");
@@ -680,27 +681,111 @@ bool LootObject::IsLootPossible(Player* bot)
         return false;
     }
 
-    
+
     if (!bot->IsInWater() && (abs(worldObj->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE - 2.0f))
     {
         Map* map = bot->GetMap();
-        const float x = worldObj->GetPositionX();
-        const float y = worldObj->GetPositionY();
-        const float z = worldObj->GetPositionZ();
-        
+        const float objX = worldObj->GetPositionX();
+        const float objY = worldObj->GetPositionY();
+        const float objZ = worldObj->GetPositionZ();
+
         // Check if loot is in water - if so, bot can swim to it
-        bool lootInWater = map->IsInWater(bot->GetPhaseMask(), x, y, z, bot->GetCollisionHeight());
-        
+        bool lootInWater = map->IsInWater(bot->GetPhaseMask(), objX, objY, objZ, bot->GetCollisionHeight());
+
         if (!lootInWater)
         {
-            // Only apply strict pathfinding check for non-water loot
-            float destX = x;
-            float destY = y;
-            float destZ = z;
-            if (!map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
+            // FIX: For objects with collision, check pathfinding using intelligent positioning
+            bool canReachNearby = false;
+
+            // Get the object's actual interaction distance (varies by type)
+            GameObject* go = botAI->GetGameObject(guid);
+            float interactionDist = INTERACTION_DISTANCE; // Default fallback
+            if (go)
+            {
+                interactionDist = go->GetInteractionDistance();
+            }
+
+            // Apply safety buffer
+            const float safetyBuffer = 2.0f;
+            float maxCheckDistance = std::max(0.5f, interactionDist - safetyBuffer);
+
+            // Strategy 1: Try the closest point to the bot within interaction distance
+            // Calculate the direction from object to bot
+            float botX = bot->GetPositionX();
+            float botY = bot->GetPositionY();
+            float dx = botX - objX;
+            float dy = botY - objY;
+            float distance2D = sqrt(dx * dx + dy * dy);
+
+            if (distance2D > 0.1f) // Avoid division by zero
+            {
+                // Normalize direction vector
+                dx /= distance2D;
+                dy /= distance2D;
+
+                // Try the closest reachable point toward the bot (within interaction range)
+                float testDistance = std::min(maxCheckDistance, distance2D * 0.5f); // Start at half distance or max check distance
+                float testX = objX + dx * testDistance;
+                float testY = objY + dy * testDistance;
+                float testZ = objZ;
+
+                if (map->CanReachPositionAndGetValidCoords(bot, testX, testY, testZ))
+                {
+                    canReachNearby = true;
+                    if (debugLoot)
+                    {
+                        std::ostringstream out;
+                        out << "LootPossible: Found reachable position toward bot at "
+                            << std::fixed << std::setprecision(1) << testDistance << "yd from object";
+                        botAI->TellMaster(out.str());
+                    }
+                }
+            }
+
+            // Strategy 2: If closest point fails, try the exact center (works for non-solid objects)
+            if (!canReachNearby)
+            {
+                float destX = objX;
+                float destY = objY;
+                float destZ = objZ;
+                if (map->CanReachPositionAndGetValidCoords(bot, destX, destY, destZ))
+                {
+                    canReachNearby = true;
+                    if (debugLoot)
+                        botAI->TellMaster("LootPossible: Exact object position is reachable");
+                }
+            }
+
+            // Strategy 3: If both fail, try positions in a circle around the object
+            if (!canReachNearby)
+            {
+                const int numAngles = 8; // Check 8 positions around the object
+                for (int i = 0; i < numAngles && !canReachNearby; ++i)
+                {
+                    float angle = (2.0f * M_PI * i) / numAngles;
+                    float testX = objX + cos(angle) * maxCheckDistance;
+                    float testY = objY + sin(angle) * maxCheckDistance;
+                    float testZ = objZ;
+
+                    if (map->CanReachPositionAndGetValidCoords(bot, testX, testY, testZ))
+                    {
+                        canReachNearby = true;
+                        if (debugLoot)
+                        {
+                            std::ostringstream out;
+                            out << "LootPossible: Found reachable position around object at angle "
+                                << std::fixed << std::setprecision(0) << (angle * 180.0f / M_PI) << " degrees";
+                            botAI->TellMaster(out.str());
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (!canReachNearby)
             {
                 if (debugLoot)
-                    botAI->TellMaster("LootPossible: Cannot reach target - pathfinding failed");
+                    botAI->TellMaster("LootPossible: Cannot reach target or nearby positions - pathfinding failed");
                 return false;
             }
         }
