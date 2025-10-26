@@ -742,8 +742,18 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     if (quest->GetType() != 2)
         return false;
 
-    // now we only capable of doing solo quests
+    // Reject group quests (2+ players suggested)
     if (quest->GetSuggestedPlayers() >= 2)
+        return false;
+
+    // Reject elite quests (QuestInfoID = 1)
+    // These are typically elite/boss quests like "Wanted: Hogger"
+    if (quest->QuestInfoID == 1)
+        return false;
+
+    // Reject PvP quests (QuestInfoID = 41 or requires player kills)
+    // QuestInfoID 41 = battleground/PvP objectives
+    if (quest->QuestInfoID == 41 || quest->RequiredPlayerKills > 0)
         return false;
 
     return true;
