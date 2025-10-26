@@ -735,8 +735,11 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     if (highLevelQuest)
         return false;
 
-    // Elite quest and dungeon quest etc
-    if (quest->GetType() != 0)
+    // Only accept normal enabled quests (Type 2)
+    // Type 0: Auto-complete quests (skip objectives)
+    // Type 1: Disabled/not implemented quests
+    // Type 2: Normal enabled quests
+    if (quest->GetType() != 2)
         return false;
 
     // now we only capable of doing solo quests
