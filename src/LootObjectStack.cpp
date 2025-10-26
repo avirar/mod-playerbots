@@ -677,6 +677,7 @@ LootObject::LootObject(LootObject const& other)
     skillId = other.skillId;
     reqSkillValue = other.reqSkillValue;
     reqItem = other.reqItem;
+    isAccessible = other.isAccessible;
 }
 
 bool LootObject::IsLootPossible(Player* bot)
