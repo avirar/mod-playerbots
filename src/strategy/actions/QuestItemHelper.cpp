@@ -1575,6 +1575,73 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             botAI->TellMaster(out.str());
         }
 
+        // IMPORTANT: Verify this item is actually associated with this quest
+        // This prevents quest items from being used on wrong quests
+        bool itemBelongsToQuest = false;
+
+        // Check if this is a start item for the quest (given when quest accepted)
+        if (quest->GetSrcItemId() == itemTemplate->ItemId)
+        {
+            itemBelongsToQuest = true;
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Item matches quest StartItem field";
+                botAI->TellMaster(out.str());
+            }
+        }
+
+        // Check RequiredItemId fields (items needed in inventory to complete quest)
+        if (!itemBelongsToQuest)
+        {
+            for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredItemId[i] == itemTemplate->ItemId)
+                {
+                    itemBelongsToQuest = true;
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Item matches quest RequiredItemId[" << (int)i << "] field";
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Check ItemDrop fields (items that drop specifically for this quest)
+        if (!itemBelongsToQuest)
+        {
+            for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
+            {
+                if (quest->ItemDrop[i] == itemTemplate->ItemId)
+                {
+                    itemBelongsToQuest = true;
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Item matches quest ItemDrop[" << (int)i << "] field";
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If item doesn't belong to this quest, skip checking this quest entirely
+        if (!itemBelongsToQuest)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Item " << itemTemplate->Name1 << " is not associated with quest "
+                    << questId << " (" << quest->GetTitle() << ") - skipping";
+                botAI->TellMaster(out.str());
+            }
+            continue;
+        }
+
         // Check if this quest has incomplete objectives that could potentially be completed by this item
         bool questNeedsProgress = false;
         
