@@ -525,6 +525,22 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             }
         }
     }
+    else if (go && debugLoot)
+    {
+        // GameObject exists but doesn't pass the state check
+        std::ostringstream out;
+        out << "LootRefresh: GameObject " << go->GetName() << " failed state check - ";
+        if (!go->isSpawned())
+            out << "not spawned";
+        else
+            out << "state=" << uint32(go->GetGoState()) << " (need GO_STATE_READY=" << uint32(GO_STATE_READY) << ")";
+        botAI->TellMaster(out.str());
+    }
+    else if (debugLoot)
+    {
+        // GameObject not found at all
+        botAI->TellMaster("LootRefresh: GameObject not found");
+    }
 
     // Debug: Show final state of this LootObject after Refresh
     if (debugLoot)
