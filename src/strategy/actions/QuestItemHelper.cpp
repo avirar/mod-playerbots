@@ -170,8 +170,11 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     if (!itemTemplate)
         return false;
 
-    // Only consider quest items (class 12) or consumable items (class 0)
-    if (itemTemplate->Class != ITEM_CLASS_QUEST && itemTemplate->Class != ITEM_CLASS_CONSUMABLE)
+    // Only consider quest items (class 12), consumable items (class 0), or misc items (class 15)
+    // Some quest items are classified as MISC (e.g., Stillpine Furbolg Language Primer)
+    if (itemTemplate->Class != ITEM_CLASS_QUEST &&
+        itemTemplate->Class != ITEM_CLASS_CONSUMABLE &&
+        itemTemplate->Class != ITEM_CLASS_MISC)
         return false;
 
     // Check if the item has an associated spell that we can cast
