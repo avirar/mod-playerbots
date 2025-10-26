@@ -1782,6 +1782,33 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                                     }
                                     break;
                                 }
+
+                                // NEW: If we didn't find the required entry directly, check spell conditions
+                                // This handles transformation quests where spell targets entry A but credits entry B
+                                // Example: Quest 9303 requires entry 16534 (Inoculated Owlkin) but spell targets 16518 (Nestlewood Owlkin)
+                                if (!foundPotentialTarget && spellId > 0)
+                                {
+                                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                    {
+                                        std::ostringstream out;
+                                        out << "QuestItem: Required entry " << requiredEntry << " not found directly, checking spell " << spellId << " conditions for alternate targets";
+                                        botAI->TellMaster(out.str());
+                                    }
+
+                                    if (HasValidTargetsFromSpellConditions(botAI, spellId))
+                                    {
+                                        foundPotentialTarget = true;
+                                        if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                                        {
+                                            std::ostringstream out;
+                                            out << "QuestItem: Found valid targets from spell conditions for quest " << questId
+                                                << " objective " << (int)i << " (required entry " << requiredEntry
+                                                << " not found, using spell condition targets)";
+                                            botAI->TellMaster(out.str());
+                                        }
+                                        break;
+                                    }
+                                }
                             }
                         }
                         
