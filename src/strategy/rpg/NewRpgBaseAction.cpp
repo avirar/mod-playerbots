@@ -735,11 +735,11 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     if (highLevelQuest)
         return false;
 
-    // Only accept normal enabled quests (Type 2)
-    // Type 0: Auto-complete quests (skip objectives)
-    // Type 1: Disabled/not implemented quests
-    // Type 2: Normal enabled quests
-    if (quest->GetType() != 2)
+    // Reject disabled quests (QuestType = 1)
+    // QuestType 0: Auto-complete quests (skip objectives) - ACCEPT
+    // QuestType 1: Disabled/not implemented quests - REJECT
+    // QuestType 2: Normal enabled quests - ACCEPT
+    if (quest->GetQuestMethod() == 1)
         return false;
 
     // Reject group quests (2+ players suggested)
@@ -748,12 +748,13 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
 
     // Reject elite quests (QuestInfoID = 1)
     // These are typically elite/boss quests like "Wanted: Hogger"
-    if (quest->QuestInfoID == 1)
+    // Note: quest->GetType() returns QuestInfoID, not QuestType
+    if (quest->GetType() == 1)
         return false;
 
     // Reject PvP quests (QuestInfoID = 41 or requires player kills)
     // QuestInfoID 41 = battleground/PvP objectives
-    if (quest->QuestInfoID == 41 || quest->RequiredPlayerKills > 0)
+    if (quest->GetType() == 41 || quest->GetPlayersSlain() > 0)
         return false;
 
     return true;
