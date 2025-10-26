@@ -1568,6 +1568,18 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
         if (!quest)
             continue;
 
+        // Skip if quest can already be completed (all objectives done)
+        if (player->CanCompleteQuest(questId))
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Quest " << questId << " (" << quest->GetTitle() << ") can be completed - skipping item usage";
+                botAI->TellMaster(out.str());
+            }
+            continue;
+        }
+
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
@@ -1660,10 +1672,9 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             uint32 currentCount = player->GetItemCount(quest->RequiredItemId[i], false);
             if (currentCount < reqCount)
             {
-                // If this is a StartItem and OTHER required items are incomplete,
-                // it means we should use this item to obtain those other items
-                // But only if this specific required item is NOT the StartItem itself
-                if (isStartItem && quest->RequiredItemId[i] != itemTemplate->ItemId)
+                // If this is a StartItem and any required items are incomplete,
+                // it means we should use this item to obtain those items
+                if (isStartItem)
                 {
                     questNeedsProgress = true;
                     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
