@@ -1662,7 +1662,8 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
             {
                 // If this is a StartItem and OTHER required items are incomplete,
                 // it means we should use this item to obtain those other items
-                if (isStartItem)
+                // But only if this specific required item is NOT the StartItem itself
+                if (isStartItem && quest->RequiredItemId[i] != itemTemplate->ItemId)
                 {
                     questNeedsProgress = true;
                     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
