@@ -79,6 +79,7 @@
 #include "OpenItemAction.h"
 #include "UnlockItemAction.h"
 #include "UnlockTradedItemAction.h"
+#include "UseCreateRandomItemsAction.h"
 #include "TameAction.h"
 #include "TellGlyphsAction.h"
 #include "EquipGlyphsAction.h"
@@ -92,6 +93,7 @@ public:
         creators["open items"] = &ChatActionContext::open_items;
         creators["unlock items"] = &ChatActionContext::unlock_items;
         creators["unlock traded item"] = &ChatActionContext::unlock_traded_item;
+        creators["use create random items"] = &ChatActionContext::use_create_random_items;
         creators["range"] = &ChatActionContext::range;
         creators["stats"] = &ChatActionContext::stats;
         creators["quests"] = &ChatActionContext::quests;
@@ -204,6 +206,7 @@ private:
     static Action* open_items(PlayerbotAI* botAI) { return new OpenItemAction(botAI); }
     static Action* unlock_items(PlayerbotAI* botAI) { return new UnlockItemAction(botAI); }
     static Action* unlock_traded_item(PlayerbotAI* botAI) { return new UnlockTradedItemAction(botAI); }
+    static Action* use_create_random_items(PlayerbotAI* botAI) { return new UseCreateRandomItemsAction(botAI); }
     static Action* range(PlayerbotAI* botAI) { return new RangeAction(botAI); }
     static Action* flag(PlayerbotAI* botAI) { return new FlagAction(botAI); }
     static Action* craft(PlayerbotAI* botAI) { return new SetCraftAction(botAI); }
