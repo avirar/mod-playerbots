@@ -357,10 +357,19 @@ public:
 
     bool Accept(ItemTemplate const* proto) override
     {
+        // Accept items of class QUEST
         if (proto->Class == ITEM_CLASS_QUEST)
         {
             return true;
         }
+
+        // Also accept items from any class that start quests
+        // Quest-starting items can be: CONSUMABLE, WEAPON, ARMOR, TRADE_GOODS, MISC, etc.
+        if (proto->StartQuest > 0)
+        {
+            return true;
+        }
+
         return false;
     }
 };

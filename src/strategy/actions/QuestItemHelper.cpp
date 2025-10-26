@@ -45,6 +45,20 @@ Item* QuestItemHelper::FindBestQuestItem(Player* bot, uint32* outSpellId)
         }
     }
 
+    // Also collect from keyring slots
+    for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            continue;
+
+        uint32 spellId = 0;
+        if (IsValidQuestItem(item, &spellId))
+        {
+            candidateItems.push_back({item, spellId});
+        }
+    }
+
     // Also collect from bag slots
     for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
     {

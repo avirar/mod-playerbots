@@ -668,6 +668,51 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
         }
     }
 
+    // Check if item starts a quest that the bot can and should accept
+    // Quest-starting items can be any class (CONSUMABLE, WEAPON, ARMOR, TRADE_GOODS, QUEST, MISC)
+    if (proto->StartQuest > 0)
+    {
+        Quest const* questToStart = sObjectMgr->GetQuestTemplate(proto->StartQuest);
+        if (questToStart)
+        {
+            // Check if bot doesn't already have this quest
+            QuestStatus questStatus = player->GetQuestStatus(proto->StartQuest);
+            if (questStatus == QUEST_STATUS_NONE)
+            {
+                // Check if bot can take this quest (validates level, race, class, etc.)
+                if (player->CanTakeQuest(questToStart, false))
+                {
+                    // Apply same quest filtering as RPG strategy to avoid unwanted quests
+                    // Reject disabled quests (QuestType = 1)
+                    if (questToStart->GetQuestMethod() == 1)
+                        return false;
+
+                    // Reject elite quests (QuestInfoID = 1)
+                    if (questToStart->GetType() == 1)
+                        return false;
+
+                    // Reject PvP quests (QuestInfoID = 41 or RequiredPlayerKills > 0)
+                    if (questToStart->GetType() == 41 || questToStart->GetPlayersSlain() > 0)
+                        return false;
+
+                    // Reject group quests (SuggestedPlayers >= 2)
+                    if (questToStart->GetSuggestedPlayers() >= 2)
+                        return false;
+
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Item " << proto->Name1 << " starts quest " << proto->StartQuest
+                            << " (" << questToStart->GetTitle() << ") - keeping item";
+                        botAI->TellMaster(out.str());
+                    }
+
+                    return true; // Item starts a quest the bot should take
+                }
+            }
+        }
+    }
+
     return false; // Item is not useful for any active quests
 }
 
