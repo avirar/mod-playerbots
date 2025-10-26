@@ -70,6 +70,14 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
     bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
 
+    if (debugLoot)
+    {
+        WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, lootGUID);
+        std::ostringstream out;
+        out << "LootRefresh: Starting refresh for " << (obj ? obj->GetName() : "Unknown") << " (GUID: " << lootGUID.ToString() << ")";
+        botAI->TellMaster(out.str());
+    }
+
     Creature* creature = botAI->GetCreature(lootGUID);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
@@ -514,6 +522,16 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 botAI->TellMaster("LootRefresh: No accessible lock options found - bot cannot loot this object");
             }
         }
+    }
+
+    // Debug: Show final state of this LootObject after Refresh
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "LootRefresh: Completed - guid=" << (guid.IsEmpty() ? "EMPTY" : "valid")
+            << ", isAccessible=" << (isAccessible ? "true" : "false")
+            << ", skillId=" << skillId;
+        botAI->TellMaster(out.str());
     }
 }
 
