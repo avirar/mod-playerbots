@@ -67,6 +67,7 @@
 #include "CancelChannelAction.h"
 #include "UseQuestItemOnTargetAction.h"
 #include "MoveToQuestItemTargetAction.h"
+#include "UseQuestSpellOnTargetAction.h"
 
 class PlayerbotAI;
 
@@ -197,6 +198,7 @@ public:
         creators["cancel channel"] = &ActionContext::cancel_channel;
         creators["quest item use on target"] = &ActionContext::quest_item_use_on_target;
         creators["move to quest item target"] = &ActionContext::move_to_quest_item_target;
+        creators["quest spell use on target"] = &ActionContext::quest_spell_use_on_target;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
@@ -452,6 +454,9 @@ private:
     // Quest item actions
     static Action* quest_item_use_on_target(PlayerbotAI* ai) { return new UseQuestItemOnTargetAction(ai); }
     static Action* move_to_quest_item_target(PlayerbotAI* ai) { return new MoveToQuestItemTargetAction(ai); }
+
+    // Quest spell actions
+    static Action* quest_spell_use_on_target(PlayerbotAI* ai) { return new UseQuestSpellOnTargetAction(ai); }
 };
 
 #endif
