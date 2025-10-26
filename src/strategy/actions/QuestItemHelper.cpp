@@ -1765,7 +1765,43 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                 break;
             }
         }
-        
+
+        // Special case: If this is a StartItem and no objectives were found,
+        // it might be a quest-completion item (e.g., "Learning the Language")
+        // These quests have SPELL_EFFECT_QUEST_COMPLETE on the item's spell
+        if (!questNeedsProgress && isStartItem)
+        {
+            // Check if quest has NO objectives at all (pure item-use quest)
+            bool hasAnyObjectives = false;
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredNpcOrGo[i] != 0)
+                {
+                    hasAnyObjectives = true;
+                    break;
+                }
+            }
+            for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredItemId[i] != 0)
+                {
+                    hasAnyObjectives = true;
+                    break;
+                }
+            }
+
+            if (!hasAnyObjectives)
+            {
+                questNeedsProgress = true;
+                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                {
+                    std::ostringstream out;
+                    out << "QuestItem: Quest " << questId << " has no objectives - StartItem likely completes quest directly";
+                    botAI->TellMaster(out.str());
+                }
+            }
+        }
+
         // If this quest needs progress, check if our spell could potentially help
         if (questNeedsProgress)
         {
