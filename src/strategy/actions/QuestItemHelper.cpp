@@ -1644,7 +1644,51 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
 
         // Check if this quest has incomplete objectives that could potentially be completed by this item
         bool questNeedsProgress = false;
-        
+
+        // Check if RequiredItemId items are still needed
+        // Also check if this is a StartItem used to obtain OTHER required items
+        bool isStartItem = (quest->GetSrcItemId() == itemTemplate->ItemId);
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredItemId[i] == 0)
+                continue;
+
+            uint32 reqCount = quest->RequiredItemCount[i];
+            if (reqCount == 0)
+                continue;
+
+            uint32 currentCount = player->GetItemCount(quest->RequiredItemId[i], false);
+            if (currentCount < reqCount)
+            {
+                // If this is a StartItem and OTHER required items are incomplete,
+                // it means we should use this item to obtain those other items
+                if (isStartItem)
+                {
+                    questNeedsProgress = true;
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Quest " << questId << " has incomplete RequiredItem " << (int)i << ": " << currentCount << "/" << reqCount << " (StartItem can help obtain it)";
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+
+                // Check if THIS item is the one that's needed for collection
+                if (quest->RequiredItemId[i] == itemTemplate->ItemId)
+                {
+                    questNeedsProgress = true;
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestItem: Quest " << questId << " RequiredItem " << (int)i << " needs progress: " << currentCount << "/" << reqCount;
+                        botAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+        }
+
         // Check traditional kill/interact objectives
         for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
