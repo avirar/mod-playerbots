@@ -314,8 +314,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         LockEntry const* lockInfo = sLockStore.LookupEntry(lockId);
         if (!lockInfo)
         {
+            // No lock info means object is freely accessible
+            isAccessible = true;
             if (debugLoot)
-                botAI->TellMaster("LootRefresh: Gameobject accepted - no lock info");
+                botAI->TellMaster("LootRefresh: Gameobject accepted - no lock info (freely accessible)");
             return;
         }
 
