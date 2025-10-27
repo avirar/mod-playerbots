@@ -2694,7 +2694,41 @@ bool MoveToLootAction::Execute(Event event)
         return false;
     }
 
-    return MoveNear(loot.GetWorldObject(bot), sPlayerbotAIConfig->contactDistance);
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    bool debugLoot = botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+
+    WorldObject* obj = loot.GetWorldObject(bot);
+    if (!obj)
+        return false;
+
+    // For GameObjects, use their interaction distance instead of contactDistance
+    float targetDistance = sPlayerbotAIConfig->contactDistance;
+    GameObject* go = obj->ToGameObject();
+    if (go)
+    {
+        targetDistance = go->GetInteractionDistance() - 0.5f; // Small buffer for safety
+    }
+
+    if (debugLoot)
+    {
+        float dist = bot->GetDistance(obj);
+        std::ostringstream out;
+        out << "MoveToLoot: Calling MoveNear to " << obj->GetName()
+            << " at " << std::fixed << std::setprecision(1) << dist << "yd"
+            << " (targetDist=" << targetDistance << ")";
+        botAI->TellMaster(out.str());
+    }
+
+    bool result = MoveNear(obj, targetDistance);
+
+    if (debugLoot)
+    {
+        std::ostringstream out;
+        out << "MoveToLoot: MoveNear returned " << (result ? "true" : "false");
+        botAI->TellMaster(out.str());
+    }
+
+    return result;
 }
 
 bool MoveOutOfEnemyContactAction::Execute(Event event)
