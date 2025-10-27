@@ -2563,20 +2563,52 @@ bool NewRpgBaseAction::SearchForActualQuestTargets(uint32 questId)
                 
                 if (creature->GetEntry() == targetEntry && bot->GetDistance(creature) <= 200.0f)
                 {
+                    // Validate NPC is near quest objective POI (not a different spawn)
+                    // This prevents bots from selecting wrong NPC copies (e.g., wandering beach NPCs vs event-spawned NPCs)
+                    std::vector<POIInfo> questPOIs;
+                    if (GetQuestPOIPosAndObjectiveIdx(questId, questPOIs, false))
+                    {
+                        // Find POI for this specific objective index
+                        float minDistanceToPOI = 999999.0f;
+                        bool foundMatchingPOI = false;
+
+                        for (const POIInfo& poi : questPOIs)
+                        {
+                            if (poi.objectiveIdx == i) // Match objective index
+                            {
+                                foundMatchingPOI = true;
+                                float distToPOI = creature->GetDistance2d(poi.pos.x, poi.pos.y);
+                                minDistanceToPOI = std::min(minDistanceToPOI, distToPOI);
+                            }
+                        }
+
+                        // Skip this NPC if it's far from relevant POI
+                        // This filters out wrong spawns (e.g., wandering copy vs event-spawned copy)
+                        if (foundMatchingPOI && minDistanceToPOI > 100.0f)
+                        {
+                            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                            {
+                                LOG_DEBUG("playerbots", "[New RPG] {} Skipping NPC {} - too far from quest POI ({:.1f} yards)",
+                                         bot->GetName(), creature->GetName(), minDistanceToPOI);
+                            }
+                            continue; // Skip this NPC, check next one
+                        }
+                    }
+
                     if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
                     {
-                        LOG_DEBUG("playerbots", "[New RPG] {} Found direct kill target {} at exact position", 
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found direct kill target {} at exact position",
                                  bot->GetName(), creature->GetName());
                     }
-                    
+
                     // Use the actual target's position - no Z calculations needed!
-                    WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(), 
+                    WorldPosition targetPos(creature->GetMapId(), creature->GetPositionX(),
                                           creature->GetPositionY(), creature->GetPositionZ());
-                    
+
                     botAI->rpgInfo.do_quest.pos = targetPos;
                     botAI->rpgInfo.do_quest.objectiveIdx = i;
                     botAI->rpgInfo.do_quest.lastReachPOI = 0;
-                    
+
                     return true;
                 }
             }
