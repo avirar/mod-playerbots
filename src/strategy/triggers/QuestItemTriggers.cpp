@@ -45,6 +45,15 @@ bool QuestItemUsableTrigger::IsActive()
 
 bool FarFromQuestItemTargetTrigger::IsActive()
 {
+    // IMPORTANT: First check if we have a valid quest item before checking spell focus
+    // This prevents moving to spell focus objects when we don't have any quest items to use
+    Item* questItem = nullptr;
+    uint32 spellId = 0;
+
+    questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
+    if (!questItem)
+        return false;
+
     // Check if we need to move to a spell focus object first
     ObjectGuid spellFocusGuid = AI_VALUE(ObjectGuid, "spell focus target");
     if (!spellFocusGuid.IsEmpty())
@@ -56,18 +65,10 @@ bool FarFromQuestItemTargetTrigger::IsActive()
             float requiredRange = dist - 2.0f; // Add -2.0f buffer
             if (requiredRange <= 0.0f)
                 requiredRange = 0.5f;
-                
+
             return bot->GetDistance(spellFocus) > requiredRange;
         }
     }
-    
-    Item* questItem = nullptr;
-    uint32 spellId = 0;
-    
-    // Check if we have a quest item with a spell
-    questItem = QuestItemHelper::FindBestQuestItem(bot, &spellId);
-    if (!questItem)
-        return false;
 
     // Find the best available target
     WorldObject* target = FindBestQuestItemTarget();
