@@ -1170,10 +1170,8 @@ bool QuestItemHelper::CheckSpellLocationRequirements(Player* player, uint32 spel
                 go->GetGOInfo()->spellFocus.focusId == spellInfo->RequiresSpellFocus)
             {
                 // Check if player is within the spell focus range
-                float dist = (float)((go->GetGOInfo()->spellFocus.dist) / 2);
-                float requiredRange = dist - 2.0f; // Add -2.0f buffer for reliable casting
-                if (requiredRange <= 0.0f)
-                    requiredRange = 0.5f; // Minimum safe distance
+                // Match core behavior (GridNotifiers.h) - use spellFocus.dist / 2 without additional buffer
+                float requiredRange = (float)((go->GetGOInfo()->spellFocus.dist) / 2);
                     
                 if (go->IsWithinDistInMap(player, requiredRange))
                 {

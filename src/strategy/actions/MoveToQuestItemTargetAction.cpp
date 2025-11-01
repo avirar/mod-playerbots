@@ -26,10 +26,8 @@ bool MoveToQuestItemTargetAction::Execute(Event event)
         if (spellFocus && spellFocus->isSpawned())
         {
             // Calculate the required range based on spell focus distance
-            float dist = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
-            float requiredRange = dist - 2.0f; // Add -2.0f buffer for reliable casting
-            if (requiredRange <= 0.0f)
-                requiredRange = 0.5f; // Minimum safe distance
+            // Match core behavior (GridNotifiers.h) - use spellFocus.dist / 2 without additional buffer
+            float requiredRange = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
                 
             float distance = bot->GetDistance(spellFocus);
             if (distance > requiredRange)
@@ -98,10 +96,8 @@ bool MoveToQuestItemTargetAction::isUseful()
         GameObject* spellFocus = botAI->GetGameObject(spellFocusGuid);
         if (spellFocus && spellFocus->isSpawned())
         {
-            float dist = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
-            float requiredRange = dist - 2.0f; // Add -2.0f buffer
-            if (requiredRange <= 0.0f)
-                requiredRange = 0.5f;
+            // Match core behavior (GridNotifiers.h) - use spellFocus.dist / 2 without additional buffer
+            float requiredRange = (float)((spellFocus->GetGOInfo()->spellFocus.dist) / 2);
                 
             if (bot->GetDistance(spellFocus) > requiredRange)
             {
