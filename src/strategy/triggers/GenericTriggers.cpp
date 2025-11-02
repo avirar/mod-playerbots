@@ -236,10 +236,6 @@ bool NoTargetTrigger::IsActive()
 
     // Priority 3: Don't attack if performing critical RPG activities
     try {
-        // Check if bot is wandering to NPCs (e.g., to sell/repair/clear bags)
-        if (botAI->rpgInfo.status == RPG_WANDER_NPC)
-            return false;
-
         // Check if bot is going to camp (e.g., to rest/eat/drink)
         if (botAI->rpgInfo.status == RPG_GO_CAMP)
             return false;
