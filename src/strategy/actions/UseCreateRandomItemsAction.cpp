@@ -16,8 +16,9 @@ public:
 protected:
     bool Accept(ItemTemplate const* itemTemplate) override
     {
-        // Check item properties
-        if (itemTemplate->Class != ITEM_CLASS_MISC)
+        // Check item properties - accept both MISC (15) and TRADE_GOODS (7) with Junk subclass (11)
+        // This includes clams, runes, and other openable containers
+        if (itemTemplate->Class != ITEM_CLASS_MISC && itemTemplate->Class != ITEM_CLASS_TRADE_GOODS)
             return false;
 
         if (itemTemplate->SubClass != 11) // Junk subclass
