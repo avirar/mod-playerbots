@@ -1334,7 +1334,19 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         if (distanceLimit && bot->GetDistance(object) > distanceLimit)
             continue;
 
-        if (CanInteractWithQuestGiver(object) && HasQuestToAcceptOrReward(object))
+        bool canInteract = CanInteractWithQuestGiver(object);
+        bool hasQuest = canInteract && HasQuestToAcceptOrReward(object);
+
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            if (Creature* checkCreature = object->ToCreature())
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking NPC {} ({}): canInteract={}, hasQuest={}",
+                         bot->GetName(), checkCreature->GetName(), checkCreature->GetEntry(), canInteract, hasQuest);
+            }
+        }
+
+        if (hasQuest)
         {
             float adjustedDistance = bot->GetExactDist(object);
             if (adjustedDistance < nearestDistance)

@@ -483,20 +483,42 @@ bool NewRpgWanderNpcAction::Execute(Event event)
 
 bool NewRpgDoQuestAction::Execute(Event event)
 {
-    if (SearchQuestGiverAndAcceptOrReward())
-        return true;
-
     NewRpgInfo& info = botAI->rpgInfo;
     uint32 questId = RPG_INFO(quest, questId);
     const Quest* quest = RPG_INFO(quest, quest);
     uint8 questStatus = bot->GetQuestStatus(questId);
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgDoQuestAction::Execute - Quest {}, Status: {}",
+                 bot->GetName(), questId, questStatus);
+    }
+
+    if (SearchQuestGiverAndAcceptOrReward())
+        return true;
+
     switch (questStatus)
     {
         case QUEST_STATUS_INCOMPLETE:
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} is INCOMPLETE, calling DoIncompleteQuest()",
+                         bot->GetName(), questId);
+            }
             return DoIncompleteQuest();
         case QUEST_STATUS_COMPLETE:
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} is COMPLETE, calling DoCompletedQuest()",
+                         bot->GetName(), questId);
+            }
             return DoCompletedQuest();
         default:
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has invalid status {}, changing to IDLE",
+                         bot->GetName(), questId, questStatus);
+            }
             break;
     }
     botAI->rpgInfo.ChangeToIdle();
@@ -823,8 +845,20 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
     uint32 questId = RPG_INFO(quest, questId);
     const Quest* quest = RPG_INFO(quest, quest);
 
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} DoCompletedQuest for quest {}, objectiveIdx: {}",
+                 bot->GetName(), questId, RPG_INFO(quest, objectiveIdx));
+    }
+
     if (RPG_INFO(quest, objectiveIdx) != -1)
     {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} objectiveIdx is {}, searching for turn-in POI",
+                     bot->GetName(), questId, RPG_INFO(quest, objectiveIdx));
+        }
+
         // if quest is completed, back to poi with -1 idx to reward
         BroadcastHelper::BroadcastQuestUpdateComplete(botAI, bot, quest);
         botAI->rpgStatistic.questCompleted++;
@@ -832,6 +866,11 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         std::vector<POIInfo> poiInfo;
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
         {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Failed to find turn-in POI for quest {}, changing to IDLE",
+                         bot->GetName(), questId);
+            }
             // can't find a poi pos to reward, stop doing quest for now
             botAI->rpgInfo.ChangeToIdle();
             return false;
@@ -839,26 +878,60 @@ bool NewRpgDoQuestAction::DoCompletedQuest()
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        
+
         // Use upstream's clean approach - no fancy Z calculations
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
+        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
                            bot->GetMap()->GetWaterLevel(dx, dy));
 
         // double check for upstream POI logic
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Turn-in POI has invalid height for quest {}",
+                         bot->GetName(), questId);
+            }
             return false;
+        }
 
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);
         botAI->rpgInfo.do_quest.lastReachPOI = 0;
         botAI->rpgInfo.do_quest.pos = pos;
         botAI->rpgInfo.do_quest.objectiveIdx = -1;
+
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Set turn-in POI for quest {} at ({:.1f}, {:.1f}, {:.1f}), distance: {:.1f}",
+                     bot->GetName(), questId, dx, dy, dz, bot->GetDistance(pos));
+        }
     }
 
     if (botAI->rpgInfo.do_quest.pos == WorldPosition())
+    {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has no POI position set",
+                     bot->GetName(), questId);
+        }
         return false;
+    }
 
-    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > 10.0f && !botAI->rpgInfo.do_quest.lastReachPOI)
+    float distanceToPOI = bot->GetDistance(botAI->rpgInfo.do_quest.pos);
+    if (distanceToPOI > 10.0f && !botAI->rpgInfo.do_quest.lastReachPOI)
+    {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Moving to turn-in POI for quest {} (distance: {:.1f})",
+                     bot->GetName(), questId, distanceToPOI);
+        }
         return MoveFarTo(botAI->rpgInfo.do_quest.pos);
+    }
+
+    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Reached turn-in POI for quest {} (distance: {:.1f}), searching for questender",
+                 bot->GetName(), questId, distanceToPOI);
+    }
 
     // Now we are near the qoi of reward
     // the quest should be rewarded by SearchQuestGiverAndAcceptOrReward
