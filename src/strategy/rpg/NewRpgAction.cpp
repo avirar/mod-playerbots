@@ -69,9 +69,21 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
     {
         case RPG_IDLE:
         {
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} is in IDLE status, attempting to select new status (zone: {})",
+                         bot->GetName(), bot->GetZoneId());
+            }
+
             // PRIORITY: Find vendor when bags are almost full to prevent looting issues
             if (AI_VALUE(uint8, "bag space") > 80)
             {
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} bags are {} full, looking for vendor",
+                             bot->GetName(), AI_VALUE(uint8, "bag space"));
+                }
+
                 GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
                 if (!possibleTargets.empty())
                 {
@@ -93,10 +105,22 @@ bool NewRpgStatusUpdateAction::Execute(Event event)
                 WorldPosition campPos = SelectRandomCampPos(bot);
                 if (campPos != WorldPosition())
                 {
+                    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} found camp for vendor fallback",
+                                 bot->GetName());
+                    }
                     info.ChangeToGoCamp(campPos);
                     return true;
                 }
             }
+
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} calling RandomChangeStatus",
+                         bot->GetName());
+            }
+
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
                                        RPG_TRAVEL_FLIGHT, RPG_REST});
         }

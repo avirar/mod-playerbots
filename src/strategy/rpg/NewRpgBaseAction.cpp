@@ -1817,17 +1817,49 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
     if (toComplete && q_status.Status == QUEST_STATUS_COMPLETE)
     {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Searching for turn-in POI for quest {} (bot zone: {})",
+                     bot->GetName(), questId, bot->GetZoneId());
+        }
+
         for (const QuestPOI& qPoi : *poiVector)
         {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Checking POI: MapId={}, ObjectiveIndex={}, points={}",
+                         bot->GetName(), qPoi.MapId, qPoi.ObjectiveIndex, qPoi.points.size());
+            }
+
             if (qPoi.MapId != bot->GetMapId())
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: MapId mismatch (bot={}, poi={})",
+                             bot->GetName(), bot->GetMapId(), qPoi.MapId);
+                }
                 continue;
+            }
 
             // not the poi pos to reward quest
             if (qPoi.ObjectiveIndex != -1)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: Not a turn-in POI (ObjectiveIndex={})",
+                             bot->GetName(), qPoi.ObjectiveIndex);
+                }
                 continue;
+            }
 
             if (qPoi.points.size() == 0)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: No points", bot->GetName());
+                }
                 continue;
+            }
 
             float dx = 0, dy = 0;
             std::vector<float> weights = GenerateRandomWeights(qPoi.points.size());
@@ -1838,17 +1870,52 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 dy += point.y * weights[i];
             }
 
-            if (bot->GetDistance2d(dx, dy) >= 2500.0f)
-                continue;
+            float distance2d = bot->GetDistance2d(dx, dy);
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI calculated position: ({:.1f}, {:.1f}), distance: {:.1f}",
+                         bot->GetName(), dx, dy, distance2d);
+            }
 
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
+            if (distance2d >= 2500.0f)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: Too far ({:.1f} >= 2500.0)",
+                             bot->GetName(), distance2d);
+                }
+                continue;
+            }
+
+            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
                                bot->GetMap()->GetWaterLevel(dx, dy));
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} POI rejected: Invalid height (dz={})",
+                             bot->GetName(), dz);
+                }
                 continue;
+            }
 
-            if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
-                continue;
+            // Zone check removed for quest completion POIs
+            // The map and distance checks are sufficient to ensure the POI is reachable
+            // Zone boundaries can be imprecise (e.g., coastal NPCs might be detected as ocean zone)
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                uint32 botZone = bot->GetZoneId();
+                uint32 poiZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz);
+                LOG_DEBUG("playerbots", "[New RPG] {} Zone info: bot zone={}, POI zone={} (check disabled for turn-ins)",
+                         bot->GetName(), botZone, poiZone);
+            }
+
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI accepted! Position: ({:.1f}, {:.1f}, {:.1f})",
+                         bot->GetName(), dx, dy, dz);
+            }
 
             // Create POI entry for quest completion (toComplete=true means going to turn in quest)
             POIInfo completionPOI;
@@ -2134,6 +2201,43 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
             lo_prepared_locs.push_back(loc);
         }
     }
+
+    // If no grind spots found in current zone, retry without zone restriction
+    // This allows bots to escape from zones with no RPG activities (ocean, etc.)
+    if (hi_prepared_locs.empty() && lo_prepared_locs.empty() && !inCity)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomGrindPos: No grind spots in zone {}, retrying without zone check and increased range",
+                 bot->GetName(), bot->GetZoneId());
+
+        // Use much larger ranges to help bots escape from problematic zones (ocean, etc.)
+        float escapeMaxRange = 5000.0f;
+        float escapeHiRange = 2500.0f;  // Prefer closer spots if available
+        float escapeLoRange = 5000.0f;  // But accept anything within 5k yards
+
+        for (auto& loc : locs)
+        {
+            if (bot->GetMapId() != loc.GetMapId())
+                continue;
+
+            if (bot->GetExactDist(loc) > escapeMaxRange)
+                continue;
+
+            // No zone check here - allow crossing zone boundaries to escape
+            if (bot->GetExactDist(loc) < escapeHiRange)
+            {
+                hi_prepared_locs.push_back(loc);
+            }
+
+            if (bot->GetExactDist(loc) < escapeLoRange)
+            {
+                lo_prepared_locs.push_back(loc);
+            }
+        }
+
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomGrindPos: After fallback with {}yd range, found {} hi + {} lo grind spots",
+                 bot->GetName(), escapeMaxRange, hi_prepared_locs.size(), lo_prepared_locs.size());
+    }
+
     WorldPosition dest{};
     if (urand(1, 100) <= 50 && !hi_prepared_locs.empty())
     {
@@ -2185,6 +2289,38 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
 
         prepared_locs.push_back(loc);
     }
+
+    // If no camps found in current zone, retry without zone restriction
+    // This allows bots to escape from zones with no RPG activities (ocean, etc.)
+    if (prepared_locs.empty() && !inCity)
+    {
+        // NOTE: Cannot use botAI->HasStrategy here as this is a static function
+        // Add logging unconditionally for debugging ocean zone issue
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomCampPos: No camps in zone {}, retrying without zone check and increased range",
+                 bot->GetName(), bot->GetZoneId());
+
+        // Use much larger range to help bots escape from problematic zones (ocean, etc.)
+        float escapeRange = 5000.0f;
+
+        for (auto& loc : locs)
+        {
+            if (bot->GetMapId() != loc.GetMapId())
+                continue;
+
+            if (bot->GetExactDist(loc) > escapeRange)
+                continue;
+
+            if (bot->GetExactDist(loc) < 50.0f)
+                continue;
+
+            // No zone check here - allow crossing zone boundaries to escape
+            prepared_locs.push_back(loc);
+        }
+
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomCampPos: After fallback with {}yd range, found {} camps",
+                 bot->GetName(), escapeRange, prepared_locs.size());
+    }
+
     WorldPosition dest{};
     if (!prepared_locs.empty())
     {
@@ -2313,22 +2449,54 @@ bool NewRpgBaseAction::SelectRandomFlightTaxiNode(ObjectGuid& flightMaster, uint
 
 bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus)
 {
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} RandomChangeStatus called with {} candidates (zone: {})",
+                 bot->GetName(), candidateStatus.size(), bot->GetZoneId());
+    }
+
     std::vector<NewRpgStatus> availableStatus;
     uint32 probSum = 0;
     for (NewRpgStatus status : candidateStatus)
     {
         if (sPlayerbotAIConfig->RpgStatusProbWeight[status] == 0)
+        {
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Status {} has weight 0, skipping",
+                         bot->GetName(), status);
+            }
             continue;
+        }
 
-        if (CheckRpgStatusAvailable(status))
+        bool isAvailable = CheckRpgStatusAvailable(status);
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Checking status {}: weight={}, available={}",
+                     bot->GetName(), status, sPlayerbotAIConfig->RpgStatusProbWeight[status], isAvailable);
+        }
+
+        if (isAvailable)
         {
             availableStatus.push_back(status);
             probSum += sPlayerbotAIConfig->RpgStatusProbWeight[status];
         }
     }
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Found {} available statuses with total weight {}",
+                 bot->GetName(), availableStatus.size(), probSum);
+    }
+
     // Safety check. Default to "rest" if all RPG weights = 0
     if (availableStatus.empty() || probSum == 0)
     {
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} No available statuses, defaulting to REST",
+                     bot->GetName());
+        }
         botAI->rpgInfo.ChangeToRest();
         bot->SetStandState(UNIT_STAND_STATE_SIT);
         return true;
@@ -2344,6 +2512,12 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             chosenStatus = status;
             break;
         }
+    }
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Chosen status: {} (rand={}, probSum={})",
+                 bot->GetName(), chosenStatus, rand, probSum);
     }
 
     switch (chosenStatus)
@@ -2423,16 +2597,32 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_REST:
         {
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Changing to REST status",
+                         bot->GetName());
+            }
             botAI->rpgInfo.ChangeToRest();
             bot->SetStandState(UNIT_STAND_STATE_SIT);
             return true;
         }
         default:
         {
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Unhandled status {}, defaulting to REST",
+                         bot->GetName(), chosenStatus);
+            }
             botAI->rpgInfo.ChangeToRest();
             bot->SetStandState(UNIT_STAND_STATE_SIT);
             return true;
         }
+    }
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} RandomChangeStatus falling through to return false (THIS SHOULD NOT HAPPEN)",
+                 bot->GetName());
     }
     return false;
 }
@@ -2447,17 +2637,35 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         case RPG_WANDER_RANDOM:
         {
             Unit* target = AI_VALUE(Unit*, "grind target");
-            return target != nullptr;
+            bool available = target != nullptr;
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} RPG_WANDER_RANDOM available: {} (has grind target: {})",
+                         bot->GetName(), available, target != nullptr);
+            }
+            return available;
         }
         case RPG_GO_GRIND:
         {
             WorldPosition pos = SelectRandomGrindPos(bot);
-            return pos != WorldPosition();
+            bool available = pos != WorldPosition();
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} RPG_GO_GRIND available: {} (found grind pos: {})",
+                         bot->GetName(), available, available);
+            }
+            return available;
         }
         case RPG_GO_CAMP:
         {
             WorldPosition pos = SelectRandomCampPos(bot);
-            return pos != WorldPosition();
+            bool available = pos != WorldPosition();
+            if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} RPG_GO_CAMP available: {} (found camp pos: {})",
+                         bot->GetName(), available, available);
+            }
+            return available;
         }
         case RPG_WANDER_NPC:
         {
