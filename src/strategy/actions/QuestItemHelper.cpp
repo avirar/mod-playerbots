@@ -184,11 +184,12 @@ bool QuestItemHelper::IsValidQuestItem(Item* item, uint32* outSpellId)
     if (!itemTemplate)
         return false;
 
-    // Only consider quest items (class 12), consumable items (class 0), or misc items (class 15)
-    // Some quest items are classified as MISC (e.g., Stillpine Furbolg Language Primer)
+    // Only consider quest items (class 12), consumable items (class 0), misc items (class 15), or keys (class 13)
+    // Some quest items are classified as MISC (e.g., Stillpine Furbolg Language Primer) or KEY (e.g., Bristlelimb Key)
     if (itemTemplate->Class != ITEM_CLASS_QUEST &&
         itemTemplate->Class != ITEM_CLASS_CONSUMABLE &&
-        itemTemplate->Class != ITEM_CLASS_MISC)
+        itemTemplate->Class != ITEM_CLASS_MISC &&
+        itemTemplate->Class != ITEM_CLASS_KEY)
         return false;
 
     // Check if the item has an associated spell that we can cast
@@ -1833,15 +1834,15 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                     {
                         // Check if this spell actually has quest-related effects rather than just being a consumable
                         bool isActualQuestItem = false;
-                        
-                        // Method 1: Check if it's a quest item class
-                        if (itemTemplate->Class == ITEM_CLASS_QUEST)
+
+                        // Method 1: Check if it's a quest item or key class
+                        if (itemTemplate->Class == ITEM_CLASS_QUEST || itemTemplate->Class == ITEM_CLASS_KEY)
                         {
                             isActualQuestItem = true;
                         }
                         else
                         {
-                            // Method 2: Check if the spell has quest-specific effects (summons, quest credit, etc.)
+                            // Method 2: Check if the spell has quest-specific effects (summons, quest credit, locks, etc.)
                             for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
                             {
                                 uint32 effect = spellInfo->Effects[i].Effect;
@@ -1853,6 +1854,7 @@ bool QuestItemHelper::IsQuestItemNeeded(Player* player, Item* item, uint32 spell
                                     effect == SPELL_EFFECT_QUEST_COMPLETE ||       // Directly completes quests
                                     effect == SPELL_EFFECT_SEND_EVENT ||           // Triggers quest events
                                     effect == SPELL_EFFECT_KILL_CREDIT ||          // Gives kill credit
+                                    effect == SPELL_EFFECT_OPEN_LOCK ||            // Opens locked objects (quest cages, chests, etc.)
                                     effect == SPELL_EFFECT_CREATE_ITEM)            // Creates quest items
                                 {
                                     isActualQuestItem = true;
@@ -2684,7 +2686,21 @@ WorldObject* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uin
         GameObject* go = botAI->GetGameObject(goGuid);
         if (!go || !go->isSpawned())
             continue;
-            
+
+        // Check if GameObject is in ready state (not already opened/used)
+        if (go->GetGoState() != GO_STATE_READY)
+        {
+            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "QuestItem: Skipping " << go->GetName()
+                    << " - not in ready state (current=" << uint32(go->GetGoState())
+                    << ", need GO_STATE_READY=" << uint32(GO_STATE_READY) << ")";
+                botAI->TellMaster(out.str());
+            }
+            continue;
+        }
+
         // Check if bot is within quest search range (larger than interaction range for movement targeting)
         float searchRange = sPlayerbotAIConfig->grindDistance; // Use grind distance for quest target search
         float distance = bot->GetDistance(go);
