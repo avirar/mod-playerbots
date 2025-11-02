@@ -1878,6 +1878,18 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             incompleteObjectiveIdx.push_back(QUEST_OBJECTIVES_COUNT + i);
     }
 
+    // Handle quests with no objectives (talk-to-NPC quests like "The Missing Fisherman")
+    // For these quests, the turn-in POI (ObjectiveIndex = -1) is the destination
+    if (incompleteObjectiveIdx.empty())
+    {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has no objectives, accepting turn-in POI as destination",
+                     bot->GetName(), questId);
+        }
+        incompleteObjectiveIdx.push_back(-1);
+    }
+
     // Get POIs to go
     for (const QuestPOI &qPoi : *poiVector)
     {
