@@ -42,6 +42,7 @@ struct PairGuidHash
 // Cache for probability-based attack decisions (Per-bot: non-global)
 // Map: (botGUID, targetGUID) -> (should attack decision, timestamp)
 static std::unordered_map<std::pair<ObjectGuid, ObjectGuid>, std::pair<bool, time_t>, PairGuidHash> attackDecisionCache;
+static std::mutex attackDecisionCacheMutex;
 
 void PossibleTargetsValue::FindUnits(std::list<Unit*>& targets)
 {
@@ -52,6 +53,7 @@ void PossibleTargetsValue::FindUnits(std::list<Unit*>& targets)
 
 static void CleanupAttackDecisionCache()
 {
+    std::lock_guard<std::mutex> lock(attackDecisionCacheMutex);
     time_t currentTime = time(nullptr);
     for (auto it = attackDecisionCache.begin(); it != attackDecisionCache.end();)
     {
@@ -146,15 +148,23 @@ bool PossibleTargetsValue::AcceptUnit(Unit* unit)
         {
             std::pair<ObjectGuid, ObjectGuid> cacheKey = std::make_pair(bot->GetGUID(), unit->GetGUID());
 
-            auto it = attackDecisionCache.find(cacheKey);
-            if (it != attackDecisionCache.end())
             {
-                if (currentTime - it->second.second < ATTACK_DECISION_CACHE_DURATION)
-                    return it->second.first;
+                std::lock_guard<std::mutex> lock(attackDecisionCacheMutex);
+                auto it = attackDecisionCache.find(cacheKey);
+                if (it != attackDecisionCache.end())
+                {
+                    if (currentTime - it->second.second < ATTACK_DECISION_CACHE_DURATION)
+                        return it->second.first;
+                }
             }
 
             bool shouldAttack = (urand(1, 100) <= attackChance);
-            attackDecisionCache[cacheKey] = std::make_pair(shouldAttack, currentTime);
+
+            {
+                std::lock_guard<std::mutex> lock(attackDecisionCacheMutex);
+                attackDecisionCache[cacheKey] = std::make_pair(shouldAttack, currentTime);
+            }
+
             return shouldAttack;
         }
     }
