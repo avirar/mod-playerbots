@@ -216,14 +216,21 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             switch (lockType)
                             {
                                 case LOCKTYPE_OPEN:              // 5
+                                case LOCKTYPE_TREASURE:          // 6 - Simple treasure chests
                                 case LOCKTYPE_QUICK_OPEN:        // 10
                                 case LOCKTYPE_OPEN_KNEELING:     // 13
+                                case LOCKTYPE_OPEN_ATTACKING:    // 14 - Quest chests/interaction objects
                                 case LOCKTYPE_SLOW_OPEN:         // 17
                                 case LOCKTYPE_CLOSE:             // 8
                                 case LOCKTYPE_QUICK_CLOSE:       // 11
                                 case LOCKTYPE_SLOW_CLOSE:        // 18
                                     // These lock types don't require skills, just simple interaction
                                     guid = lootGUID;
+                                    break;
+                                case LOCKTYPE_OPEN_FROM_VEHICLE: // 21
+                                    // Only lootable from vehicles (e.g., Wyrmrest drakes in Malygos)
+                                    if (bot->GetVehicle())
+                                        guid = lootGUID;
                                     break;
                                 default:
                                     // Unknown lock type, don't mark as lootable
