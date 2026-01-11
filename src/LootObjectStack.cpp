@@ -197,11 +197,39 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     {
                         this->guid = lootGUID;
                     }
-                    else if (SkillByLockType(LockType(lockInfo->Index[i])) > 0)
+                    else
                     {
-                        skillId = SkillByLockType(LockType(lockInfo->Index[i]));
-                        reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
-                        guid = lootGUID;
+                        LockType lockType = LockType(lockInfo->Index[i]);
+                        SkillType skill = SkillByLockType(lockType);
+
+                        if (skill > 0)
+                        {
+                            // Requires a tradeskill (lockpicking, herbalism, mining, etc.)
+                            skillId = skill;
+                            reqSkillValue = std::max((uint32)1, lockInfo->Skill[i]);
+                            guid = lootGUID;
+                        }
+                        else
+                        {
+                            // Check if it's a simple interaction lock type (no skill required)
+                            // These include: OPEN, QUICK_OPEN, OPEN_KNEELING, SLOW_OPEN, etc.
+                            switch (lockType)
+                            {
+                                case LOCKTYPE_OPEN:              // 5
+                                case LOCKTYPE_QUICK_OPEN:        // 10
+                                case LOCKTYPE_OPEN_KNEELING:     // 13
+                                case LOCKTYPE_SLOW_OPEN:         // 17
+                                case LOCKTYPE_CLOSE:             // 8
+                                case LOCKTYPE_QUICK_CLOSE:       // 11
+                                case LOCKTYPE_SLOW_CLOSE:        // 18
+                                    // These lock types don't require skills, just simple interaction
+                                    guid = lootGUID;
+                                    break;
+                                default:
+                                    // Unknown lock type, don't mark as lootable
+                                    break;
+                            }
+                        }
                     }
                     break;
 
