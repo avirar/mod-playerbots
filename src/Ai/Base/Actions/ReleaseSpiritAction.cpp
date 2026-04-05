@@ -148,6 +148,23 @@ bool AutoReleaseSpiritAction::HandleBattlegroundSpiritHealer()
 
         // Teleport to nearest friendly Spirit Healer when not currently in range of one.
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+        
+        // In BG, use BG-aware graveyard lookup - same as core does on player death
+        // This prevents teleporting out of the BG which would trigger deserter
+        if (bot->InBattleground() && bot->GetBattleground())
+        {
+            GraveyardStruct const* bgGrave = bot->GetBattleground()->GetClosestGraveyard(bot);
+            if (bgGrave && bgGrave->Map == bot->GetMapId())
+            {
+                bot->TeleportTo(bgGrave->Map, bgGrave->x, bgGrave->y, bgGrave->z, 0.f);
+                RESET_AI_VALUE(bool, "combat::self target");
+                RESET_AI_VALUE(WorldPosition, "current position");
+                return true;
+            }
+            // No valid BG grave on same map - don't teleport out, just wait for BG respawn
+            return false;
+        }
+        
         bot->TeleportTo(bot->GetMapId(), spiritHealer->GetPositionX(), spiritHealer->GetPositionY(), spiritHealer->GetPositionZ(), 0.f);
         RESET_AI_VALUE(bool, "combat::self target");
         RESET_AI_VALUE(WorldPosition, "current position");
