@@ -515,21 +515,28 @@ bool BGJoinAction::JoinQueue(uint32 type)
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
         }
     }
-    else if (!joinAsGroup)
-    {
-        if (teamId == TEAM_ALLIANCE)
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount++;
-        else
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount++;
-    }
     else
     {
+        uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
+        uint32 bgAlliancePlayerCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAlliancePlayerCount;
+        uint32 bgHordeBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount;
+        uint32 bgHordePlayerCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordePlayerCount;
+        uint32 activeBgQueue = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeBgQueue;
+        uint32 bgInstanceCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgInstanceCount;
+        uint32 TeamSize = bg->GetMaxPlayersPerTeam();
+
         if (teamId == TEAM_ALLIANCE)
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount +=
-                bot->GetGroup()->GetMembersCount();
+        {
+            if ((bgAllianceBotCount + bgAlliancePlayerCount) >= TeamSize * (activeBgQueue + bgInstanceCount))
+                return false;
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount++;
+        }
         else
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount +=
-                bot->GetGroup()->GetMembersCount();
+        {
+            if ((bgHordeBotCount + bgHordePlayerCount) >= TeamSize * (activeBgQueue + bgInstanceCount))
+                return false;
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount++;
+        }
     }
 
     botAI->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);
