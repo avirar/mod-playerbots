@@ -525,17 +525,19 @@ bool BGJoinAction::JoinQueue(uint32 type)
         uint32 bgInstanceCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgInstanceCount;
         uint32 TeamSize = bg->GetMaxPlayersPerTeam();
 
+        uint32 slotsNeeded = joinAsGroup ? bot->GetGroup()->GetMembersCount() : 1;
+
         if (teamId == TEAM_ALLIANCE)
         {
-            if ((bgAllianceBotCount + bgAlliancePlayerCount) >= TeamSize * (activeBgQueue + bgInstanceCount))
+            if ((bgAllianceBotCount + bgAlliancePlayerCount + slotsNeeded) > TeamSize * (activeBgQueue + bgInstanceCount))
                 return false;
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount++;
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount += slotsNeeded;
         }
         else
         {
-            if ((bgHordeBotCount + bgHordePlayerCount) >= TeamSize * (activeBgQueue + bgInstanceCount))
+            if ((bgHordeBotCount + bgHordePlayerCount + slotsNeeded) > TeamSize * (activeBgQueue + bgInstanceCount))
                 return false;
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount++;
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount += slotsNeeded;
         }
     }
 
