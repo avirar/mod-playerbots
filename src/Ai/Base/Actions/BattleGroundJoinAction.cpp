@@ -966,7 +966,7 @@ bool BGStatusAction::Execute(Event event)
 
             LOG_INFO("playerbots", "Bot {} {}:{} <{}> waited too long and leaves queue ({} {}).",
                      bot->GetGUID().ToString().c_str(), bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(),
-                     bot->GetName(), isArena ? "Arena" : "BG", _bgType, Time2);
+                     bot->GetName(), isArena ? "Arena" : "BG", _bgType);
 
             WorldPacket packet(CMSG_BATTLEFIELD_PORT, 20);
             action = 0;
@@ -986,7 +986,7 @@ bool BGStatusAction::Execute(Event event)
     {
         LOG_INFO("playerbots", "Bot {} {}:{} <{}>: Received BG status IN_PROGRESS for {} {}",
                  bot->GetGUID().ToString().c_str(), bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(),
-                 bot->GetName(), isArena ? "Arena" : "BG", _bgType, Time2, Time1);
+                 bot->GetName(), isArena ? "Arena" : "BG", _bgType);
         return false;
     }
 
@@ -1028,9 +1028,8 @@ bool BGStatusAction::Execute(Event event)
         }
 
         LOG_INFO("playerbots", "Bot {} {}:{} <{}> joined {} - {}", bot->GetGUID().ToString().c_str(),
-                 bot->GetGUID().ToString().c_str(),
                  bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
-                 isArena ? "Arena" : "BG", _bgType, Time1);
+                 isArena ? "Arena" : "BG", _bgType);
 
         WorldPacket emptyPacket;
         bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
