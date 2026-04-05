@@ -1589,7 +1589,10 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
 
     // ignore when in battle grounds or arena.
     if (bot->InBattleground() || bot->InArena())
+    {
+        LOG_DEBUG("playerbots", "RandomTeleport: Bot {} is in BG/Arena, skipping teleport", bot->GetName().c_str());
         return;
+    }
 
     // ignore when in group (e.g. world, dungeons, raids) and leader is not a player.
     if (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetGUID()))
@@ -1603,6 +1606,15 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
             botAI->HasPlayerNearby())
             return;
     }
+
+    if (locs.empty())
+    {
+        LOG_DEBUG("playerbots", "RandomTeleport: Bot {} - no locations available", bot->GetName().c_str());
+        return;
+    }
+
+    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleport(Player*, vector, bool) called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
+        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
 
     // if (sPlayerbotAIConfig.randomBotRpgChance < 0)
     //     return;
@@ -1766,7 +1778,13 @@ void RandomPlayerbotMgr::Init()
 void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
 {
     if (bot->InBattleground())
+    {
+        LOG_DEBUG("playerbots", "RandomTeleportForLevel: Bot {} is in BG, skipping", bot->GetName().c_str());
         return;
+    }
+
+    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleportForLevel called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
+        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
 
     std::vector<WorldLocation> locs = sTravelMgr.GetCityLocations(bot);
     if (!locs.empty())
@@ -1785,7 +1803,13 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
 void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)
 {
     if (bot->InBattleground())
+    {
+        LOG_DEBUG("playerbots", "RandomTeleportGrindForLevel: Bot {} is in BG, skipping", bot->GetName().c_str());
         return;
+    }
+
+    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleportGrindForLevel called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
+        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
 
     std::vector<WorldLocation> locs = sTravelMgr.GetTeleportLocations(bot);
     LOG_DEBUG("playerbots", "Random teleporting bot {} for level {} ({} locations available)", bot->GetName().c_str(),
@@ -1797,7 +1821,13 @@ void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)
 void RandomPlayerbotMgr::RandomTeleport(Player* bot)
 {
     if (bot->InBattleground())
+    {
+        LOG_DEBUG("playerbots", "RandomTeleport(Player*): Bot {} is in BG, skipping", bot->GetName().c_str());
         return;
+    }
+
+    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleport(Player*) called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
+        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
 
     PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "RandomTeleport");
     std::vector<WorldLocation> locs;
@@ -2389,6 +2419,12 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
     if (cmd == "update")
     {
         sRandomPlayerbotMgr.UpdateAIInternal(0);
+        return true;
+    }
+
+    if (cmd == "bgstats")
+    {
+        sRandomPlayerbotMgr.LogBattlegroundInfo();
         return true;
     }
 

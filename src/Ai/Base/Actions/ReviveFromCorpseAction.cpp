@@ -169,6 +169,8 @@ bool FindCorpseAction::Execute(Event /*event*/)
         {
             bot->GetMotionMaster()->Clear();
             bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+            LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] ReviveFromCorpseAction - calling TeleportTo for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
+                bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
             bot->TeleportTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), 0);
         }
 
@@ -209,7 +211,12 @@ GraveyardStruct const* SpiritHealerAction::GetGrave(bool startZone)
     GraveyardStruct const* ClosestGrave = nullptr;
     GraveyardStruct const* NewGrave = nullptr;
 
-    ClosestGrave = sGraveyard->GetClosestGraveyard(bot, bot->GetTeamId());
+    // Use BG-aware graveyard lookup when in battleground - matches core behavior
+    // This prevents getting a grave outside the BG which would cause deserter
+    if (bot->InBattleground() && bot->GetBattleground())
+        ClosestGrave = bot->GetBattleground()->GetClosestGraveyard(bot);
+    else
+        ClosestGrave = sGraveyard->GetClosestGraveyard(bot, bot->GetTeamId());
 
     if (!startZone && ClosestGrave)
         return ClosestGrave;
@@ -351,7 +358,17 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     // {
     context->GetValue<uint32>("death count")->Set(dCount + 1);
     bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
-    return bot->TeleportTo(ClosestGrave->Map, ClosestGrave->x, ClosestGrave->y, ClosestGrave->z, 0.f);
+    
+    // Only teleport if grave is on same map (prevents teleporting out of BG and triggering deserter)
+    if (ClosestGrave && ClosestGrave->Map == bot->GetMapId())
+    {
+        LOG_DEBUG("playerbots", "ReviveFromCorpseAction: Bot {} teleporting to grave on same map {}", bot->GetName().c_str(), ClosestGrave->Map);
+        return bot->TeleportTo(ClosestGrave->Map, ClosestGrave->x, ClosestGrave->y, ClosestGrave->z, 0.f);
+    }
+    
+    // In BG but grave is on different map - don't teleport out, just wait for BG respawn
+    LOG_DEBUG("playerbots", "ReviveFromCorpseAction: Bot {} in BG but grave on different map, not teleporting", bot->GetName().c_str());
+    return false;
     // }
 
     // LOG_INFO("playerbots", "Bot {} {}:{} <{}> can't find a spirit healer", bot->GetGUID().ToString().c_str(),

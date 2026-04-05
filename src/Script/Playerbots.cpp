@@ -89,8 +89,34 @@ public:
         PLAYERHOOK_CAN_PLAYER_USE_GUILD_CHAT,
         PLAYERHOOK_CAN_PLAYER_USE_CHANNEL_CHAT,
         PLAYERHOOK_ON_GIVE_EXP,
-        PLAYERHOOK_ON_BEFORE_TELEPORT
+        PLAYERHOOK_ON_BEFORE_TELEPORT,
+        PLAYERHOOK_ON_BATTLEGROUND_DESERTION
     }) {}
+
+    void OnPlayerBattlegroundDesertion(Player* player, BattlegroundDesertionType const desertionType) override
+    {
+        if (!player || !GET_PLAYERBOT_AI(player))
+            return;
+
+        const char* typeStr = "UNKNOWN";
+        switch (desertionType)
+        {
+            case BG_DESERTION_TYPE_LEAVE_BG:        typeStr = "BG_LEAVE_BG"; break;
+            case BG_DESERTION_TYPE_OFFLINE:           typeStr = "BG_OFFLINE"; break;
+            case BG_DESERTION_TYPE_LEAVE_QUEUE:       typeStr = "BG_LEAVE_QUEUE"; break;
+            case BG_DESERTION_TYPE_NO_ENTER_BUTTON:   typeStr = "BG_NO_ENTER"; break;
+            case BG_DESERTION_TYPE_INVITE_LOGOUT:     typeStr = "BG_INVITE_LOGOUT"; break;
+            case ARENA_DESERTION_TYPE_LEAVE_BG:       typeStr = "ARENA_LEAVE_BG"; break;
+            case ARENA_DESERTION_TYPE_LEAVE_QUEUE:    typeStr = "ARENA_LEAVE_QUEUE"; break;
+            case ARENA_DESERTION_TYPE_NO_ENTER_BUTTON:typeStr = "ARENA_NO_ENTER"; break;
+            case ARENA_DESERTION_TYPE_INVITE_LOGOUT:  typeStr = "ARENA_INVITE_LOGOUT"; break;
+        }
+
+        LOG_INFO("playerbots", "[DESERTER] Bot {} (GUID: {}) desertion type: {}, InBG={}, InQueue={}, Teleporting={}, Map={}, Zone={}",
+                 player->GetName(), player->GetGUID().ToString().c_str(), typeStr,
+                 player->InBattleground(), player->InBattlegroundQueue(), player->IsBeingTeleportedFar(),
+                 player->GetMapId(), player->GetZoneId());
+    }
 
     void OnPlayerLogin(Player* player) override
     {
