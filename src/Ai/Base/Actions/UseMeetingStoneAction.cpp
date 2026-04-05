@@ -209,9 +209,6 @@ bool SummonAction::Teleport(Player* summoner, Player* player, bool preserveAuras
                 if (!preserveAuras)
                     player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED |
                                                           AURA_INTERRUPT_FLAG_CHANGE_MAP);
-                
-                LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] UseMeetingStoneAction::Execute - calling TeleportTo({}, {}, {}, {}) for player {} (InBG: {}, InBGQueue: {}, InArena: {})",
-                    mapId, x, y, z, player->GetName().c_str(), player->InBattleground(), player->InBattlegroundQueue(), player->InArena());
                 player->TeleportTo(mapId, x, y, z, 0);
                 if (player->GetPet())
                     player->GetPet()->NearTeleportTo(x, y, z, player->GetOrientation());

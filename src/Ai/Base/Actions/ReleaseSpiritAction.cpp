@@ -156,14 +156,12 @@ bool AutoReleaseSpiritAction::HandleBattlegroundSpiritHealer()
             GraveyardStruct const* bgGrave = bot->GetBattleground()->GetClosestGraveyard(bot);
             if (bgGrave && bgGrave->Map == bot->GetMapId())
             {
-                LOG_DEBUG("playerbots", "Bot {} using BG-aware graveyard (map {}) in ReleaseSpiritAction", bot->GetName().c_str(), bgGrave->Map);
                 bot->TeleportTo(bgGrave->Map, bgGrave->x, bgGrave->y, bgGrave->z, 0.f);
                 RESET_AI_VALUE(bool, "combat::self target");
                 RESET_AI_VALUE(WorldPosition, "current position");
                 return true;
             }
             // No valid BG grave on same map - don't teleport out, just wait for BG respawn
-            LOG_DEBUG("playerbots", "Bot {} in BG but no valid grave on same map, waiting for respawn", bot->GetName().c_str());
             return false;
         }
         
@@ -263,8 +261,6 @@ int64 RepopAction::CalculateDeadTime() const
 void RepopAction::PerformGraveyardTeleport(const GraveyardStruct* graveyard) const
 {
     bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
-    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RepopAction::PerformGraveyardTeleport - calling TeleportTo for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
-        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
     bot->TeleportTo(graveyard->Map, graveyard->x, graveyard->y, graveyard->z, 0.f);
     RESET_AI_VALUE(bool, "combat::self target");
     RESET_AI_VALUE(WorldPosition, "current position");
