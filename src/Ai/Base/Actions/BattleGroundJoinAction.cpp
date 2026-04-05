@@ -681,7 +681,7 @@ bool BGLeaveAction::Execute(Event /*event*/)
     if (!queueType)
         return false;
 
-    LOG_INFO("playerbots", "[BG_LEAVE] Bot {} {}:{} <{}> leaves {} queue (strategy reset)", bot->GetGUID().ToString().c_str(),
+    LOG_INFO("playerbots", "Bot {} {}:{} <{}> leaves {} queue", bot->GetGUID().ToString().c_str(),
              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str(),
              isArena ? "Arena" : "BG");
 
@@ -725,7 +725,7 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
     botAI->ChangeStrategy("-arena", BOT_STATE_COMBAT);
     botAI->ChangeStrategy("-arena", BOT_STATE_NON_COMBAT);
 
-    LOG_INFO("playerbots", "[BG_LEAVE] Bot {} {}:{} <{}> leaves {} instance (strategy reset)", bot->GetGUID().ToString().c_str(),
+    LOG_INFO("playerbots", "Bot {} {}:{} <{}> leaves {}", bot->GetGUID().ToString().c_str(),
              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
              isArena ? "Arena" : "BG");
 
@@ -875,7 +875,7 @@ bool BGStatusAction::Execute(Event event)
 
     if (Time1 == TIME_TO_AUTOREMOVE)  // Battleground is over, bot needs to leave
     {
-        LOG_INFO("playerbots", "[BG_LEAVE] Bot {} <{}> ({} {}): BG ended (TIME_TO_AUTOREMOVE) for {} {}",
+        LOG_INFO("playerbots", "Bot {} <{}> ({} {}): Received BG status TIME_TO_AUTOREMOVE for {} {}",
                  bot->GetGUID().ToString().c_str(), bot->GetName(), bot->GetLevel(),
                  bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", isArena ? "Arena" : "BG", _bgType);
 
@@ -907,7 +907,7 @@ bool BGStatusAction::Execute(Event event)
                         _bgTypeId = bg->GetBgTypeID();
                     }
 
-                    LOG_INFO("playerbots", "[BG_JOIN] Bot {} {}:{} <{}>: Force join {} {} (already invited)", bot->GetGUID().ToString().c_str(),
+                    LOG_INFO("playerbots", "Bot {} {}:{} <{}>: Force join {} {}", bot->GetGUID().ToString().c_str(),
                              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
                              isArena ? "Arena" : "BG", _bgType);
                     WorldPacket emptyPacket;
@@ -964,7 +964,7 @@ bool BGStatusAction::Execute(Event event)
             if (realPlayers)
                 return false;
 
-            LOG_INFO("playerbots", "[BG_LEAVE] Bot {} {}:{} <{}> waited too long in queue and leaves ({} {}). Queue time: {}ms",
+            LOG_INFO("playerbots", "Bot {} {}:{} <{}> waited too long and leaves queue ({} {}).",
                      bot->GetGUID().ToString().c_str(), bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(),
                      bot->GetName(), isArena ? "Arena" : "BG", _bgType, Time2);
 
@@ -984,7 +984,7 @@ bool BGStatusAction::Execute(Event event)
 
     if (statusid == STATUS_IN_PROGRESS)  // placeholder for Leave BG if it takes too long
     {
-        LOG_INFO("playerbots", "[BG_STATUS] Bot {} {}:{} <{}>: IN_PROGRESS for {} {} (bg time: {}ms, time to leave: {}ms)",
+        LOG_INFO("playerbots", "Bot {} {}:{} <{}>: Received BG status IN_PROGRESS for {} {}",
                  bot->GetGUID().ToString().c_str(), bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(),
                  bot->GetName(), isArena ? "Arena" : "BG", _bgType, Time2, Time1);
         return false;
@@ -1027,7 +1027,7 @@ bool BGStatusAction::Execute(Event event)
             }
         }
 
-        LOG_INFO("playerbots", "[BG_JOIN] Bot {} {}:{} <{}> joined {} - {} (Time1: {}ms)",
+        LOG_INFO("playerbots", "Bot {} {}:{} <{}> joined {} - {}", bot->GetGUID().ToString().c_str(),
                  bot->GetGUID().ToString().c_str(),
                  bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
                  isArena ? "Arena" : "BG", _bgType, Time1);

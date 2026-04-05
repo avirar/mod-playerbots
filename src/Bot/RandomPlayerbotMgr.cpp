@@ -1613,9 +1613,6 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         return;
     }
 
-    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleport(Player*, vector, bool) called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
-        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
-
     // if (sPlayerbotAIConfig.randomBotRpgChance < 0)
     //     return;
 
@@ -1783,9 +1780,6 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
         return;
     }
 
-    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleportForLevel called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
-        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
-
     std::vector<WorldLocation> locs = sTravelMgr.GetCityLocations(bot);
     if (!locs.empty())
     {
@@ -1808,9 +1802,6 @@ void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)
         return;
     }
 
-    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleportGrindForLevel called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
-        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
-
     std::vector<WorldLocation> locs = sTravelMgr.GetTeleportLocations(bot);
     LOG_DEBUG("playerbots", "Random teleporting bot {} for level {} ({} locations available)", bot->GetName().c_str(),
               bot->GetLevel(), locs.size());
@@ -1825,9 +1816,6 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot)
         LOG_DEBUG("playerbots", "RandomTeleport(Player*): Bot {} is in BG, skipping", bot->GetName().c_str());
         return;
     }
-
-    LOG_INFO("playerbots", "[BG_DESERTER_DEBUG] RandomTeleport(Player*) called for bot {} (InBG: {}, InBGQueue: {}, InArena: {})",
-        bot->GetName().c_str(), bot->InBattleground(), bot->InBattlegroundQueue(), bot->InArena());
 
     PerfMonitorOperation* pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "RandomTeleport");
     std::vector<WorldLocation> locs;
