@@ -1182,10 +1182,22 @@ void RandomPlayerbotMgr::CheckBgQueue()
         {
             for (uint32 bracket : brackets)
             {
-                if (BattlegroundData[queueType][bracket].activeBgQueue == 0 &&
-                    BattlegroundData[queueType][bracket].bgInstanceCount < minCount &&
+                if (BattlegroundData[queueType][bracket].bgInstanceCount < minCount ||
                     BattlegroundData[queueType][bracket].bgInstances.size() < minCount)
+                {
+                    if (BattlegroundData[queueType][bracket].minLevel == 0)
+                    {
+                        BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(BattlegroundQueueTypeId(queueType));
+                        uint32 mapId = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId)->GetMapId();
+                        if (PvPDifficultyEntry const* bracketEntry = GetBattlegroundBracketById(mapId, BattlegroundBracketId(bracket)))
+                        {
+                            BattlegroundData[queueType][bracket].minLevel = bracketEntry->minLevel;
+                            BattlegroundData[queueType][bracket].maxLevel = bracketEntry->maxLevel;
+                        }
+                    }
+
                     BattlegroundData[queueType][bracket].activeBgQueue = 1;
+                }
             }
         };
 
