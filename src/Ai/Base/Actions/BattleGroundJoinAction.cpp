@@ -242,6 +242,8 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
         BracketSize = (uint32)(type * 2);
         TeamSize = (uint32)type;
 
+        std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+
         // Check if bots should join Rated Arena (Only captains can queue)
         uint32 ratedArenaBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount;
         uint32 ratedArenaPlayerCount =
@@ -285,6 +287,8 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
 
         return false;
     }
+
+    std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
 
     // Check if bots should join Battleground
     uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
@@ -512,11 +516,14 @@ bool BGJoinAction::JoinQueue(uint32 type)
     {
         if (!isRated)
         {
+            std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
         }
     }
     else
     {
+        std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+
         uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
         uint32 bgAlliancePlayerCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAlliancePlayerCount;
         uint32 bgHordeBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount;
@@ -561,7 +568,7 @@ bool BGJoinAction::JoinQueue(uint32 type)
     return true;
 }
 
-// Not sure if this has ever worked, but it should be similar to BGJoinAction::shouldJoinBg
+ // Not sure if this has ever worked, but it should be similar to BGJoinAction::shouldJoinBg
 bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBracketId bracketId)
 {
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
@@ -584,6 +591,8 @@ bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battleg
     {
         BracketSize = (uint32)(type * 2);
         TeamSize = (uint32)type;
+
+        std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
 
         // Check if bots should join Rated Arena (Only captains can queue)
         uint32 ratedArenaBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount;
@@ -628,6 +637,8 @@ bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battleg
 
         return false;
     }
+
+    std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
 
     // Check if bots should join Battleground
     uint32 bgAllianceBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount;
@@ -950,11 +961,14 @@ bool BGStatusAction::Execute(Event event)
         if (Time2 > timer && isArena)  // disabled for BG
             leaveQ = true;
 
-        if (leaveQ && ((bot->GetGroup() && bot->GetGroup()->IsLeader(bot->GetGUID())) ||
-                       !(bot->GetGroup() || botAI->GetMaster())))
+       if (leaveQ && ((bot->GetGroup() && bot->GetGroup()->IsLeader(bot->GetGUID())) ||
+                        !(bot->GetGroup() || botAI->GetMaster())))
         {
             //TeamId teamId = bot->GetTeamId(); //not used, line marked for removal.
             bool realPlayers = false;
+
+            std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+
             if (isRated)
                 realPlayers = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaPlayerCount > 0;
             else

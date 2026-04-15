@@ -906,6 +906,8 @@ void RandomPlayerbotMgr::CheckBgQueue()
 
     LOG_DEBUG("playerbots", "Checking BG Queue...");
 
+    std::lock_guard<std::mutex> bgLock(bgDataMutex);
+
     // Initialize Battleground Data (do not clear here)
 
     for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)

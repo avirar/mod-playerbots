@@ -6,6 +6,8 @@
 #ifndef _PLAYERBOT_RANDOMPLAYERBOTMGR_H
 #define _PLAYERBOT_RANDOMPLAYERBOTMGR_H
 
+#include <mutex>
+
 #include "NewRpgInfo.h"
 #include "ObjectGuid.h"
 #include "PlayerbotMgr.h"
@@ -145,6 +147,7 @@ public:
     CreatureData const* GetCreatureDataByEntry(uint32 entry);
     void LoadBattleMastersCache();
     std::map<uint32, std::map<uint32, BattlegroundInfo>> BattlegroundData;
+    mutable std::mutex bgDataMutex;  // Mutex protecting BattlegroundData from concurrent access
     std::map<uint32, std::map<uint32, std::map<TeamId, uint32>>> VisualBots;
     std::map<uint32, std::map<uint32, std::map<uint32, uint32>>> Supporters;
     std::map<TeamId, std::vector<uint32>> LfgDungeons;
