@@ -740,6 +740,42 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
              bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName(),
              isArena ? "Arena" : "BG");
 
+    uint32 mapId = bg->GetMapId();
+    PvPDifficultyEntry const* bracketInfo = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+    
+    if (bracketInfo && isRandomBot)
+    {
+        std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+
+        for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+        {
+            BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId((BattlegroundQueueTypeId)queueType);
+            if (Battleground* bgTemplate = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId))
+            {
+                if (bgTemplate->GetMapId() == mapId)
+                {
+                    BattlegroundBracketId bracketId = bracketInfo->GetBracketId();
+                    BattlegroundQueueTypeId queueTypeId = (BattlegroundQueueTypeId)queueType;
+
+                    if (isArena)
+                    {
+                        if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount > 0)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount--;
+                    }
+                    else
+                    {
+                        TeamId teamId = bot->GetTeamId();
+                        if (teamId == TEAM_ALLIANCE && sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount > 0)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount--;
+                        else if (teamId == TEAM_HORDE && sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount > 0)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].bgHordeBotCount--;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     WorldPacket packet(CMSG_LEAVE_BATTLEFIELD);
     packet << uint8(0);
     packet << uint8(0);  // BattlegroundTypeId-1 ?
