@@ -936,24 +936,6 @@ void RandomPlayerbotMgr::CheckBgQueue()
         }
     }
 
-    // Restore pending predictions after rebuild to prevent underpopulation when bots are in the JoinQueue() -> QueuePacket() gap
-    for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
-    {
-        for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
-        {
-            auto& bgInfo = BattlegroundData[queueType][bracket];
-            uint32 alliancePending = std::max(0, static_cast<int>(savedBGAllianceBotCount[queueType][bracket] - bgInfo.bgAllianceBotCount));
-            uint32 hordePending = std::max(0, static_cast<int>(savedBGHordeBotCount[queueType][bracket] - bgInfo.bgHordeBotCount));
-            uint32 ratedPending = std::max(0, static_cast<int>(savedRatedArenaBotCount[queueType][bracket] - bgInfo.ratedArenaBotCount));
-            uint32 skirmishPending = std::max(0, static_cast<int>(savedSkirmishArenaBotCount[queueType][bracket] - bgInfo.skirmishArenaBotCount));
-
-            bgInfo.bgAllianceBotCount += alliancePending;
-            bgInfo.bgHordeBotCount += hordePending;
-            bgInfo.ratedArenaBotCount += ratedPending;
-            bgInfo.skirmishArenaBotCount += skirmishPending;
-        }
-    }
-
     // Process real players and populate Battleground Data with player/queue count
     // Opens a queue for bots to join
     for (Player* player : players)
@@ -1142,9 +1124,27 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 }
                 else
                 {
-                    BattlegroundData[queueTypeId][bracketId].bgInstanceCount = instanceIds->size();
+               BattlegroundData[queueTypeId][bracketId].bgInstanceCount = instanceIds->size();
                 }
             }
+        }
+    }
+
+    // Restore pending predictions after rebuild to prevent underpopulation when bots are in the JoinQueue() -> QueuePacket() gap
+    for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+    {
+        for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+        {
+            auto& bgInfo = BattlegroundData[queueType][bracket];
+            uint32 alliancePending = std::max(0, static_cast<int>(savedBGAllianceBotCount[queueType][bracket] - bgInfo.bgAllianceBotCount));
+            uint32 hordePending = std::max(0, static_cast<int>(savedBGHordeBotCount[queueType][bracket] - bgInfo.bgHordeBotCount));
+            uint32 ratedPending = std::max(0, static_cast<int>(savedRatedArenaBotCount[queueType][bracket] - bgInfo.ratedArenaBotCount));
+            uint32 skirmishPending = std::max(0, static_cast<int>(savedSkirmishArenaBotCount[queueType][bracket] - bgInfo.skirmishArenaBotCount));
+
+            bgInfo.bgAllianceBotCount += alliancePending;
+            bgInfo.bgHordeBotCount += hordePending;
+            bgInfo.ratedArenaBotCount += ratedPending;
+            bgInfo.skirmishArenaBotCount += skirmishPending;
         }
     }
 
