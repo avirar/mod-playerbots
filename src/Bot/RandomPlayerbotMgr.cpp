@@ -910,11 +910,47 @@ void RandomPlayerbotMgr::CheckBgQueue()
 
     // Initialize Battleground Data (do not clear here)
 
+    // Save bot counts before reset to preserve pending predictions (bots whose QueuePacket() calls haven't been processed yet)
+    std::map<int, std::map<int, uint32>> savedBGAllianceBotCount;
+    std::map<int, std::map<int, uint32>> savedBGHordeBotCount;
+    std::map<int, std::map<int, uint32>> savedRatedArenaBotCount;
+    std::map<int, std::map<int, uint32>> savedSkirmishArenaBotCount;
+
+    for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+    {
+        for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+        {
+            auto& bgInfo = BattlegroundData[queueType][bracket];
+            savedBGAllianceBotCount[queueType][bracket] = bgInfo.bgAllianceBotCount;
+            savedBGHordeBotCount[queueType][bracket] = bgInfo.bgHordeBotCount;
+            savedRatedArenaBotCount[queueType][bracket] = bgInfo.ratedArenaBotCount;
+            savedSkirmishArenaBotCount[queueType][bracket] = bgInfo.skirmishArenaBotCount;
+        }
+    }
+
     for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
     {
         for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
         {
             BattlegroundData[queueType][bracket] = BattlegroundInfo();
+        }
+    }
+
+    // Restore pending predictions after rebuild to prevent underpopulation when bots are in the JoinQueue() -> QueuePacket() gap
+    for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
+    {
+        for (int queueType = BATTLEGROUND_QUEUE_AV; queueType < MAX_BATTLEGROUND_QUEUE_TYPES; ++queueType)
+        {
+            auto& bgInfo = BattlegroundData[queueType][bracket];
+            uint32 alliancePending = std::max(0, static_cast<int>(savedBGAllianceBotCount[queueType][bracket] - bgInfo.bgAllianceBotCount));
+            uint32 hordePending = std::max(0, static_cast<int>(savedBGHordeBotCount[queueType][bracket] - bgInfo.bgHordeBotCount));
+            uint32 ratedPending = std::max(0, static_cast<int>(savedRatedArenaBotCount[queueType][bracket] - bgInfo.ratedArenaBotCount));
+            uint32 skirmishPending = std::max(0, static_cast<int>(savedSkirmishArenaBotCount[queueType][bracket] - bgInfo.skirmishArenaBotCount));
+
+            bgInfo.bgAllianceBotCount += alliancePending;
+            bgInfo.bgHordeBotCount += hordePending;
+            bgInfo.ratedArenaBotCount += ratedPending;
+            bgInfo.skirmishArenaBotCount += skirmishPending;
         }
     }
 
