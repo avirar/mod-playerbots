@@ -33,6 +33,8 @@ struct BattlegroundInfo
     uint32 skirmishArenaBotCount = 0;
     uint32 arenaAllianceBotCount = 0;  // Tracks all arena bots (rated + skirmish) for Alliance faction
     uint32 arenaHordeBotCount = 0;    // Tracks all arena bots (rated + skirmish) for Horde faction
+    uint32 ratedArenaQueueAllianceCount = 0;  // Round-robin: Alliance captains queued for rated
+    uint32 ratedArenaQueueHordeCount = 0;    // Round-robin: Horde captains queued for rated
 
     // Bots (Battleground)
     uint32 bgHordeBotCount = 0;
@@ -245,6 +247,16 @@ private:
     typedef void (RandomPlayerbotMgr::*ConsoleCommandHandler)(Player*);
     std::vector<Player*> players;
     uint32 processTicks;
+
+public:
+    // Pending rated arena team tracking for soft reservation
+    void AddPendingRatedTeam(uint32 teamId);
+    void RemovePendingRatedTeam(uint32 teamId);
+    bool IsPendingRatedTeam(uint32 teamId);
+    void CleanStalePendingRatedTeams(uint32 timeoutSeconds = 1200);
+    std::set<uint32> pendingRatedTeams;
+    std::map<uint32, time_t> pendingRatedTimestamp;
+    std::mutex pendingRatedMutex;
 
     // std::map<uint32, std::vector<WorldLocation>> rpgLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> rpgLocsCacheLevel;

@@ -361,6 +361,9 @@ bool PlayerbotAIConfig::Initialize()
     randomBotAutoJoinBGSkirmishArena5v5Count =
         sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGSkirmishArena5v5Count", 0);
     
+    randomBotPendingRatedTeamTimeout =
+        sConfigMgr->GetOption<uint32>("AiPlayerbot.RandomBotPendingRatedTeamTimeout", 1800);
+    
     logInGroupOnly = sConfigMgr->GetOption<bool>("AiPlayerbot.LogInGroupOnly", true);
     logValuesPerTick = sConfigMgr->GetOption<bool>("AiPlayerbot.LogValuesPerTick", false);
     fleeingEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.FleeingEnabled", true);

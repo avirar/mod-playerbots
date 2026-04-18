@@ -249,6 +249,8 @@ public:
     uint32 randomBotAutoJoinBGSkirmishArena3v3Count;
     uint32 randomBotAutoJoinBGSkirmishArena5v5Count;
 
+    uint32 randomBotPendingRatedTeamTimeout;  // Seconds before pending rated team expires (default 1800 = 30 min)
+
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLowerLevel, randomBotTeleHigherLevel;
     std::map<uint32, std::pair<uint32, uint32>> zoneBrackets;

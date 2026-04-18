@@ -1301,6 +1301,11 @@ AiPlayerbot.RandomBotAutoJoinBGSkirmishArena2v2Count = 0
 AiPlayerbot.RandomBotAutoJoinBGSkirmishArena3v3Count = 0
 AiPlayerbot.RandomBotAutoJoinBGSkirmishArena5v5Count = 0
 
+# Pending rated team timeout (seconds)
+# Teams pending rated queue will be cleared after this timeout if members never become available.
+# Default: 1800 (30 minutes) - accommodates long AV matches
+AiPlayerbot.RandomBotPendingRatedTeamTimeout = 1800
+
 # Randombot arena team count
 # Teams are created when bots are initialized on server restart.
 # You may need to first delete all arena teams, then reinitialize bots.

@@ -44,6 +44,14 @@ bool BGJoinAction::Execute(Event /*event*/)
             if (isRated && !gatherArenaTeam(type))
                 return false;
 
+            if (isRated)
+            {
+                // Clear pending rated team after successfully gathering the team
+                ArenaTeam* team = sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type);
+                if (team)
+                    sRandomPlayerbotMgr.RemovePendingRatedTeam(team->GetId());
+            }
+
             botAI->GetAiObjectContext()->GetValue<uint32>("arena type")->Set(isRated);
         }
 
@@ -235,6 +243,22 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
     if (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetGUID()))
         return false;
 
+    // Check if bot's arena team is pending rated (soft reservation) - block all activity
+    for (uint8 slot = 0; slot < MAX_ARENA_SLOT; ++slot)
+    {
+        uint32 arenaTeamId = bot->GetArenaTeamId(slot);
+        if (arenaTeamId && sRandomPlayerbotMgr.IsPendingRatedTeam(arenaTeamId))
+        {
+            ArenaTeam* team = sArenaTeamMgr->GetArenaTeamById(arenaTeamId);
+            if (team)
+            {
+                LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} waiting for rated queue (team {} pending)",
+                    bot->GetName(), team->GetName());
+                return false;
+            }
+        }
+    }
+
     // Check if bots should join Arena
     ArenaType type = ArenaType(BattlegroundMgr::BGArenaType(queueTypeId));
     if (type != ARENA_TYPE_NONE)
@@ -307,13 +331,73 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
 
             bool needsRatedBots = activeRatedArenaQueue > 0 && ratedArenaInstanceCount < ratedArenaMinCount;
 
+            // Cap total rated bots in pipeline (queued + in-instance) to configLimit * teamSize
+            // This prevents all captains from queuing simultaneously and creating excess instances
+            uint32 ratedArenaBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount;
+            uint32 ratedBotCap = ratedArenaMinCount * type;
+            bool underBotCap = (ratedArenaMinCount > 0) && (ratedArenaBotCount < ratedBotCap);
+
             // Only captains can initiate rated queue
-            if (needsRatedBots && sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type))
+            if (needsRatedBots && underBotCap && sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type))
             {
-                LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining rated arena (is captain, instCount={} minCount={})",
-                        bot->GetName(), ratedArenaInstanceCount, ratedArenaMinCount);
-                ratedList.push_back(queueTypeId);
-                return true;
+                // Round-robin faction balancing - if this faction has 2+ more captains queued than other, skip
+                uint32 myFactionCount = (teamId == TEAM_ALLIANCE) ?
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueAllianceCount :
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueHordeCount;
+                uint32 otherFactionCount = (teamId == TEAM_ALLIANCE) ?
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueHordeCount :
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueAllianceCount;
+                
+                bool factionBalanced = (myFactionCount <= otherFactionCount + 1);
+                
+                if (!factionBalanced)
+                {
+                    LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} faction {} queued more, waiting (my={} other={})",
+                            bot->GetName(), teamId == TEAM_ALLIANCE ? "Alliance" : "Horde", myFactionCount, otherFactionCount);
+                    // Don't queue yet - other faction needs turn
+                }
+                else
+                {
+                    // Check member availability (not in BG, not in queue, not in combat)
+                    uint32 availableMembers = 0;
+                    for (auto& member : arenaTeam->GetMembers())
+                    {
+                        if (member.Guid == bot->GetGUID()) continue;
+                        Player* memberPlayer = ObjectAccessor::FindConnectedPlayer(member.Guid);
+                        if (!memberPlayer || !memberPlayer->IsInWorld()) continue;
+                        if (memberPlayer->InBattleground() || memberPlayer->InBattlegroundQueue() || memberPlayer->IsInCombat()) continue;
+                        availableMembers++;
+                    }
+
+                    bool enoughAvailable = availableMembers >= (type - 1);
+
+                    if (enoughAvailable)
+                    {
+                        // Increment faction counter and set pending
+                        if (teamId == TEAM_ALLIANCE)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueAllianceCount++;
+                        else
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueHordeCount++;
+                        
+                        sRandomPlayerbotMgr.AddPendingRatedTeam(arenaTeamId);
+                        LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining rated arena (is captain, available={} required={})",
+                                bot->GetName(), availableMembers, type - 1);
+                        ratedList.push_back(queueTypeId);
+                        return true;
+                    }
+                    else
+                    {
+                        // Not enough available members - set pending anyway to reserve them
+                        sRandomPlayerbotMgr.AddPendingRatedTeam(arenaTeamId);
+                        LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} not enough available members (have={} need={})",
+                                bot->GetName(), availableMembers, type - 1);
+                    }
+                }
+            }
+            // If rated conditions not met, clear pending if this team was pending
+            else if (arenaTeam && sRandomPlayerbotMgr.IsPendingRatedTeam(arenaTeamId))
+            {
+                sRandomPlayerbotMgr.RemovePendingRatedTeam(arenaTeamId);
             }
             
             // Team members (non-captains) should wait for captain - don't join skirmish
@@ -614,18 +698,6 @@ bool BGJoinAction::JoinQueue(uint32 type)
                     bot->GetName(), queueTypeId, bracketId, 
                     sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount);
         }
-        else
-        {
-            // Only count group leaders for rated arenas to avoid overcounting members
-            std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
-            if (joinAsGroup)
-            {
-                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount += arenaTeamSize;
-                LOG_DEBUG("playerbots", "JoinQueue: Bot {} queueType={} bracketId={} type=RATED joinAsGroup={} incremented ratedArenaBotCount by {} to {}",
-                        bot->GetName(), queueTypeId, bracketId, arenaTeamSize, arenaTeamSize,
-                        sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount);
-            }
-        }
 
         // Store arena metadata for proper counter decrement when leaving
         botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Set(queueTypeId);
@@ -863,9 +935,15 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
                 }
                 else
                 {
-                    // Rated: only decrement if leaving bot is group leader (they incremented for whole team)
-                    if (joinAsGroup && sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount >= arenaTeamSize)
-                        sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount -= arenaTeamSize;
+                    // Clear pending rated team when rated match ends
+                    for (uint8 slot = 0; slot < MAX_ARENA_SLOT; ++slot)
+                    {
+                        uint32 teamId = bot->GetArenaTeamId(slot);
+                        if (teamId)
+                        {
+                            sRandomPlayerbotMgr.RemovePendingRatedTeam(teamId);
+                        }
+                    }
                 }
                 
                 // Clear stored arena metadata
@@ -1204,11 +1282,6 @@ bool BGStatusAction::Execute(Event event)
                     {
                         if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount > 0)
                             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount--;
-                    }
-                    else if (joinAsGroup)
-                    {
-                        if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount >= arenaTeamSize)
-                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount -= arenaTeamSize;
                     }
                 }
 

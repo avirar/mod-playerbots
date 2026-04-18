@@ -913,7 +913,6 @@ void RandomPlayerbotMgr::CheckBgQueue()
     // Save bot counts before reset to preserve pending predictions (bots whose QueuePacket() calls haven't been processed yet)
     std::map<int, std::map<int, uint32>> savedBGAllianceBotCount;
     std::map<int, std::map<int, uint32>> savedBGHordeBotCount;
-    std::map<int, std::map<int, uint32>> savedRatedArenaBotCount;
     std::map<int, std::map<int, uint32>> savedSkirmishArenaBotCount;
 
     for (int bracket = BG_BRACKET_ID_FIRST; bracket < MAX_BATTLEGROUND_BRACKETS; ++bracket)
@@ -923,7 +922,6 @@ void RandomPlayerbotMgr::CheckBgQueue()
             auto& bgInfo = BattlegroundData[queueType][bracket];
             savedBGAllianceBotCount[queueType][bracket] = bgInfo.bgAllianceBotCount;
             savedBGHordeBotCount[queueType][bracket] = bgInfo.bgHordeBotCount;
-            savedRatedArenaBotCount[queueType][bracket] = bgInfo.ratedArenaBotCount;
             savedSkirmishArenaBotCount[queueType][bracket] = bgInfo.skirmishArenaBotCount;
         }
     }
@@ -1176,13 +1174,12 @@ void RandomPlayerbotMgr::CheckBgQueue()
             auto& bgInfo = BattlegroundData[queueType][bracket];
             uint32 alliancePending = std::max(0, static_cast<int>(savedBGAllianceBotCount[queueType][bracket] - bgInfo.bgAllianceBotCount));
             uint32 hordePending = std::max(0, static_cast<int>(savedBGHordeBotCount[queueType][bracket] - bgInfo.bgHordeBotCount));
-            uint32 ratedPending = std::max(0, static_cast<int>(savedRatedArenaBotCount[queueType][bracket] - bgInfo.ratedArenaBotCount));
             uint32 skirmishPending = std::max(0, static_cast<int>(savedSkirmishArenaBotCount[queueType][bracket] - bgInfo.skirmishArenaBotCount));
 
             bgInfo.bgAllianceBotCount += alliancePending;
             bgInfo.bgHordeBotCount += hordePending;
-            bgInfo.ratedArenaBotCount += ratedPending;
             bgInfo.skirmishArenaBotCount += skirmishPending;
+            // ratedArenaBotCount is not restored - CheckBgQueue scan is the source of truth
         }
     }
 
@@ -1314,6 +1311,9 @@ void RandomPlayerbotMgr::CheckBgQueue()
         updateBGInstanceCount(BATTLEGROUND_QUEUE_AV, avBrackets, randomBotAutoJoinBGAVCount);
         updateBGInstanceCount(BATTLEGROUND_QUEUE_AB, abBrackets, randomBotAutoJoinBGABCount);
         updateBGInstanceCount(BATTLEGROUND_QUEUE_WS, wsBrackets, randomBotAutoJoinBGWSCount);
+
+        // Clean stale pending rated team entries (configurable timeout, default 30 min)
+        CleanStalePendingRatedTeams(sPlayerbotAIConfig.randomBotPendingRatedTeamTimeout);
     }
 
     LogBattlegroundInfo();
@@ -3175,6 +3175,52 @@ void RandomPlayerbotMgr::Remove(Player* bot)
     eventCache.erase(botId);
 
     LogoutPlayerBot(owner);
+}
+
+void RandomPlayerbotMgr::AddPendingRatedTeam(uint32 teamId)
+{
+    std::lock_guard<std::mutex> lock(pendingRatedMutex);
+    if (pendingRatedTeams.insert(teamId).second)
+    {
+        pendingRatedTimestamp[teamId] = time(nullptr);
+        LOG_DEBUG("playerbots", "Pending rated team {} added", teamId);
+    }
+}
+
+void RandomPlayerbotMgr::RemovePendingRatedTeam(uint32 teamId)
+{
+    std::lock_guard<std::mutex> lock(pendingRatedMutex);
+    pendingRatedTeams.erase(teamId);
+    pendingRatedTimestamp.erase(teamId);
+    LOG_DEBUG("playerbots", "Pending rated team {} removed", teamId);
+}
+
+bool RandomPlayerbotMgr::IsPendingRatedTeam(uint32 teamId)
+{
+    std::lock_guard<std::mutex> lock(pendingRatedMutex);
+    return pendingRatedTeams.count(teamId) > 0;
+}
+
+void RandomPlayerbotMgr::CleanStalePendingRatedTeams(uint32 timeoutSeconds)
+{
+    std::lock_guard<std::mutex> lock(pendingRatedMutex);
+    time_t now = time(nullptr);
+    std::vector<uint32> staleTeams;
+    
+    for (auto const& pair : pendingRatedTimestamp)
+    {
+        if (now - pair.second > timeoutSeconds)
+        {
+            staleTeams.push_back(pair.first);
+        }
+    }
+    
+    for (uint32 teamId : staleTeams)
+    {
+        pendingRatedTeams.erase(teamId);
+        pendingRatedTimestamp.erase(teamId);
+        LOG_DEBUG("playerbots", "Pending rated team {} timed out and cleared", teamId);
+    }
 }
 
 CreatureData const* RandomPlayerbotMgr::GetCreatureDataByEntry(uint32 entry)
