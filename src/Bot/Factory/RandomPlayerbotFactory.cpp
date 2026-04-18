@@ -782,8 +782,11 @@ std::string const RandomPlayerbotFactory::CreateRandomGuildName()
     return guildName;
 }
 
-void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count)
+void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count, uint32 maxPerCall)
 {
+    LOG_DEBUG("playerbots", ">>> CreateRandomArenaTeams called: type={} count={} maxPerCall={}", 
+        type, count, maxPerCall);
+
     std::vector<uint32> randomBots;
 
     PlayerbotsDatabasePreparedStatement* stmt = PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_RANDOM_BOTS_BOT);
@@ -798,6 +801,12 @@ void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count
         } while (result->NextRow());
     }
 
+    LOG_DEBUG("playerbots", "CreateRandomArenaTeams: Found {} bots in playerbots_random_bots table", 
+        randomBots.size());
+    for (size_t j = 0; j < std::min((size_t)10, randomBots.size()); ++j) {
+        LOG_DEBUG("playerbots", "  randomBots[{}]={}", j, randomBots[j]);
+    }
+
     uint32 arenaTeamNumber = 0;
     GuidVector availableCaptains;
     for (std::vector<uint32>::iterator i = randomBots.begin(); i != randomBots.end(); ++i)
@@ -808,17 +817,66 @@ void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count
         {
             ++arenaTeamNumber;
             sPlayerbotAIConfig.randomBotArenaTeams.push_back(arenateam->GetId());
+            LOG_DEBUG("playerbots", "  Bot {} has existing {}v{} team #{}, count={}", 
+                *i, type, type, arenateam->GetId(), arenaTeamNumber);
         }
         else
         {
             Player* player = ObjectAccessor::FindConnectedPlayer(captain);
 
-            if (!arenateam && player && player->GetLevel() >= 70)
-                availableCaptains.push_back(captain);
+            if (!player) {
+                LOG_DEBUG("playerbots", "  Bot {}: not online yet (skipped)", *i);
+            }
+            else if (player->GetLevel() < 70) {
+                LOG_DEBUG("playerbots", "  Bot {}: level {} < 70 (skipped)", *i, player->GetLevel());
+            }
+            else if (!sPlayerbotAIConfig.IsInRandomAccountList(player->GetSession()->GetAccountId())) {
+                LOG_DEBUG("playerbots", "  Bot {}: not bot account (skipped)", *i);
+            }
+            else {
+                // Check if bot is already in ANY team (captain or member of any type)
+                bool alreadyInTeam = false;
+                for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+                {
+                    ArenaTeam* existingTeam = pair.second;
+                    if (existingTeam->GetCaptain() == captain)
+                    {
+                        alreadyInTeam = true;
+                        LOG_DEBUG("playerbots", "  Bot {}: already captain of team (type {}) - skipped", 
+                            *i, existingTeam->GetType());
+                        break;
+                    }
+                    for (auto const& member : existingTeam->GetMembers())
+                    {
+                        if (member.Guid == captain)
+                        {
+                            alreadyInTeam = true;
+                            LOG_DEBUG("playerbots", "  Bot {}: already member of team (type {}) - skipped", 
+                                *i, existingTeam->GetType());
+                            break;
+                        }
+                    }
+                    if (alreadyInTeam) break;
+                }
+                if (!alreadyInTeam)
+                {
+                    availableCaptains.push_back(captain);
+                    LOG_DEBUG("playerbots", "  Bot {}: ADDED as captain (level {})", *i, player->GetLevel());
+                }
+            }
         }
     }
 
-    for (; arenaTeamNumber < count; ++arenaTeamNumber)
+    LOG_DEBUG("playerbots", "CreateRandomArenaTeams: type={} existingTeams={} needToCreate={} availableCaptains={}", 
+        type, arenaTeamNumber, (count > arenaTeamNumber ? count - arenaTeamNumber : 0), availableCaptains.size());
+    for (size_t j = 0; j < std::min((size_t)5, availableCaptains.size()); ++j) {
+        LOG_DEBUG("playerbots", "    Captain[{}]={}", j, availableCaptains[j].GetRawValue());
+    }
+
+    // Create up to maxPerCall new teams per call (capped by config limit)
+    // When maxPerCall=1 and existingTeams=1, we create 1 more (to reach 2), not 1 total
+    uint32 teamsToCreate = std::min(arenaTeamNumber + maxPerCall, count);
+    for (; arenaTeamNumber < teamsToCreate; ++arenaTeamNumber)
     {
         std::string const arenaTeamName = CreateRandomArenaTeamName();
         if (arenaTeamName.empty())
@@ -826,8 +884,9 @@ void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count
 
         if (availableCaptains.empty())
         {
-            LOG_ERROR("playerbots", "No captains for random arena teams available");
-            continue;
+            LOG_ERROR("playerbots", "!!! No captains available for {}v{} type! existing={} need={}", 
+                type, type, arenaTeamNumber, count);
+            break;
         }
 
         uint32 index = urand(0, availableCaptains.size() - 1);
@@ -839,9 +898,39 @@ void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count
             continue;
         }
 
-        if (player->GetLevel() < 70)
+        // Get the min level for the configured arena bracket
+        // Use map 559 (Ruins of Lordaeron) - BATTLEGROUND_AA (6) is not a valid mapId for PvPDifficulty lookup
+        PvPDifficultyEntry const* bracketEntry = GetBattlegroundBracketById(559, 
+            BattlegroundBracketId(sPlayerbotAIConfig.randomBotAutoJoinArenaBracket));
+        uint32 minLevelForBracket = bracketEntry ? bracketEntry->minLevel : 0;
+
+        if (player->GetLevel() < minLevelForBracket)
         {
-            LOG_ERROR("playerbots", "Bot {} must be level 70 to create an arena team", captain.ToString().c_str());
+            LOG_DEBUG("playerbots", "Bot {} level {} below arena bracket {} min level {} - cannot create team", 
+                captain.ToString().c_str(), player->GetLevel(), sPlayerbotAIConfig.randomBotAutoJoinArenaBracket, minLevelForBracket);
+            // Remove this captain from availableCaptains since they can't be used
+            availableCaptains.erase(availableCaptains.begin() + index);
+            continue;
+        }
+
+        // Check if this captain already has a team of ANY type - each bot should only be in ONE team total
+        bool alreadyHasTeam = false;
+        for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+        {
+            ArenaTeam* existingTeam = pair.second;
+            if (existingTeam->GetCaptain() == player->GetGUID())
+            {
+                LOG_DEBUG("playerbots", "Bot {} is already captain of team {} (type {}), skipping new team", 
+                    player->GetName(), existingTeam->GetName(), existingTeam->GetType());
+                alreadyHasTeam = true;
+                break;
+            }
+        }
+        
+        if (alreadyHasTeam)
+        {
+            // Remove this captain from availableCaptains to prevent reuse
+            availableCaptains.erase(availableCaptains.begin() + index);
             continue;
         }
 
@@ -888,6 +977,12 @@ void RandomPlayerbotFactory::CreateRandomArenaTeams(ArenaType type, uint32 count
 
         sArenaTeamMgr->AddArenaTeam(arenateam);
         sPlayerbotAIConfig.randomBotArenaTeams.push_back(arenateam->GetId());
+
+        LOG_DEBUG("playerbots", "CreateRandomArenaTeams: Created {}v{} team '{}' with captain {} (total now: {})", 
+            type, type, arenaTeamName, captain.ToString().c_str(), arenaTeamNumber + 1);
+
+        // Remove captain from availableCaptains to prevent same captain getting multiple teams of same type
+        availableCaptains.erase(availableCaptains.begin() + index);
     }
 
     LOG_DEBUG("playerbots", "{} random bot {}vs{} arena teams available", arenaTeamNumber, type, type);

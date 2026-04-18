@@ -25,6 +25,18 @@ public:
     ArenaTypeValue(PlayerbotAI* botAI) : ManualSetValue<uint32>(botAI, 0, "arena type") {}
 };
 
+class ArenaQueueTypeValue : public ManualSetValue<uint32>
+{
+public:
+    ArenaQueueTypeValue(PlayerbotAI* botAI) : ManualSetValue<uint32>(botAI, 0, "arena queue type") {}
+};
+
+class ArenaBracketValue : public ManualSetValue<uint32>
+{
+public:
+    ArenaBracketValue(PlayerbotAI* botAI) : ManualSetValue<uint32>(botAI, 0, "arena bracket") {}
+};
+
 class BgRoleValue : public ManualSetValue<uint32>
 {
 public:

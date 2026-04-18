@@ -239,11 +239,15 @@ public:
     uint32 randomBotAutoJoinBGABCount;
     uint32 randomBotAutoJoinBGWSCount;
 
-    uint32 randomBotAutoJoinArenaBracket;
+   uint32 randomBotAutoJoinArenaBracket;
 
     uint32 randomBotAutoJoinBGRatedArena2v2Count;
     uint32 randomBotAutoJoinBGRatedArena3v3Count;
     uint32 randomBotAutoJoinBGRatedArena5v5Count;
+    
+    uint32 randomBotAutoJoinBGSkirmishArena2v2Count;
+    uint32 randomBotAutoJoinBGSkirmishArena3v3Count;
+    uint32 randomBotAutoJoinBGSkirmishArena5v5Count;
 
     bool randomBotLoginAtStartup;
     uint32 randomBotTeleLowerLevel, randomBotTeleHigherLevel;

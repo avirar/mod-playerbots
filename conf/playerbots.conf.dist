@@ -1291,9 +1291,15 @@ AiPlayerbot.RandomBotAutoJoinBGWSCount = 1
 # Arena configuration:
 AiPlayerbot.RandomBotAutoJoinArenaBracket = 14
 
+# Rated arena auto-join counts (requires arena teams - group leaders queue for rated)
 AiPlayerbot.RandomBotAutoJoinBGRatedArena2v2Count = 0
 AiPlayerbot.RandomBotAutoJoinBGRatedArena3v3Count = 0
 AiPlayerbot.RandomBotAutoJoinBGRatedArena5v5Count = 0
+
+# Skirmish arena auto-join counts (no team required, faster matchmaking, allows same-faction matches)
+AiPlayerbot.RandomBotAutoJoinBGSkirmishArena2v2Count = 0
+AiPlayerbot.RandomBotAutoJoinBGSkirmishArena3v3Count = 0
+AiPlayerbot.RandomBotAutoJoinBGSkirmishArena5v5Count = 0
 
 # Randombot arena team count
 # Teams are created when bots are initialized on server restart.

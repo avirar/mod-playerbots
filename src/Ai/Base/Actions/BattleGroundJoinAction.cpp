@@ -242,46 +242,133 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
         BracketSize = (uint32)(type * 2);
         TeamSize = (uint32)type;
 
+        // Only bots at or above the min level of the configured arena bracket can join arena
+        // This ensures only level 80+ bots join when bracket=14 (80-84), etc.
+        uint32 arenaBracketId = sPlayerbotAIConfig.randomBotAutoJoinArenaBracket;
+        // Use map 559 (Ruins of Lordaeron) - BATTLEGROUND_AA (6) is not a valid mapId for PvPDifficulty lookup
+        PvPDifficultyEntry const* bracketEntry = GetBattlegroundBracketById(559, BattlegroundBracketId(arenaBracketId));
+        uint32 minLevelForBracket = bracketEntry ? bracketEntry->minLevel : 0;
+
+        if (bot->GetLevel() < minLevelForBracket)
+        {
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} level {} below arena bracket {} min level {} - no arena",
+                bot->GetName(), bot->GetLevel(), arenaBracketId, minLevelForBracket);
+            return false;
+        }
+
         std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
 
-        // Check if bots should join Rated Arena (Only captains can queue)
-        uint32 ratedArenaBotCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount;
-        uint32 ratedArenaPlayerCount =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaPlayerCount;
-        uint32 ratedArenaInstanceCount =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount;
-        uint32 activeRatedArenaQueue =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeRatedArenaQueue;
+        // Check if bot is part of an arena team (captain or member)
+        uint32 arenaTeamId = bot->GetArenaTeamId(ArenaTeam::GetSlotByType(type));
+        ArenaTeam* arenaTeam = arenaTeamId ? sArenaTeamMgr->GetArenaTeamById(arenaTeamId) : nullptr;
 
-        bool isRated = (ratedArenaBotCount + ratedArenaPlayerCount) <
-                       (BracketSize * (activeRatedArenaQueue + ratedArenaInstanceCount));
-
-        if (isRated)
+        bool canJoinRated = false;
+        if (arenaTeam)
         {
-            if (sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type))
+            // Count online team members (must be connected and in world)
+            uint32 onlineMembers = 0;
+            for (auto& member : arenaTeam->GetMembers())
             {
-                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount += TeamSize;
+                if (Player* memberPlayer = ObjectAccessor::FindConnectedPlayer(member.Guid))
+                {
+                    if (memberPlayer->IsInWorld())
+                    {
+                        onlineMembers++;
+                    }
+                }
+            }
+
+            // Check if enough members online for rated (need full team: 2 for 2v2, 3 for 3v3, 5 for 5v5)
+            uint32 requiredForRated = type;
+            if (onlineMembers >= requiredForRated)
+            {
+                canJoinRated = true;
+            }
+            
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} has arena team {}, onlineMembers={}, required={}, canJoinRated={}",
+                    bot->GetName(), arenaTeam->GetName(), onlineMembers, requiredForRated, canJoinRated);
+        }
+
+        // PRIORITY: If rated conditions met, only captains can initiate rated queue
+        if (canJoinRated)
+        {
+            // Check if rated queue is enabled (under instance limit) - use simple check without relying on ratedArenaBotCount
+            // which can be inflated due to IsPlayerInvitedToRatedArena() returning true for bots not actually in rated queue
+            uint32 ratedArenaInstanceCount = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount;
+            uint32 activeRatedArenaQueue = sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeRatedArenaQueue;
+            uint32 ratedArenaMinCount = 0;
+            switch (type)
+            {
+                case ARENA_TYPE_2v2: ratedArenaMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena2v2Count; break;
+                case ARENA_TYPE_3v3: ratedArenaMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena3v3Count; break;
+                case ARENA_TYPE_5v5: ratedArenaMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena5v5Count; break;
+                default: break;
+            }
+
+            bool needsRatedBots = activeRatedArenaQueue > 0 && ratedArenaInstanceCount < ratedArenaMinCount;
+
+            // Only captains can initiate rated queue
+            if (needsRatedBots && sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type))
+            {
+                LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining rated arena (is captain, instCount={} minCount={})",
+                        bot->GetName(), ratedArenaInstanceCount, ratedArenaMinCount);
                 ratedList.push_back(queueTypeId);
                 return true;
             }
+            
+            // Team members (non-captains) should wait for captain - don't join skirmish
+            // This ensures they can be invited to rated when captain queues
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} in arena team but not queuing - waiting for rated (isCaptain={} activeRated={} instCount={})",
+                    bot->GetName(), sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type) ? 1 : 0,
+                    activeRatedArenaQueue, ratedArenaInstanceCount);
+            return false;
         }
 
+        // FALLBACK: No valid arena team or not enough members - join skirmish
         // Check if bots should join Skirmish Arena
+        // First check if skirmish queue is enabled (not at instance limit)
+        uint32 activeSkirmishArenaQueue =
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeSkirmishArenaQueue;
+        uint32 skirmishArenaInstanceCount =
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount;
+
+        // Get config limit - used as both min and max for instance count
+        uint32 skirmishMinCount = 0;
+        switch (queueTypeId)
+        {
+            case BATTLEGROUND_QUEUE_2v2:
+                skirmishMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena2v2Count;
+                break;
+            case BATTLEGROUND_QUEUE_3v3:
+                skirmishMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena3v3Count;
+                break;
+            case BATTLEGROUND_QUEUE_5v5:
+                skirmishMinCount = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena5v5Count;
+                break;
+        }
+
+        // If skirmish queue is disabled (at/over instance limit), don't allow new bots to join
+        // Also check instance count directly against config limit - this is a safety net that prevents
+        // the race condition where activeSkirmishArenaQueue flag is stale between CheckBgQueue cycles
+        if (activeSkirmishArenaQueue == 0 || skirmishArenaInstanceCount >= skirmishMinCount)
+        {
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} skipping skirmish - queue disabled or at instance limit (activeQueue={} instCount={} minCount={})",
+                bot->GetName(), activeSkirmishArenaQueue, skirmishArenaInstanceCount, skirmishMinCount);
+            return false;
+        }
+
         // We have extra bots queue because same faction can vs each other but can't be in the same group.
         uint32 skirmishArenaBotCount =
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount;
         uint32 skirmishArenaPlayerCount =
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaPlayerCount;
-        uint32 skirmishArenaInstanceCount =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount;
-        uint32 activeSkirmishArenaQueue =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeSkirmishArenaQueue;
         uint32 maxRequiredSkirmishBots = BracketSize * (activeSkirmishArenaQueue + skirmishArenaInstanceCount);
         if (maxRequiredSkirmishBots != 0)
             maxRequiredSkirmishBots = maxRequiredSkirmishBots + TeamSize;
 
         if ((skirmishArenaBotCount + skirmishArenaPlayerCount) < maxRequiredSkirmishBots)
         {
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining skirmish arena (no valid arena team)", bot->GetName());
             return true;
         }
 
@@ -479,6 +566,8 @@ bool BGJoinAction::JoinQueue(uint32 type)
             break;
     }
 
+    uint32 arenaTeamSize = 0;
+
     if (isArena)
     {
         isArena = true;
@@ -492,14 +581,17 @@ bool BGJoinAction::JoinQueue(uint32 type)
             case ARENA_TYPE_2v2:
                 arenaslot = 0;
                 _bgType = "2v2";
+                arenaTeamSize = 2;
                 break;
             case ARENA_TYPE_3v3:
                 arenaslot = 1;
                 _bgType = "3v3";
+                arenaTeamSize = 3;
                 break;
             case ARENA_TYPE_5v5:
                 arenaslot = 2;
                 _bgType = "5v5";
+                arenaTeamSize = 5;
                 break;
             default:
                 break;
@@ -518,7 +610,28 @@ bool BGJoinAction::JoinQueue(uint32 type)
         {
             std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
+            LOG_DEBUG("playerbots", "JoinQueue: Bot {} queueType={} bracketId={} type=SKIRMISH incremented skirmishArenaBotCount to {}",
+                    bot->GetName(), queueTypeId, bracketId, 
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount);
         }
+        else
+        {
+            // Only count group leaders for rated arenas to avoid overcounting members
+            std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+            if (joinAsGroup)
+            {
+                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount += arenaTeamSize;
+                LOG_DEBUG("playerbots", "JoinQueue: Bot {} queueType={} bracketId={} type=RATED joinAsGroup={} incremented ratedArenaBotCount by {} to {}",
+                        bot->GetName(), queueTypeId, bracketId, arenaTeamSize, arenaTeamSize,
+                        sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount);
+            }
+        }
+
+        // Store arena metadata for proper counter decrement when leaving
+        botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Set(queueTypeId);
+        botAI->GetAiObjectContext()->GetValue<uint32>("arena bracket")->Set(bracketId);
+        LOG_DEBUG("playerbots", "JoinQueue: Bot {} stored arena metadata queueType={} bracketId={}",
+                bot->GetName(), queueTypeId, bracketId);
     }
     else
     {
@@ -610,7 +723,6 @@ bool FreeBGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battleg
         {
             if (sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), type))
             {
-                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount += TeamSize;
                 ratedList.push_back(queueTypeId);
                 return true;
             }
@@ -715,8 +827,57 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
 {
     Player* bot = botAI->GetBot();
     Battleground* bg = bot->GetBattleground();
+    
+    // Handle arena counter decrement BEFORE checking if bg exists
+    // When arena match completes, battleground instance may be destroyed but we still need to decrement counters
+    bool wasInArena = false;
+    if (botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Get() > 0)
+    {
+        uint32 storedQueueType = botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Get();
+        uint32 storedBracketId = botAI->GetAiObjectContext()->GetValue<uint32>("arena bracket")->Get();
+        bool wasRated = botAI->GetAiObjectContext()->GetValue<uint32>("arena type")->Get();
+        
+        BattlegroundQueueTypeId queueTypeId = BattlegroundQueueTypeId(storedQueueType);
+        ArenaType arenaType = ArenaType(BattlegroundMgr::BGArenaType(queueTypeId));
+        if (arenaType != ARENA_TYPE_NONE)
+        {
+            wasInArena = true;
+            bool isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
+            
+            if (isRandomBot)
+            {
+                std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+                
+                // Get arena team size from template (may not have bg pointer but can get template by queue type)
+                BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+                Battleground* bgTemplate = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+                uint32 arenaTeamSize = bgTemplate ? bgTemplate->GetMaxPlayersPerTeam() : 5; // default 5v5
+                
+                bool joinAsGroup = bot->GetGroup() && bot->GetGroup()->GetLeaderGUID() == bot->GetGUID();
+                
+                if (!wasRated)
+                {
+                    // Skirmish: decrement by 1 for each bot leaving
+                    if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount > 0)
+                        sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount--;
+                }
+                else
+                {
+                    // Rated: only decrement if leaving bot is group leader (they incremented for whole team)
+                    if (joinAsGroup && sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount >= arenaTeamSize)
+                        sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount -= arenaTeamSize;
+                }
+                
+                // Clear stored arena metadata
+                botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Set(0);
+                botAI->GetAiObjectContext()->GetValue<uint32>("arena bracket")->Set(0);
+            }
+        }
+    }
+    
     if (!bg)
         return false;
+    
     bool isArena = bg->isArena();
     bool isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
 
@@ -759,8 +920,8 @@ bool BGStatusAction::LeaveBG(PlayerbotAI* botAI)
 
                     if (isArena)
                     {
-                        if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount > 0)
-                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount--;
+                        // Arena counter decrement is now handled via stored metadata at the start of LeaveBG()
+                        // This code path was removed to prevent double-decrementing when bg still exists
                     }
                     else
                     {
@@ -1022,6 +1183,38 @@ bool BGStatusAction::Execute(Event event)
             action = 0;
             packet << type << unk2 << (uint32)_bgTypeId << unk << action;
             bot->GetSession()->QueuePacket(new WorldPacket(packet));
+
+            if (isArena)
+            {
+                uint32 storedQueueType = botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Get();
+                uint32 storedBracketId = botAI->GetAiObjectContext()->GetValue<uint32>("arena bracket")->Get();
+                bool wasRated = botAI->GetAiObjectContext()->GetValue<uint32>("arena type")->Get() == 1;
+
+                if (storedQueueType > 0 && storedBracketId < MAX_BATTLEGROUND_BRACKETS)
+                {
+                    std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+                    BattlegroundQueueTypeId queueTypeId = BattlegroundQueueTypeId(storedQueueType);
+
+                    bool joinAsGroup = bot->GetGroup() && bot->GetGroup()->GetLeaderGUID() == bot->GetGUID();
+                    BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+                    Battleground* bgTemplate = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+                    uint32 arenaTeamSize = bgTemplate ? bgTemplate->GetMaxPlayersPerTeam() : (ArenaType)BattlegroundMgr::BGArenaType(queueTypeId);
+
+                    if (!wasRated)
+                    {
+                        if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount > 0)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].skirmishArenaBotCount--;
+                    }
+                    else if (joinAsGroup)
+                    {
+                        if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount >= arenaTeamSize)
+                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][storedBracketId].ratedArenaBotCount -= arenaTeamSize;
+                    }
+                }
+
+                botAI->GetAiObjectContext()->GetValue<uint32>("arena queue type")->Set(0);
+                botAI->GetAiObjectContext()->GetValue<uint32>("arena bracket")->Set(0);
+            }
 
             botAI->ResetStrategies(!IsRandomBot);
             botAI->GetAiObjectContext()->GetValue<uint32>("bg type")->Set(0);

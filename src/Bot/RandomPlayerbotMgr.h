@@ -31,6 +31,8 @@ struct BattlegroundInfo
     // Bots (Arena)
     uint32 ratedArenaBotCount = 0;
     uint32 skirmishArenaBotCount = 0;
+    uint32 arenaAllianceBotCount = 0;  // Tracks all arena bots (rated + skirmish) for Alliance faction
+    uint32 arenaHordeBotCount = 0;    // Tracks all arena bots (rated + skirmish) for Horde faction
 
     // Bots (Battleground)
     uint32 bgHordeBotCount = 0;

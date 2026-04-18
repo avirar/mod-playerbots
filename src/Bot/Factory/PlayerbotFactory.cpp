@@ -38,6 +38,8 @@
 #include "World.h"
 #include "AiObjectContext.h"
 #include "ItemPackets.h"
+#include "DatabaseEnv.h"
+#include "CharacterCache.h"
 
 const uint64 diveMask = (1LL << 7) | (1LL << 44) | (1LL << 37) | (1LL << 38) | (1LL << 26) | (1LL << 30) | (1LL << 27) |
                         (1LL << 33) | (1LL << 24) | (1LL << 34);
@@ -4053,9 +4055,240 @@ void PlayerbotFactory::InitArenaTeam()
     if (!sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()))
         return;
 
-    // Currently the teams are only remade after a server restart and if deleteRandomBotArenaTeams = 1
-    // This is because randomBotArenaTeams is only empty on server restart.
-    // A manual reinitalization (.playerbots rndbot init) is also required after the teams have been deleted.
+    // Only bots at or above the min level of the configured arena bracket can participate in arenas
+    // This ensures only level 80+ bots join when bracket=14 (80-84), etc.
+    uint32 arenaBracketId = sPlayerbotAIConfig.randomBotAutoJoinArenaBracket;
+    // Use map 559 (Ruins of Lordaeron) - BATTLEGROUND_AA (6) is not a valid mapId for PvPDifficulty lookup
+    PvPDifficultyEntry const* bracketEntry = GetBattlegroundBracketById(559, BattlegroundBracketId(arenaBracketId));
+    uint32 minLevelForBracket = bracketEntry ? bracketEntry->minLevel : 0;
+
+    if (bot->GetLevel() < minLevelForBracket)
+    {
+        LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} level {} below arena bracket {} min level {} - skipping arena",
+            bot->GetName(), bot->GetLevel(), arenaBracketId, minLevelForBracket);
+        return;
+    }
+
+    LOG_DEBUG("playerbots", ">>> InitArenaTeam STARTED for bot {} (guid {}) level {} accountId {}", 
+        bot->GetName(), bot->GetGUID().GetRawValue(), bot->GetLevel(), bot->GetSession()->GetAccountId());
+
+    // Check if bot already has ANY arena team (as captain or member)
+    // Each bot should only be in ONE team total, not multiple types
+    ObjectGuid botGuid = bot->GetGUID();
+
+    // Check if bot is captain of any team
+    bool isCaptain = false;
+    for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+    {
+        ArenaTeam* team = pair.second;
+        if (team->GetCaptain() == botGuid)
+        {
+            isCaptain = true;
+            break;
+        }
+    }
+
+    // Check if bot is a member of any team
+    bool isMember = false;
+    if (!isCaptain)
+    {
+        for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+        {
+            ArenaTeam* team = pair.second;
+            for (auto const& member : team->GetMembers())
+            {
+                if (member.Guid == botGuid)
+                {
+                    isMember = true;
+                    break;
+                }
+            }
+            if (isMember) break;
+        }
+    }
+
+    if (isCaptain || isMember)
+    {
+        LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} already has a team (captain={}) - skipping", 
+            bot->GetName(), isCaptain ? "true" : "false");
+        return;
+    }
+
+    // Bot doesn't have a team yet - determine what roles are needed
+    uint32 config2v2 = sPlayerbotAIConfig.randomBotArenaTeam2v2Count;
+    uint32 config3v3 = sPlayerbotAIConfig.randomBotArenaTeam3v3Count;
+    uint32 config5v5 = sPlayerbotAIConfig.randomBotArenaTeam5v5Count;
+
+    // Count existing bot teams by type
+    uint32 existing2v2 = 0, existing3v3 = 0, existing5v5 = 0;
+    for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+    {
+        ArenaTeam* team = pair.second;
+        ObjectGuid captainGuid = team->GetCaptain();
+
+        // Get account ID for captain (works for both online and offline characters)
+        uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(captainGuid);
+        if (!accountId)
+            continue;
+
+        // Only count bot teams (not human player teams)
+        if (!sPlayerbotAIConfig.IsInRandomAccountList(accountId))
+            continue;
+
+        if (team->GetType() == ARENA_TYPE_2v2) existing2v2++;
+        else if (team->GetType() == ARENA_TYPE_3v3) existing3v3++;
+        else if (team->GetType() == ARENA_TYPE_5v5) existing5v5++;
+    }
+
+    LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} - existing teams: {} 2v2, {} 3v3, {} 5v5 (config: {} {} {})",
+        bot->GetName(), existing2v2, existing3v3, existing5v5, config2v2, config3v3, config5v5);
+
+    // Calculate what's needed - prioritize captains first, then fill as members
+    uint32 captainsNeeded2v2 = config2v2 - existing2v2;
+    uint32 captainsNeeded3v3 = config3v3 - existing3v3;
+    uint32 captainsNeeded5v5 = config5v5 - existing5v5;
+
+    // Determine if we need captains or members for each type
+    // Only try to be captain if we don't have enough captains yet
+    bool tryAsCaptain = false;
+    ArenaType assignedType = ARENA_TYPE_NONE;
+
+    // Balance captains evenly - pick the type with most need relative to config
+    if (captainsNeeded2v2 > 0 || captainsNeeded3v3 > 0 || captainsNeeded5v5 > 0)
+    {
+        // Randomly pick which type to try for captain (weighted by what's needed most)
+        uint32 totalNeeded = captainsNeeded2v2 + captainsNeeded3v3 + captainsNeeded5v5;
+        uint32 roll = urand(0, totalNeeded - 1);
+
+        if (roll < captainsNeeded2v2)
+        {
+            assignedType = ARENA_TYPE_2v2;
+            tryAsCaptain = true;
+        }
+        else if (roll < captainsNeeded2v2 + captainsNeeded3v3)
+        {
+            assignedType = ARENA_TYPE_3v3;
+            tryAsCaptain = true;
+        }
+        else
+        {
+            assignedType = ARENA_TYPE_5v5;
+            tryAsCaptain = true;
+        }
+    }
+
+    if (tryAsCaptain && assignedType != ARENA_TYPE_NONE)
+    {
+        LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} becoming captain of {}v{}", 
+            bot->GetName(), assignedType, assignedType);
+        RandomPlayerbotFactory::CreateRandomArenaTeams(assignedType, 
+            (assignedType == ARENA_TYPE_2v2) ? config2v2 : 
+            (assignedType == ARENA_TYPE_3v3) ? config3v3 : config5v5, 1);
+
+        // Check if bot got a team (was selected as captain)
+        bool gotTeam = false;
+        for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+        {
+            ArenaTeam* team = pair.second;
+            if (team->GetCaptain() == botGuid)
+            {
+                gotTeam = true;
+                break;
+            }
+            for (auto const& member : team->GetMembers())
+            {
+                if (member.Guid == botGuid)
+                {
+                    gotTeam = true;
+                    break;
+                }
+            }
+            if (gotTeam) break;
+        }
+
+        if (gotTeam)
+        {
+            LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} got team as captain", bot->GetName());
+            return;
+        }
+        // Bot wasn't selected as captain - fall through to try as member
+        LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} not selected as captain, trying as member", bot->GetName());
+    }
+    else
+    {
+        // No captains needed, or random roll said try member - find a team that needs members
+        // Prioritize filling existing teams to capacity before creating new ones
+
+        // Find teams of each type that need more members
+        std::vector<uint32> teamsNeedMembers2v2, teamsNeedMembers3v3, teamsNeedMembers5v5;
+
+        for (auto const& pair : sArenaTeamMgr->GetArenaTeams())
+        {
+            ArenaTeam* team = pair.second;
+            ObjectGuid captainGuid = team->GetCaptain();
+
+            uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(captainGuid);
+            if (!accountId || !sPlayerbotAIConfig.IsInRandomAccountList(accountId))
+                continue;
+
+            uint32 teamId = team->GetId();
+            // Use in-memory member count to get accurate current state (DB may be stale)
+            uint32 currentMembers = team->GetMembers().size();
+            uint32 teamSize = team->GetType();  // 2, 3, or 5
+            uint32 teamType = team->GetType();
+
+            if (currentMembers < teamSize)
+            {
+                if (teamType == ARENA_TYPE_2v2) teamsNeedMembers2v2.push_back(teamId);
+                else if (teamType == ARENA_TYPE_3v3) teamsNeedMembers3v3.push_back(teamId);
+                else if (teamType == ARENA_TYPE_5v5) teamsNeedMembers5v5.push_back(teamId);
+            }
+        }
+
+        // Add bot to a team that needs members - prefer types with incomplete teams
+        if (!teamsNeedMembers2v2.empty())
+        {
+            // Join a 2v2 team that needs members
+            ArenaTeam* team = sArenaTeamMgr->GetArenaTeamById(teamsNeedMembers2v2[urand(0, teamsNeedMembers2v2.size() - 1)]);
+            if (team)
+            {
+                team->AddMember(bot->GetGUID());
+                LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} joined 2v2 team {} as member", 
+                    bot->GetName(), team->GetName());
+            }
+        }
+        else if (!teamsNeedMembers3v3.empty())
+        {
+            ArenaTeam* team = sArenaTeamMgr->GetArenaTeamById(teamsNeedMembers3v3[urand(0, teamsNeedMembers3v3.size() - 1)]);
+            if (team)
+            {
+                team->AddMember(bot->GetGUID());
+                LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} joined 3v3 team {} as member", 
+                    bot->GetName(), team->GetName());
+            }
+        }
+        else if (!teamsNeedMembers5v5.empty())
+        {
+            ArenaTeam* team = sArenaTeamMgr->GetArenaTeamById(teamsNeedMembers5v5[urand(0, teamsNeedMembers5v5.size() - 1)]);
+            if (team)
+            {
+                team->AddMember(bot->GetGUID());
+                LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} joined 5v5 team {} as member", 
+                    bot->GetName(), team->GetName());
+            }
+        }
+        else
+        {
+            // All existing teams are full - need to create new member slots
+            // This would require creating new teams, but captains are preferred
+            // For now, bot stays without a team
+            LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} - all teams full, no team available", 
+                bot->GetName());
+        }
+    }
+
+    LOG_DEBUG("playerbots", "InitArenaTeam: Bot {} completed", bot->GetName());
+
     if (sPlayerbotAIConfig.randomBotArenaTeams.empty())
     {
         if (sPlayerbotAIConfig.deleteRandomBotArenaTeams)
@@ -4083,9 +4316,9 @@ void PlayerbotFactory::InitArenaTeam()
             LOG_INFO("playerbots", "Random bot arena teams deleted");
         }
 
-        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_2v2, sPlayerbotAIConfig.randomBotArenaTeam2v2Count);
-        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_3v3, sPlayerbotAIConfig.randomBotArenaTeam3v3Count);
-        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_5v5, sPlayerbotAIConfig.randomBotArenaTeam5v5Count);
+        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_2v2, sPlayerbotAIConfig.randomBotArenaTeam2v2Count, 1);
+        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_3v3, sPlayerbotAIConfig.randomBotArenaTeam3v3Count, 1);
+        RandomPlayerbotFactory::CreateRandomArenaTeams(ARENA_TYPE_5v5, sPlayerbotAIConfig.randomBotArenaTeam5v5Count, 1);
     }
 
     std::vector<uint32> arenateams;

@@ -353,6 +353,14 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGRatedArena3v3Count", 0);
     randomBotAutoJoinBGRatedArena5v5Count =
         sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGRatedArena5v5Count", 0);
+    
+    randomBotAutoJoinBGSkirmishArena2v2Count =
+        sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGSkirmishArena2v2Count", 0);
+    randomBotAutoJoinBGSkirmishArena3v3Count =
+        sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGSkirmishArena3v3Count", 0);
+    randomBotAutoJoinBGSkirmishArena5v5Count =
+        sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotAutoJoinBGSkirmishArena5v5Count", 0);
+    
     logInGroupOnly = sConfigMgr->GetOption<bool>("AiPlayerbot.LogInGroupOnly", true);
     logValuesPerTick = sConfigMgr->GetOption<bool>("AiPlayerbot.LogValuesPerTick", false);
     fleeingEnabled = sConfigMgr->GetOption<bool>("AiPlayerbot.FleeingEnabled", true);

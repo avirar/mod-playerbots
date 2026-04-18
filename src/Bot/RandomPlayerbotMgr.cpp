@@ -1071,10 +1071,35 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 if (bgQueue.IsPlayerInvitedToRatedArena(guid) || (bot->InArena() && bot->GetBattleground()->isRated()))
                     isRated = true;
 
+                LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} queueType={} bracketId={} isRated={} InQueue={} InBG={} InArena={} TeamId={}",
+                        bot->GetName(), queueTypeId, bracketId, isRated, 
+                        bot->InBattlegroundQueue() ? 1 : 0,
+                        bot->InBattleground() ? 1 : 0,
+                        bot->InArena() ? 1 : 0,
+                        teamId == TEAM_ALLIANCE ? "Alliance" : "Horde");
+
                 if (isRated)
+                {
+                    if (teamId == TEAM_ALLIANCE)
+                        BattlegroundData[queueTypeId][bracketId].arenaAllianceBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].arenaHordeBotCount++;
                     BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount++;
+                    LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} incrementing ratedArenaBotCount to {}",
+                            bot->GetName(), BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount);
+                }
                 else
+                {
+                    if (teamId == TEAM_ALLIANCE)
+                        BattlegroundData[queueTypeId][bracketId].arenaAllianceBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].arenaHordeBotCount++;
                     BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
+                    LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} incrementing skirmishArenaBotCount to {} (Alliance:{}, Horde:{})",
+                            bot->GetName(), BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount,
+                            BattlegroundData[queueTypeId][bracketId].arenaAllianceBotCount,
+                            BattlegroundData[queueTypeId][bracketId].arenaHordeBotCount);
+                }
             }
             else
             {
@@ -1090,6 +1115,10 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 uint32 instanceId = bot->GetBattleground()->GetInstanceID();
                 bool isArena = false;
                 bool isRated = false;
+
+                LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} InBattleground=true InstanceID={} isArena={} isRated={}",
+                        bot->GetName(), instanceId, bot->InArena() ? 1 : 0, 
+                        bot->InArena() && bot->GetBattleground() ? (bot->GetBattleground()->isRated() ? 1 : 0) : 0);
 
                 // Arena logic
                 if (bot->InArena())
@@ -1113,7 +1142,11 @@ void RandomPlayerbotMgr::CheckBgQueue()
 
                 if (instanceIds &&
                     std::find(instanceIds->begin(), instanceIds->end(), instanceId) == instanceIds->end())
+                {
                     instanceIds->push_back(instanceId);
+                    LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} added InstanceID={} to instance list, size now {}",
+                            bot->GetName(), instanceId, instanceIds->size());
+                }
 
                 if (isArena)
                 {
@@ -1121,6 +1154,11 @@ void RandomPlayerbotMgr::CheckBgQueue()
                         BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount = instanceIds->size();
                     else
                         BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount = instanceIds->size();
+                    
+                    LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} updated {}ArenaInstanceCount={}",
+                            bot->GetName(), isRated ? "rated" : "skirmish",
+                            isRated ? BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount 
+                                   : BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount);
                 }
                 else
                 {
@@ -1155,6 +1193,10 @@ void RandomPlayerbotMgr::CheckBgQueue()
         uint32 randomBotAutoJoinBGRatedArena2v2Count = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena2v2Count;
         uint32 randomBotAutoJoinBGRatedArena3v3Count = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena3v3Count;
         uint32 randomBotAutoJoinBGRatedArena5v5Count = sPlayerbotAIConfig.randomBotAutoJoinBGRatedArena5v5Count;
+        
+        uint32 randomBotAutoJoinBGSkirmishArena2v2Count = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena2v2Count;
+        uint32 randomBotAutoJoinBGSkirmishArena3v3Count = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena3v3Count;
+        uint32 randomBotAutoJoinBGSkirmishArena5v5Count = sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena5v5Count;
 
         uint32 randomBotAutoJoinBGICCount = sPlayerbotAIConfig.randomBotAutoJoinBGICCount;
         uint32 randomBotAutoJoinBGEYCount = sPlayerbotAIConfig.randomBotAutoJoinBGEYCount;
@@ -1172,10 +1214,25 @@ void RandomPlayerbotMgr::CheckBgQueue()
         // to help counter against potentional inconsistencies
         auto updateRatedArenaInstanceCount = [&](uint32 queueType, uint32 bracket, uint32 minCount)
         {
-            if (BattlegroundData[queueType][bracket].activeRatedArenaQueue == 0 &&
-                BattlegroundData[queueType][bracket].ratedArenaInstanceCount < minCount &&
-                BattlegroundData[queueType][bracket].ratedArenaInstances.size() < minCount)
-                BattlegroundData[queueType][bracket].activeRatedArenaQueue = 1;
+            auto& data = BattlegroundData[queueType][bracket];
+            LOG_DEBUG("playerbots", "CheckBgQueue rated trigger: queueType={} bracket={} minCount={} activeQueue={} instCount={} size={}",
+                    queueType, bracket, minCount, data.activeRatedArenaQueue, 
+                    data.ratedArenaInstanceCount, data.ratedArenaInstances.size());
+            
+            // Simple state machine: if under limit, enable; if at/over, disable
+            if (data.ratedArenaInstanceCount < minCount && 
+                data.ratedArenaInstances.size() < minCount)
+            {
+                LOG_DEBUG("playerbots", "CheckBgQueue: ENABLING rated arena - under limit (count={} size={} minCount={})",
+                        data.ratedArenaInstanceCount, data.ratedArenaInstances.size(), minCount);
+                data.activeRatedArenaQueue = 1;
+            }
+            else
+            {
+                LOG_DEBUG("playerbots", "CheckBgQueue: DISABLING rated - at/over limit (count={} size={} minCount={})",
+                        data.ratedArenaInstanceCount, data.ratedArenaInstances.size(), minCount);
+                data.activeRatedArenaQueue = 0;
+            }
         };
 
         auto updateBGInstanceCount = [&](uint32 queueType, std::vector<uint32> brackets, uint32 minCount)
@@ -1208,6 +1265,48 @@ void RandomPlayerbotMgr::CheckBgQueue()
                                       randomBotAutoJoinBGRatedArena3v3Count);
         updateRatedArenaInstanceCount(BATTLEGROUND_QUEUE_5v5, randomBotAutoJoinArenaBracket,
                                       randomBotAutoJoinBGRatedArena5v5Count);
+        
+        // Update skirmish arena instance counts
+        auto updateSkirmishArenaInstanceCount = [&](uint32 queueType, uint32 bracket, uint32 minCount)
+        {
+            auto& data = BattlegroundData[queueType][bracket];
+            LOG_DEBUG("playerbots", "CheckBgQueue skirmish trigger: queueType={} bracket={} minCount={}", 
+                    queueType, bracket, minCount);
+            LOG_DEBUG("playerbots", "  skirmishArenaBotCount={} Alliance={} Horde={} skirmishArenaInstanceCount={} activeQueue={}",
+                    data.skirmishArenaBotCount, data.arenaAllianceBotCount, 
+                    data.arenaHordeBotCount, data.skirmishArenaInstanceCount, data.activeSkirmishArenaQueue);
+            
+            // Simple state machine: if under limit, enable; if at/over, disable
+            if (data.skirmishArenaInstanceCount < minCount && 
+                data.skirmishArenaInstances.size() < minCount)
+            {
+                // Check faction distribution for debug
+                if (data.arenaAllianceBotCount > 0 && data.arenaHordeBotCount > 0)
+                {
+                    LOG_DEBUG("playerbots", "CheckBgQueue: ENABLING skirmish - under limit, BOTH FACTIONS (A:{} H:{})",
+                            data.arenaAllianceBotCount, data.arenaHordeBotCount);
+                }
+                else
+                {
+                    LOG_DEBUG("playerbots", "CheckBgQueue: ENABLING skirmish - under limit, ONE FACTION (A:{} H:{})",
+                            data.arenaAllianceBotCount, data.arenaHordeBotCount);
+                }
+                data.activeSkirmishArenaQueue = 1;
+            }
+            else
+            {
+                LOG_DEBUG("playerbots", "CheckBgQueue: DISABLING skirmish - at/over limit (instCount={} size={} minCount={})",
+                        data.skirmishArenaInstanceCount, data.skirmishArenaInstances.size(), minCount);
+                data.activeSkirmishArenaQueue = 0;
+            }
+        };
+        
+        updateSkirmishArenaInstanceCount(BATTLEGROUND_QUEUE_2v2, sPlayerbotAIConfig.randomBotAutoJoinArenaBracket,
+                                         sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena2v2Count);
+        updateSkirmishArenaInstanceCount(BATTLEGROUND_QUEUE_3v3, sPlayerbotAIConfig.randomBotAutoJoinArenaBracket,
+                                         sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena3v3Count);
+        updateSkirmishArenaInstanceCount(BATTLEGROUND_QUEUE_5v5, sPlayerbotAIConfig.randomBotAutoJoinArenaBracket,
+                                         sPlayerbotAIConfig.randomBotAutoJoinBGSkirmishArena5v5Count);
 
         // Update battleground instance counts
         updateBGInstanceCount(BATTLEGROUND_QUEUE_IC, icBrackets, randomBotAutoJoinBGICCount);

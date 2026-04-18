@@ -252,6 +252,8 @@ public:
         creators["bg type"] = &ValueContext::bg_type;
         creators["rpg bg type"] = &ValueContext::rpg_bg_type;
         creators["arena type"] = &ValueContext::arena_type;
+        creators["arena queue type"] = &ValueContext::arena_queue_type;
+        creators["arena bracket"] = &ValueContext::arena_bracket;
         creators["bg role"] = &ValueContext::bg_role;
         creators["bg master"] = &ValueContext::bg_master;
         creators["enemy flag carrier"] = &ValueContext::enemy_fc;
@@ -501,6 +503,8 @@ private:
     static UntypedValue* bg_master(PlayerbotAI* botAI) { return new BgMasterValue(botAI); }
     static UntypedValue* bg_role(PlayerbotAI* botAI) { return new BgRoleValue(botAI); }
     static UntypedValue* arena_type(PlayerbotAI* botAI) { return new ArenaTypeValue(botAI); }
+    static UntypedValue* arena_queue_type(PlayerbotAI* botAI) { return new ArenaQueueTypeValue(botAI); }
+    static UntypedValue* arena_bracket(PlayerbotAI* botAI) { return new ArenaBracketValue(botAI); }
     static UntypedValue* bg_type(PlayerbotAI* botAI) { return new BgTypeValue(botAI); }
     static UntypedValue* rpg_bg_type(PlayerbotAI* botAI) { return new RpgBgTypeValue(botAI); }
     static UntypedValue* team_fc(PlayerbotAI* botAI) { return new FlagCarrierValue(botAI, true, true); }
