@@ -15,6 +15,7 @@
 #include <random>
 
 #include "AiFactory.h"
+#include "ArenaTeamMgr.h"
 #include "Battleground.h"
 #include "BattlegroundMgr.h"
 #include "ChannelMgr.h"
@@ -1076,12 +1077,33 @@ void RandomPlayerbotMgr::CheckBgQueue()
                         bot->InArena() ? 1 : 0,
                         teamId == TEAM_ALLIANCE ? "Alliance" : "Horde");
 
+                uint8 level = bot->GetLevel();
+                uint8 levelIndex = (level >= 70 && level < 85) ? (level - 70) : 0;
                 if (isRated)
                 {
+                    // Count round-robin captains (captains in rated queue)
+                    uint8 arenaType = BattlegroundMgr::BGArenaType(queueTypeId);
+                    ArenaTeam* arenaTeam = sArenaTeamMgr->GetArenaTeamByCaptain(bot->GetGUID(), arenaType);
+                    if (arenaTeam && arenaTeam->GetCaptain() == bot->GetGUID())
+                    {
+                        if (teamId == TEAM_ALLIANCE)
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaQueueAllianceCount++;
+                        else
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaQueueHordeCount++;
+                    }
+
                     if (teamId == TEAM_ALLIANCE)
+                    {
                         BattlegroundData[queueTypeId][bracketId].arenaAllianceBotCount++;
+                        if (levelIndex < MAX_ARENA_LEVELS)
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaAllianceBotCountByLevel[levelIndex]++;
+                    }
                     else
+                    {
                         BattlegroundData[queueTypeId][bracketId].arenaHordeBotCount++;
+                        if (levelIndex < MAX_ARENA_LEVELS)
+                            BattlegroundData[queueTypeId][bracketId].ratedArenaHordeBotCountByLevel[levelIndex]++;
+                    }
                     BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount++;
                     LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} incrementing ratedArenaBotCount to {}",
                             bot->GetName(), BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount);
@@ -1089,9 +1111,22 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 else
                 {
                     if (teamId == TEAM_ALLIANCE)
+                    {
                         BattlegroundData[queueTypeId][bracketId].arenaAllianceBotCount++;
+                        if (levelIndex < MAX_ARENA_LEVELS)
+                            BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCountByLevel[levelIndex]++;
+                    }
                     else
+                    {
                         BattlegroundData[queueTypeId][bracketId].arenaHordeBotCount++;
+                        if (levelIndex < MAX_ARENA_LEVELS)
+                            BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCountByLevel[levelIndex]++;
+                    }
+                    // Per-faction counters for skirmish cap
+                    if (teamId == TEAM_ALLIANCE)
+                        BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCount++;
+                    else
+                        BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCount++;
                     BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
                     LOG_DEBUG("playerbots", "CheckBgQueue: Bot {} incrementing skirmishArenaBotCount to {} (Alliance:{}, Horde:{})",
                             bot->GetName(), BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount,
@@ -1334,17 +1369,64 @@ void RandomPlayerbotMgr::LogBattlegroundInfo()
                 auto& bgInfo = bracketIdPair.second;
                 if (bgInfo.minLevel == 0)
                     continue;
-                LOG_INFO("playerbots",
-                         "ARENA:{} {}: Player (Skirmish:{}, Rated:{}) Bots (Skirmish:{}, Rated:{}) Total (Skirmish:{} "
-                         "Rated:{}), Instances (Skirmish:{} Rated:{})",
-                         type == ARENA_TYPE_2v2   ? "2v2"
-                         : type == ARENA_TYPE_3v3 ? "3v3"
-                                                  : "5v5",
-                         std::to_string(bgInfo.minLevel) + "-" + std::to_string(bgInfo.maxLevel),
-                         bgInfo.skirmishArenaPlayerCount, bgInfo.ratedArenaPlayerCount, bgInfo.skirmishArenaBotCount,
-                         bgInfo.ratedArenaBotCount, bgInfo.skirmishArenaPlayerCount + bgInfo.skirmishArenaBotCount,
-                         bgInfo.ratedArenaPlayerCount + bgInfo.ratedArenaBotCount, bgInfo.skirmishArenaInstanceCount,
-                         bgInfo.ratedArenaInstanceCount);
+
+                std::string arenaType = type == ARENA_TYPE_2v2 ? "2v2" : type == ARENA_TYPE_3v3 ? "3v3" : "5v5";
+
+                uint32 skirmishAllianceTotal = 0, skirmishHordeTotal = 0;
+                uint32 ratedAllianceTotal = 0, ratedHordeTotal = 0;
+                for (int i = 0; i < MAX_ARENA_LEVELS; i++)
+                {
+                    skirmishAllianceTotal += bgInfo.skirmishArenaAllianceBotCountByLevel[i];
+                    skirmishHordeTotal += bgInfo.skirmishArenaHordeBotCountByLevel[i];
+                    ratedAllianceTotal += bgInfo.ratedArenaAllianceBotCountByLevel[i];
+                    ratedHordeTotal += bgInfo.ratedArenaHordeBotCountByLevel[i];
+                }
+                uint32 skirmishTotal = skirmishAllianceTotal + skirmishHordeTotal;
+                uint32 ratedTotal = ratedAllianceTotal + ratedHordeTotal;
+
+                std::string levelRange = std::to_string(bgInfo.minLevel) + "-" + std::to_string(bgInfo.maxLevel);
+
+                LOG_INFO("playerbots", "================================================================================");
+                LOG_INFO("playerbots", "ARENA QUEUE SUMMARY - {} {}", arenaType, levelRange);
+                LOG_INFO("playerbots", "================================================================================");
+                LOG_INFO("playerbots", "| {:^6} |  Skirmish   |        |   Rated    |        |  Instances |", "Level");
+                LOG_INFO("playerbots", "| {:^6} |    A    H  |  Total |     A    H  |  Total | Skirm Rated |", "------");
+                LOG_INFO("playerbots", "|--------|------------|--------|------------|--------|------------|");
+
+                bool hasAnyData = false;
+                for (int i = 0; i < MAX_ARENA_LEVELS; i++)
+                {
+                    uint32 sA = bgInfo.skirmishArenaAllianceBotCountByLevel[i];
+                    uint32 sH = bgInfo.skirmishArenaHordeBotCountByLevel[i];
+                    uint32 rA = bgInfo.ratedArenaAllianceBotCountByLevel[i];
+                    uint32 rH = bgInfo.ratedArenaHordeBotCountByLevel[i];
+                    if (sA + sH + rA + rH > 0)
+                    {
+                        hasAnyData = true;
+                        int level = 70 + i;
+                        LOG_INFO("playerbots", "| {:^6} | {:>4} {:>4}  | {:>6} | {:>4} {:>4}  | {:>6} |",
+                            level, sA, sH, sA + sH, rA, rH, rA + rH);
+                    }
+                }
+
+                if (!hasAnyData)
+                {
+                    LOG_INFO("playerbots", "|   --   |    0    0  |     0 |    0    0  |     0 |");
+                }
+
+                LOG_INFO("playerbots", "|--------|------------|--------|------------|--------|------------|");
+                LOG_INFO("playerbots", "| {:^6} | {:>4} {:>4}  | {:>6} | {:>4} {:>4}  | {:>6} | {:>4}   {:>4} |",
+                    "Total", skirmishAllianceTotal, skirmishHordeTotal, skirmishTotal,
+                    ratedAllianceTotal, ratedHordeTotal, ratedTotal,
+                    bgInfo.skirmishArenaInstanceCount, bgInfo.ratedArenaInstanceCount);
+                LOG_INFO("playerbots", "================================================================================");
+                LOG_INFO("playerbots", "| Players: Skirmish={}, Rated={} | Instances: Skirmish={}, Rated={} |",
+                    bgInfo.skirmishArenaPlayerCount, bgInfo.ratedArenaPlayerCount,
+                    bgInfo.skirmishArenaInstanceCount, bgInfo.ratedArenaInstanceCount);
+                LOG_INFO("playerbots", "================================================================================");
+                LOG_INFO("playerbots", "Round-Robin: Alliance Captains={}, Horde Captains={}",
+                    bgInfo.ratedArenaQueueAllianceCount, bgInfo.ratedArenaQueueHordeCount);
+                LOG_INFO("playerbots", "================================================================================");
             }
             continue;
         }

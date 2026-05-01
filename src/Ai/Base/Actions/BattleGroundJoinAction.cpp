@@ -373,12 +373,7 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
 
                     if (enoughAvailable)
                     {
-                        // Increment faction counter and set pending
-                        if (teamId == TEAM_ALLIANCE)
-                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueAllianceCount++;
-                        else
-                            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].ratedArenaQueueHordeCount++;
-                        
+                        // Round-robin now calculated from queue state in CheckBgQueue scan
                         sRandomPlayerbotMgr.AddPendingRatedTeam(arenaTeamId);
                         LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining rated arena (is captain, available={} required={})",
                                 bot->GetName(), availableMembers, type - 1);
@@ -442,20 +437,29 @@ bool BGJoinAction::shouldJoinBg(BattlegroundQueueTypeId queueTypeId, Battlegroun
         }
 
         // We have extra bots queue because same faction can vs each other but can't be in the same group.
-        uint32 skirmishArenaBotCount =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount;
-        uint32 skirmishArenaPlayerCount =
-            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaPlayerCount;
-        uint32 maxRequiredSkirmishBots = BracketSize * (activeSkirmishArenaQueue + skirmishArenaInstanceCount);
-        if (maxRequiredSkirmishBots != 0)
-            maxRequiredSkirmishBots = maxRequiredSkirmishBots + TeamSize;
+        // Per-faction cap - guarantee A:H balance like regular BGs
+        uint32 skirmishArenaAllianceBotCount =
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCount;
+        uint32 skirmishArenaHordeBotCount =
+            sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCount;
+        uint32 skirmishSlots = TeamSize * (activeSkirmishArenaQueue + skirmishArenaInstanceCount);
 
-        if ((skirmishArenaBotCount + skirmishArenaPlayerCount) < maxRequiredSkirmishBots)
+        bool canJoin = false;
+        if (teamId == TEAM_ALLIANCE)
+            canJoin = skirmishArenaAllianceBotCount < skirmishSlots;
+        else
+            canJoin = skirmishArenaHordeBotCount < skirmishSlots;
+
+        if (canJoin)
         {
-            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining skirmish arena (no valid arena team)", bot->GetName());
+            LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} joining skirmish arena (no valid arena team, A:{} H:{} slots:{})",
+                bot->GetName(), skirmishArenaAllianceBotCount, skirmishArenaHordeBotCount, skirmishSlots);
             return true;
         }
 
+        LOG_DEBUG("playerbots", "shouldJoinBg: Bot {} skipping skirmish - {} faction at cap (A:{} H:{} slots:{})",
+            bot->GetName(), teamId == TEAM_ALLIANCE ? "Alliance" : "Horde",
+            skirmishArenaAllianceBotCount, skirmishArenaHordeBotCount, skirmishSlots);
         return false;
     }
 
@@ -693,10 +697,37 @@ bool BGJoinAction::JoinQueue(uint32 type)
         if (!isRated)
         {
             std::lock_guard<std::mutex> bgLock(sRandomPlayerbotMgr.bgDataMutex);
+            uint32 skirmishArenaInstanceCount =
+                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount;
+            uint32 activeSkirmishArenaQueue =
+                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].activeSkirmishArenaQueue;
+            // Per-faction increment with over-cap guard (like regular BGs)
+            uint8 arenaType = BattlegroundMgr::BGArenaType(queueTypeId);
+            uint32 arenaTeamSize = (arenaType == ARENA_TYPE_2v2) ? 2 : (arenaType == ARENA_TYPE_3v3) ? 3 : 5;
+            uint32 skirmishSlots = arenaTeamSize * (activeSkirmishArenaQueue + skirmishArenaInstanceCount);
+            if (teamId == TEAM_ALLIANCE)
+            {
+                if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCount >= skirmishSlots)
+                {
+                    LOG_DEBUG("playerbots", "JoinQueue: Bot {} skipping - Alliance at cap", bot->GetName());
+                    return false;
+                }
+                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCount++;
+            }
+            else
+            {
+                if (sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCount >= skirmishSlots)
+                {
+                    LOG_DEBUG("playerbots", "JoinQueue: Bot {} skipping - Horde at cap", bot->GetName());
+                    return false;
+                }
+                sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCount++;
+            }
             sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
-            LOG_DEBUG("playerbots", "JoinQueue: Bot {} queueType={} bracketId={} type=SKIRMISH incremented skirmishArenaBotCount to {}",
-                    bot->GetName(), queueTypeId, bracketId, 
-                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount);
+            LOG_DEBUG("playerbots", "JoinQueue: Bot {} queueType={} bracketId={} type=SKIRMISH A:{} H:{}",
+                    bot->GetName(), queueTypeId, bracketId,
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaAllianceBotCount,
+                    sRandomPlayerbotMgr.BattlegroundData[queueTypeId][bracketId].skirmishArenaHordeBotCount);
         }
 
         // Store arena metadata for proper counter decrement when leaving

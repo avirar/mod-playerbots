@@ -14,6 +14,8 @@
 #include "GameTime.h"
 #include "PlayerbotCommandServer.h"
 
+#define MAX_ARENA_LEVELS 15  // Levels 70-84 in WotLK
+
 struct BattlegroundInfo
 {
     std::vector<uint32> bgInstances;
@@ -31,6 +33,8 @@ struct BattlegroundInfo
     // Bots (Arena)
     uint32 ratedArenaBotCount = 0;
     uint32 skirmishArenaBotCount = 0;
+    uint32 skirmishArenaAllianceBotCount = 0;  // Skirmish bots by faction for per-faction cap
+    uint32 skirmishArenaHordeBotCount = 0;
     uint32 arenaAllianceBotCount = 0;  // Tracks all arena bots (rated + skirmish) for Alliance faction
     uint32 arenaHordeBotCount = 0;    // Tracks all arena bots (rated + skirmish) for Horde faction
     uint32 ratedArenaQueueAllianceCount = 0;  // Round-robin: Alliance captains queued for rated
@@ -47,6 +51,14 @@ struct BattlegroundInfo
     // Players (Battleground)
     uint32 bgHordePlayerCount = 0;
     uint32 bgAlliancePlayerCount = 0;
+
+    // ===== Arena bots by level breakdown (index 0 = level 70, 10 = level 80, etc.) =====
+    // Skirmish by faction and level
+    uint32 skirmishArenaAllianceBotCountByLevel[MAX_ARENA_LEVELS] = {};
+    uint32 skirmishArenaHordeBotCountByLevel[MAX_ARENA_LEVELS] = {};
+    // Rated by faction and level
+    uint32 ratedArenaAllianceBotCountByLevel[MAX_ARENA_LEVELS] = {};
+    uint32 ratedArenaHordeBotCountByLevel[MAX_ARENA_LEVELS] = {};
 };
 
 class ChatHandler;
