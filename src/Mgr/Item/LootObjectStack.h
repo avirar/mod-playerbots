@@ -7,6 +7,7 @@
 #define _PLAYERBOT_LOOTOBJECTSTACK_H
 
 #include "ObjectGuid.h"
+#include "SharedDefines.h"
 
 class AiObjectContext;
 class Player;
@@ -26,13 +27,14 @@ public:
 class LootObject
 {
 public:
-    LootObject() : skillId(0), reqSkillValue(0), reqItem(0) {}
+    LootObject() : skillId(0), reqSkillValue(0), reqItem(0), isAccessible(false) {}
     LootObject(Player* bot, ObjectGuid guid);
     LootObject(LootObject const& other);
     LootObject& operator=(LootObject const& other) = default;
 
-    bool IsEmpty() { return !guid; }
+    bool IsEmpty() const { return !guid; }
     bool IsLootPossible(Player* bot);
+    bool IsStillValid(Player* bot) const;  // Check validity without modifying state
     void Refresh(Player* bot, ObjectGuid guid);
     WorldObject* GetWorldObject(Player* bot);
     ObjectGuid guid;
@@ -40,9 +42,11 @@ public:
     uint32 skillId;
     uint32 reqSkillValue;
     uint32 reqItem;
+    bool isAccessible;
 
 private:
     static bool IsNeededForQuest(Player* bot, uint32 itemId);
+    static bool IsAccessibleLockType(LockType lockType);
 };
 
 class LootTarget
@@ -77,11 +81,23 @@ public:
     bool CanLoot(float maxDistance);
     LootObject GetLoot(float maxDistance = 0);
 
+    void MarkAsPending(ObjectGuid guid);
+    void MarkAsCompleted(ObjectGuid guid);
+    void MarkAsPartiallyLooted(ObjectGuid guid);
+    void ProcessPendingTimeouts();
+    void ProcessPartialLootExpiry();
+    void ClearPartialLootOnBagSpaceChange();
+    bool IsPending(ObjectGuid guid) const;
+    bool IsPartiallyLooted(ObjectGuid guid) const;
+
 private:
     LootObject GetNearest(float maxDistance = 0);
 
     Player* bot;
     LootTargetList availableLoot;
+    LootTargetList pendingLoot;
+    LootTargetList partiallyLootedObjects;
+    uint8 lastBagSpaceCheck;
 };
 
 #endif

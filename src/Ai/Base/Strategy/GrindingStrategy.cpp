@@ -17,12 +17,12 @@ std::vector<NextAction> GrindingStrategy::getDefaultActions()
 
 void GrindingStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
-    // reduce lower than loot
+    // Lower priority than loot (5.0f-8.0f), quest items (5.0f-7.0f), food/drink (4.1f-4.2f)
     triggers.push_back(
         new TriggerNode(
             "no target",
             {
-                NextAction("attack anything", 4.0f)
+                NextAction("attack anything", 3.0f)
             }
         )
     );
