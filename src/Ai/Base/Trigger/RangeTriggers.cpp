@@ -5,6 +5,8 @@
 
 #include "RangeTriggers.h"
 
+#include <cmath>
+
 #include "MoveSplineInit.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -285,6 +287,47 @@ bool TooFarFromPlayerWithAuraTrigger::TooFarFromPlayerWithAura(uint32 spellId, f
         if (dist > range)
         {
             return true;
+        }
+    }
+
+    return false;
+}
+
+bool EnemyUnreachableTrigger::IsActive()
+{
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+
+    float distance = bot->GetDistance(target);
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return false;
+
+    float meleeRange = botAI->GetRange("melee");
+
+    // Check if target is flying, hovering, or swimming with significant height difference
+    float heightDiff = std::abs(target->GetPositionZ() - bot->GetPositionZ());
+    if ((target->IsFlying() || target->IsHovering() || target->isSwimming()) && heightDiff > 10.0f)
+    {
+        return true;
+    }
+
+    // Check if target is out of melee range and unreachable via pathfinding
+    if (distance > meleeRange + 5.0f)
+    {
+        Map* map = bot->GetMap();
+        if (map)
+        {
+            float targetX = target->GetPositionX();
+            float targetY = target->GetPositionY();
+            float targetZ = target->GetPositionZ();
+
+            // Check if we can path to the target's position
+            if (!map->CanReachPositionAndGetValidCoords(bot, targetX, targetY, targetZ))
+            {
+                return true;
+            }
         }
     }
 

@@ -251,6 +251,8 @@ public:
     bool isPossible() override;
     bool Execute(Event event) override;
     ActionThreatType getThreatType() override { return ActionThreatType::None; }
+    std::vector<NextAction> getPrerequisites() override;
+    bool isUseful() override;
 
 private:
     uint32 shootSpellId;

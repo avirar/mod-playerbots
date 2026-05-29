@@ -138,6 +138,8 @@ bool CheckMountStateAction::isUseful()
         return false;
 
     master = GetMaster();
+    if (master == bot)
+        master = nullptr;
 
     // Get shapeshift states, only applicable when there's a master
     if (master)
