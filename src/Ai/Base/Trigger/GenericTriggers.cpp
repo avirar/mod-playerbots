@@ -14,6 +14,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
+#include "QuestItemHelper.h"
 #include "SharedDefines.h"
 #include "TemporarySummon.h"
 #include "ThreatManager.h"
@@ -193,7 +194,28 @@ bool NoAttackersTrigger::IsActive()
 
 bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target", "current target"); }
 
-bool NoTargetTrigger::IsActive() { return !AI_VALUE(Unit*, "current target"); }
+bool NoTargetTrigger::IsActive()
+{
+    if (!botAI || !bot)
+        return false;
+
+    if (!botAI->GetAiObjectContext())
+        return false;
+
+    if (AI_VALUE(Unit*, "current target"))
+        return false;
+
+    try {
+        Item* questItem = QuestItemHelper::FindBestQuestItem(bot, nullptr);
+        if (questItem) {
+            return false;
+        }
+    }
+    catch (...) {
+    }
+
+    return true;
+}
 
 bool MyAttackerCountTrigger::IsActive()
 {

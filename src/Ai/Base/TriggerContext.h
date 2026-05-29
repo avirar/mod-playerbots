@@ -22,6 +22,7 @@
 #include "StuckTriggers.h"
 #include "TravelTriggers.h"
 #include "WaitForAttackTriggers.h"
+#include "QuestItemTriggers.h"
 
 class PlayerbotAI;
 
@@ -240,6 +241,9 @@ public:
         creators["can use fishing bobber"] = &TriggerContext::can_use_fishing_bobber;
         creators["new pet"] = &TriggerContext::new_pet;
         creators["wait for attack safe distance"] = &TriggerContext::wait_for_attack_safe_distance;
+        creators["quest item usable"] = &TriggerContext::quest_item_usable;
+        creators["far from quest item target"] = &TriggerContext::far_from_quest_item_target;
+        creators["quest item target available"] = &TriggerContext::quest_item_target_available;
     }
 
 private:
@@ -450,6 +454,9 @@ private:
     static Trigger* can_use_fishing_bobber(PlayerbotAI* ai) { return new CanUseFishingBobberTrigger(ai); }
     static Trigger* new_pet(PlayerbotAI* ai) { return new NewPetTrigger(ai); }
     static Trigger* wait_for_attack_safe_distance(PlayerbotAI* ai) { return new WaitForAttackSafeDistanceTrigger(ai); }
+    static Trigger* quest_item_usable(PlayerbotAI* botAI) { return new QuestItemUsableTrigger(botAI); }
+    static Trigger* far_from_quest_item_target(PlayerbotAI* botAI) { return new FarFromQuestItemTargetTrigger(botAI); }
+    static Trigger* quest_item_target_available(PlayerbotAI* botAI) { return new QuestItemTargetAvailableTrigger(botAI); }
 };
 
 #endif

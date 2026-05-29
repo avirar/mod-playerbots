@@ -89,6 +89,7 @@
 #include "Stances.h"
 #include "StatsValues.h"
 #include "TankTargetValue.h"
+#include "TargetValue.h"
 #include "ThreatValues.h"
 #include "TradeValues.h"
 #include "Value.h"
@@ -241,6 +242,7 @@ public:
         creators["travel target"] = &ValueContext::travel_target;
         creators["talk target"] = &ValueContext::talk_target;
         creators["pull target"] = &ValueContext::pull_target;
+        creators["spell focus target"] = &ValueContext::spell_focus_target;
         creators["pull strategy target"] = &ValueContext::pull_strategy_target;
         creators["focus heal targets"] = &ValueContext::focus_heal_targets;
         creators["group"] = &ValueContext::group;
@@ -499,6 +501,7 @@ private:
     static UntypedValue* next_rpg_action(PlayerbotAI* botAI) { return new NextRpgActionValue(botAI); }
     static UntypedValue* travel_target(PlayerbotAI* botAI) { return new TravelTargetValue(botAI); }
     static UntypedValue* pull_target(PlayerbotAI* botAI) { return new PullTargetValue(botAI); }
+    static UntypedValue* spell_focus_target(PlayerbotAI* botAI) { return new SpellFocusTargetValue(botAI); }
     static UntypedValue* pull_strategy_target(PlayerbotAI* botAI) { return new PullStrategyTargetValue(botAI); }
     static UntypedValue* focus_heal_targets(PlayerbotAI* botAI) { return new FocusHealTargetValue(botAI); }
 
