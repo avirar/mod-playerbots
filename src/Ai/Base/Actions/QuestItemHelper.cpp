@@ -2170,6 +2170,7 @@ bool QuestItemHelper::WouldProvideQuestCredit(Player* player, Unit* target, uint
 
 // Shared static map to track quest item usage per target GUID
 static std::map<std::string, time_t> s_questItemUsageTracker;
+static std::mutex s_questItemUsageTrackerMutex;
 
 // PendingQuestItemCast struct now defined in QuestItemHelper.h
 // Individual bot maps are now stored as member variables in PlayerbotAI
@@ -2183,15 +2184,16 @@ bool QuestItemHelper::CanUseQuestItemOnTarget(PlayerbotAI* botAI, WorldObject* t
     if (!bot)
         return false;
 
-    // Create a unique key for spell + target combination (bot GUID no longer needed since each bot has its own map)
-    std::string key = std::to_string(spellId) + "_" + target->GetGUID().ToString();
-    
+    // Create a unique key for bot + spell + target combination
+    std::string key = bot->GetGUID().ToString() + "_" + std::to_string(spellId) + "_" + target->GetGUID().ToString();
+
     time_t currentTime = time(nullptr);
-    
+
     // 30 second cooldown per target as suggested
     const time_t COOLDOWN_SECONDS = 30;
-    
+
     // Check if this bot has used this quest item on this target recently
+    std::lock_guard<std::mutex> lock(s_questItemUsageTrackerMutex);
     auto it = s_questItemUsageTracker.find(key);
     if (it != s_questItemUsageTracker.end())
     {
@@ -2252,7 +2254,10 @@ void QuestItemHelper::RecordQuestItemUsage(PlayerbotAI* botAI, WorldObject* targ
     time_t currentTime = time(nullptr);
     
     // Record the usage time in the shared map
-    s_questItemUsageTracker[key] = currentTime;
+    {
+        std::lock_guard<std::mutex> lock(s_questItemUsageTrackerMutex);
+        s_questItemUsageTracker[key] = currentTime;
+    }
     
     if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
     {
@@ -2357,27 +2362,38 @@ void QuestItemHelper::ProcessPendingQuestItemCasts(PlayerbotAI* botAI)
             }
             
             if (target)
-            {
-                // Extract spell ID from key for recording usage
-                size_t firstUnderscore = pending.key.find('_');
-                size_t secondUnderscore = pending.key.find('_', firstUnderscore + 1);
-                if (firstUnderscore != std::string::npos && secondUnderscore != std::string::npos)
                 {
-                    std::string spellIdStr = pending.key.substr(firstUnderscore + 1, secondUnderscore - firstUnderscore - 1);
-                    uint32 spellId = std::stoul(spellIdStr);
-                    
-                    // Record the cooldown
-                    s_questItemUsageTracker[pending.key] = currentTime;
-                    
-                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    // Extract spell ID from key for recording usage
+                    size_t firstUnderscore = pending.key.find('_');
+                    size_t secondUnderscore = pending.key.find('_', firstUnderscore + 1);
+                    if (firstUnderscore != std::string::npos && secondUnderscore != std::string::npos)
                     {
-                        std::ostringstream out;
-                        out << "QuestItem: Pending cast timeout - assuming success, starting cooldown for " 
-                            << target->GetName() << " (GUID:" << target->GetGUID().ToString() << ")";
-                        botAI->TellMaster(out.str());
+                        try
+                        {
+                            std::string spellIdStr = pending.key.substr(firstUnderscore + 1, secondUnderscore - firstUnderscore - 1);
+                            uint32 spellId = static_cast<uint32>(std::stoul(spellIdStr));
+
+                            // Record the cooldown with consistent key format (botGuid_spellId_targetGuid)
+                            std::string cooldownKey = botAI->GetBot()->GetGUID().ToString() + "_" + pending.key;
+                            {
+                                std::lock_guard<std::mutex> lock(s_questItemUsageTrackerMutex);
+                                s_questItemUsageTracker[cooldownKey] = currentTime;
+                            }
+
+                            if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                            {
+                                std::ostringstream out;
+                                out << "QuestItem: Pending cast timeout - assuming success, starting cooldown for "
+                                    << target->GetName() << " (GUID:" << target->GetGUID().ToString() << ")";
+                                botAI->TellMaster(out.str());
+                            }
+                        }
+                        catch (const std::exception&)
+                        {
+                            // Malformed key, skip recording cooldown
+                        }
                     }
                 }
-            }
             
             it = botAI->GetPendingQuestItemCasts().erase(it);
         }
