@@ -11,8 +11,10 @@
 #include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <random>
+#include <set>
 
 #include "AiFactory.h"
 #include "Battleground.h"
@@ -2372,7 +2374,7 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
 
     if (!args || !*args)
     {
-        LOG_ERROR("playerbots", "Usage: rndbot stats/update/reset/init/refresh/add/remove");
+        LOG_ERROR("playerbots", "Usage: rndbot stats/queststats/questdump/update/reset/init/refresh/add/remove");
         return false;
     }
 
@@ -2390,6 +2392,18 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
     {
         sRandomPlayerbotMgr.PrintStats();
         // activatePrintStatsThread();
+        return true;
+    }
+
+    if (cmd == "queststats")
+    {
+        sRandomPlayerbotMgr.PrintQuestStats();
+        return true;
+    }
+
+    if (cmd == "questdump")
+    {
+        sRandomPlayerbotMgr.ExportQuestStatsToUnifiedCSV();
         return true;
     }
 
@@ -2885,12 +2899,432 @@ void RandomPlayerbotMgr::PrintStats()
                  rpgStatusCount[RPG_DO_QUEST], rpgStatusCount[RPG_TRAVEL_FLIGHT], rpgStatusCount[RPG_OUTDOOR_PVP]);
 
         LOG_INFO("playerbots", "Bots total quests:");
-        LOG_INFO("playerbots", "    Accepted: {}, Rewarded: {}, Dropped: {}", rpgStasticTotal.questAccepted,
-                 rpgStasticTotal.questRewarded, rpgStasticTotal.questDropped);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Accepted:", rpgStasticTotal.questAccepted);
+        if (rpgStasticTotal.questAccepted > 0)
+        {
+            float completedPct = (rpgStasticTotal.questCompleted * 100.0f) / rpgStasticTotal.questAccepted;
+            float rewardedPct = (rpgStasticTotal.questRewarded * 100.0f) / rpgStasticTotal.questAccepted;
+            float abandonedPct = (rpgStasticTotal.questAbandoned * 100.0f) / rpgStasticTotal.questAccepted;
+            float droppedPct = (rpgStasticTotal.questDropped * 100.0f) / rpgStasticTotal.questAccepted;
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Completed:", rpgStasticTotal.questCompleted, completedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Rewarded:", rpgStasticTotal.questRewarded, rewardedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Abandoned:", rpgStasticTotal.questAbandoned, abandonedPct);
+            LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Dropped:", rpgStasticTotal.questDropped, droppedPct);
+        }
+        else
+        {
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Completed:", rpgStasticTotal.questCompleted);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Rewarded:", rpgStasticTotal.questRewarded);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Abandoned:", rpgStasticTotal.questAbandoned);
+            LOG_INFO("playerbots", "    {:10} {:>5}", "Dropped:", rpgStasticTotal.questDropped);
+        }
+
+        if (!rpgStasticTotal.questDropReasons.empty())
+        {
+            LOG_INFO("playerbots", "  Quest Drop Reasons:");
+            for (const auto& [reason, count] : rpgStasticTotal.questDropReasons)
+            {
+                LOG_INFO("playerbots", "    {}: {}", reason, count);
+            }
+        }
+        if (!rpgStasticTotal.questAbandonReasons.empty())
+        {
+            LOG_INFO("playerbots", "  Quest Abandon Reasons:");
+            for (const auto& [reason, count] : rpgStasticTotal.questAbandonReasons)
+            {
+                LOG_INFO("playerbots", "    {}: {}", reason, count);
+            }
+        }
+
+        if (!rpgStasticTotal.questDroppedByID.empty() || !rpgStasticTotal.questAbandonedByID.empty())
+        {
+            LOG_INFO("playerbots", "Quest Problem Analysis:");
+
+            if (!rpgStasticTotal.questDroppedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> droppedSorted(rpgStasticTotal.questDroppedByID.begin(), rpgStasticTotal.questDroppedByID.end());
+                std::sort(droppedSorted.begin(), droppedSorted.end(),
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second;
+                    });
+
+                LOG_INFO("playerbots", "  Most Dropped Quests (need fixing):");
+                size_t displayed = 0;
+                for (size_t i = 0; i < droppedSorted.size() && displayed < 10; ++i)
+                {
+                    uint32 questId = droppedSorted[i].first;
+                    bool hasCompletions = rpgStasticTotal.questCompletedByID.find(questId) != rpgStasticTotal.questCompletedByID.end();
+                    bool hasRewards = rpgStasticTotal.questRewardedByID.find(questId) != rpgStasticTotal.questRewardedByID.end();
+                    if (hasCompletions || hasRewards)
+                        continue;
+
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+                    std::string reasonStr = "";
+
+                    auto reasonsIt = rpgStasticTotal.questDropReasonsByID.find(questId);
+                    if (reasonsIt != rpgStasticTotal.questDropReasonsByID.end())
+                    {
+                        bool first = true;
+                        for (const auto& [reason, count] : reasonsIt->second)
+                        {
+                            if (!first) reasonStr += ", ";
+                            reasonStr += reason + " " + std::to_string(count);
+                            first = false;
+                        }
+                    }
+
+                    LOG_INFO("playerbots", "    QuestID {}: {} (dropped {} times: {})",
+                        questId, quest ? quest->GetTitle() : "Unknown Quest", droppedSorted[i].second, reasonStr);
+                    displayed++;
+                }
+            }
+
+            if (!rpgStasticTotal.questAbandonedByID.empty())
+            {
+                std::vector<std::pair<uint32, uint32>> abandonedSorted(rpgStasticTotal.questAbandonedByID.begin(), rpgStasticTotal.questAbandonedByID.end());
+                std::sort(abandonedSorted.begin(), abandonedSorted.end(),
+                    [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                        return a.second > b.second;
+                    });
+
+                LOG_INFO("playerbots", "  Most Abandoned Quests (need fixing):");
+                size_t displayed = 0;
+                for (size_t i = 0; i < abandonedSorted.size() && displayed < 10; ++i)
+                {
+                    uint32 questId = abandonedSorted[i].first;
+                    bool hasCompletions = rpgStasticTotal.questCompletedByID.find(questId) != rpgStasticTotal.questCompletedByID.end();
+                    bool hasRewards = rpgStasticTotal.questRewardedByID.find(questId) != rpgStasticTotal.questRewardedByID.end();
+                    if (hasCompletions || hasRewards)
+                        continue;
+
+                    const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+                    std::string reasonStr = "";
+
+                    auto reasonsIt = rpgStasticTotal.questAbandonReasonsByID.find(questId);
+                    if (reasonsIt != rpgStasticTotal.questAbandonReasonsByID.end())
+                    {
+                        bool first = true;
+                        for (const auto& [reason, count] : reasonsIt->second)
+                        {
+                            if (!first) reasonStr += ", ";
+                            reasonStr += reason + " " + std::to_string(count);
+                            first = false;
+                        }
+                    }
+
+                    LOG_INFO("playerbots", "    QuestID {}: {} (abandoned {} times: {})",
+                        questId, quest ? quest->GetTitle() : "Unknown Quest", abandonedSorted[i].second, reasonStr);
+                    displayed++;
+                }
+            }
+        }
     }
 
     LOG_INFO("playerbots", "Bots engine:", dead);
     LOG_INFO("playerbots", "    Non-combat: {}, Combat: {}, Dead: {}", engine_noncombat, engine_combat, engine_dead);
+}
+
+void RandomPlayerbotMgr::PrintQuestStats()
+{
+    if (!sPlayerbotAIConfig.enableNewRpgStrategy)
+    {
+        LOG_INFO("playerbots", "New RPG strategy is not enabled. Quest stats not available.");
+        return;
+    }
+
+    LOG_INFO("playerbots", "=== QUEST STATISTICS REPORT ===");
+    LOG_INFO("playerbots", "");
+    LOG_INFO("playerbots", "Bots total quests:");
+    LOG_INFO("playerbots", "    {:10} {:>5}", "Accepted:", rpgStasticTotal.questAccepted);
+    if (rpgStasticTotal.questAccepted > 0)
+    {
+        float completedPct = (rpgStasticTotal.questCompleted * 100.0f) / rpgStasticTotal.questAccepted;
+        float rewardedPct = (rpgStasticTotal.questRewarded * 100.0f) / rpgStasticTotal.questAccepted;
+        float abandonedPct = (rpgStasticTotal.questAbandoned * 100.0f) / rpgStasticTotal.questAccepted;
+        float droppedPct = (rpgStasticTotal.questDropped * 100.0f) / rpgStasticTotal.questAccepted;
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Completed:", rpgStasticTotal.questCompleted, completedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Rewarded:", rpgStasticTotal.questRewarded, rewardedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Abandoned:", rpgStasticTotal.questAbandoned, abandonedPct);
+        LOG_INFO("playerbots", "    {:10} {:>5} ({:.2f}%)", "Dropped:", rpgStasticTotal.questDropped, droppedPct);
+    }
+    else
+    {
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Completed:", rpgStasticTotal.questCompleted);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Rewarded:", rpgStasticTotal.questRewarded);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Abandoned:", rpgStasticTotal.questAbandoned);
+        LOG_INFO("playerbots", "    {:10} {:>5}", "Dropped:", rpgStasticTotal.questDropped);
+    }
+    LOG_INFO("playerbots", "");
+
+    if (!rpgStasticTotal.questDropReasons.empty())
+    {
+        LOG_INFO("playerbots", "Quest Drop Reasons:");
+        for (const auto& [reason, count] : rpgStasticTotal.questDropReasons)
+        {
+            LOG_INFO("playerbots", "    {}: {}", reason, count);
+        }
+        LOG_INFO("playerbots", "");
+    }
+    if (!rpgStasticTotal.questAbandonReasons.empty())
+    {
+        LOG_INFO("playerbots", "Quest Abandon Reasons:");
+        for (const auto& [reason, count] : rpgStasticTotal.questAbandonReasons)
+        {
+            LOG_INFO("playerbots", "    {}: {}", reason, count);
+        }
+        LOG_INFO("playerbots", "");
+    }
+
+    if (!rpgStasticTotal.questDroppedByID.empty() || !rpgStasticTotal.questAbandonedByID.empty())
+    {
+        LOG_INFO("playerbots", "Quest Problem Analysis:");
+        LOG_INFO("playerbots", "");
+
+        if (!rpgStasticTotal.questDroppedByID.empty())
+        {
+            std::vector<std::pair<uint32, uint32>> droppedSorted(rpgStasticTotal.questDroppedByID.begin(), rpgStasticTotal.questDroppedByID.end());
+            std::sort(droppedSorted.begin(), droppedSorted.end(),
+                [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                    return a.second > b.second;
+                });
+
+            LOG_INFO("playerbots", "  All Dropped Quests (need fixing):");
+            for (size_t i = 0; i < droppedSorted.size(); ++i)
+            {
+                uint32 questId = droppedSorted[i].first;
+                const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+                std::string reasonStr = "";
+
+                auto reasonsIt = rpgStasticTotal.questDropReasonsByID.find(questId);
+                if (reasonsIt != rpgStasticTotal.questDropReasonsByID.end())
+                {
+                    bool first = true;
+                    for (const auto& [reason, count] : reasonsIt->second)
+                    {
+                        if (!first) reasonStr += ", ";
+                        reasonStr += reason + " " + std::to_string(count);
+                        first = false;
+                    }
+                }
+
+                LOG_INFO("playerbots", "    QuestID {}: {} (dropped {} times: {})",
+                    questId, quest ? quest->GetTitle() : "Unknown Quest", droppedSorted[i].second, reasonStr);
+            }
+            LOG_INFO("playerbots", "");
+        }
+
+        if (!rpgStasticTotal.questAbandonedByID.empty())
+        {
+            std::vector<std::pair<uint32, uint32>> abandonedSorted(rpgStasticTotal.questAbandonedByID.begin(), rpgStasticTotal.questAbandonedByID.end());
+            std::sort(abandonedSorted.begin(), abandonedSorted.end(),
+                [](const std::pair<uint32, uint32>& a, const std::pair<uint32, uint32>& b) {
+                    return a.second > b.second;
+                });
+
+            LOG_INFO("playerbots", "  All Abandoned Quests (need fixing):");
+            for (size_t i = 0; i < abandonedSorted.size(); ++i)
+            {
+                uint32 questId = abandonedSorted[i].first;
+                const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+                std::string reasonStr = "";
+
+                auto reasonsIt = rpgStasticTotal.questAbandonReasonsByID.find(questId);
+                if (reasonsIt != rpgStasticTotal.questAbandonReasonsByID.end())
+                {
+                    bool first = true;
+                    for (const auto& [reason, count] : reasonsIt->second)
+                    {
+                        if (!first) reasonStr += ", ";
+                        reasonStr += reason + " " + std::to_string(count);
+                        first = false;
+                    }
+                }
+
+                LOG_INFO("playerbots", "    QuestID {}: {} (abandoned {} times: {})",
+                    questId, quest ? quest->GetTitle() : "Unknown Quest", abandonedSorted[i].second, reasonStr);
+            }
+        }
+    }
+
+    LOG_INFO("playerbots", "");
+    LOG_INFO("playerbots", "=== END QUEST STATISTICS REPORT ===");
+}
+
+void RandomPlayerbotMgr::ExportQuestStatsToUnifiedCSV()
+{
+    if (!sPlayerbotAIConfig.enableNewRpgStrategy)
+    {
+        LOG_ERROR("playerbots", "New RPG strategy is not enabled. Quest stats not available.");
+        return;
+    }
+
+    time_t now = time(0);
+    tm* ltm = localtime(&now);
+    char timestamp[32];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", ltm);
+    std::string timestampStr(timestamp);
+
+    auto escapeCSV = [](const std::string& value) -> std::string {
+        if (value.find('"') != std::string::npos || value.find(',') != std::string::npos)
+        {
+            std::string escaped = "\"";
+            for (char c : value)
+            {
+                if (c == '"')
+                    escaped += "\"\"";
+                else
+                    escaped += c;
+            }
+            escaped += "\"";
+            return escaped;
+        }
+        return value;
+    };
+
+    std::set<uint32> allQuestIds;
+    for (const auto& [questId, count] : rpgStasticTotal.questAcceptedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questCompletedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questRewardedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questDroppedByID)
+        allQuestIds.insert(questId);
+    for (const auto& [questId, count] : rpgStasticTotal.questAbandonedByID)
+        allQuestIds.insert(questId);
+
+    std::vector<std::string> dropReasons = {
+        "manual_drop",
+        "not_worth_or_capable_or_failed",
+        "wrong_zone",
+        "clear_log"
+    };
+
+    std::vector<std::string> abandonReasons = {
+        "no_progression",
+        "reward_issue"
+    };
+
+    std::string unifiedFile = "playerbots_quest_unified_" + timestampStr + ".csv";
+    std::ofstream unified(unifiedFile);
+    if (!unified.is_open())
+    {
+        LOG_ERROR("playerbots", "Failed to create file: {}", unifiedFile);
+        return;
+    }
+
+    unified << "QuestID,QuestName,Accepted,Completed,Rewarded,Dropped";
+
+    for (const auto& reason : dropReasons)
+    {
+        unified << ",drop_" << reason;
+    }
+
+    unified << ",Abandoned";
+
+    for (const auto& reason : abandonReasons)
+    {
+        unified << ",abandon_" << reason;
+    }
+
+    unified << "\n";
+
+    struct QuestStats
+    {
+        uint32 questId;
+        std::string questName;
+        uint32 accepted;
+        uint32 completed;
+        uint32 rewarded;
+        uint32 dropped;
+        uint32 abandoned;
+        uint32 totalInteractions;
+        std::map<std::string, uint32> dropReasons;
+        std::map<std::string, uint32> abandonReasons;
+    };
+
+    std::vector<QuestStats> questDataList;
+
+    for (uint32 questId : allQuestIds)
+    {
+        QuestStats stats;
+        stats.questId = questId;
+
+        const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+        stats.questName = quest ? quest->GetTitle() : "Unknown Quest";
+
+        auto acceptedIt = rpgStasticTotal.questAcceptedByID.find(questId);
+        stats.accepted = (acceptedIt != rpgStasticTotal.questAcceptedByID.end()) ? acceptedIt->second : 0;
+
+        auto completedIt = rpgStasticTotal.questCompletedByID.find(questId);
+        stats.completed = (completedIt != rpgStasticTotal.questCompletedByID.end()) ? completedIt->second : 0;
+
+        auto rewardedIt = rpgStasticTotal.questRewardedByID.find(questId);
+        stats.rewarded = (rewardedIt != rpgStasticTotal.questRewardedByID.end()) ? rewardedIt->second : 0;
+
+        auto droppedIt = rpgStasticTotal.questDroppedByID.find(questId);
+        stats.dropped = (droppedIt != rpgStasticTotal.questDroppedByID.end()) ? droppedIt->second : 0;
+
+        auto abandonedIt = rpgStasticTotal.questAbandonedByID.find(questId);
+        stats.abandoned = (abandonedIt != rpgStasticTotal.questAbandonedByID.end()) ? abandonedIt->second : 0;
+
+        stats.totalInteractions = stats.completed + stats.rewarded + stats.dropped + stats.abandoned;
+
+        auto dropReasonsIt = rpgStasticTotal.questDropReasonsByID.find(questId);
+        if (dropReasonsIt != rpgStasticTotal.questDropReasonsByID.end())
+        {
+            stats.dropReasons = dropReasonsIt->second;
+        }
+
+        auto abandonReasonsIt = rpgStasticTotal.questAbandonReasonsByID.find(questId);
+        if (abandonReasonsIt != rpgStasticTotal.questAbandonReasonsByID.end())
+        {
+            stats.abandonReasons = abandonReasonsIt->second;
+        }
+
+        questDataList.push_back(stats);
+    }
+
+    std::sort(questDataList.begin(), questDataList.end(),
+        [](const QuestStats& a, const QuestStats& b) {
+            return a.totalInteractions > b.totalInteractions;
+        });
+
+    for (const auto& stats : questDataList)
+    {
+        unified << stats.questId << ","
+                << escapeCSV(stats.questName) << ","
+                << stats.accepted << ","
+                << stats.completed << ","
+                << stats.rewarded << ","
+                << stats.dropped;
+
+        for (const auto& reason : dropReasons)
+        {
+            auto it = stats.dropReasons.find(reason);
+            uint32 count = (it != stats.dropReasons.end()) ? it->second : 0;
+            unified << "," << count;
+        }
+
+        unified << "," << stats.abandoned;
+
+        for (const auto& reason : abandonReasons)
+        {
+            auto it = stats.abandonReasons.find(reason);
+            uint32 count = (it != stats.abandonReasons.end()) ? it->second : 0;
+            unified << "," << count;
+        }
+
+        unified << "\n";
+    }
+
+    unified.close();
+
+    LOG_INFO("playerbots", "Unified quest statistics exported successfully:");
+    LOG_INFO("playerbots", "  - {}", unifiedFile);
+    LOG_INFO("playerbots", "  Total quests tracked: {}", allQuestIds.size());
+    LOG_INFO("playerbots", "  Drop reason columns: {}", dropReasons.size());
+    LOG_INFO("playerbots", "  Abandon reason columns: {}", abandonReasons.size());
 }
 
 double RandomPlayerbotMgr::GetBuyMultiplier(Player* bot)
