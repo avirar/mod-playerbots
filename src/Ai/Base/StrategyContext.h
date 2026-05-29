@@ -115,6 +115,9 @@ public:
         creators["debug rpg"] = &StrategyContext::debug_rpg;
         creators["debug spell"] = &StrategyContext::debug_spell;
         creators["debug quest"] = &StrategyContext::debug_quest;
+        creators["debug newrpg"] = &StrategyContext::debug_newrpg;
+        creators["debug loot"] = &StrategyContext::debug_loot;
+        creators["debug targets"] = &StrategyContext::debug_targets;
         creators["maintenance"] = &StrategyContext::maintenance;
         creators["group"] = &StrategyContext::group;
         creators["guild"] = &StrategyContext::guild;
@@ -189,6 +192,9 @@ private:
     static Strategy* debug_rpg(PlayerbotAI* botAI) { return new DebugRpgStrategy(botAI); }
     static Strategy* debug_spell(PlayerbotAI* botAI) { return new DebugSpellStrategy(botAI); }
     static Strategy* debug_quest(PlayerbotAI* botAI) { return new DebugQuestStrategy(botAI); }
+    static Strategy* debug_newrpg(PlayerbotAI* botAI) { return new DebugNewRpgStrategy(botAI); }
+    static Strategy* debug_loot(PlayerbotAI* botAI) { return new DebugLootStrategy(botAI); }
+    static Strategy* debug_targets(PlayerbotAI* botAI) { return new DebugTargetsStrategy(botAI); }
     static Strategy* maintenance(PlayerbotAI* botAI) { return new MaintenanceStrategy(botAI); }
     static Strategy* group(PlayerbotAI* botAI) { return new GroupStrategy(botAI); }
     static Strategy* guild (PlayerbotAI* botAI) { return new GuildStrategy(botAI); }

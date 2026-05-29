@@ -58,20 +58,36 @@ bool DropQuestAction::Execute(Event event)
     return true;
 }
 
+
 bool CleanQuestLogAction::Execute(Event event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
     if (!requester)
+    {
+        botAI->TellMaster("No event owner detected");
         return false;
+    }
 
     if (!sPlayerbotAIConfig.dropObsoleteQuests)
+    {
         return false;
+    }
 
     // Only output this message if "debug rpg" strategy is enabled
     if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+    {
         botAI->TellMaster("Clean Quest Log command received, removing grey/trivial quests...");
+    }
 
     uint8 botLevel = bot->GetLevel();  // Get bot's level
+    uint8 numQuest = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        if (bot->GetQuestSlotQuestId(slot))
+        {
+            numQuest++;
+        }
+    }
 
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
@@ -86,31 +102,46 @@ bool CleanQuestLogAction::Execute(Event event)
         // Determine if quest is trivial by comparing levels
         int32 questLevel = quest->GetQuestLevel();
         if (questLevel == -1) // For scaling quests, default to bot level
+        {
             questLevel = botLevel;
+        }
 
         // Set the level difference for when a quest becomes trivial
         // This was determined by using the Lua code the client uses
         int32 trivialLevel = 5;
         if (botLevel >= 40)
+        {
             trivialLevel = 8;
+        }
         else if (botLevel >= 30)
+        {
             trivialLevel = 7;
+        }
         else if (botLevel >= 20)
+        {
             trivialLevel = 6;
+        }
 
         // Check if the quest is trivial (grey) for the bot
         if ((botLevel - questLevel) > trivialLevel)
         {
             // Output only if "debug rpg" strategy is enabled
             if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] will be removed because it is trivial (grey).");
+            }
 
             // Remove quest
             botAI->rpgStatistic.questDropped++;
+            botAI->rpgStatistic.questDroppedByID[questId]++;
+            botAI->rpgStatistic.questDropReasons["manual_drop"]++;
+            botAI->rpgStatistic.questDropReasonsByID[questId]["manual_drop"]++;
             bot->SetQuestSlot(slot, 0);
             bot->TakeQuestSourceItem(questId, false);
             bot->SetQuestStatus(questId, QUEST_STATUS_NONE);
             bot->RemoveRewardedQuest(questId);
+
+            numQuest--;
 
             if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
@@ -120,18 +151,23 @@ bool CleanQuestLogAction::Execute(Event event)
             }
 
             if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] has been removed.");
+            }
         }
         else
         {
             // Only output if "debug rpg" strategy is enabled
             if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
+            {
                 botAI->TellMaster("Quest [ " + quest->GetTitle() + " ] is not trivial and will be kept.");
+            }
         }
     }
 
     return true;
 }
+
 
 void CleanQuestLogAction::DropQuestType(uint8& numQuest, uint8 wantNum, bool isGreen, bool hasProgress, bool isComplete)
 {
@@ -143,6 +179,7 @@ void CleanQuestLogAction::DropQuestType(uint8& numQuest, uint8 wantNum, bool isG
     {
         std::random_device rd;
         std::mt19937 g(rd());
+
         std::shuffle(slots.begin(), slots.end(), g);
     }
 
@@ -168,10 +205,8 @@ void CleanQuestLogAction::DropQuestType(uint8& numQuest, uint8 wantNum, bool isG
             bot->GetLevel() <= bot->GetQuestLevel(quest) + uint32(lowLevelDiff))  // Quest is not gray
         {
             if (bot->GetLevel() + 5 > bot->GetQuestLevel(quest))  // Quest is not red
-            {
                 if (!isGreen)
                     continue;
-            }
         }
         else  // Quest is gray
         {

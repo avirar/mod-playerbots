@@ -1,11 +1,12 @@
 #include "NewRpgAction.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 
-#include "AreaDefines.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
+#include "DBCStores.h"
 #include "G3D/Vector2.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
@@ -19,11 +20,18 @@
 #include "PathGenerator.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include "Playerbots.h"
+#include "Position.h"
 #include "QuestDef.h"
 #include "Random.h"
+#include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
+#include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
+#include "World.h"
+#include "PossibleRpgTargetsValue.h"
+#include "Trainer.h"
 
 bool TellRpgStatusAction::Execute(Event event)
 {
@@ -55,21 +63,48 @@ bool StartRpgDoQuestAction::Execute(Event event)
     return false;
 }
 
-bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
+bool NewRpgStatusUpdateAction::Execute(Event event)
 {
     NewRpgInfo& info = botAI->rpgInfo;
-    NewRpgStatus status = info.GetStatus();
-    switch (status)
+    switch (info.status)
     {
         case RPG_IDLE:
-            return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
-                                       RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP});
+        {
+            // PRIORITY: Find vendor when bags are almost full to prevent looting issues
+            if (AI_VALUE(uint8, "bag space") > 80)
+            {
+                GuidVector possibleTargets = AI_VALUE(GuidVector, "possible new rpg targets");
+                if (!possibleTargets.empty())
+                {
+                    for (ObjectGuid& guid : possibleTargets)
+                    {
+                        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
 
+                        if (!creature || !creature->IsInWorld())
+                            continue;
+
+                        if (creature->IsVendor())
+                        {
+                            info.ChangeToWanderNpc();
+                            return true;
+                        }
+                    }
+                }
+                // Fallback: Go to camp if no nearby vendor found
+                WorldPosition campPos = SelectRandomCampPos(bot);
+                if (campPos != WorldPosition())
+                {
+                    info.ChangeToGoCamp(campPos);
+                    return true;
+                }
+            }
+            return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
+                                       RPG_TRAVEL_FLIGHT, RPG_REST});
+        }
         case RPG_GO_GRIND:
         {
-            auto& data = std::get<NewRpgInfo::GoGrind>(info.data);
-            WorldPosition& originalPos = data.pos;
-            assert(data.pos != WorldPosition());
+            WorldPosition& originalPos = info.go_grind.pos;
+            assert(info.go_grind.pos != WorldPosition());
             // GO_GRIND -> WANDER_RANDOM
             if (bot->GetExactDist(originalPos) < 10.0f)
             {
@@ -80,9 +115,8 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         }
         case RPG_GO_CAMP:
         {
-            auto& data = std::get<NewRpgInfo::GoCamp>(info.data);
-            WorldPosition& originalPos = data.pos;
-            assert(data.pos != WorldPosition());
+            WorldPosition& originalPos = info.go_camp.pos;
+            assert(info.go_camp.pos != WorldPosition());
             // GO_CAMP -> WANDER_NPC
             if (bot->GetExactDist(originalPos) < 10.0f)
             {
@@ -122,8 +156,7 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         }
         case RPG_TRAVEL_FLIGHT:
         {
-            auto& data = std::get<NewRpgInfo::TravelFlight>(info.data);
-            if (data.inFlight && !bot->IsInFlight())
+            if (info.flight.inFlight && !bot->IsInFlight())
             {
                 // flight arrival
                 info.ChangeToIdle();
@@ -141,69 +174,108 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             }
             break;
         }
-        case RPG_OUTDOOR_PVP:
-        {
-            if (info.HasStatusPersisted(statusOutDoorPvPDuration))
-            {
-                info.ChangeToIdle();
-                return true;
-            }
-            break;
-        }
         default:
             break;
     }
     return false;
 }
 
-bool NewRpgGoGrindAction::Execute(Event /*event*/)
+bool NewRpgGoGrindAction::Execute(Event event)
 {
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
-    if (auto* data = std::get_if<NewRpgInfo::GoGrind>(&botAI->rpgInfo.data))
-    {
-        if (MoveFarTo(data->pos))
-            return true;
-        // Small nudge so the next tick's MoveFarTo starts from a
-        // slightly different position. Kept small so it doesn't look
-        // like the bot is abandoning its destination.
-        return MoveRandomNear(10.0f);
-    }
 
-    return false;
+    return MoveFarTo(botAI->rpgInfo.go_grind.pos);
 }
 
-bool NewRpgGoCampAction::Execute(Event /*event*/)
+bool NewRpgGoCampAction::Execute(Event event)
 {
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
 
-    if (auto* data = std::get_if<NewRpgInfo::GoCamp>(&botAI->rpgInfo.data))
-    {
-        if (MoveFarTo(data->pos))
-            return true;
-        return MoveRandomNear(10.0f);
-    }
-
-    return false;
+    return MoveFarTo(botAI->rpgInfo.go_camp.pos);
 }
 
-bool NewRpgWanderRandomAction::Execute(Event /*event*/)
+bool NewRpgWanderRandomAction::Execute(Event event)
 {
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
+
+    // While wandering, also look for any active quest objectives using non-LOS search
+    std::map<uint32, Quest const*> activeQuests;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+            
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (quest && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE)
+        {
+            activeQuests[questId] = quest;
+        }
+    }
+    
+    if (!activeQuests.empty())
+    {
+        // Search for objectives of any active quest using reliable core values
+        GuidVector possibleTargets = AI_VALUE(GuidVector, "all targets");  // All hostiles
+        GuidVector allNpcs = AI_VALUE(GuidVector, "nearest npcs");         // All NPCs
+        possibleTargets.insert(possibleTargets.end(), allNpcs.begin(), allNpcs.end());
+        
+        for (ObjectGuid& guid : possibleTargets)
+        {
+            Unit* unit = ObjectAccessor::GetUnit(*bot, guid);
+            if (!unit || !unit->IsInWorld())
+                continue;
+                
+            float distance = bot->GetDistance(unit);
+            if (distance > 100.0f) // Wider search during wandering
+                continue;
+                
+            if (unit->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* creature = unit->ToCreature();
+                if (!creature)
+                    continue;
+                    
+                uint32 creatureEntry = creature->GetEntry();
+                
+                // Check if this creature is needed for any active quest
+                for (auto& [questId, quest] : activeQuests)
+                {
+                    for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    {
+                        int32 requiredNpcOrGo = quest->RequiredNpcOrGo[i];
+                        if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
+                        {
+                            // Check if we still need this objective
+                            const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+                            if (q_status.CreatureOrGOCount[i] < quest->RequiredNpcOrGoCount[i])
+                            {
+                                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                {
+                                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest objective {} (entry {}) while wandering for quest {}", 
+                                             bot->GetName(), creature->GetName(), creatureEntry, questId);
+                                }
+                                
+                                return MoveWorldObjectTo(guid, 25.0f);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     return MoveRandomNear();
 }
 
-bool NewRpgWanderNpcAction::Execute(Event /*event*/)
+bool NewRpgWanderNpcAction::Execute(Event event)
 {
     NewRpgInfo& info = botAI->rpgInfo;
-    auto* dataPtr = std::get_if<NewRpgInfo::WanderNpc>(&info.data);
-    if (!dataPtr)
-        return false;
-    auto& data = *dataPtr;
-    if (!data.npcOrGo)
+
+    if (!info.wander_npc.npcOrGo)
     {
         // No npc can be found, switch to IDLE
         ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract();
@@ -212,150 +284,499 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
             info.ChangeToIdle();
             return true;
         }
-        data.npcOrGo = npcOrGo;
-        data.lastReach = 0;
+        info.wander_npc.npcOrGo = npcOrGo;
+        info.wander_npc.lastReach = 0;
         return true;
     }
 
-    WorldObject* object = ObjectAccessor::GetWorldObject(*bot, data.npcOrGo);
-    if (object && IsWithinInteractionDist(object))
+    WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.wander_npc.npcOrGo);
+
+    // --- Step 1: Validate the target before moving ---
+    if (!object || !object->IsInWorld())
     {
-        if (!data.lastReach)
+        // Target no longer exists, find a new one
+        info.wander_npc.npcOrGo = ObjectGuid();
+        info.wander_npc.lastReach = 0;
+        return true;
+    }
+
+    // --- Step 2: Pre-validate trainers to avoid wasting time moving to unusable ones ---
+    Creature* creature = object->ToCreature();
+    Trainer::Trainer const* trainerData = creature ? sObjectMgr->GetTrainer(creature->GetEntry()) : nullptr;
+    if (creature && trainerData && trainerData->IsTrainerValidForPlayer(bot))
+    {
+        Trainer::Type trainerType = trainerData->GetTrainerType();
+        std::string trainerTypeName = "UNKNOWN";
+        switch (trainerType)
         {
-            data.lastReach = getMSTime();
-            if (bot->CanInteractWithQuestGiver(object))
-                InteractWithNpcOrGameObjectForQuest(data.npcOrGo);
-            return true;
+            case Trainer::Type::Class: trainerTypeName = "CLASS"; break;
+            case Trainer::Type::Mount: trainerTypeName = "MOUNTS/RIDING"; break;
+            case Trainer::Type::Pet: trainerTypeName = "PETS"; break;
+            case Trainer::Type::Tradeskill: trainerTypeName = "TRADESKILLS"; break;
         }
 
-        if (data.lastReach && GetMSTimeDiffToNow(data.lastReach) < npcStayTime)
-            return false;
+        // For profession trainers, check if we should skip them entirely
+        if (trainerType == Trainer::Type::Tradeskill)
+        {
+            static TrainerClassifier classifier;
+            if (!classifier.IsValidSecondaryTrainer(bot, creature))
+            {
+                // Mark this NPC as recently visited to avoid re-selecting it immediately
+                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
 
-        // has reached the npc for more than `npcStayTime`, select the next target
-        data.npcOrGo = ObjectGuid();
-        data.lastReach = 0;
+                // Reset and find a new target
+                info.wander_npc.npcOrGo = ObjectGuid();
+                info.wander_npc.lastReach = 0;
+                return true;
+            }
+        }
+        
+        // Check if this trainer has any learnable spells available
+        {
+            bool hasGreenSpells = false;
+            for (Trainer::Spell const& tSpell : trainerData->GetSpells())
+            {
+                if (trainerData->CanTeachSpell(bot, &tSpell))
+                {
+                    hasGreenSpells = true;
+                    break;
+                }
+            }
+
+            if (!hasGreenSpells)
+            {
+
+                // Mark this NPC as recently visited to avoid re-selecting it
+                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
+
+                // Reset and find a new target
+                info.wander_npc.npcOrGo = ObjectGuid();
+                info.wander_npc.lastReach = 0;
+                return true;
+            }
+        }
     }
-    else
+
+    // --- Step 3: Ensure bot is close enough to interact ---
+    if (bot->GetDistance(object) > INTERACTION_DISTANCE)
     {
-        if (MoveWorldObjectTo(data.npcOrGo))
-            return true;
-        // NPC pathing failed (random offset in a wall, mmap hiccup, etc).
-        // Take a small random step so the next tick retries from a
-        // different spot instead of staring at the NPC from afar.
-        return MoveRandomNear(15.0f);
+        return MoveWorldObjectTo(info.wander_npc.npcOrGo);
     }
+
+    bool interacted = false;  // Track if the bot has interacted with the NPC
+
+    // --- Step 4: Handle Quest NPCs ---
+    if (bot->CanInteractWithQuestGiver(object))
+    {
+        InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
+        interacted = true;
+    }
+
+    // --- Step 5: Handle NPCs (re-get creature since we validated earlier) ---
+    creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
+
+    if (!creature)
+    {
+        // Not a valid NPC for interaction, move to next target
+        info.wander_npc.npcOrGo = ObjectGuid();
+        info.wander_npc.lastReach = 0;
+        return true;
+    }
+
+    std::string npcName = creature->GetName();
+    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+
+ // --- Step 6: Handle Trainers (we already pre-validated above) ---
+    {
+        trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
+        if (trainerData && trainerData->IsTrainerValidForPlayer(bot))
+        {
+            bool shouldInteract = false;
+
+            // Always interact with class trainers
+            if (trainerData->GetTrainerType() == Trainer::Type::Class)
+            {
+                shouldInteract = true;
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with class trainer: {}",
+                              bot->GetName(), creature->GetName());
+                }
+            }
+            // Always interact with mount trainers (riding trainers)
+            else if (trainerData->GetTrainerType() == Trainer::Type::Mount)
+            {
+                shouldInteract = true;
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with riding trainer: {}",
+                              bot->GetName(), creature->GetName());
+                }
+            }
+            // Always interact with pet trainers (for hunters)
+            else if (trainerData->GetTrainerType() == Trainer::Type::Pet)
+            {
+                shouldInteract = true;
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pet trainer: {}",
+                              bot->GetName(), creature->GetName());
+                }
+            }
+            // For profession trainers, we already validated them in Step 2
+            else if (trainerData->GetTrainerType() == Trainer::Type::Tradeskill)
+            {
+                shouldInteract = true; // We already validated this is a secondary trainer
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pre-validated secondary trainer: {}",
+                              bot->GetName(), creature->GetName());
+                }
+            }
+
+            if (shouldInteract)
+            {
+                bot->SetSelection(info.wander_npc.npcOrGo);
+                botAI->DoSpecificAction("trainer", Event("trainer"));
+                interacted = true;
+            }
+        }
+    }
+
+    // --- Step 7: Handle Vendors ---
+    if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+    {
+        botAI->DoSpecificAction("sell", Event("sell", "vendor"));
+        botAI->DoSpecificAction("buy", Event("buy", "vendor"));
+        interacted = true;
+    }
+
+    // --- Step 8: Handle Repair Vendors ---
+    if (npcFlags & UNIT_NPC_FLAG_REPAIR)
+    {
+        bot->SetSelection(info.wander_npc.npcOrGo);
+        botAI->DoSpecificAction("repair", Event("repair"));
+        interacted = true;
+    }
+
+    // --- Step 9: Apply Waiting Logic ---
+    // If we haven't interacted yet, record the time and stay
+    if (!info.wander_npc.lastReach)
+    {
+        if (interacted)
+        {
+            // We just interacted, start the waiting timer
+            info.wander_npc.lastReach = getMSTime();
+        }
+        return false; // Stay regardless, either to interact or to wait after interaction
+    }
+    // If we're in waiting period after interaction
+    else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
+    {
+        return false; // Continue waiting
+    }
+
+    // --- Step 10: Reset & Move to Next Target ---
+    info.wander_npc.npcOrGo = ObjectGuid();
+    info.wander_npc.lastReach = 0;
+    info.recentNpcVisits[creature->GetGUID()] = getMSTime();
 
     return true;
 }
 
-bool NewRpgDoQuestAction::Execute(Event /*event*/)
+bool NewRpgDoQuestAction::Execute(Event event)
 {
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
 
     NewRpgInfo& info = botAI->rpgInfo;
-    auto* dataPtr = std::get_if<NewRpgInfo::DoQuest>(&info.data);
-    if (!dataPtr)
-        return false;
-    auto& data = *dataPtr;
-    uint32 questId = data.questId;
+    uint32 questId = RPG_INFO(quest, questId);
+    const Quest* quest = RPG_INFO(quest, quest);
     uint8 questStatus = bot->GetQuestStatus(questId);
     switch (questStatus)
     {
         case QUEST_STATUS_INCOMPLETE:
-            return DoIncompleteQuest(data);
+            return DoIncompleteQuest(info.quest);
         case QUEST_STATUS_COMPLETE:
-            return DoCompletedQuest(data);
+            return DoCompletedQuest(info.quest);
         default:
             break;
     }
-    info.ChangeToIdle();
+    botAI->rpgInfo.ChangeToIdle();
     return true;
 }
 
 bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 {
-    uint32 questId = data.questId;
-    if (data.pos != WorldPosition())
+    uint32 questId = RPG_INFO(do_quest, questId);
+    
+    // Keep upstream objective completion checking logic
+    if (botAI->rpgInfo.do_quest.pos != WorldPosition())
     {
-        /// @TODO: extract to a new function
-        int32 currentObjective = data.objectiveIdx;
-        // check if the objective has completed
-        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-        const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
-        bool completed = true;
-        if (currentObjective < QUEST_OBJECTIVES_COUNT)
+        int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
+
+        // For area triggers (encoded as negative), skip objective tracking - server handles completion automatically
+        // The main Execute() function will detect quest completion via bot->GetQuestStatus() and route to DoCompletedQuest()
+        if (currentObjective < -100)
         {
-            if (q_status.CreatureOrGOCount[currentObjective] < quest->RequiredNpcOrGoCount[currentObjective])
-                completed = false;
+            // Area trigger quest - don't try to check individual objectives
+            // Just let the server's area trigger completion update the quest status
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Area trigger quest {} - waiting for server completion",
+                          bot->GetName(), questId);
+            }
         }
-        else if (currentObjective < QUEST_OBJECTIVES_COUNT + QUEST_ITEM_OBJECTIVES_COUNT)
+        else
         {
-            if (q_status.ItemCount[currentObjective - QUEST_OBJECTIVES_COUNT] <
-                quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
-                completed = false;
-        }
-        // the current objective is completed, clear and find a new objective later
-        if (completed)
-        {
-            data.lastReachPOI = 0;
-            data.pos = WorldPosition();
-            data.objectiveIdx = 0;
+            // Regular quest objective checking
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+            bool completed = true;
+
+            if (currentObjective < QUEST_OBJECTIVES_COUNT)
+            {
+                if (q_status.CreatureOrGOCount[currentObjective] < quest->RequiredNpcOrGoCount[currentObjective])
+                    completed = false;
+            }
+            else if (currentObjective < QUEST_OBJECTIVES_COUNT + QUEST_ITEM_OBJECTIVES_COUNT)
+            {
+                if (q_status.ItemCount[currentObjective - QUEST_OBJECTIVES_COUNT] <
+                    quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
+                    completed = false;
+            }
+
+            // the current objective is completed, clear and find a new objective later
+            if (completed)
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Objective completed, clearing quest state for quest {}",
+                              bot->GetName(), questId);
+                }
+                botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                botAI->rpgInfo.do_quest.pos = WorldPosition();
+                botAI->rpgInfo.do_quest.objectiveIdx = 0;
+            }
         }
     }
-    if (data.pos == WorldPosition())
+
+    if (botAI->rpgInfo.do_quest.pos == WorldPosition())
     {
+        // STEP 1: Use clean upstream POI system first
         std::vector<POIInfo> poiInfo;
-        if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
+        if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo))
         {
-            // can't find a poi pos to go, stop doing quest for now
+            uint32 rndIdx = urand(0, poiInfo.size() - 1);
+            POIInfo& selectedPOI = poiInfo[rndIdx];
+            G3D::Vector2 nearestPoi = selectedPOI.pos;
+            int32 objectiveIdx = selectedPOI.objectiveIdx;
+
+            float dx = nearestPoi.x, dy = nearestPoi.y;
+            float dz;
+
+            // Check if this POI has a specific Z coordinate (e.g., area triggers)
+            if (selectedPOI.useExactZ)
+            {
+                // Use the exact Z coordinate from the POI (for area triggers in mines, caves, etc.)
+                dz = selectedPOI.z;
+
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Using exact Z coordinate {} from area trigger POI",
+                             bot->GetName(), dz);
+                }
+            }
+            else
+            {
+                // Calculate Z from ground/water level for regular polygon POIs
+                dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
+                             bot->GetMap()->GetWaterLevel(dx, dy));
+            }
+
+            if (dz != INVALID_HEIGHT && dz != VMAP_INVALID_HEIGHT_VALUE)
+            {
+                WorldPosition pos(bot->GetMapId(), dx, dy, dz);
+                botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                botAI->rpgInfo.do_quest.pos = pos;
+
+                // For area triggers, use the radius as objectiveIdx's sign to indicate special handling
+                // Store as negative to signal "move to exact coordinates" vs "move within 10 yards"
+                if (selectedPOI.radius > 0.0f)
+                {
+                    // Area trigger: store radius as-(objectiveIdx + 100) to encode both values
+                    // We'll decode this later to know it's an area trigger with specific radius
+                    botAI->rpgInfo.do_quest.objectiveIdx = -(int32)(selectedPOI.radius * 10.0f + 1000); // Encode radius * 10 + offset
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Set area trigger POI position for quest {} at ({}, {}, {}) - must enter radius {} (encoded as {})",
+                                 bot->GetName(), questId, dx, dy, dz, selectedPOI.radius, botAI->rpgInfo.do_quest.objectiveIdx);
+                    }
+                }
+                else
+                {
+                    // Regular POI
+                    botAI->rpgInfo.do_quest.objectiveIdx = objectiveIdx;
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Set POI position for quest {} at ({}, {}, {})",
+                                  bot->GetName(), questId, dx, dy, dz);
+                    }
+                }
+            }
+        }
+        
+        // STEP 2: POI system failed - try smart fallback using server's quest system
+        if (botAI->rpgInfo.do_quest.pos == WorldPosition() && SearchForActualQuestTargets(questId))
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} POI failed, found actual quest target for quest {}", 
+                          bot->GetName(), questId);
+            }
+        }
+        
+        // STEP 3: Still no position - give up on this quest
+        if (botAI->rpgInfo.do_quest.pos == WorldPosition())
+        {
+            if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Failed to find any position for quest {}, abandoning", 
+                          bot->GetName(), questId);
+            }
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
-        uint32 rndIdx = urand(0, poiInfo.size() - 1);
-        G3D::Vector2 nearestPoi = poiInfo[rndIdx].pos;
-        int32 objectiveIdx = poiInfo[rndIdx].objectiveIdx;
-
-        float dx = nearestPoi.x, dy = nearestPoi.y;
-
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
-
-        // double check for GetQuestPOIPosAndObjectiveIdx
-        if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
-            return false;
-
-        WorldPosition pos(bot->GetMapId(), dx, dy, dz);
-        data.lastReachPOI = 0;
-        data.pos = pos;
-        data.objectiveIdx = objectiveIdx;
     }
 
-    if (bot->GetDistance(data.pos) > 10.0f && !data.lastReachPOI)
+    // Use upstream movement logic - already uses MoveFarTo for proper pathing
+    // Check if this is an area trigger (encoded as negative objectiveIdx)
+    float movementTolerance = 10.0f;
+    if (botAI->rpgInfo.do_quest.objectiveIdx < -100)
     {
-        if (MoveFarTo(data.pos))
+        // Decode area trigger radius from negative objectiveIdx
+        float radius = (float)(-(botAI->rpgInfo.do_quest.objectiveIdx + 1000)) / 10.0f;
+        // Move to half the radius to ensure we enter the trigger zone
+        movementTolerance = std::max(2.0f, radius * 0.5f);
+
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Area trigger detected, using movement tolerance {} (radius {})",
+                     bot->GetName(), movementTolerance, radius);
+        }
+    }
+
+    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > movementTolerance && !botAI->rpgInfo.do_quest.lastReachPOI)
+    {
+        return MoveFarTo(botAI->rpgInfo.do_quest.pos);
+    }
+
+    // Now we are near the quest objective - check for locked GameObject requirements first
+    if (!botAI->rpgInfo.do_quest.lastReachPOI)
+    {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Arrived at quest POI for quest {}", bot->GetName(), questId);
+        }
+        
+        // CHECK IF THIS QUEST OBJECTIVE INVOLVES A LOCKED GAMEOBJECT
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        int32 objectiveIdx = botAI->rpgInfo.do_quest.objectiveIdx;
+        
+        if (quest && objectiveIdx >= 0 && objectiveIdx < QUEST_OBJECTIVES_COUNT)
+        {
+            int32 requiredNpcOrGo = quest->RequiredNpcOrGo[objectiveIdx];
+            if (requiredNpcOrGo < 0) // GameObject objective
+            {
+                uint32 goEntry = (uint32)(-requiredNpcOrGo);
+                GuidVector nearbyGOs = AI_VALUE(GuidVector, "nearest game objects");
+                
+                for (const ObjectGuid& guid : nearbyGOs)
+                {
+                    GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+                    if (go && go->GetEntry() == goEntry && go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                    {
+                        uint32 reqItem, skillId, reqSkillValue;
+                        if (!CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue) && reqItem > 0)
+                        {
+                            // Need to get the key item first - check if we can get it from quest drops
+                            if (HasQuestItemInDropTable(questId, reqItem))
+                            {
+                                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                {
+                                    ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(reqItem);
+                                    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} requires key item {} ({}) - switching to kill objectives first", 
+                                             bot->GetName(), questId, reqItem, 
+                                             keyProto ? keyProto->Name1 : "Unknown");
+                                }
+                                
+                                // Switch to hunting for the drop item instead
+                                return SearchForActualQuestTargets(questId);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
+        botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
+        
+        // Try immediate interaction with quest objectives (unified approach for NPCs and GOs)
+        if (TryInteractWithQuestObjective(questId, botAI->rpgInfo.do_quest.objectiveIdx))
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Successfully interacting with quest objective on arrival", 
+                         bot->GetName());
+            }
             return true;
-        // Long-range sampler couldn't land a candidate — nudge the
-        // bot a short distance so the next tick retries from a
-        // different position instead of sitting idle.
-        return MoveRandomNear(10.0f);
-    }
-    // Now we are near the quest objective
-    // kill mobs and looting quest should be done automatically by grind strategy
-
-    if (!data.lastReachPOI)
-    {
-        data.lastReachPOI = getMSTime();
+        }
+        
         return true;
     }
-    // stayed at this POI for more than 5 minutes
-    if (GetMSTimeDiffToNow(data.lastReachPOI) >= poiStayTime)
+
+    // Enhanced timeout logic - try smart search before abandoning
+    if (GetMSTimeDiffToNow(botAI->rpgInfo.do_quest.lastReachPOI) >= poiStayTime)
     {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Timeout at POI for quest {}, trying direct interaction before abandoning", 
+                      bot->GetName(), questId);
+        }
+
+        // First try direct interaction with quest objectives (unified approach for NPCs and GOs)
+        if (TryInteractWithQuestObjective(questId, botAI->rpgInfo.do_quest.objectiveIdx))
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Found and interacting with quest objective, resetting timer", 
+                          bot->GetName());
+            }
+            botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
+            return true;
+        }
+
+        // Fallback: try smart search for quest targets
+        if (SearchForActualQuestTargets(questId))
+        {
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Found actual quest target during timeout, resetting timer", 
+                          bot->GetName());
+            }
+            botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
+            return true;
+        }
+        
+        // Keep upstream progression checking and abandonment logic
         bool hasProgression = false;
-        int32 currentObjective = data.objectiveIdx;
-        // check if the objective has progression
+        int32 currentObjective = botAI->rpgInfo.do_quest.objectiveIdx;
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
         const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+
         if (currentObjective < QUEST_OBJECTIVES_COUNT)
         {
             if (q_status.CreatureOrGOCount[currentObjective] != 0 && quest->RequiredNpcOrGoCount[currentObjective])
@@ -367,41 +788,50 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
                 quest->RequiredItemCount[currentObjective - QUEST_OBJECTIVES_COUNT])
                 hasProgression = true;
         }
+
         if (!hasProgression)
         {
-            // we has reach the poi for more than 5 mins but no progession
-            // may not be able to complete this quest, marked as abandoned
-            /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
+            if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} No progression detected, abandoning quest {}", 
+                          bot->GetName(), questId);
+            }
             botAI->lowPriorityQuest.insert(questId);
             botAI->rpgStatistic.questAbandoned++;
-            LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
+            botAI->rpgStatistic.questAbandonedByID[questId]++;
+            botAI->rpgStatistic.questAbandonReasons["no_progression"]++;
+            botAI->rpgStatistic.questAbandonReasonsByID[questId]["no_progression"]++;
             botAI->rpgInfo.ChangeToIdle();
             return true;
         }
-        // clear and select another poi later
-        data.lastReachPOI = 0;
-        data.pos = WorldPosition();
-        data.objectiveIdx = 0;
+
+        // Clear and select another poi later
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Clearing POI state for quest {} to try new location", 
+                      bot->GetName(), questId);
+        }
+        botAI->rpgInfo.do_quest.lastReachPOI = 0;
+        botAI->rpgInfo.do_quest.pos = WorldPosition();
+        botAI->rpgInfo.do_quest.objectiveIdx = 0;
         return true;
     }
 
-    // At the POI: keep the bot actively placed but avoid large
-    // random 20yd hops that look like pacing back and forth. A small
-    // ~8yd wander reads as the bot looking around while grind/loot
-    // strategies do their work.
-    return MoveRandomNear(8.0f);
+    // Allow natural completion through wandering - just like upstream
+    return MoveRandomNear(20.0f);
 }
 
 bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
 {
-    uint32 questId = data.questId;
-    const Quest* quest = data.quest;
+    uint32 questId = RPG_INFO(quest, questId);
+    const Quest* quest = RPG_INFO(quest, quest);
 
-    if (data.objectiveIdx != -1)
+    if (RPG_INFO(quest, objectiveIdx) != -1)
     {
         // if quest is completed, back to poi with -1 idx to reward
         BroadcastHelper::BroadcastQuestUpdateComplete(botAI, bot, quest);
         botAI->rpgStatistic.questCompleted++;
+        botAI->rpgStatistic.questCompletedByID[questId]++;
         std::vector<POIInfo> poiInfo;
         if (!GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
         {
@@ -412,88 +842,87 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         assert(poiInfo.size() > 0);
         // now we get the place to get rewarded
         float dx = poiInfo[0].pos.x, dy = poiInfo[0].pos.y;
-        // z = MAX_HEIGHT as we do not know accurate z
-        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+        
+        // Use upstream's clean approach - no fancy Z calculations
+        float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), 
+                           bot->GetMap()->GetWaterLevel(dx, dy));
 
-        // double check for GetQuestPOIPosAndObjectiveIdx
+        // double check for upstream POI logic
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             return false;
 
         WorldPosition pos(bot->GetMapId(), dx, dy, dz);
-        data.lastReachPOI = 0;
-        data.pos = pos;
-        data.objectiveIdx = -1;
+        botAI->rpgInfo.do_quest.lastReachPOI = 0;
+        botAI->rpgInfo.do_quest.pos = pos;
+        botAI->rpgInfo.do_quest.objectiveIdx = -1;
     }
 
-    if (data.pos == WorldPosition())
+    if (botAI->rpgInfo.do_quest.pos == WorldPosition())
         return false;
 
-    if (bot->GetDistance(data.pos) > 10.0f && !data.lastReachPOI)
-    {
-        if (MoveFarTo(data.pos))
-            return true;
-        return MoveRandomNear(10.0f);
-    }
+    if (bot->GetDistance(botAI->rpgInfo.do_quest.pos) > 10.0f && !botAI->rpgInfo.do_quest.lastReachPOI)
+        return MoveFarTo(botAI->rpgInfo.do_quest.pos);
 
     // Now we are near the qoi of reward
     // the quest should be rewarded by SearchQuestGiverAndAcceptOrReward
-    if (!data.lastReachPOI)
+    if (!botAI->rpgInfo.do_quest.lastReachPOI)
     {
-        data.lastReachPOI = getMSTime();
+        botAI->rpgInfo.do_quest.lastReachPOI = getMSTime();
         return true;
     }
     // stayed at this POI for more than 5 minutes
-    if (GetMSTimeDiffToNow(data.lastReachPOI) >= poiStayTime)
+    if (GetMSTimeDiffToNow(botAI->rpgInfo.do_quest.lastReachPOI) >= poiStayTime)
     {
         // e.g. Can not reward quest to gameobjects
         /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
         botAI->lowPriorityQuest.insert(questId);
         botAI->rpgStatistic.questAbandoned++;
-        LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
+        botAI->rpgStatistic.questAbandonedByID[questId]++;
+        botAI->rpgStatistic.questAbandonReasons["reward_issue"]++;
+        botAI->rpgStatistic.questAbandonReasonsByID[questId]["reward_issue"]++;
+        if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
+        }
         botAI->rpgInfo.ChangeToIdle();
         return true;
     }
     return false;
 }
 
-bool NewRpgTravelFlightAction::Execute(Event /*event*/)
+bool NewRpgTravelFlightAction::Execute(Event event)
 {
-    NewRpgInfo& info = botAI->rpgInfo;
-    auto* dataPtr = std::get_if<NewRpgInfo::TravelFlight>(&info.data);
-    if (!dataPtr)
-        return false;
-
-    auto& data = *dataPtr;
     if (bot->IsInFlight())
     {
-        data.inFlight = true;
+        botAI->rpgInfo.flight.inFlight = true;
         return false;
     }
-
-    if (bot->GetDistance(data.flightMasterPos) > INTERACTION_DISTANCE)
-        return MoveFarTo(data.flightMasterPos);
-
-    Creature* flightMaster = bot->FindNearestCreature(data.flightMasterEntry, INTERACTION_DISTANCE * 3);
+    Creature* flightMaster = ObjectAccessor::GetCreature(*bot, botAI->rpgInfo.flight.fromFlightMaster);
     if (!flightMaster || !flightMaster->IsAlive())
     {
-        info.ChangeToIdle();
+        botAI->rpgInfo.ChangeToIdle();
         return true;
     }
+    const TaxiNodesEntry* entry = sTaxiNodesStore.LookupEntry(botAI->rpgInfo.flight.toNode);
     if (bot->GetDistance(flightMaster) > INTERACTION_DISTANCE)
+    {
         return MoveFarTo(flightMaster);
-
-    std::vector<uint32> nodes = data.path;
+    }
+    std::vector<uint32> nodes = {botAI->rpgInfo.flight.fromNode, botAI->rpgInfo.flight.toNode};
 
     botAI->RemoveShapeshift();
     if (bot->IsMounted())
+    {
         bot->Dismount();
-
+    }
     if (!bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
-                  flightMaster->GetEntry(), nodes[0], nodes[nodes.size() - 1]);
-        info.ChangeToIdle();
-        return true;
+        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
+                      flightMaster->GetEntry(), nodes[0], nodes[1]);
+        }
+        botAI->rpgInfo.ChangeToIdle();
     }
     return true;
 }

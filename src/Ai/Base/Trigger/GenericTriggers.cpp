@@ -9,6 +9,7 @@
 
 #include "CreatureAI.h"
 #include "ItemVisitors.h"
+#include "NewRpgInfo.h"
 #include "LastSpellCastValue.h"
 #include "ObjectGuid.h"
 #include "PlayerbotAIConfig.h"
@@ -193,7 +194,20 @@ bool NoAttackersTrigger::IsActive()
 
 bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target", "current target"); }
 
-bool NoTargetTrigger::IsActive() { return !AI_VALUE(Unit*, "current target"); }
+bool NoTargetTrigger::IsActive()
+{
+    if (AI_VALUE(Unit*, "current target"))
+        return false;
+
+    // Don't attack if performing critical RPG activities
+    if (botAI->rpgInfo.status == RPG_WANDER_NPC)
+        return false;
+
+    if (botAI->rpgInfo.status == RPG_GO_CAMP)
+        return false;
+
+    return true;
+}
 
 bool MyAttackerCountTrigger::IsActive()
 {

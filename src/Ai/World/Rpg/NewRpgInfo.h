@@ -13,8 +13,7 @@ using NewRpgStatusTransitionProb = std::vector<std::vector<int>>;
 
 struct NewRpgInfo
 {
-    NewRpgInfo() : data(Idle{}) {}
-    ~NewRpgInfo() = default;
+    NewRpgInfo() {}
 
     // RPG_GO_GRIND
     struct GoGrind
@@ -49,9 +48,9 @@ struct NewRpgInfo
     // RPG_TRAVEL_FLIGHT
     struct TravelFlight
     {
-        uint32 flightMasterEntry{0};
-        WorldPosition flightMasterPos{};
-        std::vector<uint32> path;
+        ObjectGuid fromFlightMaster{};
+        uint32 fromNode{0};
+        uint32 toNode{0};
         bool inFlight{false};
     };
     // RPG_REST
@@ -67,8 +66,10 @@ struct NewRpgInfo
     struct Idle
     {
     };
+    NewRpgStatus status{RPG_IDLE};
 
     uint32 startT{0};  // start timestamp of the current status
+    std::unordered_map<ObjectGuid, uint32> recentNpcVisits; // Timestamp of recent NPC visits
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
@@ -77,27 +78,26 @@ struct NewRpgInfo
     WorldPosition moveFarPos;
     // END MOVE_FAR
 
-    using RpgData = std::variant<
-        Idle,
-        GoGrind,
-        GoCamp,
-        WanderNpc,
-        WanderRandom,
-        DoQuest,
-        Rest,
-        TravelFlight,
-        OutdoorPvP
-    >;
-    RpgData data;
+    union
+    {
+        GoGrind go_grind;
+        GoCamp go_camp;
+        WanderNpc wander_npc;
+        WanderRandom WANDER_RANDOM;
+        DoQuest do_quest;
+        Rest rest;
+        DoQuest quest;
+        TravelFlight flight;
+        OutdoorPvP outdoor_pvp;
+    };
 
-    NewRpgStatus GetStatus();
     bool HasStatusPersisted(uint32 maxDuration) { return GetMSTimeDiffToNow(startT) > maxDuration; }
     void ChangeToGoGrind(WorldPosition pos);
     void ChangeToGoCamp(WorldPosition pos);
     void ChangeToWanderNpc();
     void ChangeToWanderRandom();
     void ChangeToDoQuest(uint32 questId, const Quest* quest);
-    void ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path);
+    void ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode);
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToRest();
     void ChangeToIdle();
@@ -105,6 +105,7 @@ struct NewRpgInfo
     void Reset();
     void SetMoveFarTo(WorldPosition pos);
     std::string ToString();
+    void PruneOldVisits(uint32 expirationTimeMs);
 };
 
 struct NewRpgStatistic
@@ -114,6 +115,21 @@ struct NewRpgStatistic
     uint32 questAbandoned{0};
     uint32 questRewarded{0};
     uint32 questDropped{0};
+    
+    // Quest-specific tracking - maps questId to count
+    std::map<uint32, uint32> questAcceptedByID;    // quests that were accepted
+    std::map<uint32, uint32> questCompletedByID;   // quests that were completed successfully
+    std::map<uint32, uint32> questDroppedByID;     // quests that were dropped
+    std::map<uint32, uint32> questAbandonedByID;   // quests that were abandoned
+    std::map<uint32, uint32> questRewardedByID;    // quests that were turned in for rewards
+
+    // Reason tracking - maps reason to count
+    std::map<std::string, uint32> questDropReasons;
+    std::map<std::string, uint32> questAbandonReasons;
+
+    // Reason tracking per quest - maps questId to map of (reason -> count)
+    std::map<uint32, std::map<std::string, uint32>> questDropReasonsByID;
+    std::map<uint32, std::map<std::string, uint32>> questAbandonReasonsByID;
     NewRpgStatistic operator+(const NewRpgStatistic& other) const
     {
         NewRpgStatistic result;
@@ -122,6 +138,38 @@ struct NewRpgStatistic
         result.questAbandoned = this->questAbandoned + other.questAbandoned;
         result.questRewarded = this->questRewarded + other.questRewarded;
         result.questDropped = this->questDropped + other.questDropped;
+        
+        // Merge quest-specific maps
+        result.questAcceptedByID = this->questAcceptedByID;
+        result.questCompletedByID = this->questCompletedByID;
+        result.questDroppedByID = this->questDroppedByID;
+        result.questAbandonedByID = this->questAbandonedByID;
+        result.questRewardedByID = this->questRewardedByID;
+        result.questDropReasons = this->questDropReasons;
+        result.questAbandonReasons = this->questAbandonReasons;
+        result.questDropReasonsByID = this->questDropReasonsByID;
+        result.questAbandonReasonsByID = this->questAbandonReasonsByID;
+        for (const auto& [questId, count] : other.questAcceptedByID)
+            result.questAcceptedByID[questId] += count;
+        for (const auto& [questId, count] : other.questCompletedByID)
+            result.questCompletedByID[questId] += count;
+        for (const auto& [questId, count] : other.questDroppedByID)
+            result.questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questAbandonedByID)
+            result.questAbandonedByID[questId] += count;
+        for (const auto& [questId, count] : other.questRewardedByID)
+            result.questRewardedByID[questId] += count;
+        for (const auto& [reason, count] : other.questDropReasons)
+            result.questDropReasons[reason] += count;
+        for (const auto& [reason, count] : other.questAbandonReasons)
+            result.questAbandonReasons[reason] += count;
+        for (const auto& [questId, reasonMap] : other.questDropReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                result.questDropReasonsByID[questId][reason] += count;
+        for (const auto& [questId, reasonMap] : other.questAbandonReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                result.questAbandonReasonsByID[questId][reason] += count;
+            
         return result;
     }
     NewRpgStatistic& operator+=(const NewRpgStatistic& other)
@@ -131,8 +179,34 @@ struct NewRpgStatistic
         this->questAbandoned += other.questAbandoned;
         this->questRewarded += other.questRewarded;
         this->questDropped += other.questDropped;
+        
+        // Merge quest-specific maps
+        for (const auto& [questId, count] : other.questAcceptedByID)
+            this->questAcceptedByID[questId] += count;
+        for (const auto& [questId, count] : other.questCompletedByID)
+            this->questCompletedByID[questId] += count;
+        for (const auto& [questId, count] : other.questDroppedByID)
+            this->questDroppedByID[questId] += count;
+        for (const auto& [questId, count] : other.questAbandonedByID)
+            this->questAbandonedByID[questId] += count;
+        for (const auto& [questId, count] : other.questRewardedByID)
+            this->questRewardedByID[questId] += count;
+        for (const auto& [reason, count] : other.questDropReasons)
+            this->questDropReasons[reason] += count;
+        for (const auto& [reason, count] : other.questAbandonReasons)
+            this->questAbandonReasons[reason] += count;
+        for (const auto& [questId, reasonMap] : other.questDropReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                this->questDropReasonsByID[questId][reason] += count;
+        for (const auto& [questId, reasonMap] : other.questAbandonReasonsByID)
+            for (const auto& [reason, count] : reasonMap)
+                this->questAbandonReasonsByID[questId][reason] += count;
+            
         return *this;
     }
 };
+
+// not sure is it necessary but keep it for now
+#define RPG_INFO(x, y) botAI->rpgInfo.x.y
 
 #endif

@@ -6,76 +6,79 @@
 
 void NewRpgInfo::ChangeToGoGrind(WorldPosition pos)
 {
-    startT = getMSTime();
-    data = GoGrind{pos};
+    Reset();
+    status = RPG_GO_GRIND;
+    go_grind = GoGrind();
+    go_grind.pos = pos;
 }
 
 void NewRpgInfo::ChangeToGoCamp(WorldPosition pos)
 {
-    startT = getMSTime();
-    data = GoCamp{pos};
+    Reset();
+    status = RPG_GO_CAMP;
+    go_camp = GoCamp();
+    go_camp.pos = pos;
 }
 
 void NewRpgInfo::ChangeToWanderNpc()
 {
-    startT = getMSTime();
-    data = WanderNpc{};
+    Reset();
+    status = RPG_WANDER_NPC;
+    wander_npc = WanderNpc();
 }
 
 void NewRpgInfo::ChangeToWanderRandom()
 {
-    startT = getMSTime();
-    data = WanderRandom{};
+    Reset();
+    status = RPG_WANDER_RANDOM;
+    WANDER_RANDOM = WanderRandom();
 }
 
 void NewRpgInfo::ChangeToDoQuest(uint32 questId, const Quest* quest)
 {
-    startT = getMSTime();
-    DoQuest do_quest;
+    Reset();
+    status = RPG_DO_QUEST;
+    do_quest = DoQuest();
     do_quest.questId = questId;
     do_quest.quest = quest;
-    data = do_quest;
 }
 
-void NewRpgInfo::ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path)
+void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode)
 {
-    startT = getMSTime();
-    TravelFlight flight;
-    flight.flightMasterEntry = flightMasterEntry;
-    flight.flightMasterPos = flightMasterPos;
-    flight.path = std::move(path);
-    flight.inFlight = false;
-    data = flight;
+    Reset();
+    status = RPG_TRAVEL_FLIGHT;
+    flight = TravelFlight();
+    flight.fromFlightMaster = fromFlightMaster;
+    flight.fromNode = fromNode;
+    flight.toNode = toNode;
 }
 
-void NewRpgInfo::ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId)
+  void NewRpgInfo::ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId)
 {
-    startT = getMSTime();
-    OutdoorPvP pvp;
-    pvp.capturePointSpawnId = capturePointSpawnId;
-    data = pvp;
+    Reset();
+    status = RPG_OUTDOOR_PVP;
+    outdoor_pvp = OutdoorPvP();
+    outdoor_pvp.capturePointSpawnId = capturePointSpawnId;
 }
 
 void NewRpgInfo::ChangeToRest()
 {
-    startT = getMSTime();
-    data = Rest{};
+    Reset();
+    status = RPG_REST;
+    rest = Rest();
 }
 
 void NewRpgInfo::ChangeToIdle()
 {
-    startT = getMSTime();
-    data = Idle{};
+    Reset();
+    status = RPG_IDLE;
 }
 
-bool NewRpgInfo::CanChangeTo(NewRpgStatus)
-{
-    return true;
-}
+bool NewRpgInfo::CanChangeTo(NewRpgStatus status) { return true; }
 
 void NewRpgInfo::Reset()
 {
-    data = Idle{};
+    *this = NewRpgInfo();
     startT = getMSTime();
 }
 
@@ -87,92 +90,77 @@ void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
     moveFarPos = pos;
 }
 
-NewRpgStatus NewRpgInfo::GetStatus()
-{
-    return std::visit([](auto&& arg) -> NewRpgStatus {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, Idle>) return RPG_IDLE;
-        if constexpr (std::is_same_v<T, GoGrind>) return RPG_GO_GRIND;
-        if constexpr (std::is_same_v<T, GoCamp>) return RPG_GO_CAMP;
-        if constexpr (std::is_same_v<T, WanderNpc>) return RPG_WANDER_NPC;
-        if constexpr (std::is_same_v<T, WanderRandom>) return RPG_WANDER_RANDOM;
-        if constexpr (std::is_same_v<T, Rest>) return RPG_REST;
-        if constexpr (std::is_same_v<T, DoQuest>) return RPG_DO_QUEST;
-        if constexpr (std::is_same_v<T, TravelFlight>) return RPG_TRAVEL_FLIGHT;
-        if constexpr (std::is_same_v<T, OutdoorPvP>) return RPG_OUTDOOR_PVP;
-        return RPG_IDLE;
-    }, data);
-}
-
 std::string NewRpgInfo::ToString()
 {
     std::stringstream out;
     out << "Status: ";
-    std::visit([&out, this](auto&& arg)
+    switch (status)
     {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, GoGrind>)
-        {
+        case RPG_GO_GRIND:
             out << "GO_GRIND";
-            out << "\nGrindPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
-                << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
+            out << "\nGrindPos: " << go_grind.pos.GetMapId() << " " << go_grind.pos.GetPositionX() << " "
+                << go_grind.pos.GetPositionY() << " " << go_grind.pos.GetPositionZ();
             out << "\nlastGoGrind: " << startT;
-        }
-        else if constexpr (std::is_same_v<T, GoCamp>)
-        {
+            break;
+        case RPG_GO_CAMP:
             out << "GO_CAMP";
-            out << "\nCampPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
-                << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
+            out << "\nCampPos: " << go_camp.pos.GetMapId() << " " << go_camp.pos.GetPositionX() << " "
+                << go_camp.pos.GetPositionY() << " " << go_camp.pos.GetPositionZ();
             out << "\nlastGoCamp: " << startT;
-        }
-        else if constexpr (std::is_same_v<T, WanderNpc>)
-        {
+            break;
+        case RPG_WANDER_NPC:
             out << "WANDER_NPC";
-            out << "\nnpcOrGoEntry: " << arg.npcOrGo.GetCounter();
+            out << "\nnpcOrGoEntry: " << wander_npc.npcOrGo.GetCounter();
             out << "\nlastWanderNpc: " << startT;
-            out << "\nlastReachNpcOrGo: " << arg.lastReach;
-        }
-        else if constexpr (std::is_same_v<T, WanderRandom>)
-        {
+            out << "\nlastReachNpcOrGo: " << wander_npc.lastReach;
+            break;
+        case RPG_WANDER_RANDOM:
             out << "WANDER_RANDOM";
             out << "\nlastWanderRandom: " << startT;
-        }
-        else if constexpr (std::is_same_v<T, Idle>)
-        {
+            break;
+        case RPG_IDLE:
             out << "IDLE";
-        }
-        else if constexpr (std::is_same_v<T, Rest>)
-        {
+            break;
+        case RPG_REST:
             out << "REST";
             out << "\nlastRest: " << startT;
-        }
-        else if constexpr (std::is_same_v<T, DoQuest>)
-        {
+            break;
+        case RPG_DO_QUEST:
             out << "DO_QUEST";
-            out << "\nquestId: " << arg.questId;
-            out << "\nobjectiveIdx: " << arg.objectiveIdx;
-            out << "\npoiPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
-                << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
-            out << "\nlastReachPOI: " << (arg.lastReachPOI ? GetMSTimeDiffToNow(arg.lastReachPOI) : 0);
-        }
-        else if constexpr (std::is_same_v<T, TravelFlight>)
-        {
+            out << "\nquestId: " << do_quest.questId;
+            out << "\nobjectiveIdx: " << do_quest.objectiveIdx;
+            out << "\npoiPos: " << do_quest.pos.GetMapId() << " " << do_quest.pos.GetPositionX() << " "
+                << do_quest.pos.GetPositionY() << " " << do_quest.pos.GetPositionZ();
+            out << "\nlastReachPOI: " << do_quest.lastReachPOI ? GetMSTimeDiffToNow(do_quest.lastReachPOI) : 0;
+            break;
+        case RPG_TRAVEL_FLIGHT:
             out << "TRAVEL_FLIGHT";
-            out << "\nflightMasterEntry: " << arg.flightMasterEntry;
-            out << "\nfromNode: " << arg.path[0];
-            out << "\ntoNode: " << arg.path[arg.path.size() - 1];
-            out << "\ninFlight: " << arg.inFlight;
-        }
-        else if constexpr (std::is_same_v<T, OutdoorPvP>)
-        {
+            out << "\nfromFlightMaster: " << flight.fromFlightMaster.GetEntry();
+            out << "\nfromNode: " << flight.fromNode;
+            out << "\ntoNode: " << flight.toNode;
+            out << "\ninFlight: " << flight.inFlight;
+            break;
+        case RPG_OUTDOOR_PVP:
             out << "OUTDOOR_PVP";
-            if (!arg.capturePointSpawnId)
+            if (!outdoor_pvp.capturePointSpawnId)
                 out << "\nNo capture point assigned.";
             else
-                out << "\ncapturePointSpawnId: " << arg.capturePointSpawnId;
-        }
-        else
+                out << "\ncapturePointSpawnId: " << outdoor_pvp.capturePointSpawnId;
+            break;
+        default:
             out << "UNKNOWN";
-    }, data);
+    }
     return out.str();
+}
+
+void NewRpgInfo::PruneOldVisits(uint32 expirationTimeMs)
+{
+    uint32 now = getMSTime();
+    for (auto it = recentNpcVisits.begin(); it != recentNpcVisits.end(); )
+    {
+        if (getMSTimeDiff((uint32)it->second, (uint32)now) > expirationTimeMs)
+            it = recentNpcVisits.erase(it);
+        else
+            ++it;
+    }
 }

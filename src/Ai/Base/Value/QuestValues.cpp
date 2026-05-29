@@ -173,7 +173,7 @@ std::vector<GuidPosition> ActiveQuestGiversValue::Calculate()
                     continue;
             }
 
-            if (!guidp.IsCreatureOrGOAccessible())
+            if (guidp.isDead())
                 continue;
 
             retQuestGivers.push_back(guidp);
@@ -231,7 +231,7 @@ std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
 
             for (auto& guidp : entry.second)
             {
-                if (!guidp.IsCreatureOrGOAccessible())
+                if (guidp.isDead())
                     continue;
 
                 retQuestTakers.push_back(guidp);
@@ -277,7 +277,7 @@ std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
 
             if (quest->RequiredNpcOrGoCount[objective])
             {
-                uint32 reqCount = quest->RequiredItemCount[objective];
+                uint32 reqCount = quest->RequiredNpcOrGoCount[objective];
                 uint32 hasCount = statusData.CreatureOrGOCount[objective];
 
                 if (!reqCount || hasCount >= reqCount)
@@ -298,7 +298,7 @@ std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
             {
                 for (auto& guidp : entry.second)
                 {
-                    if (!guidp.IsCreatureOrGOAccessible())
+                    if (guidp.isDead())
                         continue;
 
                     retQuestObjectives.push_back(guidp);

@@ -7,6 +7,8 @@
 
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "DBCStores.h"
+#include "DBCStructure.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "LootObjectStack.h"
@@ -15,13 +17,23 @@
 #include "Playerbots.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
+#include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include <set>
+#include <sstream>
 
 ItemUsage ItemUsageValue::Calculate()
 {
-    ParsedItemUsage const parsed = GetItemIdFromQualifier();
-    uint32 itemId = parsed.itemId;
-    uint32 randomPropertyId = parsed.randomPropertyId;
+    uint32 itemId = 0;
+    uint32 randomPropertyId = 0;
+    size_t pos = qualifier.find(",");
+    if (pos != std::string::npos) {
+        itemId = atoi(qualifier.substr(0, pos).c_str());
+        randomPropertyId = atoi(qualifier.substr(pos + 1).c_str());
+    } else {
+        itemId = atoi(qualifier.c_str());
+    }
+
     if (!itemId)
         return ITEM_USAGE_NONE;
 
@@ -69,10 +81,8 @@ ItemUsage ItemUsageValue::Calculate()
     if (proto->Class == ITEM_CLASS_KEY)
         return ITEM_USAGE_USE;
 
-    const uint32_t maxCount = proto->MaxCount;
-
     if (proto->Class == ITEM_CLASS_CONSUMABLE &&
-        (maxCount == 0 || bot->GetItemCount(itemId, false) < maxCount))
+        (proto->MaxCount == 0 || AI_VALUE2(uint32, "item count", proto->Name1) < proto->MaxCount))
     {
         std::string const foodType = GetConsumableType(proto, bot->GetPower(POWER_MANA));
 
@@ -134,29 +144,117 @@ ItemUsage ItemUsageValue::Calculate()
 
     // If the loot is from an item in the bot’s bags, ignore syncQuestWithPlayer
     if (isLootFromItem && botNeedsItemForQuest)
+    {
         return ITEM_USAGE_QUEST;
+    }
 
     // If the bot is NOT acting alone and the master needs this quest item, defer to the master
     if (!isSelfBot && masterNeedsItemForQuest)
+    {
         return ITEM_USAGE_NONE;
+    }
+
+    // Check if bot has exact quest requirement amount - keep it to prevent sell/buy cycle
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 entry = bot->GetQuestSlotQuestId(slot);
+        Quest const* quest = sObjectMgr->GetQuestTemplate(entry);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < 4; i++)
+        {
+            if (quest->RequiredItemId[i] == proto->ItemId)
+            {
+                uint32 currentCount = AI_VALUE2(uint32, "item count", proto->Name1);
+                uint32 requiredCount = quest->RequiredItemCount[i];
+
+                if (currentCount == requiredCount)
+                    return ITEM_USAGE_KEEP; // Have exact amount needed, keep it
+            }
+        }
+    }
 
     // If the bot itself needs the item for a quest, allow looting
     if (botNeedsItemForQuest)
+    {
         return ITEM_USAGE_QUEST;
+    }
 
     if (proto->Class == ITEM_CLASS_PROJECTILE && bot->CanUseItem(proto) == EQUIP_ERR_OK)
     {
-        ItemUsage ammoUsage = QueryItemUsageForAmmo(proto);
-        if (ammoUsage != ITEM_USAGE_NONE)
-            return ammoUsage;
+        if (bot->getClass() == CLASS_HUNTER || bot->getClass() == CLASS_ROGUE || bot->getClass() == CLASS_WARRIOR)
+        {
+            Item* rangedWeapon = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+            uint32 requiredSubClass = 0;
+
+            if (rangedWeapon)
+            {
+                switch (rangedWeapon->GetTemplate()->SubClass)
+                {
+                    case ITEM_SUBCLASS_WEAPON_GUN:
+                        requiredSubClass = ITEM_SUBCLASS_BULLET;
+                        break;
+                    case ITEM_SUBCLASS_WEAPON_BOW:
+                    case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                        requiredSubClass = ITEM_SUBCLASS_ARROW;
+                        break;
+                }
+            }
+
+            // Ensure the item is the correct ammo type for the equipped ranged weapon
+            if (proto->SubClass == requiredSubClass)
+            {
+                float ammoCount = BetterStacks(proto, "ammo");
+                float requiredAmmo = (bot->getClass() == CLASS_HUNTER) ? 8 : 2; // Hunters get 8 stacks, others 2
+                uint32 currentAmmoId = bot->GetUInt32Value(PLAYER_AMMO_ID);
+
+                // Check if the bot has an ammo type assigned
+                if (currentAmmoId == 0)
+                {
+                    return ITEM_USAGE_EQUIP;  // Equip the ammo if no ammo
+                }
+                // Compare new ammo vs current equipped ammo
+                ItemTemplate const* currentAmmoProto = sObjectMgr->GetItemTemplate(currentAmmoId);
+                if (currentAmmoProto)
+                {
+                    uint32 currentAmmoDPS = (currentAmmoProto->Damage[0].DamageMin + currentAmmoProto->Damage[0].DamageMax) * 1000 / 2;
+                    uint32 newAmmoDPS = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2;
+
+                    if (newAmmoDPS > currentAmmoDPS) // New ammo meets upgrade condition
+                    {
+                        return ITEM_USAGE_EQUIP;
+                    }
+                    if (newAmmoDPS < currentAmmoDPS) // New ammo is worse
+                    {
+                        return ITEM_USAGE_NONE;
+                    }
+                }
+                // Ensure we have enough ammo in the inventory
+                if (ammoCount < requiredAmmo)
+                {
+                    ammoCount += CurrentStacks(proto);
+
+                    if (ammoCount < requiredAmmo)  // Buy ammo to reach the proper supply
+                        return ITEM_USAGE_AMMO;
+                    else if (ammoCount < requiredAmmo + 1)
+                        return ITEM_USAGE_KEEP;  // Keep the ammo if we don't have too much.
+                }
+            }
+        }
     }
+
     // Need to add something like free bagspace or item value.
     if (proto->SellPrice > 0)
     {
-        if (proto->Quality >= ITEM_QUALITY_NORMAL && !isSoulbound && proto->Bonding != BIND_WHEN_PICKED_UP)
+        if (proto->Quality >= ITEM_QUALITY_NORMAL && !isSoulbound)
+        {
             return ITEM_USAGE_AH;
+        }
         else
+        {
             return ITEM_USAGE_VENDOR;
+        }
     }
 
     return ITEM_USAGE_NONE;
@@ -164,7 +262,7 @@ ItemUsage ItemUsageValue::Calculate()
 
 ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, int32 randomPropertyId)
 {
-    if (bot->BotCanUseItem(itemProto) != EQUIP_ERR_OK)
+    if (bot->CanUseItem(itemProto) != EQUIP_ERR_OK)
         return ITEM_USAGE_NONE;
 
     if (itemProto->InventoryType == INVTYPE_NON_EQUIP)
@@ -180,11 +278,19 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
     delete pItem;
 
     if (result != EQUIP_ERR_OK && result != EQUIP_ERR_CANT_CARRY_MORE_OF_THIS)
+    {
         return ITEM_USAGE_NONE;
-
-    // Check if unique items are equipped or not
-    bool needToCheckUnique = result == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS ||
-         itemProto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE);
+    }
+    // Check is unique items are equipped or not
+    bool needToCheckUnique = false;
+    if (result == EQUIP_ERR_CANT_CARRY_MORE_OF_THIS)
+    {
+        needToCheckUnique = true;
+    }
+    else if (itemProto->Flags & ITEM_FLAG_UNIQUE_EQUIPPABLE)
+    {
+        needToCheckUnique = true;
+    }
 
     if (needToCheckUnique)
     {
@@ -198,37 +304,33 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         bool isEquipped = (totalItemCount > bagItemCount);
 
         if (isEquipped)
+        {
             return ITEM_USAGE_NONE;  // Item is already equipped
+        }
         // If not equipped, continue processing
     }
 
-    if (itemProto->Class == ITEM_CLASS_QUIVER && bot->getClass() != CLASS_HUNTER)
-        return ITEM_USAGE_NONE;
+    if (itemProto->Class == ITEM_CLASS_QUIVER)
+        if (bot->getClass() != CLASS_HUNTER)
+            return ITEM_USAGE_NONE;
 
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
         if (itemProto->SubClass != ITEM_SUBCLASS_CONTAINER)
             return ITEM_USAGE_NONE;  // Todo add logic for non-bag containers. We want to look at professions/class and
                                      // only replace if non-bag is larger than bag.
+
         if (GetSmallestBagSize() >= itemProto->ContainerSlots)
             return ITEM_USAGE_NONE;
 
         return ITEM_USAGE_EQUIP;
     }
 
-    if (itemProto->Class == ITEM_CLASS_WEAPON && itemProto->SubClass == ITEM_SUBCLASS_WEAPON_MISC)
-        return ITEM_USAGE_NONE;
-
     bool shouldEquip = false;
-    // uint32 statWeight = sRandomItemMgr.GetLiveStatWeight(bot, itemProto->ItemId);
+    // uint32 statWeight = sRandomItemMgr->GetLiveStatWeight(bot, itemProto->ItemId);
     StatsWeightCalculator calculator(bot);
     calculator.SetItemSetBonus(false);
     calculator.SetOverflowPenalty(false);
-
-    // Apply PvP weights if the bot is specced for PvP
-    bool isPvp = sRandomPlayerbotMgr.IsSpecPvp(bot->GetGUID().GetCounter(), bot->getClass());
-    if (isPvp)
-        calculator.SetPvpSpec(true);
 
     float itemScore = calculator.CalculateItem(itemProto->ItemId, randomPropertyId);
 
@@ -245,14 +347,19 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
     uint8 dstSlot = botAI->FindEquipSlot(itemProto, NULL_SLOT, true);
     // Check if dest wasn't set correctly by CanEquipItem and use FindEquipSlot instead
     // This occurs with unique items that are already in the bots bags when CanEquipItem is called
-    if (dest == 0 && dstSlot != NULL_SLOT)
+    if (dest == 0)
     {
-        // Construct dest from dstSlot
-        dest = (INVENTORY_SLOT_BAG_0 << 8) | dstSlot;
+        if (dstSlot != NULL_SLOT)
+        {
+            // Construct dest from dstSlot
+            dest = (INVENTORY_SLOT_BAG_0 << 8) | dstSlot;
+        }
     }
 
     if (dstSlot == EQUIPMENT_SLOT_FINGER1 || dstSlot == EQUIPMENT_SLOT_TRINKET1)
+    {
         possibleSlots = 2;
+    }
 
     // Check weapon case separately to keep things a bit cleaner
     bool have2HWeapon = false;
@@ -269,9 +376,14 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
                            itemProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2);
 
         // If the bot can Titan Grip, ignore any 2H weapon that isn't a 2H sword, mace, or axe.
-        // If this weapon is 2H but not one of the valid TG weapon types, do not equip it at all.
-        if (bot->CanTitanGrip() && itemProto->InventoryType == INVTYPE_2HWEAPON && !isValidTGWeapon)
-            return ITEM_USAGE_NONE;
+        if (bot->CanTitanGrip())
+        {
+            // If this weapon is 2H but not one of the valid TG weapon types, do not equip it at all.
+            if (itemProto->InventoryType == INVTYPE_2HWEAPON && !isValidTGWeapon)
+            {
+                return ITEM_USAGE_NONE;
+            }
+        }
 
         // Now handle the logic for equipping and possible offhand slots
         // If the bot can Dual Wield and:
@@ -287,6 +399,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         }
     }
 
+
     for (uint8 i = 0; i < possibleSlots; i++)
     {
         bool shouldEquipInSlot = shouldEquip;
@@ -298,25 +411,33 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
             if (shouldEquipInSlot)
                 return ITEM_USAGE_EQUIP;
             else
+            {
                 return ITEM_USAGE_BAD_EQUIP;
+            }
         }
 
         ItemTemplate const* oldItemProto = oldItem->GetTemplate();
         float oldScore = calculator.CalculateItem(oldItemProto->ItemId, oldItem->GetInt32Value(ITEM_FIELD_RANDOM_PROPERTIES_ID));
         if (oldItem)
         {
-            // uint32 oldStatWeight = sRandomItemMgr.GetLiveStatWeight(bot, oldItemProto->ItemId);
+            // uint32 oldStatWeight = sRandomItemMgr->GetLiveStatWeight(bot, oldItemProto->ItemId);
             if (itemScore || oldScore)
+            {
                 shouldEquipInSlot = itemScore > oldScore * sPlayerbotAIConfig.equipUpgradeThreshold;
+            }
         }
 
         // Bigger quiver
         if (itemProto->Class == ITEM_CLASS_QUIVER)
         {
             if (!oldItem || oldItemProto->ContainerSlots < itemProto->ContainerSlots)
+            {
                 return ITEM_USAGE_EQUIP;
+            }
             else
+            {
                 return ITEM_USAGE_NONE;
+            }
         }
 
         bool existingShouldEquip = true;
@@ -327,8 +448,8 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
             !sRandomItemMgr.CanEquipArmor(bot->getClass(), bot->GetLevel(), oldItemProto))
             existingShouldEquip = false;
 
-        // uint32 oldItemPower = sRandomItemMgr.GetLiveStatWeight(bot, oldItemProto->ItemId);
-        // uint32 newItemPower = sRandomItemMgr.GetLiveStatWeight(bot, itemProto->ItemId);
+        // uint32 oldItemPower = sRandomItemMgr->GetLiveStatWeight(bot, oldItemProto->ItemId);
+        // uint32 newItemPower = sRandomItemMgr->GetLiveStatWeight(bot, itemProto->ItemId);
 
         // Compare items based on item level, quality or itemId.
         bool isBetter = false;
@@ -383,80 +504,6 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
     return ITEM_USAGE_NONE;
 }
 
-ItemUsage ItemUsageValue::QueryItemUsageForAmmo(ItemTemplate const* proto)
-{
-    if (bot->getClass() != CLASS_HUNTER || bot->getClass() != CLASS_ROGUE || bot->getClass() != CLASS_WARRIOR)
-        return ITEM_USAGE_NONE;
-
-    Item* rangedWeapon = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
-    uint32 requiredSubClass = 0;
-
-    if (rangedWeapon)
-    {
-        switch (rangedWeapon->GetTemplate()->SubClass)
-        {
-            case ITEM_SUBCLASS_WEAPON_GUN:
-                requiredSubClass = ITEM_SUBCLASS_BULLET;
-                break;
-            case ITEM_SUBCLASS_WEAPON_BOW:
-            case ITEM_SUBCLASS_WEAPON_CROSSBOW:
-                requiredSubClass = ITEM_SUBCLASS_ARROW;
-                break;
-        }
-    }
-
-    // Ensure the item is the correct ammo type for the equipped ranged weapon
-    if (proto->SubClass == requiredSubClass)
-    {
-        float ammoCount = BetterStacks(proto, "ammo");
-        float requiredAmmo = (bot->getClass() == CLASS_HUNTER) ? 8 : 2; // Hunters get 8 stacks, others 2
-        uint32 currentAmmoId = bot->GetUInt32Value(PLAYER_AMMO_ID);
-
-        // Check if the bot has an ammo type assigned
-        if (currentAmmoId == 0)
-            return ITEM_USAGE_EQUIP;  // Equip the ammo if no ammo
-        // Compare new ammo vs current equipped ammo
-        ItemTemplate const* currentAmmoProto = sObjectMgr->GetItemTemplate(currentAmmoId);
-        if (currentAmmoProto)
-        {
-            uint32 currentAmmoDPS = (currentAmmoProto->Damage[0].DamageMin + currentAmmoProto->Damage[0].DamageMax) * 1000 / 2;
-            uint32 newAmmoDPS = (proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) * 1000 / 2;
-
-            if (newAmmoDPS > currentAmmoDPS) // New ammo meets upgrade condition
-                return ITEM_USAGE_EQUIP;
-
-            if (newAmmoDPS < currentAmmoDPS) // New ammo is worse
-                return ITEM_USAGE_NONE;
-        }
-        // Ensure we have enough ammo in the inventory
-        if (ammoCount < requiredAmmo)
-        {
-            ammoCount += CurrentStacks(proto);
-
-            if (ammoCount < requiredAmmo)  // Buy ammo to reach the proper supply
-                return ITEM_USAGE_AMMO;
-            else if (ammoCount < requiredAmmo + 1)
-                return ITEM_USAGE_KEEP;  // Keep the ammo if we don't have too much.
-        }
-    }
-    return ITEM_USAGE_NONE;
-}
-
-ParsedItemUsage ItemUsageValue::GetItemIdFromQualifier()
-{
-    ParsedItemUsage parsed;
-
-    size_t const pos = qualifier.find(",");
-    if (pos != std::string::npos)
-    {
-        parsed.itemId = atoi(qualifier.substr(0, pos).c_str());
-        parsed.randomPropertyId = atoi(qualifier.substr(pos + 1).c_str());
-        return parsed;
-    }
-    else
-        parsed.itemId = atoi(qualifier.c_str());
-    return parsed;
-}
 // Return smaltest bag size equipped
 uint32 ItemUsageValue::GetSmallestBagSize()
 {
@@ -497,7 +544,7 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
         {
             if (quest->RequiredItemId[i] == proto->ItemId)
             {
-                if (player->GetItemCount(proto->ItemId, false) >= quest->RequiredItemCount[i])
+                if (AI_VALUE2(uint32, "item count", proto->Name1) >= quest->RequiredItemCount[i])
                     continue;
 
                 return true; // Item is directly required for a quest
@@ -526,7 +573,7 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
                     {
                         if (quest->RequiredItemId[j] == createdItemId)
                         {
-                            if (player->GetItemCount(createdItemId, false) >= quest->RequiredItemCount[j])
+                            if (AI_VALUE2(uint32, "item count", createdItemId) >= quest->RequiredItemCount[j])
                                 continue;
 
                             return true; // Item is useful because it creates a required quest item
@@ -537,7 +584,338 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
         }
     }
 
+    // Check for quest items with spells (like Crow Meat, Tender Strider Meat)
+    // These are quest items that are used ON targets to complete objectives
+    // Updated to check for any quest item with spells, not just PLAYERCAST flagged ones
+    if (proto->Class == ITEM_CLASS_QUEST)
+    {
+        // Check if this quest item has any spells (regardless of PLAYERCAST flag)
+        for (uint8 i = 0; i < MAX_ITEM_SPELLS; i++)
+        {
+            uint32 spellId = proto->Spells[i].SpellId;
+            if (spellId > 0)
+            {
+                PlayerbotAI* debugAI = GET_PLAYERBOT_AI(player);
+                
+                // For items with PLAYERCAST flag, use the existing detailed check
+                if (proto->Flags & ITEM_FLAG_PLAYERCAST)
+                {
+                    // First check if this is a key that unlocks a chest with quest items
+                    if (DoesKeyUnlockQuestChest(player, proto))
+                    {
+                        return true;
+                    }
+
+                    bool neededForQuest = IsPlayerCastItemNeededForActiveQuests(player, proto, spellId);
+
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId
+                            << " needed: " << (neededForQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+
+                    if (neededForQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
+                }
+                else
+                {
+                    // For quest items with spells but no PLAYERCAST flag (like Tender Strider Meat)
+                    // Check if the item is required for any active quest via ItemDrop
+                    bool neededForActiveQuest = false;
+                    
+                    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+                    {
+                        uint32 questId = player->GetQuestSlotQuestId(slot);
+                        if (questId == 0)
+                            continue;
+                            
+                        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                        if (!quest)
+                            continue;
+                            
+                        // Check ItemDrop requirements (like Kyle's quest)
+                        for (uint8 j = 0; j < QUEST_SOURCE_ITEM_IDS_COUNT; ++j)
+                        {
+                            if (quest->ItemDrop[j] == proto->ItemId)
+                            {
+                                neededForActiveQuest = true;
+                                break;
+                            }
+                        }
+                        
+                        if (neededForActiveQuest)
+                            break;
+                    }
+                    
+                    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Non-PLAYERCAST quest item " << proto->Name1 << " with spell " << spellId 
+                            << " needed for active quest: " << (neededForActiveQuest ? "YES" : "NO");
+                        debugAI->TellMaster(out.str());
+                    }
+                    
+                    if (neededForActiveQuest)
+                    {
+                        return ITEM_USAGE_QUEST;
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if item starts a quest that the bot can and should accept
+    // Quest-starting items can be any class (CONSUMABLE, WEAPON, ARMOR, TRADE_GOODS, QUEST, MISC)
+    if (proto->StartQuest > 0)
+    {
+        Quest const* questToStart = sObjectMgr->GetQuestTemplate(proto->StartQuest);
+        if (questToStart)
+        {
+            // Check if bot doesn't already have this quest
+            QuestStatus questStatus = player->GetQuestStatus(proto->StartQuest);
+            if (questStatus == QUEST_STATUS_NONE)
+            {
+                // Check if bot can take this quest (validates level, race, class, etc.)
+                if (player->CanTakeQuest(questToStart, false))
+                {
+                    // Apply same quest filtering as RPG strategy to avoid unwanted quests
+                    // Reject disabled quests (QuestType = 1)
+                    if (questToStart->GetQuestMethod() == 1)
+                        return false;
+
+                    // Reject elite quests (QuestInfoID = 1)
+                    if (questToStart->GetType() == 1)
+                        return false;
+
+                    // Reject PvP quests (QuestInfoID = 41 or RequiredPlayerKills > 0)
+                    if (questToStart->GetType() == 41 || questToStart->GetPlayersSlain() > 0)
+                        return false;
+
+                    // Reject group quests (SuggestedPlayers >= 2)
+                    if (questToStart->GetSuggestedPlayers() >= 2)
+                        return false;
+
+                    if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Item " << proto->Name1 << " starts quest " << proto->StartQuest
+                            << " (" << questToStart->GetTitle() << ") - keeping item";
+                        botAI->TellMaster(out.str());
+                    }
+
+                    return true; // Item starts a quest the bot should take
+                }
+            }
+        }
+    }
+
     return false; // Item is not useful for any active quests
+}
+
+bool ItemUsageValue::IsPlayerCastItemNeededForActiveQuests(Player* player, ItemTemplate const* proto, uint32 spellId)
+{
+    PlayerbotAI* debugAI = GET_PLAYERBOT_AI(player);
+    
+    // Check all active quests to see if this item/spell could be useful
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 entry = player->GetQuestSlotQuestId(slot);
+        Quest const* quest = sObjectMgr->GetQuestTemplate(entry);
+        if (!quest)
+            continue;
+
+        // Get current quest progress
+        QuestStatus questStatus = player->GetQuestStatus(entry);
+        if (questStatus == QUEST_STATUS_COMPLETE || questStatus == QUEST_STATUS_NONE)
+            continue; // Skip completed or unavailable quests
+
+        // Check if quest is incomplete and could potentially use this item
+        bool questNeedsProgress = false;
+
+        // Check quest objectives for completion
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredNpcOrGo[i] != 0)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                uint32 currentCount = player->GetQuestSlotCounter(slot, i);
+                
+                if (currentCount < requiredCount)
+                {
+                    questNeedsProgress = true;
+                    
+                    if (debugAI)
+                    {
+                        std::ostringstream out;
+                        out << "QuestLoot: Quest " << quest->GetTitle() << " needs " << (requiredCount - currentCount) 
+                            << " more of objective " << i << " (NpcOrGo:" << quest->RequiredNpcOrGo[i] << ")";
+                        debugAI->TellMaster(out.str());
+                    }
+                    break;
+                }
+            }
+        }
+
+        // If quest needs progress, check if this item could help
+        if (questNeedsProgress)
+        {
+            // For now, assume quest items with player-cast spells in incomplete quests are useful
+            // This could be enhanced further by checking:
+            // 1. Spell target requirements vs quest objectives
+            // 2. Spell conditions vs quest requirements
+            // 3. Quest area vs player location
+            
+            if (debugAI)
+            {
+                std::ostringstream out;
+                out << "QuestLoot: Item " << proto->Name1 << " potentially useful for incomplete quest: " << quest->GetTitle();
+                debugAI->TellMaster(out.str());
+            }
+            
+            // Check if we already have enough of this item
+            uint32 currentItemCount = AI_VALUE2(uint32, "item count", proto->Name1);
+            uint32 maxUsefulCount = 5; // Don't hoard more than 5 of any quest item
+            
+            if (currentItemCount >= maxUsefulCount)
+            {
+                if (debugAI)
+                {
+                    std::ostringstream out;
+                    out << "QuestLoot: Already have " << currentItemCount << " " << proto->Name1 << ", skipping";
+                    debugAI->TellMaster(out.str());
+                }
+                continue; // Already have enough
+            }
+            
+            return true; // Item is useful for this quest
+        }
+    }
+
+    if (debugAI && debugAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        out << "QuestLoot: No active incomplete quests found that could use " << proto->Name1;
+        debugAI->TellMaster(out.str());
+    }
+    
+    return false; // No active quests need this item
+}
+
+bool ItemUsageValue::DoesKeyUnlockQuestChest(Player* player, ItemTemplate const* proto)
+{
+    // This function checks if a quest item (key) is needed to unlock GameObjects (chests)
+    // that contain items required for active quests
+    //
+    // The logic flow is:
+    // 1. Get all required items from active incomplete quests
+    // 2. Find locks in Lock DBC that require THIS specific key item
+    // 3. Query database for chests using those locks that drop required quest items
+    // 4. Return true only if this key actually opens a chest with needed quest loot
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
+    if (!botAI)
+        return false;
+
+    // Step 1: Find all active quests and collect items still needed
+    std::set<uint32> requiredItemIds;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = player->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        // Skip completed quests
+        QuestStatus questStatus = player->GetQuestStatus(questId);
+        if (questStatus == QUEST_STATUS_COMPLETE || questStatus == QUEST_STATUS_NONE)
+            continue;
+
+        // Collect items that are still needed (don't have enough of)
+        for (uint8 i = 0; i < 4; i++)
+        {
+            if (quest->RequiredItemId[i] > 0)
+            {
+                ItemTemplate const* requiredItem = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]);
+                if (!requiredItem)
+                    continue;
+
+                uint32 currentCount = AI_VALUE2(uint32, "item count", requiredItem->Name1);
+                if (currentCount < quest->RequiredItemCount[i])
+                {
+                    requiredItemIds.insert(quest->RequiredItemId[i]);
+                }
+            }
+        }
+    }
+
+    // If no quest items are needed, this key can't help with quests
+    if (requiredItemIds.empty())
+        return false;
+
+    // Step 2: Find locks in Lock DBC that require THIS specific key item
+    std::vector<uint32> matchingLockIds;
+    uint32 numLocks = sLockStore.GetNumRows();
+
+    for (uint32 lockId = 0; lockId < numLocks; ++lockId)
+    {
+        LockEntry const* lockEntry = sLockStore.LookupEntry(lockId);
+        if (!lockEntry)
+            continue;
+
+        // Check all 8 lock cases
+        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+        {
+            if (lockEntry->Type[i] == LOCK_KEY_ITEM &&
+                lockEntry->Index[i] == proto->ItemId)
+            {
+                matchingLockIds.push_back(lockId);
+                break; // Found this lock uses our key, move to next lock
+            }
+        }
+    }
+
+    if (matchingLockIds.empty())
+        return false; // This key doesn't open any locks
+
+    // Step 3: Build SQL query to check if those locks are on chests with quest loot
+    std::ostringstream lockList, itemList;
+
+    bool firstLock = true;
+    for (uint32 lockId : matchingLockIds)
+    {
+        if (!firstLock)
+            lockList << ",";
+        lockList << lockId;
+        firstLock = false;
+    }
+
+    bool firstItem = true;
+    for (uint32 itemId : requiredItemIds)
+    {
+        if (!firstItem)
+            itemList << ",";
+        itemList << itemId;
+        firstItem = false;
+    }
+
+    // Query to verify this key opens a chest that contains required quest items
+    std::string query =
+        "SELECT 1 FROM gameobject_template gt "
+        "INNER JOIN gameobject_loot_template glt ON gt.Data1 = glt.Entry "
+        "WHERE gt.type IN (3, 10) "           // Type 3 = CHEST, Type 10 = GOOBER
+        "AND gt.Data0 IN (" + lockList.str() + ") "  // Locks that require THIS key
+        "AND glt.Item IN (" + itemList.str() + ") "  // Items needed for active quests
+        "LIMIT 1";
+
+    QueryResult result = WorldDatabase.Query(query.c_str());
+    return result != nullptr;  // True only if this key opens a chest with quest loot
 }
 
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
@@ -842,6 +1220,8 @@ bool ItemUsageValue::SpellGivesSkillUp(uint32 spellId, Player* bot)
         {
             uint32 SkillValue = bot->GetPureSkillValue(skill->SkillLine);
 
+            uint32 craft_skill_gain = sWorld->getIntConfig(CONFIG_SKILL_GAIN_CRAFTING);
+
             if (SkillGainChance(SkillValue, skill->TrivialSkillLineRankHigh,
                                 (skill->TrivialSkillLineRankHigh + skill->TrivialSkillLineRankLow) / 2,
                                 skill->TrivialSkillLineRankLow) > 0)
@@ -887,26 +1267,4 @@ std::string const ItemUsageValue::GetConsumableType(ItemTemplate const* proto, b
     }
 
     return "";
-}
-
-ItemUsage ItemUpgradeValue::Calculate()
-{
-    ParsedItemUsage parsed = GetItemIdFromQualifier();
-    uint32 itemId = parsed.itemId;
-    uint32 randomPropertyId = parsed.randomPropertyId;
-    if (!itemId)
-        return ITEM_USAGE_NONE;
-
-    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-    if (!proto)
-        return ITEM_USAGE_NONE;
-
-    ItemUsage equip = QueryItemUsageForEquip(proto, randomPropertyId);
-    if (equip != ITEM_USAGE_NONE)
-        return equip;
-
-    if (proto->Class == ITEM_CLASS_PROJECTILE && bot->CanUseItem(proto) == EQUIP_ERR_OK)
-        return QueryItemUsageForAmmo(proto);
-
-    return ITEM_USAGE_NONE;
 }

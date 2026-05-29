@@ -30,6 +30,7 @@ Unit* GrindTargetValue::Calculate()
 
 Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 {
+    uint32 memberCount = 1;
     Group* group = bot->GetGroup();
     Player* master = GetMaster();
 
@@ -58,30 +59,37 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     for (ObjectGuid const guid : targets)
     {
         Unit* unit = botAI->GetUnit(guid);
+
         if (!unit)
             continue;
 
-        if (!unit->IsInWorld() || unit->IsDuringRemoveFromWorld())
-            continue;
-
+        auto& rep = bot->ToPlayer()->GetReputationMgr();
         if (unit->ToCreature() && !unit->ToCreature()->GetCreatureTemplate()->lootid &&
             bot->GetReactionTo(unit) >= REP_NEUTRAL)
+        {
             continue;
+        }
 
         if (!bot->IsHostileTo(unit) && unit->GetNpcFlags() != UNIT_NPC_FLAG_NONE)
+        {
             continue;
+        }
 
-        if (!bot->isHonorOrXPTarget(unit))
+        if (!bot->isHonorOrXPTarget(unit) && !needForQuest(unit))
+        {
             continue;
+        }
 
-        if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > INTERACTION_DISTANCE)
+        // Allow targeting flying creatures - all classes have some ranged abilities, 25yds, -2 for buffer)
+        // Use spell distance since even melee classes have ranged attacks (Heroic Throw, ranged weapons, etc.)
+        if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > 23.0f)
             continue;
 
         if (!bot->InBattleground() && GetTargetingPlayerCount(unit) > assistCount)
             continue;
 
         // if (!bot->InBattleground() && master && master->GetDistance(unit) >= sPlayerbotAIConfig.grindDistance &&
-        // !sRandomPlayerbotMgr.IsRandomBot(bot)) continue;
+        // !sRandomPlayerbotMgr->IsRandomBot(bot)) continue;
 
         // Bots in bot-groups no have a more limited range to look for grind target
         if (!bot->InBattleground() && master && botAI->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) &&
@@ -100,12 +108,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                 if (CreatureTemplate->rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite"))
                     continue;
 
-        if (!bot->IsWithinLOSInMap(unit))
+        // Let the bots cheat a little to find quest targets in caves/towers/keeps/etc
+        if (!bot->IsWithinLOSInMap(unit) && !needForQuest(unit))
         {
             continue;
         }
 
-        bool inactiveGrindStatus = botAI->rpgInfo.GetStatus() != RPG_WANDER_RANDOM && botAI->rpgInfo.GetStatus() != RPG_IDLE;
+        bool inactiveGrindStatus = botAI->rpgInfo.status != RPG_WANDER_RANDOM && botAI->rpgInfo.status != RPG_IDLE;
 
         float aggroRange = 30.0f;
         if (unit->ToCreature())

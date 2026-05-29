@@ -423,6 +423,7 @@ public:
 
     bool HasNpcFlag(NPCFlags flag);
     bool IsCreatureOrGOAccessible(); // For loaded grids check if the creature/gameobject is in world + alive
+    bool isDead();  // For loaded grids check if the unit/object is unloaded/dead.
 
     operator bool() const { return !IsEmpty(); }
     bool operator==(ObjectGuid const& guid) const { return GetRawValue() == guid.GetRawValue(); }

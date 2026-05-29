@@ -593,6 +593,7 @@ public:
     uint32 GetReactDelay();
 
     std::vector<const Quest*> GetAllCurrentQuests();
+    bool CheckLocationDistanceByLevel(Player* player, const WorldLocation &loc, bool fromStartUp = false);
     std::vector<const Quest*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
     std::set<uint32> GetCurrentIncompleteQuestIds();

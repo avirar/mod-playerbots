@@ -6,10 +6,13 @@
 #include "ChooseTargetActions.h"
 
 #include "ChooseRpgTargetAction.h"
+#include "Creature.h"
 #include "Event.h"
 #include "LootObjectStack.h"
 #include "NewRpgStrategy.h"
+#include "ObjectMgr.h"
 #include "Playerbots.h"
+#include "QuestDef.h"
 #include "RtiTargetValue.h"
 #include "PossibleRpgTargetsValue.h"
 #include "PvpTriggers.h"
@@ -118,7 +121,10 @@ bool AttackAnythingAction::isUseful()
     if (bot->IsInCombat())
         return false;
 
+    // NEW: Check if target would provide quest credit before attacking
     Unit* target = GetTarget();
+    if (target && target->IsInWorld() && !WouldTargetProvideQuestCredit(target))
+        return false;
     if (!target || !target->IsInWorld())  // Checks if the target is valid and in the world
         return false;
 
@@ -185,6 +191,117 @@ bool AttackRtiTargetAction::Execute(Event /*event*/)
 bool AttackRtiTargetAction::isUseful()
 {
     if (botAI->ContainsStrategy(STRATEGY_TYPE_HEAL))
+        return false;
+
+    return true;
+}
+
+bool AttackAnythingAction::WouldTargetProvideQuestCredit(Unit* target)
+{
+    if (!target || !bot)
+        return true;
+
+    uint32 targetEntry = target->GetEntry();
+
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = bot->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            uint32 requiredEntry = quest->RequiredNpcOrGo[i];
+            if (requiredEntry == 0)
+                continue;
+
+            if (requiredEntry == targetEntry)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                if (currentCount < requiredCount)
+                    return true;
+            }
+
+            if (target->GetTypeId() == TYPEID_UNIT)
+            {
+                Creature* creature = target->ToCreature();
+                if (creature)
+                {
+                    CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+                    if (creatureTemplate &&
+                        (creatureTemplate->KillCredit[0] == requiredEntry || creatureTemplate->KillCredit[1] == requiredEntry))
+                    {
+                        uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                        uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                        if (currentCount < requiredCount)
+                            return true;
+                    }
+                }
+            }
+        }
+
+        if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_CAST))
+        {
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
+                if (requiredCount == 0)
+                    continue;
+
+                uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+                if (currentCount < requiredCount)
+                    return true;
+            }
+        }
+    }
+
+    bool hasIncompleteQuestObjectives = false;
+
+    for (uint32 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        QuestStatus questStatus = bot->GetQuestStatus(questId);
+        if (questStatus != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredNpcOrGo[i] == 0)
+                continue;
+
+            uint32 reqCount = quest->RequiredNpcOrGoCount[i];
+            if (reqCount == 0)
+                continue;
+
+            uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
+            if (currentCount < reqCount)
+            {
+                hasIncompleteQuestObjectives = true;
+                break;
+            }
+        }
+
+        if (hasIncompleteQuestObjectives)
+            break;
+    }
+
+    if (hasIncompleteQuestObjectives)
         return false;
 
     return true;

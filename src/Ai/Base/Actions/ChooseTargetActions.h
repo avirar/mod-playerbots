@@ -53,6 +53,9 @@ public:
     bool Execute(Event event) override;
     bool isUseful() override;
     bool isPossible() override;
+
+private:
+    bool WouldTargetProvideQuestCredit(Unit* target);
 };
 
 class AttackLeastHpTargetAction : public AttackAction

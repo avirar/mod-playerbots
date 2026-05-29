@@ -2802,7 +2802,7 @@ void RandomPlayerbotMgr::PrintStats()
 
         if (sPlayerbotAIConfig.enableNewRpgStrategy)
         {
-            rpgStatusCount[botAI->rpgInfo.GetStatus()]++;
+            rpgStatusCount[botAI->rpgInfo.status]++;
             rpgStasticTotal += botAI->rpgStatistic;
             botAI->rpgStatistic = NewRpgStatistic();
         }
