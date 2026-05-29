@@ -18,6 +18,8 @@
 #include "GuildMgr.h"
 #include "BroadcastHelper.h"
 
+#define LOOT_INTERACTION_DISTANCE (INTERACTION_DISTANCE - 2.0f)
+
 bool LootAction::Execute(Event /*event*/)
 {
     if (!AI_VALUE(bool, "has available loot"))
@@ -96,7 +98,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     Creature* creature = botAI->GetCreature(lootObject.guid);
-    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
+    if (creature && bot->GetDistance(creature) > LOOT_INTERACTION_DISTANCE)
         return false;
 
     // Dismount if the bot is mounted
@@ -141,7 +143,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
-    if (go && bot->GetDistance(go) > INTERACTION_DISTANCE - 2.0f)
+    if (go && bot->GetDistance(go) > LOOT_INTERACTION_DISTANCE)
         return false;
 
     if (go && (go->GetGoState() != GO_STATE_READY))
