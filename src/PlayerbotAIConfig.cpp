@@ -643,6 +643,7 @@ bool PlayerbotAIConfig::Initialize()
     dropObsoleteQuests = sConfigMgr->GetOption<bool>("AiPlayerbot.DropObsoleteQuests", true);
     allowLearnTrainerSpells = sConfigMgr->GetOption<bool>("AiPlayerbot.AllowLearnTrainerSpells", true);
     autoPickTalents = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoPickTalents", true);
+    autoPickTalentsForPlayerBots = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoPickTalentsForPlayerBots", false);
     autoUpgradeEquip = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoUpgradeEquip", false);
     hunterWolfPet = sConfigMgr->GetOption<int32>("AiPlayerbot.HunterWolfPet", 0);
     defaultPetStance = sConfigMgr->GetOption<int32>("AiPlayerbot.DefaultPetStance", 1);

@@ -203,9 +203,10 @@ void DpsRogueStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "enemy out of melee",
             {
-                NextAction("stealth", ACTION_HIGH + 3),
-                NextAction("sprint", ACTION_HIGH + 2),
-                NextAction("reach melee", ACTION_HIGH + 1)
+                NextAction("stealth", ACTION_HIGH + 4),
+                NextAction("sprint", ACTION_HIGH + 3),
+                NextAction("reach melee", ACTION_HIGH + 2),
+                NextAction("shoot", ACTION_HIGH + 1)
             }
         )
     );

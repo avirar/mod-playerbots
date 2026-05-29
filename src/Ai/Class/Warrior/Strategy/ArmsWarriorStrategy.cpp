@@ -121,9 +121,20 @@ void ArmsWarriorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     triggers.push_back(
         new TriggerNode(
+            "enemy unreachable",
+            {
+                NextAction("shoot", ACTION_MOVE + 15)
+            }
+        )
+    );
+
+    triggers.push_back(
+        new TriggerNode(
             "enemy out of melee",
             {
-                NextAction("charge", ACTION_MOVE + 10)
+                NextAction("charge", ACTION_MOVE + 12),
+                NextAction("reach melee", ACTION_MOVE + 11),
+                NextAction("heroic throw", ACTION_MOVE + 10)
             }
         )
     );

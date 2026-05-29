@@ -132,6 +132,17 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
 
 void TrainerAction::Learn(SpellInfo const* spellInfo, uint32 cost, std::ostringstream& out)
 {
+    // Block spell 2567 (Thrown weapon proficiency) for invalid classes.
+    // This spell has ClassMask=0 in skilllineability_dbc which causes IsSpellFitByClassAndRace()
+    // to incorrectly return true for all classes. Only Warriors, Hunters, and Rogues should learn it.
+    if (spellInfo->Id == 2567 &&
+        bot->getClass() != CLASS_WARRIOR &&
+        bot->getClass() != CLASS_HUNTER &&
+        bot->getClass() != CLASS_ROGUE)
+    {
+        return;
+    }
+
     if (!botAI->HasCheat(BotCheatMask::gold))
     {
         if (AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::spells) < cost)
