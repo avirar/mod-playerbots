@@ -2583,12 +2583,10 @@ Player* PlayerbotAI::GetPlayer(ObjectGuid guid)
 
 uint32 GetCreatureIdForCreatureTemplateId(uint32 creatureTemplateId)
 {
-    QueryResult results =
-        WorldDatabase.Query("SELECT guid FROM `creature` WHERE id1 = {} LIMIT 1;", creatureTemplateId);
-    if (results)
+    for (auto const& [spawnGuid, creatureData] : sObjectMgr->GetAllCreatureData())
     {
-        Field* fields = results->Fetch();
-        return fields[0].Get<uint32>();
+        if (creatureData.id1 == creatureTemplateId)
+            return spawnGuid;
     }
     return 0;
 }
