@@ -38,8 +38,10 @@ protected:
                 bool backwards = false);
     bool MoveTo(WorldObject* target, float distance = 0.0f,
                 MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
-    bool MoveNear(WorldObject* target, float distance = sPlayerbotAIConfig.contactDistance,
-                  MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+   bool MoveNear(WorldObject* target, float distance = sPlayerbotAIConfig.contactDistance,
+                   MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    bool IsTargetUnderwater(WorldObject* target);
+    bool MoveToUnderwater(WorldObject* target, float distance = 0.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     float GetFollowAngle();
     bool Follow(Unit* target, float distance = sPlayerbotAIConfig.followDistance);
     bool Follow(Unit* target, float distance, float angle);

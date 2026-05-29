@@ -188,6 +188,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     bool disableMoveSplinePath =
         sPlayerbotAIConfig.disableMoveSplinePath >= 2 ||
         (sPlayerbotAIConfig.disableMoveSplinePath == 1 && bot->InBattleground());
+
+    // Enhanced underwater movement - allow free 3D swimming when bot is underwater
+    bool isSwimming = bot->isSwimming();
+    bool isUnderwater = bot->IsUnderWater();
     if (Vehicle* vehicle = bot->GetVehicle())
     {
         VehicleSeatEntry const* seat = vehicle->GetSeatForPassenger(bot);
@@ -214,7 +218,25 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     }
     else if (exact_waypoint || disableMoveSplinePath || !generatePath)
     {
-        float distance = bot->GetExactDist(x, y, z);
+        float targetX = x, targetY = y, targetZ = z;
+
+        // For swimming movement, preserve the original target coordinates to allow true 3D movement
+        // This prevents bots from being constrained to water surface or VMAP heights when underwater
+        if (isSwimming && !exact_waypoint)
+        {
+            // When swimming, use the exact target coordinates without any height correction
+            // This allows bots to move freely underwater in all directions
+
+            if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
+            {
+                std::ostringstream out;
+                out << "Swimming movement: Using exact 3D coordinates ("
+                    << std::fixed << std::setprecision(2) << targetX << ", " << targetY << ", " << targetZ << ")";
+                botAI->TellMasterNoFacing(out.str());
+            }
+        }
+
+        float distance = bot->GetExactDist(targetX, targetY, targetZ);
         if (distance > 0.01f)
         {
             if (bot->IsSitState())
@@ -225,7 +247,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             //     bot->CastStop();
             //     botAI->InterruptSpell();
             // }
-            DoMovePoint(bot, x, y, z, generatePath, backwards);
+            DoMovePoint(bot, targetX, targetY, targetZ, generatePath, backwards);
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
             {
@@ -233,7 +255,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             }
             delay = std::max(.0f, delay);
             delay = std::min((float)sPlayerbotAIConfig.maxWaitForMove, delay);
-            AI_VALUE(LastMovement&, "last movement").Set(mapId, x, y, z, bot->GetOrientation(), delay, priority);
+            AI_VALUE(LastMovement&, "last movement").Set(mapId, targetX, targetY, targetZ, bot->GetOrientation(), delay, priority);
             return true;
         }
     }
@@ -1950,20 +1972,42 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
         {
             continue;
         }
-        if (go->GetGoType() != GAMEOBJECT_TYPE_TRAP)
-        {
-            continue;
-        }
+
+        GameobjectTypes goType = go->GetGoType();
         const GameObjectTemplate* goInfo = go->GetGOInfo();
         if (!goInfo)
         {
             continue;
         }
-        // 0 trap with no despawn after cast. 1 trap despawns after cast. 2 bomb casts on spawn.
-        if (goInfo->trap.type != 0)
-            continue;
 
-        uint32 spellId = goInfo->trap.spellId;
+        // For TRAP type, check if it's a persistent trap (type 0)
+        if (goType == GAMEOBJECT_TYPE_TRAP)
+        {
+            // 0 trap with no despawn after cast. 1 trap despawns after cast. 2 bomb casts on spawn.
+            if (goInfo->trap.type != 0)
+                continue;
+        }
+
+        // Extract spell ID based on GameObject type
+        uint32 spellId = 0;
+        switch (goType)
+        {
+            case GAMEOBJECT_TYPE_TRAP:
+                spellId = goInfo->trap.spellId;
+                break;
+            case GAMEOBJECT_TYPE_GOOBER:
+                spellId = goInfo->goober.spellId;
+                break;
+            case GAMEOBJECT_TYPE_SPELLCASTER:
+                spellId = goInfo->spellcaster.spellId;
+                break;
+            case GAMEOBJECT_TYPE_AURA_GENERATOR:
+                spellId = goInfo->auraGenerator.auraID1; // Use first aura
+                break;
+            default:
+                continue;
+        }
+
         if (!spellId)
         {
             continue;
@@ -1979,7 +2023,43 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
             continue;
         }
 
-        float radius = (float)goInfo->trap.diameter / 2 + go->GetCombatReach();
+        // Calculate radius based on GameObject type
+        float radius = 0.0f;
+        switch (goType)
+        {
+            case GAMEOBJECT_TYPE_TRAP:
+                radius = (float)goInfo->trap.diameter / 2 + go->GetCombatReach();
+                break;
+
+            case GAMEOBJECT_TYPE_AURA_GENERATOR:
+                radius = (float)goInfo->auraGenerator.radius;
+                break;
+
+            case GAMEOBJECT_TYPE_GOOBER:
+            case GAMEOBJECT_TYPE_SPELLCASTER:
+                // For GOOBER and SPELLCASTER, use spell's radius
+                radius = spellInfo->GetMaxRange();
+                if (radius <= 0.0f)
+                {
+                    // Fallback to effect radius if max range is 0
+                    for (int i = 0; i < MAX_SPELL_EFFECTS; i++)
+                    {
+                        if (spellInfo->Effects[i].RadiusEntry)
+                        {
+                            radius = spellInfo->Effects[i].CalcRadius();
+                            break;
+                        }
+                    }
+                }
+                // Add combat reach for safety margin
+                if (radius > 0.0f)
+                    radius += go->GetCombatReach();
+                break;
+
+            default:
+                continue;
+        }
+
         if (!radius || radius > sPlayerbotAIConfig.maxAoeAvoidRadius)
             continue;
 
@@ -1987,8 +2067,9 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
         {
             continue;
         }
+
         std::ostringstream name;
-        name << spellInfo->SpellName[LOCALE_enUS];  // << "] (object)";
+        name << spellInfo->SpellName[LOCALE_enUS];
         if (FleePosition(go->GetPosition(), radius))
         {
             if (sPlayerbotAIConfig.tellWhenAvoidAoe && lastTellTimer < time(NULL) - 10)
@@ -1996,8 +2077,7 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
                 lastTellTimer = time(NULL);
                 lastMoveTimer = getMSTime();
                 std::ostringstream out;
-                out << "I'm avoiding " << name.str() << " (" << spellInfo->Id << ")" << " Radius " << radius
-                    << " - [Trap]";
+                out << "I'm avoiding " << name.str() << " (" << spellInfo->Id << ")" << " Radius " << radius;
                 bot->Say(out.str(), LANG_UNIVERSAL);
             }
             return true;
@@ -2960,3 +3040,49 @@ bool MoveAwayFromPlayerWithDebuffAction::Execute(Event /*event*/)
 }
 
 bool MoveAwayFromPlayerWithDebuffAction::isPossible() { return bot->CanFreeMove(); }
+
+bool MovementAction::IsTargetUnderwater(WorldObject* target)
+{
+    if (!target)
+        return false;
+
+    LiquidData liquidData = target->GetLiquidData();
+    return liquidData.Status == LIQUID_MAP_UNDER_WATER ||
+           (liquidData.Status == LIQUID_MAP_IN_WATER && target->GetPositionZ() < liquidData.Level - 2.0f);
+}
+
+bool MovementAction::MoveToUnderwater(WorldObject* target, float distance, MovementPriority priority)
+{
+    if (!target)
+        return false;
+
+    if (bot->GetMapId() != target->GetMapId())
+        return false;
+
+    // For underwater targets, use exact 3D coordinates to allow free swimming
+    float x = target->GetPositionX();
+    float y = target->GetPositionY();
+    float z = target->GetPositionZ();
+
+    // Adjust position based on distance if needed
+    if (distance > 0.0f)
+    {
+        float angle = bot->GetAngle(target);
+        x = target->GetPositionX() + cos(angle) * distance;
+        y = target->GetPositionY() + sin(angle) * distance;
+        // Keep the target's Z coordinate for proper underwater depth
+    }
+
+    // Force exact waypoint movement to bypass pathfinding entirely
+    bool exact_waypoint = IsTargetUnderwater(target) || bot->isSwimming();
+
+    if (botAI && botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT) && exact_waypoint)
+    {
+        std::ostringstream out;
+        out << "Underwater movement to " << target->GetName()
+            << " at depth " << std::fixed << std::setprecision(2) << z;
+        botAI->TellMasterNoFacing(out.str());
+    }
+
+    return MoveTo(bot->GetMapId(), x, y, z, false, false, false, exact_waypoint, priority);
+}

@@ -98,6 +98,7 @@ public:
 
         creators["has area debuff"] = &TriggerContext::HasAreaDebuff;
 
+        creators["enemy unreachable"] = &TriggerContext::enemy_unreachable;
         creators["enemy out of melee"] = &TriggerContext::EnemyOutOfMelee;
         creators["enemy out of spell"] = &TriggerContext::EnemyOutOfSpell;
         creators["enemy too close for spell"] = &TriggerContext::enemy_too_close_for_spell;
@@ -303,6 +304,7 @@ private:
     static Trigger* healer_should_attack(PlayerbotAI* botAI) { return new HealerShouldAttackTrigger(botAI); }
     static Trigger* medium_aoe_and_healer_should_attack(PlayerbotAI* botAI) { return new TwoTriggers(botAI, "medium aoe", "healer should attack"); }
     static Trigger* HasAreaDebuff(PlayerbotAI* botAI) { return new HasAreaDebuffTrigger(botAI); }
+    static Trigger* enemy_unreachable(PlayerbotAI* botAI) { return new EnemyUnreachableTrigger(botAI); }
     static Trigger* LoseAggro(PlayerbotAI* botAI) { return new LoseAggroTrigger(botAI); }
     static Trigger* HasAggro(PlayerbotAI* botAI) { return new HasAggroTrigger(botAI); }
     static Trigger* LowHealth(PlayerbotAI* botAI) { return new LowHealthTrigger(botAI); }
