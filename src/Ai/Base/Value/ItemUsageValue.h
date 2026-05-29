@@ -54,7 +54,7 @@ private:
     bool HasItemsNeededForSpell(uint32 spellId, ItemTemplate const* proto);
     Item* CurrentItem(ItemTemplate const* proto);
     float CurrentStacks(ItemTemplate const* proto);
-    float BetterStacks(ItemTemplate const* proto, std::string const usageType = "");
+    float BetterStacks(ItemTemplate const* proto, std::string const& usageType = "");
 
 public:
     static std::vector<uint32> SpellsUsingItem(uint32 itemId, Player* bot);

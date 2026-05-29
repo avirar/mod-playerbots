@@ -28,10 +28,18 @@ ItemUsage ItemUsageValue::Calculate()
     uint32 randomPropertyId = 0;
     size_t pos = qualifier.find(",");
     if (pos != std::string::npos) {
-        itemId = atoi(qualifier.substr(0, pos).c_str());
-        randomPropertyId = atoi(qualifier.substr(pos + 1).c_str());
+        try {
+            itemId = static_cast<uint32>(std::stoul(qualifier.substr(0, pos)));
+            randomPropertyId = static_cast<uint32>(std::stoul(qualifier.substr(pos + 1)));
+        } catch (std::exception const&) {
+            return ITEM_USAGE_NONE;
+        }
     } else {
-        itemId = atoi(qualifier.c_str());
+        try {
+            itemId = static_cast<uint32>(std::stoul(qualifier));
+        } catch (std::exception const&) {
+            return ITEM_USAGE_NONE;
+        }
     }
 
     if (!itemId)
@@ -1139,7 +1147,7 @@ float ItemUsageValue::CurrentStacks(ItemTemplate const* proto)
     return itemCount / maxStack;
 }
 
-float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const itemType)
+float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const& itemType)
 {
     std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", itemType);
 
