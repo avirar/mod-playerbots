@@ -9,6 +9,7 @@
 #include "GameObject.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "ItemVisitors.h"
 #include "Object.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -2731,42 +2732,24 @@ WorldObject* QuestItemHelper::FindGameObjectForLockSpell(PlayerbotAI* botAI, uin
         
         if (distance > searchRange)
             continue;
-            
-        uint32 lockId = go->GetGOInfo()->GetLockId();
-        if (!lockId)
-            continue;
-            
+
         if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
         {
             std::ostringstream out;
-            out << "QuestItem: Checking gameobject " << go->GetName() << " (entry " << go->GetEntry() << ") with lock " << lockId;
+            out << "QuestItem: Checking gameobject " << go->GetName() << " (entry " << go->GetEntry() << ")";
             botAI->TellMaster(out.str());
         }
-        
-        LockEntry const* lock = sLockStore.LookupEntry(lockId);
-        if (!lock)
+
+        if (GameObjectLockRequiresItem(go, questItem->GetEntry()))
         {
             if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
-                botAI->TellMaster("QuestItem: Lock entry not found in DBC");
-            continue;
-        }
-        
-        // Check if this gameobject's lock requires our quest item
-        for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
-        {
-            if (lock->Type[i] == LOCK_KEY_ITEM && 
-                lock->Index[i] == questItem->GetEntry())
             {
-                if (botAI && botAI->HasStrategy("debug questitems", BOT_STATE_NON_COMBAT))
-                {
-                    std::ostringstream out;
-                    out << "QuestItem: Found matching gameobject " << go->GetName() << " that requires item " << questItem->GetEntry();
-                    botAI->TellMaster(out.str());
-                }
-                
-                // Return as WorldObject* - can be cast to GameObject* in the action
-                return static_cast<WorldObject*>(go);
+                std::ostringstream out;
+                out << "QuestItem: Found matching gameobject " << go->GetName() << " that requires item " << questItem->GetEntry();
+                botAI->TellMaster(out.str());
             }
+
+            return static_cast<WorldObject*>(go);
         }
     }
     

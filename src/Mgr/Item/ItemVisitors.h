@@ -12,7 +12,22 @@
 #include "ItemUsageValue.h"
 
 class AiObjectContext;
+class GameObject;
 class Player;
+
+struct LockInfo
+{
+    uint32 lockId{0};
+    uint32 reqItem{0};
+    uint32 skillId{0};
+    uint32 reqSkillValue{0};
+    bool hasNoLock{false};
+    bool hasLockEntry{false};
+};
+
+LockInfo AnalyzeGameObjectLock(GameObject const* go);
+
+bool GameObjectLockRequiresItem(GameObject const* go, uint32 itemId);
 
 char* strstri(char const* str1, char const* str2);
 
