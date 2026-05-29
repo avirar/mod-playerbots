@@ -825,29 +825,18 @@ void RandomPlayerbotMgr::LoadBattleMastersCache()
 
     LOG_INFO("playerbots", "Loading Battlemasters Cache...");
 
-    QueryResult result = WorldDatabase.Query("SELECT `entry`,`bg_template` FROM `battlemaster_entry`");
+   uint32 count = 0;
 
-    uint32 count = 0;
-
-    if (!result)
+    CreatureTemplateContainer const* templates = sObjectMgr->GetCreatureTemplates();
+    for (auto const& [entry, tmpl] : *templates)
     {
-        return;
-    }
-
-    do
-    {
-        ++count;
-
-        Field* fields = result->Fetch();
-
-        uint32 entry = fields[0].Get<uint32>();
-        uint32 bgTypeId = fields[1].Get<uint32>();
-
-        CreatureTemplate const* bmaster = sObjectMgr->GetCreatureTemplate(entry);
-        if (!bmaster)
+        BattlegroundTypeId bgTypeId = sBattlegroundMgr->GetBattleMasterBG(entry);
+        if (bgTypeId == BATTLEGROUND_TYPE_NONE)
             continue;
 
-        FactionTemplateEntry const* bmFaction = sFactionTemplateStore.LookupEntry(bmaster->faction);
+        ++count;
+
+        FactionTemplateEntry const* bmFaction = sFactionTemplateStore.LookupEntry(tmpl.faction);
         uint32 bmFactionId = bmFaction->faction;
         FactionEntry const* bmParentFaction = sFactionStore.LookupEntry(bmFactionId);
         uint32 bmParentTeam = bmParentFaction->team;
@@ -864,14 +853,13 @@ void RandomPlayerbotMgr::LoadBattleMastersCache()
         if (bmFactionId == 66)
             bmTeam = TEAM_HORDE;
 
-        BattleMastersCache[bmTeam][BattlegroundTypeId(bgTypeId)].insert(
-            BattleMastersCache[bmTeam][BattlegroundTypeId(bgTypeId)].end(), entry);
+        BattleMastersCache[bmTeam][bgTypeId].insert(
+            BattleMastersCache[bmTeam][bgTypeId].end(), entry);
         LOG_DEBUG("playerbots", "Cached Battlemaster #{} for BG Type {} ({})", entry, bgTypeId,
                   bmTeam == TEAM_ALLIANCE ? "Alliance"
                   : bmTeam == TEAM_HORDE  ? "Horde"
-                                          : "Neutral");
-
-    } while (result->NextRow());
+                                           : "Neutral");
+    }
 
     LOG_INFO("playerbots", ">> Loaded {} battlemaster entries", count);
 }
