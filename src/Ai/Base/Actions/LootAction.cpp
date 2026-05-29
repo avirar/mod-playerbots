@@ -18,6 +18,8 @@
 #include "GuildMgr.h"
 #include "BroadcastHelper.h"
 
+#define LOOT_INTERACTION_DISTANCE (INTERACTION_DISTANCE - 2.0f)
+
 bool LootAction::Execute(Event /*event*/)
 {
     if (!AI_VALUE(bool, "has available loot"))
@@ -44,6 +46,7 @@ bool LootAction::Execute(Event /*event*/)
     else
     {
         context->GetValue<LootObject>("loot target")->Set(lootObject);
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPending(lootObject.guid);
         return true;
     }
 }
@@ -76,8 +79,15 @@ bool OpenLootAction::Execute(Event /*event*/)
     bool result = DoLoot(lootObject);
     if (result)
     {
-        AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
+    }
+    else if (!lootObject.IsEmpty())
+    {
+        if (!lootObject.IsStillValid(bot))
+        {
+            AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(lootObject.guid);
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+        }
     }
     return result;
 }
@@ -88,7 +98,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         return false;
 
     Creature* creature = botAI->GetCreature(lootObject.guid);
-    if (creature && bot->GetDistance(creature) > INTERACTION_DISTANCE - 2.0f)
+    if (creature && bot->GetDistance(creature) > LOOT_INTERACTION_DISTANCE)
         return false;
 
     // Dismount if the bot is mounted
@@ -133,7 +143,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
-    if (go && bot->GetDistance(go) > INTERACTION_DISTANCE - 2.0f)
+    if (go && bot->GetDistance(go) > LOOT_INTERACTION_DISTANCE)
         return false;
 
     if (go && (go->GetGoState() != GO_STATE_READY))
@@ -152,6 +162,70 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
     if (lootObject.skillId == SKILL_HERBALISM)
         return botAI->HasSkill(SKILL_HERBALISM) ? botAI->CastSpell(HERB_GATHERING, bot) : false;
+
+    // For key-locked chests, find and cast the key's spell using the key item
+    if (go && lootObject.reqItem > 0 && bot->HasItemCount(lootObject.reqItem, 1))
+    {
+        uint32 keySpell = GetKeySpell(lootObject.reqItem);
+        if (keySpell)
+        {
+            Item* keyItem = nullptr;
+
+            for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+            {
+                if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                {
+                    if (item->GetEntry() == lootObject.reqItem)
+                    {
+                        keyItem = item;
+                        break;
+                    }
+                }
+            }
+
+            if (!keyItem)
+            {
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+                {
+                    if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                    {
+                        if (item->GetEntry() == lootObject.reqItem)
+                        {
+                            keyItem = item;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!keyItem)
+            {
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    if (Bag* pBag = bot->GetBagByPos(bag))
+                    {
+                        for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                        {
+                            if (Item* item = pBag->GetItemByPos(slot))
+                            {
+                                if (item->GetEntry() == lootObject.reqItem)
+                                {
+                                    keyItem = item;
+                                    break;
+                                }
+                            }
+                        }
+                        if (keyItem) break;
+                    }
+                }
+            }
+
+            if (keyItem)
+            {
+                return botAI->CastSpell(keySpell, go, keyItem);
+            }
+        }
+    }
 
     uint32 spellId = GetOpeningSpell(lootObject);
     if (!spellId)
@@ -203,6 +277,32 @@ uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject, GameObject* go)
     }
 
     return sPlayerbotAIConfig.openGoSpell;
+}
+
+uint32 OpenLootAction::GetKeySpell(uint32 keyItemId)
+{
+    ItemTemplate const* keyItem = sObjectMgr->GetItemTemplate(keyItemId);
+    if (!keyItem)
+        return 0;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        uint32 spellId = keyItem->Spells[i].SpellId;
+        if (!spellId)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+
+        for (uint8 effIndex = 0; effIndex < MAX_SPELL_EFFECTS; ++effIndex)
+        {
+            if (spellInfo->Effects[effIndex].Effect == SPELL_EFFECT_OPEN_LOCK)
+                return spellId;
+        }
+    }
+
+    return 0;
 }
 
 bool OpenLootAction::CanOpenLock(LootObject& /*lootObject*/, SpellInfo const* spellInfo, GameObject* go)
@@ -377,6 +477,9 @@ bool StoreLootAction::Execute(Event event)
         // bot->GetSession()->HandleLootMoneyOpcode(packet);
     }
 
+    uint8 totalAvailableItems = items;
+    uint8 itemsSkipped = 0;
+
     for (uint8 i = 0; i < items; ++i)
     {
         uint32 itemid;
@@ -393,36 +496,86 @@ bool StoreLootAction::Execute(Event event)
         p >> lootslot_type;     // 0 = can get, 1 = look only, 2 = master get
 
         if (lootslot_type != LOOT_SLOT_TYPE_ALLOW_LOOT && lootslot_type != LOOT_SLOT_TYPE_OWNER)
-            continue;
+            {
+                itemsSkipped++;
+                continue;
+            }
 
         if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemid, botAI))
-            continue;
+            {
+                itemsSkipped++;
+                continue;
+            }
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemid);
         if (!proto)
-            continue;
+            {
+                itemsSkipped++;
+                continue;
+            }
 
         if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
         {
-            uint32 maxStack = proto->GetMaxStackSize();
-            if (maxStack == 1)
-                continue;
+            ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", itemid);
+            bool isUsefulItem = (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH);
 
-            std::vector<Item*> found = parseItems(chat->FormatItem(proto));
-
-            bool hasFreeStack = false;
-
-            for (auto stack : found)
+            if (isUsefulItem)
             {
-                if (stack->GetCount() + itemcount < maxStack)
+                uint32 totalfree = 0;
+
+                for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; slot++)
                 {
-                    hasFreeStack = true;
-                    break;
+                    if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                        ++totalfree;
+                }
+
+                for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+                {
+                    const Bag* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+                    if (pBag)
+                    {
+                        ItemTemplate const* pBagProto = pBag->GetTemplate();
+                        if (pBagProto->Class == ITEM_CLASS_CONTAINER && pBagProto->SubClass == ITEM_SUBCLASS_CONTAINER)
+                        {
+                            totalfree += pBag->GetFreeSlots();
+                        }
+                    }
+                }
+
+                if (totalfree == 0)
+                {
+                    itemsSkipped++;
+                    continue;
                 }
             }
+            else
+            {
+                uint32 maxStack = proto->GetMaxStackSize();
+                if (maxStack == 1)
+                {
+                    itemsSkipped++;
+                    continue;
+                }
 
-            if (!hasFreeStack)
-                continue;
+                std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+
+                bool hasFreeStack = false;
+
+                for (auto stack : found)
+                {
+                    if (stack->GetCount() + itemcount < maxStack)
+                    {
+                        hasFreeStack = true;
+                        break;
+                    }
+                }
+
+                if (!hasFreeStack)
+                {
+                    itemsSkipped++;
+                    continue;
+                }
+            }
         }
 
         Player* master = botAI->GetMaster();
@@ -453,7 +606,14 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
-    AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
+    if (itemsSkipped > 0 && totalAvailableItems > 0)
+    {
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsPartiallyLooted(guid);
+    }
+    else
+    {
+        AI_VALUE(LootObjectStack*, "available loot")->MarkAsCompleted(guid);
+    }
 
     // release loot
     WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);

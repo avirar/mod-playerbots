@@ -10,6 +10,7 @@
 #include "ItemVisitors.h"
 #include "Playerbots.h"
 #include "ItemPackets.h"
+#include "ItemCountValue.h"
 
 class SellItemsVisitor : public IterateItemsVisitor
 {
@@ -98,9 +99,95 @@ void SellAction::Sell(FindItemVisitor* visitor)
     }
 }
 
+uint32 SellAction::GetQuestItemRequirement(uint32 itemId)
+{
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetQuestSlotQuestId(slot);
+        if (questId == 0)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < 4; i++)
+        {
+            if (quest->RequiredItemId[i] == itemId)
+            {
+                return quest->RequiredItemCount[i];
+            }
+        }
+    }
+
+    return 0;
+}
+
 void SellAction::Sell(Item* item)
 {
+    if (!item)
+        return;
+
     std::ostringstream out;
+    uint32 itemId = item->GetEntry();
+    ItemTemplate const* proto = item->GetTemplate();
+
+    uint32 questRequirement = GetQuestItemRequirement(itemId);
+
+    Item* itemToSell = item;
+    uint32 countToSell = item->GetCount();
+
+    if (questRequirement > 0)
+    {
+        QueryItemCountVisitor countVisitor(itemId);
+        IterateItems(&countVisitor, ITERATE_ITEMS_IN_BAGS);
+        uint32 totalCount = countVisitor.GetCount();
+
+        if (totalCount <= questRequirement)
+        {
+            return;
+        }
+
+        uint32 excessCount = totalCount - questRequirement;
+
+        if (item->GetCount() > excessCount)
+        {
+            ItemPosCountVec dest;
+            InventoryResult result = bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, excessCount);
+
+            if (result != EQUIP_ERR_OK)
+                return;
+
+            if (dest.empty())
+                return;
+
+            uint16 srcPos = item->GetPos();
+            uint16 dstPos = dest[0].pos;
+
+            uint8 dstBag = (dstPos >> 8) & 255;
+            uint8 dstSlot = dstPos & 255;
+
+            if (bot->GetItemByPos(dstBag, dstSlot) != nullptr)
+                return;
+
+            uint32 keepCount = item->GetCount() - excessCount;
+
+            bot->SplitItem(srcPos, dstPos, keepCount);
+
+            itemToSell = bot->GetItemByPos(srcPos);
+            if (!itemToSell)
+                return;
+
+            if (itemToSell->GetCount() != excessCount)
+                return;
+
+            Item* keptStack = bot->GetItemByPos(dstPos);
+            if (!keptStack || keptStack->GetCount() != keepCount)
+                return;
+
+            countToSell = excessCount;
+        }
+    }
 
     GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
 
@@ -110,13 +197,12 @@ void SellAction::Sell(Item* item)
         if (!pCreature)
             continue;
 
-        ObjectGuid itemguid = item->GetGUID();
-        uint32 count = item->GetCount();
+        ObjectGuid itemguid = itemToSell->GetGUID();
 
         uint32 botMoney = bot->GetMoney();
 
         WorldPacket p(CMSG_SELL_ITEM);
-        p << vendorguid << itemguid << count;
+        p << vendorguid << itemguid << countToSell;
 
         WorldPackets::Item::SellItem nicePacket(std::move(p));
         nicePacket.Read();
@@ -127,7 +213,11 @@ void SellAction::Sell(Item* item)
             bot->SetMoney(botMoney);
         }
 
-        out << "Selling " << chat->FormatItem(item->GetTemplate());
+        out << "Selling " << chat->FormatItem(proto);
+        if (questRequirement > 0)
+        {
+            out << " (keeping " << questRequirement << " for quest)";
+        }
         botAI->TellMaster(out);
 
         bot->PlayDistanceSound(120);

@@ -5,7 +5,63 @@
 
 #include "ItemVisitors.h"
 
+#include "DBCStores.h"
+#include "GameObject.h"
 #include "Playerbots.h"
+#include "SharedDefines.h"
+
+LockInfo AnalyzeGameObjectLock(GameObject const* go)
+{
+    LockInfo info;
+    info.lockId = go->GetGOInfo()->GetLockId();
+
+    LockEntry const* lock = sLockStore.LookupEntry(info.lockId);
+    if (!lock)
+        return info;
+
+    info.hasLockEntry = true;
+
+    for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+    {
+        switch (lock->Type[i])
+        {
+            case LOCK_KEY_ITEM:
+                if (lock->Index[i] > 0)
+                    info.reqItem = lock->Index[i];
+                break;
+            case LOCK_KEY_SKILL:
+                info.skillId = lock->Index[i];
+                info.reqSkillValue = lock->Skill[i];
+                break;
+            case LOCK_KEY_NONE:
+                info.hasNoLock = true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return info;
+}
+
+bool GameObjectLockRequiresItem(GameObject const* go, uint32 itemId)
+{
+    uint32 lockId = go->GetGOInfo()->GetLockId();
+    if (!lockId)
+        return false;
+
+    LockEntry const* lock = sLockStore.LookupEntry(lockId);
+    if (!lock)
+        return false;
+
+    for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+    {
+        if (lock->Type[i] == LOCK_KEY_ITEM && lock->Index[i] == itemId)
+            return true;
+    }
+
+    return false;
+}
 
 bool FindUsableItemVisitor::Visit(Item* item)
 {
@@ -92,4 +148,34 @@ bool FindItemUsageVisitor::Accept(ItemTemplate const* proto)
 bool FindUsableNamedItemVisitor::Accept(ItemTemplate const* proto)
 {
     return proto && !proto->Name1.empty() && strstri(proto->Name1.c_str(), name.c_str());
+}
+
+bool FindItemStackByMinCountVisitor::Visit(Item* item)
+{
+    if (!Accept(item->GetTemplate()))
+        return true;
+
+    if (item->GetCount() >= minCount)
+    {
+        FindItemVisitor::Visit(item);
+    }
+
+    return true;
+}
+
+Item* FindItemStackByMinCountVisitor::GetLargestStack()
+{
+    std::vector<Item*>& results = GetResult();
+
+    if (results.empty())
+        return nullptr;
+
+    Item* largest = results[0];
+    for (size_t i = 1; i < results.size(); ++i)
+    {
+        if (results[i]->GetCount() > largest->GetCount())
+            largest = results[i];
+    }
+
+    return largest;
 }

@@ -10,6 +10,7 @@
 #include "CreatureAI.h"
 #include "ItemVisitors.h"
 #include "LastSpellCastValue.h"
+#include "LootObjectStack.h"
 #include "ObjectGuid.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -193,7 +194,18 @@ bool NoAttackersTrigger::IsActive()
 
 bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target", "current target"); }
 
-bool NoTargetTrigger::IsActive() { return !AI_VALUE(Unit*, "current target"); }
+bool NoTargetTrigger::IsActive()
+{
+    if (AI_VALUE(Unit*, "current target"))
+        return false;
+
+    // Don't attack if loot is available
+    LootObject loot = AI_VALUE(LootObject, "loot target");
+    if (loot.IsLootPossible(bot))
+        return false;
+
+    return true;
+}
 
 bool MyAttackerCountTrigger::IsActive()
 {
