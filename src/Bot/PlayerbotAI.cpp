@@ -2592,12 +2592,10 @@ Player* PlayerbotAI::GetPlayer(ObjectGuid guid)
 
 uint32 GetCreatureIdForCreatureTemplateId(uint32 creatureTemplateId)
 {
-    QueryResult results =
-        WorldDatabase.Query("SELECT guid FROM `creature` WHERE id1 = {} LIMIT 1;", creatureTemplateId);
-    if (results)
+    for (auto const& [spawnGuid, creatureData] : sObjectMgr->GetAllCreatureData())
     {
-        Field* fields = results->Fetch();
-        return fields[0].Get<uint32>();
+        if (creatureData.id1 == creatureTemplateId)
+            return spawnGuid;
     }
     return 0;
 }
@@ -3866,6 +3864,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem
     if (bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
         return false;
 
+   // Set facing to GameObject
     if (!bot->HasInArc(CAST_ANGLE_IN_FRONT, goTarget) && (spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT))
     {
         ServerFacade::instance().SetFacingTo(bot, goTarget);
@@ -3873,8 +3872,22 @@ bool PlayerbotAI::CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem
         return false;
     }
 
+  // Use the server's built-in GameObject spell casting mechanism
     SpellCastResult result = bot->CastSpell(goTarget, spellId, false, castItem);
 
+    if (HasStrategy("debug spell", BOT_STATE_NON_COMBAT))
+    {
+        std::ostringstream out;
+        if (result == SPELL_CAST_OK)
+        {
+            out << "Successfully cast spell " << spellId << " (" << ChatHelper::FormatSpell(spellInfo) << ") on GameObject " << goTarget->GetName();
+        }
+        else
+        {
+            out << "Failed to cast spell " << spellId << " (" << ChatHelper::FormatSpell(spellInfo) << ") on GameObject " << goTarget->GetName() << " - Error: " << static_cast<int>(result);
+        }
+        TellMaster(out.str());
+    }
     return result == SPELL_CAST_OK;
 }
 

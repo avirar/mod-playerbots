@@ -53,6 +53,7 @@
 #include "UsePotionsStrategy.h"
 #include "WaitForAttackStrategy.h"
 #include "WorldPacketHandlerStrategy.h"
+#include "UseQuestItemsStrategy.h"
 
 class StrategyContext : public NamedObjectContext<Strategy>
 {
@@ -115,6 +116,7 @@ public:
         creators["debug rpg"] = &StrategyContext::debug_rpg;
         creators["debug spell"] = &StrategyContext::debug_spell;
         creators["debug quest"] = &StrategyContext::debug_quest;
+        creators["debug questitems"] = &StrategyContext::debug_questitems;
         creators["maintenance"] = &StrategyContext::maintenance;
         creators["group"] = &StrategyContext::group;
         creators["guild"] = &StrategyContext::guild;
@@ -129,6 +131,7 @@ public:
         creators["master fishing"] = &StrategyContext::master_fishing;
         creators["wait for attack"] = &StrategyContext::wait_for_attack;
         creators["focus heal targets"] = &StrategyContext::focus_heal_targets;
+        creators["questitems"] = &StrategyContext::quest_items;
     }
 
 private:
@@ -189,6 +192,7 @@ private:
     static Strategy* debug_rpg(PlayerbotAI* botAI) { return new DebugRpgStrategy(botAI); }
     static Strategy* debug_spell(PlayerbotAI* botAI) { return new DebugSpellStrategy(botAI); }
     static Strategy* debug_quest(PlayerbotAI* botAI) { return new DebugQuestStrategy(botAI); }
+    static Strategy* debug_questitems(PlayerbotAI* botAI) { return new DebugQuestItemsStrategy(botAI); }
     static Strategy* maintenance(PlayerbotAI* botAI) { return new MaintenanceStrategy(botAI); }
     static Strategy* group(PlayerbotAI* botAI) { return new GroupStrategy(botAI); }
     static Strategy* guild (PlayerbotAI* botAI) { return new GuildStrategy(botAI); }
@@ -203,6 +207,7 @@ private:
     static Strategy* master_fishing(PlayerbotAI* botAI) { return new MasterFishingStrategy(botAI); }
     static Strategy* wait_for_attack(PlayerbotAI* botAI) { return new WaitForAttackStrategy(botAI); }
     static Strategy* focus_heal_targets(PlayerbotAI* botAI) { return new FocusHealTargetsStrategy(botAI); }
+    static Strategy* quest_items(PlayerbotAI* botAI) { return new UseQuestItemsStrategy(botAI); }
 };
 
 class MovementStrategyContext : public NamedObjectContext<Strategy>

@@ -396,6 +396,12 @@ public:
         {
             return true;
         }
+
+        if (proto->StartQuest > 0)
+        {
+            return true;
+        }
+
         return false;
     }
 };

@@ -15,6 +15,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
+#include "QuestItemHelper.h"
 #include "SharedDefines.h"
 #include "TemporarySummon.h"
 #include "ThreatManager.h"
@@ -196,6 +197,12 @@ bool InvalidTargetTrigger::IsActive() { return AI_VALUE2(bool, "invalid target",
 
 bool NoTargetTrigger::IsActive()
 {
+   if (!botAI || !bot)
+        return false;
+
+    if (!botAI->GetAiObjectContext())
+        return false;
+
     if (AI_VALUE(Unit*, "current target"))
         return false;
 
@@ -203,6 +210,15 @@ bool NoTargetTrigger::IsActive()
     LootObject loot = AI_VALUE(LootObject, "loot target");
     if (loot.IsLootPossible(bot))
         return false;
+
+    try {
+        Item* questItem = QuestItemHelper::FindBestQuestItem(bot, nullptr);
+        if (questItem) {
+            return false;
+        }
+    }
+    catch (...) {
+    }
 
     return true;
 }

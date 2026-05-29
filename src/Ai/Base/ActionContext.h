@@ -68,6 +68,9 @@
 #include "FishingAction.h"
 #include "CancelChannelAction.h"
 #include "WaitForAttackAction.h"
+#include "UseQuestItemOnTargetAction.h"
+#include "MoveToQuestItemTargetAction.h"
+#include "UseQuestSpellOnTargetAction.h"
 
 class PlayerbotAI;
 
@@ -211,6 +214,9 @@ public:
         creators["remove bobber strategy"] = &ActionContext::remove_bobber_strategy;
         creators["roll"] = &ActionContext::roll_action;
         creators["cancel channel"] = &ActionContext::cancel_channel;
+        creators["quest item use on target"] = &ActionContext::quest_item_use_on_target;
+        creators["move to quest item target"] = &ActionContext::move_to_quest_item_target;
+        creators["quest spell use on target"] = &ActionContext::quest_spell_use_on_target;
 
         // BG Tactics
         creators["bg tactics"] = &ActionContext::bg_tactics;
@@ -481,6 +487,10 @@ private:
     static Action* new_rpg_travel_flight(PlayerbotAI* ai) { return new NewRpgTravelFlightAction(ai); }
     static Action* new_rpg_outdoor_pvp(PlayerbotAI* ai) { return new NewRpgOutdoorPvpAction(ai); }
     static Action* wait_for_attack_keep_safe_distance(PlayerbotAI* ai) { return new WaitForAttackKeepSafeDistanceAction(ai); }
+
+    static Action* quest_item_use_on_target(PlayerbotAI* ai) { return new UseQuestItemOnTargetAction(ai); }
+    static Action* move_to_quest_item_target(PlayerbotAI* ai) { return new MoveToQuestItemTargetAction(ai); }
+    static Action* quest_spell_use_on_target(PlayerbotAI* ai) { return new UseQuestSpellOnTargetAction(ai); }
 };
 
 #endif

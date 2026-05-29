@@ -23,6 +23,17 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
+#include <map>
+#include <string>
+#include <ctime>
+
+struct PendingQuestItemCast
+{
+    std::string key;
+    WorldObject* target;
+    ObjectGuid targetGuid;
+    time_t castTime;
+};
 
 class AiObjectContext;
 class Creature;
@@ -414,6 +425,7 @@ public:
     BotState GetState() { return currentState; };
     void ResetStrategies(bool load = false);
     void ReInitCurrentEngine();
+    std::map<std::string, PendingQuestItemCast>& GetPendingQuestItemCasts() { return pendingQuestItemCasts; }
     void Reset(bool full = false);
     void LeaveOrDisbandGroup();
     static bool IsTank(Player* player, bool bySpec = false);
@@ -514,7 +526,7 @@ public:
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
     bool CastSpell(uint32 spellId, Unit* target, Item* itemTarget = nullptr);
-    bool CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem);
+bool CastSpell(uint32 spellId, GameObject* goTarget, Item* castItem = nullptr);
     bool CastSpell(uint32 spellId, float x, float y, float z, Item* itemTarget = nullptr);
     bool canDispel(SpellInfo const* spellInfo, uint32 dispelType);
 
@@ -651,6 +663,7 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    std::map<std::string, PendingQuestItemCast> pendingQuestItemCasts;
     bool spellInterruptRequested = false;
 };
 
