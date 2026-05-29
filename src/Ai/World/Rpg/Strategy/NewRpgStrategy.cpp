@@ -5,6 +5,8 @@
 
 #include "NewRpgStrategy.h"
 
+#include "Playerbots.h"
+
 NewRpgStrategy::NewRpgStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
 
 std::vector<NextAction> NewRpgStrategy::getDefaultActions()
@@ -29,7 +31,7 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "go camp status",
             {
-                NextAction("new rpg go camp", 3.0f)
+                NextAction("new rpg go camp", 3.1f)
             }
         )
     );
@@ -45,7 +47,7 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "wander npc status",
             {
-                NextAction("new rpg wander npc", 3.0f)
+                NextAction("new rpg wander npc", 3.1f)
             }
         )
     );
@@ -53,7 +55,7 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "do quest status",
             {
-                NextAction("new rpg do quest", 3.0f)
+                NextAction("new rpg do quest", 3.1f)
             }
         )
     );
@@ -61,20 +63,13 @@ void NewRpgStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode(
             "travel flight status",
             {
-                NextAction("new rpg travel flight", 3.0f)
-            }
-        )
-    );
-    triggers.push_back(
-        new TriggerNode(
-            "outdoor pvp status",
-            {
-                NextAction("new rpg outdoor pvp", 3.0f)
+                NextAction("new rpg travel flight", 3.1f)
             }
         )
     );
 }
 
-void NewRpgStrategy::InitMultipliers(std::vector<Multiplier*>&)
+void NewRpgStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
 {
+    // multipliers.push_back(new RpgActionMultiplier(botAI));
 }

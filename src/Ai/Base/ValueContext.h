@@ -109,7 +109,9 @@ public:
         creators["nearest game objects"] = &ValueContext::nearest_game_objects;
         creators["nearest game objects no los"] = &ValueContext::nearest_game_objects_no_los;
         creators["closest game objects"] = &ValueContext::closest_game_objects;
+        creators["far game objects no los"] = &ValueContext::far_game_objects_no_los;
         creators["nearest npcs"] = &ValueContext::nearest_npcs;
+        creators["far npcs"] = &ValueContext::far_npcs;
         creators["nearest hostile npcs"] = &ValueContext::nearest_hostile_npcs;
         creators["nearest totems"] = &ValueContext::nearest_totems;
         creators["nearest vehicles"] = &ValueContext::nearest_vehicles;
@@ -125,6 +127,7 @@ public:
         creators["all targets"] = &ValueContext::all_targets;
         creators["possible rpg targets"] = &ValueContext::possible_rpg_targets;
         creators["possible new rpg targets"] = &ValueContext::possible_new_rpg_targets;
+        creators["possible new rpg targets no los"] = &ValueContext::possible_new_rpg_targets_no_los;
         creators["possible new rpg game objects"] = &ValueContext::possible_new_rpg_game_objects;
         creators["nearest adds"] = &ValueContext::nearest_adds;
         creators["nearest corpses"] = &ValueContext::nearest_corpses;
@@ -223,7 +226,7 @@ public:
         creators["formation"] = &ValueContext::formation;
         creators["stance"] = &ValueContext::stance;
         creators["item usage"] = &ValueContext::item_usage;
-        creators["item upgrade"] = &ValueContext::item_upgrade;
+        
         creators["speed"] = &ValueContext::speed;
         creators["last said"] = &ValueContext::last_said;
         creators["last emote"] = &ValueContext::last_emote;
@@ -355,7 +358,6 @@ private:
     static UntypedValue* already_seen_players(PlayerbotAI* botAI) { return new AlreadySeenPlayersValue(botAI); }
     static UntypedValue* new_player_nearby(PlayerbotAI* botAI) { return new NewPlayerNearbyValue(botAI); }
     static UntypedValue* item_usage(PlayerbotAI* botAI) { return new ItemUsageValue(botAI); }
-    static UntypedValue* item_upgrade(PlayerbotAI* botAI) { return new ItemUpgradeValue(botAI); }
     static UntypedValue* formation(PlayerbotAI* botAI) { return new FormationValue(botAI); }
     static UntypedValue* stance(PlayerbotAI* botAI) { return new StanceValue(botAI); }
     static UntypedValue* mana_save_level(PlayerbotAI* botAI) { return new ManaSaveLevelValue(botAI); }
@@ -417,8 +419,16 @@ private:
     {
         return new NearestGameObjects(botAI, INTERACTION_DISTANCE);
     }
+    static UntypedValue* far_game_objects_no_los(PlayerbotAI* botAI)
+    {
+        return new NearestGameObjects(botAI, 300.0f, true);
+    }
     static UntypedValue* log_level(PlayerbotAI* botAI) { return new LogLevelValue(botAI); }
     static UntypedValue* nearest_npcs(PlayerbotAI* botAI) { return new NearestNpcsValue(botAI); }
+    static UntypedValue* far_npcs(PlayerbotAI* botAI)
+    {
+        return new NearestNpcsValue(botAI, 300.0f);
+    }
     static UntypedValue* nearest_hostile_npcs(PlayerbotAI* botAI) { return new NearestHostileNpcsValue(botAI); }
     static UntypedValue* nearest_totems(PlayerbotAI* botAI) { return new NearestTotemsValue(botAI); }
     static UntypedValue* nearest_vehicles(PlayerbotAI* botAI) { return new NearestVehiclesValue(botAI); }
@@ -432,6 +442,7 @@ private:
     static UntypedValue* nearest_corpses(PlayerbotAI* botAI) { return new NearestCorpsesValue(botAI); }
     static UntypedValue* possible_rpg_targets(PlayerbotAI* botAI) { return new PossibleRpgTargetsValue(botAI); }
     static UntypedValue* possible_new_rpg_targets(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsValue(botAI); }
+    static UntypedValue* possible_new_rpg_targets_no_los(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsNoLosValue(botAI); }
     static UntypedValue* possible_new_rpg_game_objects(PlayerbotAI* botAI) { return new PossibleNewRpgGameObjectsValue(botAI); }
     static UntypedValue* possible_targets(PlayerbotAI* botAI) { return new PossibleTargetsValue(botAI); }
     static UntypedValue* possible_triggers(PlayerbotAI* botAI) { return new PossibleTriggersValue(botAI); }

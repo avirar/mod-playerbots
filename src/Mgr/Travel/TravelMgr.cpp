@@ -1057,6 +1057,23 @@ bool GuidPosition::IsCreatureOrGOAccessible()
     return false;
 }
 
+bool GuidPosition::isDead()
+{
+    if (!getMap())
+        return false;
+
+    if (!getMap()->IsGridLoaded(GetPositionX(), GetPositionY()))
+        return false;
+
+    if (IsUnit() && GetUnit() && GetUnit()->IsInWorld() && GetUnit()->IsAlive())
+        return false;
+
+    if (IsGameObject() && GetGameObject() && GetGameObject()->IsInWorld())
+        return false;
+
+    return true;
+}
+
 GuidPosition::GuidPosition(WorldObject* wo) : ObjectGuid(wo->GetGUID()), WorldPosition(wo), loadedFromDB(false) {}
 
 GuidPosition::GuidPosition(CreatureData const& creData)

@@ -62,4 +62,31 @@ public:
     std::string const getName() override { return "debug questitems"; }
 };
 
+class DebugNewRpgStrategy : public Strategy
+{
+public:
+    DebugNewRpgStrategy(PlayerbotAI* botAI) : Strategy(botAI) { }
+
+    uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT; }
+    std::string const getName() override { return "debug newrpg"; }
+};
+
+class DebugLootStrategy : public Strategy
+{
+public:
+    DebugLootStrategy(PlayerbotAI* botAI) : Strategy(botAI) { }
+
+    uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT; }
+    std::string const getName() override { return "debug loot"; }
+};
+
+class DebugTargetsStrategy : public Strategy
+{
+public:
+    DebugTargetsStrategy(PlayerbotAI* botAI) : Strategy(botAI) { }
+
+    uint32 GetType() const override { return STRATEGY_TYPE_NONCOMBAT; }
+    std::string const getName() override { return "debug targets"; }
+};
+
 #endif

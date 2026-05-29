@@ -15,8 +15,13 @@
 
 struct POIInfo
 {
-    G3D::Vector2 pos;
-    int32 objectiveIdx;
+    G3D::Vector2 pos;         // x, y coordinates
+    int32 objectiveIdx;       // Objective index (16 for exploration)
+    float z;                  // Optional Z coordinate (0.0f = not set, use ground level)
+    bool useExactZ;           // If true, use the specified Z coordinate instead of recalculating from ground height
+    float radius;             // For area triggers, the radius to enter (0.0f = not an area trigger)
+
+    POIInfo() : objectiveIdx(0), z(0.0f), useExactZ(false), radius(0.0f) {}
 };
 
 /// A base (composition) class for all new rpg actions
@@ -43,6 +48,14 @@ protected:
     uint32 BestRewardIndex(Quest const* quest);
     bool IsQuestWorthDoing(Quest const* quest);
     bool IsQuestCapableDoing(Quest const* quest);
+    bool IsRequiredQuestObjectiveNPC(Creature* creature);
+    bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
+
+    /* LOCK SYSTEM INTEGRATION */
+    bool CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue);
+    bool CanAccessLockedGameObject(GameObject* go);
+    bool HasRequiredKeyItem(uint32 itemId);
+    bool HasQuestItemInDropTable(uint32 questId, uint32 itemId);
 
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
@@ -54,21 +67,17 @@ protected:
     bool GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector<POIInfo>& poiInfo, bool toComplete = false);
     static WorldPosition SelectRandomGrindPos(Player* bot);
     static WorldPosition SelectRandomCampPos(Player* bot);
-    bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
+    bool SelectRandomFlightTaxiNode(ObjectGuid& flightMasterGuid, uint32& fromNode, uint32& toNode, WorldPosition& flightMasterPos);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    bool SearchForActualQuestTargets(uint32 questId);
+    bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
+    bool IsWithinPOIBoundary(float x, float y, float tolerance = 40.0f);
 
 protected:
     /* FOR MOVE FAR */
     const float pathFinderDis = 70.0f;
-    // Time without real progress toward dest before MoveFarTo
-    // falls back to teleport recovery. Kept short enough that a
-    // bot truly oscillating around an unreachable destination
-    // (mmap returning non-progressing partial paths, or NOPATH +
-    // cone fallback wandering) doesn't spin for 5 minutes before
-    // the teleport fires, but long enough that a genuine long
-    // walk that is slowly making progress never triggers it.
-    const uint32 stuckTime = 90 * 1000;
+    const uint32 stuckTime = 5 * 60 * 1000;
 };
 
 #endif

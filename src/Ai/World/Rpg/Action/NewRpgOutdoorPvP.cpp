@@ -23,10 +23,9 @@ bool NewRpgOutdoorPvpAction::Execute(Event event)
     OutdoorPvP::OPvPCapturePointMap const& capturePointMap = outdoorPvP->GetCapturePoints();
 
     NewRpgInfo& info = botAI->rpgInfo;
-    auto* dataPtr = std::get_if<NewRpgInfo::OutdoorPvP>(&info.data);
-    if (!dataPtr)
+    if (info.status != RPG_OUTDOOR_PVP)
         return false;
-    auto& data = *dataPtr;
+    auto& data = info.outdoor_pvp;
     // Re-resolve stored spawn ID from the capture point map each tick (avoids dangling pointers)
     OPvPCapturePoint* objective = nullptr;
     if (data.capturePointSpawnId && !capturePointMap.empty())

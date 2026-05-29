@@ -11,6 +11,10 @@
 
 #include "Common.h"
 
+#define sPlayerbotTextMgr PlayerbotTextMgr::instance()
+#define BOT_TEXT1(name) sPlayerbotTextMgr.GetBotText(name)
+#define BOT_TEXT2(name, replace) sPlayerbotTextMgr.GetBotText(name, replace)
+
 struct BotTextEntry
 {
     BotTextEntry(std::string name, std::map<uint32, std::string> text, uint32 say_type, uint32 reply_type)

@@ -9,6 +9,7 @@
 
 #include "CreatureAI.h"
 #include "ItemVisitors.h"
+#include "NewRpgInfo.h"
 #include "LastSpellCastValue.h"
 #include "LootObjectStack.h"
 #include "ObjectGuid.h"
@@ -219,6 +220,13 @@ bool NoTargetTrigger::IsActive()
     }
     catch (...) {
     }
+
+    // Don't attack if performing critical RPG activities
+    if (botAI->rpgInfo.status == RPG_WANDER_NPC)
+        return false;
+
+    if (botAI->rpgInfo.status == RPG_GO_CAMP)
+        return false;
 
     return true;
 }

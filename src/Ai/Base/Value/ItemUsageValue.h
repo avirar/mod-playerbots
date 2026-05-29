@@ -14,11 +14,7 @@ class Player;
 class PlayerbotAI;
 
 struct ItemTemplate;
-struct ParsedItemUsage
-{
-    uint32 itemId = 0;
-    int32 randomPropertyId = 0;
-};
+
 enum ItemUsage : uint32
 {
     ITEM_USAGE_NONE = 0,
@@ -46,37 +42,25 @@ public:
 
     ItemUsage Calculate() override;
 
-protected:
-    ItemUsage QueryItemUsageForEquip(ItemTemplate const* proto, int32 randomPropertyId = 0);
-    ItemUsage QueryItemUsageForAmmo(ItemTemplate const* proto);
-    ParsedItemUsage GetItemIdFromQualifier();
-
 private:
+    ItemUsage QueryItemUsageForEquip(ItemTemplate const* proto, int32 randomPropertyId = 0);
     uint32 GetSmallestBagSize();
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
+    bool IsPlayerCastItemNeededForActiveQuests(Player* player, ItemTemplate const* proto, uint32 spellId);
+    bool DoesKeyUnlockQuestChest(Player* player, ItemTemplate const* proto);
     bool IsItemNeededForSkill(ItemTemplate const* proto);
     bool IsItemUsefulForSkill(ItemTemplate const* proto);
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);
     bool HasItemsNeededForSpell(uint32 spellId, ItemTemplate const* proto);
     Item* CurrentItem(ItemTemplate const* proto);
     float CurrentStacks(ItemTemplate const* proto);
-    float BetterStacks(ItemTemplate const* proto, std::string const usageType = "");
+    float BetterStacks(ItemTemplate const* proto, std::string const& usageType = "");
 
 public:
     static std::vector<uint32> SpellsUsingItem(uint32 itemId, Player* bot);
     static bool SpellGivesSkillUp(uint32 spellId, Player* bot);
 
     static std::string const GetConsumableType(ItemTemplate const* proto, bool hasMana);
-};
-
-class ItemUpgradeValue : public ItemUsageValue
-{
-public:
-    ItemUpgradeValue(PlayerbotAI* botAI, std::string const name = "item upgrade") : ItemUsageValue(botAI, name)
-    {
-    }
-
-    ItemUsage Calculate() override;
 };
 
 #endif
