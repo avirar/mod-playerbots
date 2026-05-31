@@ -6,12 +6,15 @@
 #include "LootAction.h"
 
 #include "ChatHelper.h"
+#include <iomanip>
+#include <sstream>
 #include "Event.h"
 #include "GuildMgr.h"
 #include "GuildTaskMgr.h"
 #include "ItemUsageValue.h"
 #include "LootObjectStack.h"
 #include "LootStrategyValue.h"
+#include "LootMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
@@ -99,7 +102,25 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
     Creature* creature = botAI->GetCreature(lootObject.guid);
     if (creature && bot->GetDistance(creature) > LOOT_INTERACTION_DISTANCE)
+    {
+        LOG_DEBUG("playerbots", "DoLoot: Creature {} too far ({:.1f} > {})",
+            creature->GetEntry(), bot->GetDistance(creature), LOOT_INTERACTION_DISTANCE);
         return false;
+    }
+
+    // Debug: log entry for gameobject path
+    GameObject* dbgGo = botAI->GetGameObject(lootObject.guid);
+    if (dbgGo && !creature)
+    {
+        LOG_DEBUG("playerbots", "DoLoot: GO {} dist={:.1f} state={} flags={} lootSkill={} reqItem={}",
+            dbgGo->GetEntry(), bot->GetDistance(dbgGo),
+            uint32(dbgGo->GetGoState()), uint32(dbgGo->GetGameObjectFlags()),
+            lootObject.skillId, lootObject.reqItem);
+    }
+    else if (!dbgGo && !creature)
+    {
+        LOG_DEBUG("playerbots", "DoLoot: Object not found (GUID: {})", lootObject.guid.ToString());
+    }
 
     // Dismount if the bot is mounted
     if (bot->IsMounted())
@@ -143,19 +164,59 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
+    LOG_DEBUG("playerbots", "DoLoot: go={} for GO entry {}", go ? "valid" : "NULL", go ? go->GetEntry() : 0);
+
     if (go && bot->GetDistance(go) > LOOT_INTERACTION_DISTANCE)
+    {
+        LOG_DEBUG("playerbots", "DoLoot: GO {} too far ({:.1f} > {})",
+            go->GetEntry(), bot->GetDistance(go), LOOT_INTERACTION_DISTANCE);
         return false;
+    }
 
     if (go && (go->GetGoState() != GO_STATE_READY))
+    {
+        LOG_DEBUG("playerbots", "DoLoot: GO {} not ready (state={})",
+            go->GetEntry(), uint32(go->GetGoState()));
         return false;
+    }
 
-    // This prevents dungeon chests like Tribunal Chest (Halls of Stone) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND))
-        return false;
+    if (!go)
+    {
+        LOG_DEBUG("playerbots", "DoLoot: go is NULL, skipping to GetOpeningSpell");
+    }
 
-    // This prevents raid chests like Gunship Armory (ICC) from being ninja'd by the bots
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE))
-        return false;
+    // Prevent bot from looting chests that are unlootable (e.g. Gunship Armory before completing
+    // the event) or dungeon chests that require specific conditions (e.g. Tribunal Chest in
+    // Halls of Stone). Allow looting if the bot has a quest that requires this chest
+    // (e.g. Milly's Harvest with LOCKTYPE_OPEN_KNEELING).
+    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND | GO_FLAG_NOT_SELECTABLE))
+    {
+        bool canLootForQuest = false;
+
+        if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST || go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            uint32 questId = 0;
+            uint32 lootId = go->GetGOInfo()->GetLootId();
+
+            if (go->GetGoType() == GAMEOBJECT_TYPE_CHEST)
+                questId = go->GetGOInfo()->chest.questId;
+            else if (go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                questId = go->GetGOInfo()->goober.questId;
+
+            if ((questId && bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE) ||
+                LootTemplates_Gameobject.HaveQuestLootForPlayer(lootId, bot))
+            {
+                canLootForQuest = true;
+            }
+        }
+
+        if (!canLootForQuest)
+        {
+            LOG_DEBUG("playerbots", "DoLoot: GO {} blocked by INTERACT_COND/NOT_SELECTABLE (no quest reason)",
+                go->GetEntry());
+            return false;
+        }
+    }
 
     if (lootObject.skillId == SKILL_MINING)
         return botAI->HasSkill(SKILL_MINING) ? botAI->CastSpell(MINING, bot) : false;
@@ -228,10 +289,22 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     uint32 spellId = GetOpeningSpell(lootObject);
+    LOG_DEBUG("playerbots", "DoLoot: GetOpeningSpell returned {} (go={})", spellId, go ? "valid" : "NULL");
     if (!spellId)
+    {
+        if (GameObject* go = botAI->GetGameObject(lootObject.guid))
+            LOG_DEBUG("playerbots", "DoLoot: GetOpeningSpell returned 0 for GO {} (lock {})",
+                go->GetEntry(), go->GetGOInfo()->GetLockId());
         return false;
+    }
 
-    return botAI->CastSpell(spellId, bot);
+    bool castResult = botAI->CastSpell(spellId, go);
+    if (!castResult)
+        LOG_DEBUG("playerbots", "DoLoot: CastSpell({}) failed for GO {} (lock {})",
+            spellId, go ? go->GetEntry() : 0, go ? go->GetGOInfo()->GetLockId() : 0);
+    else
+        LOG_DEBUG("playerbots", "DoLoot: CastSpell({}) succeeded for GO {}", spellId, go ? go->GetEntry() : 0);
+    return castResult;
 }
 
 uint32 OpenLootAction::GetOpeningSpell(LootObject& lootObject)
@@ -309,6 +382,9 @@ bool OpenLootAction::CanOpenLock(LootObject& /*lootObject*/, SpellInfo const* sp
 {
     for (uint8 effIndex = 0; effIndex <= EFFECT_2; effIndex++)
     {
+        if (spellInfo->Effects[effIndex].Effect == 0)
+            continue;
+
         if (spellInfo->Effects[effIndex].Effect != SPELL_EFFECT_OPEN_LOCK &&
             spellInfo->Effects[effIndex].Effect != SPELL_EFFECT_SKINNING)
             return false;
@@ -544,8 +620,30 @@ bool StoreLootAction::Execute(Event event)
 
                 if (totalfree == 0)
                 {
-                    itemsSkipped++;
-                    continue;
+                    uint32 maxStack = proto->GetMaxStackSize();
+                    if (maxStack <= 1)
+                    {
+                        itemsSkipped++;
+                        continue;
+                    }
+
+                    std::vector<Item*> found = parseItems(chat->FormatItem(proto));
+                    bool hasFreeStack = false;
+
+                    for (auto stack : found)
+                    {
+                        if (stack->GetCount() + itemcount <= maxStack)
+                        {
+                            hasFreeStack = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasFreeStack)
+                    {
+                        itemsSkipped++;
+                        continue;
+                    }
                 }
             }
             else
@@ -563,7 +661,7 @@ bool StoreLootAction::Execute(Event event)
 
                 for (auto stack : found)
                 {
-                    if (stack->GetCount() + itemcount < maxStack)
+                    if (stack->GetCount() + itemcount <= maxStack)
                     {
                         hasFreeStack = true;
                         break;
