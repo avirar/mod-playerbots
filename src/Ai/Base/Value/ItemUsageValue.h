@@ -15,6 +15,12 @@ class PlayerbotAI;
 
 struct ItemTemplate;
 
+struct ParsedItemUsage
+{
+    uint32 itemId = 0;
+    int32 randomPropertyId = 0;
+};
+
 enum ItemUsage : uint32
 {
     ITEM_USAGE_NONE = 0,
@@ -42,8 +48,12 @@ public:
 
     ItemUsage Calculate() override;
 
-private:
+protected:
     ItemUsage QueryItemUsageForEquip(ItemTemplate const* proto, int32 randomPropertyId = 0);
+    ItemUsage QueryItemUsageForAmmo(ItemTemplate const* proto);
+    ParsedItemUsage GetItemIdFromQualifier();
+
+private:
     uint32 GetSmallestBagSize();
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
     bool IsPlayerCastItemNeededForActiveQuests(Player* player, ItemTemplate const* proto, uint32 spellId);
@@ -61,6 +71,16 @@ public:
     static bool SpellGivesSkillUp(uint32 spellId, Player* bot);
 
     static std::string const GetConsumableType(ItemTemplate const* proto, bool hasMana);
+};
+
+class ItemUpgradeValue : public ItemUsageValue
+{
+public:
+    ItemUpgradeValue(PlayerbotAI* botAI, std::string const name = "item upgrade") : ItemUsageValue(botAI, name)
+    {
+    }
+
+    ItemUsage Calculate() override;
 };
 
 #endif
