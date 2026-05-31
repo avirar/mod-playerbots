@@ -217,6 +217,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (!proto)
                     continue;
 
+                // Items like Cactus Apple, Moonpetal Lily, Hyacinth Mushroom appear only in the
+                // loot template, not in gameobject_questitem. Check here so the INTERACT_COND
+                // gate and the "only unneeded quest items" filter let the bot through.
+                if (IsNeededForQuest(bot, itemId))
+                {
+                    hasNeededQuestItem = true;
+                    break;
+                }
+
                 if (proto->Class != ITEM_CLASS_QUEST)
                 {
                     onlyHasQuestItems = false;
@@ -259,6 +268,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         const ItemTemplate* refProto = sObjectMgr->GetItemTemplate(refItemId);
                         if (!refProto)
                             continue;
+
+                        // Check if this referenced item is needed for an active quest
+                        if (IsNeededForQuest(bot, refItemId))
+                        {
+                            hasNeededQuestItem = true;
+                            break;
+                        }
 
                         if (refProto->Class != ITEM_CLASS_QUEST)
                         {
