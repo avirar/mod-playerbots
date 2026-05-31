@@ -14,11 +14,13 @@ class Player;
 class PlayerbotAI;
 
 struct ItemTemplate;
+
 struct ParsedItemUsage
 {
     uint32 itemId = 0;
     int32 randomPropertyId = 0;
 };
+
 enum ItemUsage : uint32
 {
     ITEM_USAGE_NONE = 0,

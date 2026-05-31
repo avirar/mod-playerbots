@@ -223,6 +223,7 @@ public:
         creators["stance"] = &ValueContext::stance;
         creators["item usage"] = &ValueContext::item_usage;
         creators["item upgrade"] = &ValueContext::item_upgrade;
+
         creators["speed"] = &ValueContext::speed;
         creators["last said"] = &ValueContext::last_said;
         creators["last emote"] = &ValueContext::last_emote;
