@@ -5,6 +5,8 @@
 #include "LastMovementValue.h"
 #include "MovementActions.h"
 #include "NewRpgInfo.h"
+
+struct CachedNpc;
 #include "NewRpgStrategy.h"
 #include "Object.h"
 #include "ObjectDefines.h"
@@ -75,6 +77,21 @@ protected:
     bool SearchForActualQuestTargets(uint32 questId);
     bool GetRandomPointInPolygon(const std::vector<QuestPOIPoint>& points, float& outX, float& outY);
     bool IsWithinPOIBoundary(float x, float y, float tolerance = 40.0f);
+
+    /* WANDER NPC CACHE + DISTRICT */
+    bool IsInCapitalCity(Player* bot);
+    uint32 GetCurrentDistrictId(Player* bot);
+    WorldPosition GetDistrictCenter(Player* bot, uint32 areaId);
+    void UpdateNpcCache();
+    float CalculateNpcUtility(Creature* creature);
+    bool ShouldVisit(ObjectGuid guid, CachedNpc& npc);
+    ObjectGuid SelectBestNpcFromCache();
+    uint32 GetNextUnvisitedDistrict();
+    bool IsDistrictExhausted(uint32 areaId);
+    void EarlyRemoveDistrict(uint32 areaId);
+    bool DiscoverFlightPath(Creature* flightMaster);
+    uint32 GetTaxiNodeForCreature(Creature* creature);
+    bool HasUsefulVendorItems(Creature* creature);
 
 protected:
     /* FOR MOVE FAR */

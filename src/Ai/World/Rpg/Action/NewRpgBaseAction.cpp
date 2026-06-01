@@ -1,4 +1,5 @@
 #include "NewRpgBaseAction.h"
+#include "PossibleRpgTargetsValue.h"
 
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
@@ -1424,7 +1425,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     
     for (ObjectGuid& guid : possibleTargets)
     {
-        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+        if (botAI->rpgInfo.ignoredRpgNpcs.count(guid))
             continue;  // Skip recently visited
 
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
@@ -1482,7 +1483,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
 
     for (ObjectGuid& guid : possibleGameObjects)
     {
-        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+        if (botAI->rpgInfo.ignoredRpgNpcs.count(guid))
             continue;  // Skip recently visited
 
         WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
@@ -1582,7 +1583,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
         // Do a second pass specifically for quest objective NPCs
         for (ObjectGuid& guid : possibleTargets)
         {
-            if (botAI->rpgInfo.recentNpcVisits.count(guid))
+            if (botAI->rpgInfo.ignoredRpgNpcs.count(guid))
                 continue;
 
             Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
@@ -1642,7 +1643,7 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
     
     for (ObjectGuid& guid : possibleTargets)
     {
-        if (botAI->rpgInfo.recentNpcVisits.count(guid))
+        if (botAI->rpgInfo.ignoredRpgNpcs.count(guid))
             continue;  // Skip recently visited
 
         Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
@@ -2960,7 +2961,7 @@ bool NewRpgBaseAction::HasQuestItemInDropTable(uint32 questId, uint32 itemId)
     Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
     if (!quest)
         return false;
-        
+
     // Check ItemDrop fields
     for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
     {
@@ -2968,12 +2969,558 @@ bool NewRpgBaseAction::HasQuestItemInDropTable(uint32 questId, uint32 itemId)
         {
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has item {} in ItemDrop[{}]", 
-                         bot->GetName(), questId, itemId, i);
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has item {} in ItemDrop[{}]",
+                          bot->GetName(), questId, itemId, i);
             }
             return true;
         }
     }
 
+    return false;
+}
+
+/* ==================== WANDER NPC CACHE + DISTRICT ==================== */
+
+bool NewRpgBaseAction::IsInCapitalCity(Player* bot)
+{
+    uint32 areaId = bot->GetAreaId();
+    while (areaId)
+    {
+        AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
+        if (!area)
+            break;
+        if (area->flags & AREA_FLAG_CAPITAL)
+            return true;
+        areaId = area->zone;
+    }
+    return false;
+}
+
+uint32 NewRpgBaseAction::GetCurrentDistrictId(Player* bot)
+{
+    if (IsInCapitalCity(bot))
+        return bot->GetAreaId();
+    return bot->GetZoneId();
+}
+
+WorldPosition NewRpgBaseAction::GetDistrictCenter(Player* bot, uint32 areaId)
+{
+    // Try TravelMgr hubs first
+    std::vector<WorldLocation> hubs = sTravelMgr.GetTravelHubs(bot);
+    WorldPosition center;
+    float sumX = 0, sumY = 0, sumZ = 0;
+    uint32 count = 0;
+    for (WorldLocation const& loc : hubs)
+    {
+        WorldPosition pos(loc);
+        if (pos.GetMapId() == bot->GetMapId())
+        {
+            uint32 posAreaId = pos.getAreaId();
+            if (posAreaId == areaId)
+            {
+                sumX += pos.GetPositionX();
+                sumY += pos.GetPositionY();
+                sumZ += pos.GetPositionZ();
+                ++count;
+            }
+        }
+    }
+    if (count > 0)
+    {
+        center = WorldPosition(bot->GetMapId(), sumX / count, sumY / count, sumZ / count);
+        return center;
+    }
+
+    // Fallback: locs per level
+    auto const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
+    count = 0;
+    sumX = sumY = sumZ = 0;
+    for (WorldLocation const& loc : locs)
+    {
+        WorldPosition pos(loc);
+        if (pos.GetMapId() == bot->GetMapId() && pos.getAreaId() == areaId)
+        {
+            sumX += pos.GetPositionX();
+            sumY += pos.GetPositionY();
+            sumZ += pos.GetPositionZ();
+            ++count;
+        }
+    }
+    if (count > 0)
+    {
+        center = WorldPosition(bot->GetMapId(), sumX / count, sumY / count, sumZ / count);
+        return center;
+    }
+
+    // Fallback: current position
+    return WorldPosition(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+}
+
+void NewRpgBaseAction::UpdateNpcCache()
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    info.cachedNpcs.clear();
+
+    uint32 visibleCount = 0;
+    uint32 travelMgrCount = 0;
+
+    // Add visible NPCs
+    GuidVector nearbyCreatures = AI_VALUE(GuidVector, "possible new rpg targets");
+    if (nearbyCreatures.empty())
+        nearbyCreatures = AI_VALUE(GuidVector, "possible new rpg targets no los");
+
+    for (ObjectGuid const& guid : nearbyCreatures)
+    {
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld())
+            continue;
+
+        // Immediately ignore vendors with no useful items
+        if (creature->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK) && !HasUsefulVendorItems(creature))
+        {
+            info.ignoredRpgNpcs[guid] = getMSTime();
+            continue;
+        }
+
+        float utility = CalculateNpcUtility(creature);
+        if (utility < sPlayerbotAIConfig.rpgMinNpcUtility)
+            continue;
+
+        CachedNpc npc;
+        npc.guid = guid;
+        npc.pos = WorldPosition(creature);
+        npc.areaId = creature->GetAreaId();
+        npc.utility = utility;
+        npc.lastConsidered = 0;
+        npc.fromTravelMgr = false;
+
+        // Check if flight master
+        if (creature->HasNpcFlag(UNIT_NPC_FLAG_FLIGHTMASTER))
+        {
+            npc.isFlightMaster = true;
+            npc.taxiNodeId = GetTaxiNodeForCreature(creature);
+            npc.taxiNodeKnown = npc.taxiNodeId ? bot->m_taxi.IsTaximaskNodeKnown(npc.taxiNodeId) : false;
+            if (!npc.taxiNodeKnown && npc.taxiNodeId)
+                npc.utility = std::max(npc.utility, 0.88f);
+        }
+
+        info.cachedNpcs.push_back(npc);
+        ++visibleCount;
+    }
+
+    // Add TravelMgr flight master entries not already in cache
+    TravelMgr::FlightMasterInfo const* nearestFM = sTravelMgr.GetNearestFlightMasterInfo(bot);
+    if (nearestFM)
+    {
+        float dist = bot->GetDistance(nearestFM->pos);
+        if (dist <= 500.0f)
+        {
+            bool alreadyCached = false;
+            for (CachedNpc const& cached : info.cachedNpcs)
+            {
+                if (cached.pos.GetMapId() == nearestFM->pos.GetMapId() &&
+                    std::sqrt((cached.pos.GetPositionX() - nearestFM->pos.GetPositionX()) * (cached.pos.GetPositionX() - nearestFM->pos.GetPositionX()) +
+                              (cached.pos.GetPositionY() - nearestFM->pos.GetPositionY()) * (cached.pos.GetPositionY() - nearestFM->pos.GetPositionY())) < 10.0f)
+                {
+                    alreadyCached = true;
+                    break;
+                }
+            }
+            if (!alreadyCached)
+            {
+                CachedNpc npc;
+                npc.guid = ObjectGuid::Create<HighGuid::Unit>(nearestFM->templateEntry, nearestFM->dbGuid);
+                npc.pos = nearestFM->pos;
+                npc.areaId = nearestFM->zoneId;
+                npc.fromTravelMgr = true;
+                npc.isFlightMaster = true;
+                npc.taxiNodeId = nearestFM->taxiNodeId;
+                npc.taxiNodeKnown = npc.taxiNodeId ? bot->m_taxi.IsTaximaskNodeKnown(npc.taxiNodeId) : false;
+                npc.utility = npc.taxiNodeKnown ? 0.35f : 0.88f;
+                npc.lastConsidered = 0;
+
+                info.cachedNpcs.push_back(npc);
+                ++travelMgrCount;
+            }
+        }
+    }
+
+    info.lastCacheUpdate = getMSTime();
+    info.cachedDistrictId = GetCurrentDistrictId(bot);
+
+    bool debug = botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.rpgDebugDistrictTracking;
+    if (debug)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Cache rebuilt: {} visible + {} TravelMgr NPCs (total {})",
+                  bot->GetName(), visibleCount, travelMgrCount, info.cachedNpcs.size());
+    }
+}
+
+float NewRpgBaseAction::CalculateNpcUtility(Creature* creature)
+{
+    if (!creature || !creature->IsInWorld())
+        return 0.0f;
+
+    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+
+    // Quest accept/reward
+    if (bot->CanInteractWithQuestGiver(creature))
+    {
+        bot->PrepareQuestMenu(creature->GetGUID());
+        const QuestMenu& menu = bot->PlayerTalkClass->GetQuestMenu();
+        if (!menu.Empty())
+        {
+            for (uint8 idx = 0; idx < menu.GetMenuItemCount(); ++idx)
+            {
+                const QuestMenuItem& item = menu.GetItem(idx);
+                QuestStatus status = bot->GetQuestStatus(item.QuestId);
+                if (status == QUEST_STATUS_NONE)
+                    return 1.0f; // Quest available to accept
+                if (status == QUEST_STATUS_COMPLETE)
+                    return 1.0f; // Quest available to turn in
+            }
+        }
+    }
+
+    // Quest objective NPC
+    if (IsRequiredQuestObjectiveNPC(creature))
+        return 0.95f;
+
+    // Trainer checks
+    Trainer::Trainer const* trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
+    if (trainerData && trainerData->IsTrainerValidForPlayer(bot))
+    {
+        Trainer::Type tType = trainerData->GetTrainerType();
+        bool hasGreenSpells = false;
+        for (Trainer::Spell const& tSpell : trainerData->GetSpells())
+        {
+            if (trainerData->CanTeachSpell(bot, &tSpell))
+            {
+                hasGreenSpells = true;
+                break;
+            }
+        }
+        if (hasGreenSpells)
+        {
+            switch (tType)
+            {
+                case Trainer::Type::Mount: return 0.9f;
+                case Trainer::Type::Class: return 0.85f;
+                case Trainer::Type::Pet: return 0.8f;
+                case Trainer::Type::Tradeskill:
+                {
+                    static TrainerClassifier classifier;
+                    if (classifier.IsValidSecondaryTrainer(bot, creature))
+                        return 0.7f;
+                    return 0.0f;
+                }
+                default: return 0.1f;
+            }
+        }
+    }
+
+    // Flight master
+    if (npcFlags & UNIT_NPC_FLAG_FLIGHTMASTER)
+    {
+        uint32 nodeId = GetTaxiNodeForCreature(creature);
+        if (nodeId && !bot->m_taxi.IsTaximaskNodeKnown(nodeId))
+            return 0.88f;
+        return 0.35f;
+    }
+
+    // Vendor (higher utility when bags are full)
+    if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
+    {
+        if (!HasUsefulVendorItems(creature))
+            return 0.0f;
+
+        uint32 totalSlots = 0;
+        uint32 usedSlots = 0;
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+        {
+            if (Item* bag = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+            {
+                totalSlots += MAX_BAG_SIZE;
+                for (uint8 j = 0; j < MAX_BAG_SIZE; ++j)
+                    if (bot->GetItemByPos(i, j))
+                        ++usedSlots;
+            }
+        }
+        float bagUsage = totalSlots > 0 ? (float)usedSlots / totalSlots : 0.0f;
+        if (bagUsage > 0.5f)
+            return 0.6f;
+        return 0.2f;
+    }
+
+    // Repair
+    if (npcFlags & UNIT_NPC_FLAG_REPAIR)
+    {
+        // Simple heuristic: check if any equipment has durability below 50%
+        bool needsRepair = false;
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        {
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            {
+                if (item->IsInBag() && item->GetTemplate()->MaxDurability > 0)
+                {
+                    uint32 curDur = item->GetUInt32Value(ITEM_FIELD_DURATION);
+                    if (curDur < item->GetTemplate()->MaxDurability / 2)
+                    {
+                        needsRepair = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (needsRepair)
+            return 0.55f;
+        return 0.15f;
+    }
+
+    // Banker / innkeeper
+    if (npcFlags & (UNIT_NPC_FLAG_BANKER | UNIT_NPC_FLAG_INNKEEPER))
+        return 0.4f;
+
+    return 0.1f;
+}
+
+bool NewRpgBaseAction::ShouldVisit(ObjectGuid guid, CachedNpc& npc)
+{
+    // Already visited recently?
+    if (botAI->rpgInfo.ignoredRpgNpcs.count(guid))
+        return false;
+
+    // Already considered this tick?
+    if (npc.lastConsidered == getMSTime() / 1000)
+        return false;
+
+    // In exhausted district?
+    if (IsDistrictExhausted(npc.areaId))
+        return false;
+
+    // Meets utility threshold?
+    if (npc.utility < sPlayerbotAIConfig.rpgMinNpcUtility)
+        return false;
+
+    return true;
+}
+
+ObjectGuid NewRpgBaseAction::SelectBestNpcFromCache()
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    ObjectGuid bestGuid;
+    float bestUtility = sPlayerbotAIConfig.rpgMinNpcUtility;
+    float bestDist = FLT_MAX;
+
+    for (CachedNpc& npc : info.cachedNpcs)
+    {
+        if (!ShouldVisit(npc.guid, npc))
+            continue;
+
+        npc.lastConsidered = getMSTime() / 1000;
+
+        float dist = npc.fromTravelMgr ?
+            bot->GetDistance(npc.pos) :
+            (npc.pos.GetMapId() == bot->GetMapId() ? bot->GetDistance2d(npc.pos.GetPositionX(), npc.pos.GetPositionY()) : FLT_MAX);
+
+        if (npc.utility > bestUtility || (npc.utility == bestUtility && dist < bestDist))
+        {
+            bestUtility = npc.utility;
+            bestDist = dist;
+            bestGuid = npc.guid;
+        }
+    }
+
+    return bestGuid;
+}
+
+uint32 NewRpgBaseAction::GetNextUnvisitedDistrict()
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+
+    // Collect all districts from cache
+    std::unordered_map<uint32, float> districtCenters; // areaId -> avg distance
+    std::unordered_map<uint32, uint32> districtCounts;
+
+    for (CachedNpc const& npc : info.cachedNpcs)
+    {
+        float dist = npc.fromTravelMgr ?
+            bot->GetDistance(npc.pos) : FLT_MAX;
+        if (districtCenters.count(npc.areaId))
+        {
+            districtCenters[npc.areaId] = std::min(districtCenters[npc.areaId], dist);
+            districtCounts[npc.areaId]++;
+        }
+        else
+        {
+            districtCenters[npc.areaId] = dist;
+            districtCounts[npc.areaId] = 1;
+        }
+    }
+
+    // Find nearest unvisited district
+    uint32 bestDistrict = 0;
+    float bestDist = FLT_MAX;
+
+    for (auto const& [areaId, dist] : districtCenters)
+    {
+        if (areaId == info.currentDistrictId)
+            continue;
+
+        // Check if in recent visits
+        bool recentlyVisited = false;
+        for (DistrictVisit const& dv : info.recentDistrictVisits)
+        {
+            if (dv.areaId == areaId)
+            {
+                recentlyVisited = true;
+                break;
+            }
+        }
+        if (recentlyVisited)
+            continue;
+
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            bestDistrict = areaId;
+        }
+    }
+
+    return bestDistrict;
+}
+
+bool NewRpgBaseAction::IsDistrictExhausted(uint32 areaId)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+
+    // Check if district is in recent visits
+    for (DistrictVisit const& dv : info.recentDistrictVisits)
+    {
+        if (dv.areaId == areaId)
+        {
+            return dv.npcsVisited >= std::min(dv.npcsTotal, sPlayerbotAIConfig.rpgDistrictExhaustThreshold);
+        }
+    }
+
+    // Check current district visit
+    DistrictVisit* current = info.GetCurrentDistrictVisit();
+    if (current->areaId == areaId)
+    {
+        // Count total NPCs in this district from cache
+        uint32 totalInDistrict = 0;
+        for (CachedNpc const& npc : info.cachedNpcs)
+        {
+            if (npc.areaId == areaId && npc.utility >= sPlayerbotAIConfig.rpgMinNpcUtility)
+                ++totalInDistrict;
+        }
+        current->npcsTotal = std::max(current->npcsTotal, totalInDistrict);
+        return current->npcsVisited >= std::min(current->npcsTotal, sPlayerbotAIConfig.rpgDistrictExhaustThreshold);
+    }
+
+    return false;
+}
+
+void NewRpgBaseAction::EarlyRemoveDistrict(uint32 areaId)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+    info.recentDistrictVisits.erase(
+        std::remove_if(info.recentDistrictVisits.begin(), info.recentDistrictVisits.end(),
+            [areaId](DistrictVisit const& dv) { return dv.areaId == areaId; }),
+        info.recentDistrictVisits.end());
+}
+
+bool NewRpgBaseAction::DiscoverFlightPath(Creature* flightMaster)
+{
+    if (!flightMaster || !flightMaster->IsInWorld())
+        return false;
+
+    uint32 nodeId = GetTaxiNodeForCreature(flightMaster);
+    if (!nodeId)
+        return false;
+
+    if (bot->m_taxi.IsTaximaskNodeKnown(nodeId))
+        return false; // Already known
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Discovering flight path at node {} ({})",
+                  bot->GetName(), nodeId, flightMaster->GetName());
+    }
+
+    bot->GetSession()->SendLearnNewTaxiNode(flightMaster);
+
+    // Update cache
+    NewRpgInfo& info = botAI->rpgInfo;
+    for (CachedNpc& npc : info.cachedNpcs)
+    {
+        if (npc.guid == flightMaster->GetGUID())
+        {
+            npc.taxiNodeKnown = true;
+            npc.utility = 0.35f; // Lower utility now that node is known
+            break;
+        }
+    }
+
+    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} Flight path node {} learned successfully",
+                  bot->GetName(), nodeId);
+    }
+
+    return true;
+}
+
+uint32 NewRpgBaseAction::GetTaxiNodeForCreature(Creature* creature)
+{
+    if (!creature || !creature->IsInWorld())
+        return 0;
+
+    uint32 nodeId = sObjectMgr->GetNearestTaxiNode(
+        creature->GetPositionX(), creature->GetPositionY(), creature->GetPositionZ(),
+        creature->GetMapId(), bot->GetTeamId());
+
+    return nodeId;
+}
+
+bool NewRpgBaseAction::HasUsefulVendorItems(Creature* creature)
+{
+    if (!creature || !creature->IsInWorld())
+        return false;
+
+    VendorItemData const* vendorData = creature->GetVendorItems();
+    if (!vendorData || vendorData->m_items.empty())
+        return false;
+
+    for (VendorItemList::const_iterator itr = vendorData->m_items.begin();
+         itr != vendorData->m_items.end(); ++itr)
+    {
+        ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", (*itr)->item);
+
+        // Whitelist: only consider actually useful item types
+        // EQUIP - can equip (empty slot or broken current)
+        // REPLACE - stat upgrade over current gear
+        // BROKEN_EQUIP - replacement for broken item in bags
+        // QUEST - needed for active quest
+        // SKILL - needed for skill reagents
+        // USE - useful consumable or key
+        // AMMO - ammo for ranged weapons
+        // Exclude: BAD_EQUIP (zero stat value), GUILD_TASK (niche),
+        //          DISENCHANT (material only), AH (auction value),
+        //          KEEP (already have enough), VENDOR (trash)
+        switch (usage)
+        {
+            case ITEM_USAGE_EQUIP:
+            case ITEM_USAGE_REPLACE:
+            case ITEM_USAGE_BROKEN_EQUIP:
+            case ITEM_USAGE_QUEST:
+            case ITEM_USAGE_SKILL:
+            case ITEM_USAGE_USE:
+            case ITEM_USAGE_AMMO:
+                return true;
+            default:
+                break;
+        }
+    }
     return false;
 }

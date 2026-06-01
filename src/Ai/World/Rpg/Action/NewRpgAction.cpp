@@ -275,64 +275,226 @@ bool NewRpgWanderNpcAction::Execute(Event event)
 {
     NewRpgInfo& info = botAI->rpgInfo;
 
-    if (!info.wander_npc.npcOrGo)
+    bool debug = botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.rpgDebugDistrictTracking;
+
+    // --- 1. District change detection ---
+    uint32 newDistrictId = GetCurrentDistrictId(bot);
+    if (newDistrictId != info.currentDistrictId)
     {
-        // No npc can be found, switch to IDLE
-        ObjectGuid npcOrGo = ChooseNpcOrGameObjectToInteract();
-        if (npcOrGo.IsEmpty())
+        // Record old district visit when leaving
+        if (info.currentDistrictId != 0)
         {
+            DistrictVisit* oldVisit = info.GetCurrentDistrictVisit();
+            if (oldVisit)
+            {
+                info.RecordDistrictVisit(info.currentDistrictId, oldVisit->npcsVisited, oldVisit->npcsTotal);
+                if (debug)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Left district {} (visited {} NPCs)",
+                              bot->GetName(), info.currentDistrictId, oldVisit->npcsVisited);
+                }
+            }
+        }
+
+        // Reset for new district
+        info.currentDistrictId = newDistrictId;
+        info.currentDistrictCenter = GetDistrictCenter(bot, newDistrictId);
+        info.cachedDistrictId = 0; // Force cache rebuild
+        info.lastCacheUpdate = 0;
+
+        if (debug)
+        {
+            const AreaTableEntry* areaEntry = sAreaTableStore.LookupEntry(newDistrictId);
+            std::string districtName = areaEntry ? areaEntry->area_name[0] : "Unknown";
+            LOG_DEBUG("playerbots", "[New RPG] {} Entered district {} ({})",
+                      bot->GetName(), newDistrictId, districtName);
+        }
+    }
+
+    // --- 2. Cache management ---
+    if (GetMSTimeDiffToNow(info.lastCacheUpdate) > sPlayerbotAIConfig.rpgNpcCacheTTL ||
+        info.cachedDistrictId != info.currentDistrictId || info.cachedNpcs.empty())
+    {
+        UpdateNpcCache();
+    }
+
+    // Prune old visits
+    info.PruneOldVisits(30 * 60 * 1000); // 30 min
+    info.PruneDistrictVisits(sPlayerbotAIConfig.rpgDistrictCooldown, sPlayerbotAIConfig.rpgDistrictMaxVisits);
+
+    // --- 3. Select best NPC ---
+    if (info.wander_npc.npcOrGo.IsEmpty())
+    {
+        ObjectGuid targetGuid = SelectBestNpcFromCache();
+        if (targetGuid.IsEmpty())
+        {
+            // No useful NPCs in current district, try moving to another district
+            uint32 nextDistrict = GetNextUnvisitedDistrict();
+            if (nextDistrict != 0)
+            {
+                WorldPosition districtCenter = GetDistrictCenter(bot, nextDistrict);
+                if (debug)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Moving to district {} (center {:.1f},{:.1f})",
+                              bot->GetName(), nextDistrict, districtCenter.GetPositionX(), districtCenter.GetPositionY());
+                }
+                MoveFarTo(districtCenter);
+                return true;
+            }
+
+            // No more districts to explore, transition to IDLE
+            if (debug)
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} No useful NPCs remaining, transitioning to IDLE",
+                          bot->GetName());
+            }
             info.ChangeToIdle();
             return true;
         }
-        info.wander_npc.npcOrGo = npcOrGo;
+
+        info.wander_npc.npcOrGo = targetGuid;
         info.wander_npc.lastReach = 0;
+
+        // Find corresponding cache entry for debug
+        for (CachedNpc const& npc : info.cachedNpcs)
+        {
+            if (npc.guid == targetGuid)
+            {
+                if (debug)
+                {
+                    float dist = npc.fromTravelMgr ?
+                        bot->GetDistance(npc.pos) : bot->GetDistance2d(npc.pos.GetPositionX(), npc.pos.GetPositionY());
+                    LOG_DEBUG("playerbots", "[New RPG] {} Selected NPC (utility {:.2f}, dist {:.0f}yd)",
+                              bot->GetName(), npc.utility, dist);
+                }
+                break;
+            }
+        }
         return true;
     }
 
+    // --- 4. Move to NPC ---
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, info.wander_npc.npcOrGo);
 
-    // --- Step 1: Validate the target before moving ---
+    // Check if this is a TravelMgr entry (not in world)
+    bool isTravelMgrEntry = false;
+    for (CachedNpc const& npc : info.cachedNpcs)
+    {
+        if (npc.guid == info.wander_npc.npcOrGo && npc.fromTravelMgr)
+        {
+            isTravelMgrEntry = true;
+            if (!object || !object->IsInWorld())
+            {
+                // Move to cached position
+                if (bot->GetDistance(npc.pos) > INTERACTION_DISTANCE)
+                {
+                    return MoveFarTo(npc.pos);
+                }
+                // Close enough, try to find actual creature
+                GuidVector nearby = AI_VALUE(GuidVector, "possible new rpg targets");
+                for (ObjectGuid const& guid : nearby)
+                {
+                    Creature* c = ObjectAccessor::GetCreature(*bot, guid);
+                    if (c && c->IsInWorld() && c->GetDistance2d(npc.pos.GetPositionX(), npc.pos.GetPositionY()) < 15.0f)
+                    {
+                        object = c;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
     if (!object || !object->IsInWorld())
     {
-        // Target no longer exists, find a new one
+        if (!isTravelMgrEntry)
+        {
+            info.wander_npc.npcOrGo = ObjectGuid();
+            info.wander_npc.lastReach = 0;
+            return true;
+        }
+        // TravelMgr entry not found nearby, skip
+        info.ignoredRpgNpcs[info.wander_npc.npcOrGo] = getMSTime();
         info.wander_npc.npcOrGo = ObjectGuid();
         info.wander_npc.lastReach = 0;
         return true;
     }
 
-    // --- Step 2: Pre-validate trainers to avoid wasting time moving to unusable ones ---
-    Creature* creature = object->ToCreature();
-    Trainer::Trainer const* trainerData = creature ? sObjectMgr->GetTrainer(creature->GetEntry()) : nullptr;
-    if (creature && trainerData && trainerData->IsTrainerValidForPlayer(bot))
+    if (bot->GetDistance(object) > INTERACTION_DISTANCE)
     {
-        Trainer::Type trainerType = trainerData->GetTrainerType();
-        std::string trainerTypeName = "UNKNOWN";
-        switch (trainerType)
-        {
-            case Trainer::Type::Class: trainerTypeName = "CLASS"; break;
-            case Trainer::Type::Mount: trainerTypeName = "MOUNTS/RIDING"; break;
-            case Trainer::Type::Pet: trainerTypeName = "PETS"; break;
-            case Trainer::Type::Tradeskill: trainerTypeName = "TRADESKILLS"; break;
-        }
+        return MoveWorldObjectTo(info.wander_npc.npcOrGo);
+    }
 
-        // For profession trainers, check if we should skip them entirely
-        if (trainerType == Trainer::Type::Tradeskill)
+    // --- 5. Wait gate (NEW — fixes vendor spam) ---
+    if (info.wander_npc.lastReach && GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
+    {
+        if (debug)
         {
-            static TrainerClassifier classifier;
-            if (!classifier.IsValidSecondaryTrainer(bot, creature))
+            uint32 elapsed = GetMSTimeDiffToNow(info.wander_npc.lastReach) / 1000;
+            uint32 total = npcStayTime / 1000;
+            LOG_DEBUG("playerbots", "[New RPG] {} Vendor wait: skipping interactions ({}s/{}s)",
+                      bot->GetName(), elapsed, total);
+        }
+        return false;
+    }
+
+    bool interacted = false;
+    Creature* creature = object->ToCreature();
+
+    // --- 6. Interact ---
+
+    // 6a. Quest NPCs
+    if (bot->CanInteractWithQuestGiver(object))
+    {
+        InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
+        interacted = true;
+    }
+
+    // 6b. Flight master with unknown node
+    if (creature && creature->HasNpcFlag(UNIT_NPC_FLAG_FLIGHTMASTER))
+    {
+        uint32 nodeId = GetTaxiNodeForCreature(creature);
+        if (nodeId && !bot->m_taxi.IsTaximaskNodeKnown(nodeId))
+        {
+            DiscoverFlightPath(creature);
+            interacted = true;
+        }
+    }
+
+    // 6c. Get creature for NPC interaction
+    creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
+    if (!creature)
+    {
+        info.ignoredRpgNpcs[info.wander_npc.npcOrGo] = getMSTime();
+        info.wander_npc.npcOrGo = ObjectGuid();
+        info.wander_npc.lastReach = 0;
+        return true;
+    }
+
+    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
+
+    // 6d. Trainers
+    {
+        Trainer::Trainer const* trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
+        if (trainerData && trainerData->IsTrainerValidForPlayer(bot))
+        {
+            Trainer::Type tType = trainerData->GetTrainerType();
+
+            // Pre-validate tradeskill trainers
+            if (tType == Trainer::Type::Tradeskill)
             {
-                // Mark this NPC as recently visited to avoid re-selecting it immediately
-                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
-
-                // Reset and find a new target
-                info.wander_npc.npcOrGo = ObjectGuid();
-                info.wander_npc.lastReach = 0;
-                return true;
+                static TrainerClassifier classifier;
+                if (!classifier.IsValidSecondaryTrainer(bot, creature))
+                {
+                    info.ignoredRpgNpcs[creature->GetGUID()] = getMSTime();
+                    info.wander_npc.npcOrGo = ObjectGuid();
+                    info.wander_npc.lastReach = 0;
+                    return true;
+                }
             }
-        }
-        
-        // Check if this trainer has any learnable spells available
-        {
+
+            // Check for green spells
             bool hasGreenSpells = false;
             for (Trainer::Spell const& tSpell : trainerData->GetSpells())
             {
@@ -345,105 +507,28 @@ bool NewRpgWanderNpcAction::Execute(Event event)
 
             if (!hasGreenSpells)
             {
-
-                // Mark this NPC as recently visited to avoid re-selecting it
-                info.recentNpcVisits[creature->GetGUID()] = getMSTime();
-
-                // Reset and find a new target
+                info.ignoredRpgNpcs[creature->GetGUID()] = getMSTime();
                 info.wander_npc.npcOrGo = ObjectGuid();
                 info.wander_npc.lastReach = 0;
                 return true;
             }
-        }
-    }
 
-    // --- Step 3: Ensure bot is close enough to interact ---
-    if (bot->GetDistance(object) > INTERACTION_DISTANCE)
-    {
-        return MoveWorldObjectTo(info.wander_npc.npcOrGo);
-    }
+            bot->SetSelection(info.wander_npc.npcOrGo);
+            botAI->DoSpecificAction("trainer", Event("trainer"));
+            interacted = true;
 
-    bool interacted = false;  // Track if the bot has interacted with the NPC
-
-    // --- Step 4: Handle Quest NPCs ---
-    if (bot->CanInteractWithQuestGiver(object))
-    {
-        InteractWithNpcOrGameObjectForQuest(info.wander_npc.npcOrGo);
-        interacted = true;
-    }
-
-    // --- Step 5: Handle NPCs (re-get creature since we validated earlier) ---
-    creature = bot->GetNPCIfCanInteractWith(info.wander_npc.npcOrGo, UNIT_NPC_FLAG_NONE);
-
-    if (!creature)
-    {
-        // Not a valid NPC for interaction, move to next target
-        info.wander_npc.npcOrGo = ObjectGuid();
-        info.wander_npc.lastReach = 0;
-        return true;
-    }
-
-    std::string npcName = creature->GetName();
-    uint32 npcFlags = creature->GetCreatureTemplate()->npcflag;
-
- // --- Step 6: Handle Trainers (we already pre-validated above) ---
-    {
-        trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
-        if (trainerData && trainerData->IsTrainerValidForPlayer(bot))
-        {
-            bool shouldInteract = false;
-
-            // Always interact with class trainers
-            if (trainerData->GetTrainerType() == Trainer::Type::Class)
+            if (debug)
             {
-                shouldInteract = true;
-                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-                {
-                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with class trainer: {}",
-                              bot->GetName(), creature->GetName());
-                }
-            }
-            // Always interact with mount trainers (riding trainers)
-            else if (trainerData->GetTrainerType() == Trainer::Type::Mount)
-            {
-                shouldInteract = true;
-                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-                {
-                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with riding trainer: {}",
-                              bot->GetName(), creature->GetName());
-                }
-            }
-            // Always interact with pet trainers (for hunters)
-            else if (trainerData->GetTrainerType() == Trainer::Type::Pet)
-            {
-                shouldInteract = true;
-                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-                {
-                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pet trainer: {}",
-                              bot->GetName(), creature->GetName());
-                }
-            }
-            // For profession trainers, we already validated them in Step 2
-            else if (trainerData->GetTrainerType() == Trainer::Type::Tradeskill)
-            {
-                shouldInteract = true; // We already validated this is a secondary trainer
-                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-                {
-                    LOG_DEBUG("playerbots", "[New RPG] {} - Interacting with pre-validated secondary trainer: {}",
-                              bot->GetName(), creature->GetName());
-                }
-            }
-
-            if (shouldInteract)
-            {
-                bot->SetSelection(info.wander_npc.npcOrGo);
-                botAI->DoSpecificAction("trainer", Event("trainer"));
-                interacted = true;
+                std::string tName = (tType == Trainer::Type::Class) ? "class" :
+                                   (tType == Trainer::Type::Mount) ? "riding" :
+                                   (tType == Trainer::Type::Pet) ? "pet" : "profession";
+                LOG_DEBUG("playerbots", "[New RPG] {} Interacting with {} trainer: {}",
+                          bot->GetName(), tName, creature->GetName());
             }
         }
     }
 
-    // --- Step 7: Handle Vendors ---
+    // 6e. Vendors
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
         botAI->DoSpecificAction("sell", Event("sell", "vendor"));
@@ -451,7 +536,7 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         interacted = true;
     }
 
-    // --- Step 8: Handle Repair Vendors ---
+    // 6f. Repair
     if (npcFlags & UNIT_NPC_FLAG_REPAIR)
     {
         bot->SetSelection(info.wander_npc.npcOrGo);
@@ -459,28 +544,81 @@ bool NewRpgWanderNpcAction::Execute(Event event)
         interacted = true;
     }
 
-    // --- Step 9: Apply Waiting Logic ---
-    // If we haven't interacted yet, record the time and stay
+    // --- 7. Post-interaction bookkeeping ---
     if (!info.wander_npc.lastReach)
     {
-        if (interacted)
+        // Always set lastReach on first reach, even if nothing to interact with.
+        // This prevents infinite looping on NPCs the bot can't use (stable masters, etc.)
+        info.wander_npc.lastReach = getMSTime();
+
+        // Mark as visited immediately to prevent cache rebuild from re-selecting this NPC
+        // before the wait period completes
+        info.ignoredRpgNpcs[info.wander_npc.npcOrGo] = getMSTime();
+
+        if (debug && !interacted)
         {
-            // We just interacted, start the waiting timer
-            info.wander_npc.lastReach = getMSTime();
+            LOG_DEBUG("playerbots", "[New RPG] {} No applicable interaction for {}, will skip after wait",
+                      bot->GetName(), creature->GetName());
         }
-        return false; // Stay regardless, either to interact or to wait after interaction
+        return false;
     }
-    // If we're in waiting period after interaction
     else if (GetMSTimeDiffToNow(info.wander_npc.lastReach) < npcStayTime)
     {
-        return false; // Continue waiting
+        return false;
     }
 
-    // --- Step 10: Reset & Move to Next Target ---
+    // Mark NPC as visited
+    info.ignoredRpgNpcs[creature->GetGUID()] = getMSTime();
+
+    // Increment district visit counter
+    DistrictVisit* districtVisit = info.GetCurrentDistrictVisit();
+    if (districtVisit)
+        ++districtVisit->npcsVisited;
+
+    // For flight masters: update cache
+    if (creature->HasNpcFlag(UNIT_NPC_FLAG_FLIGHTMASTER))
+    {
+        for (CachedNpc& npc : info.cachedNpcs)
+        {
+            if (npc.guid == creature->GetGUID())
+            {
+                npc.taxiNodeKnown = true;
+                npc.utility = 0.35f;
+                break;
+            }
+        }
+    }
+
+    // --- 8. District exhaustion check ---
+    if (IsDistrictExhausted(info.currentDistrictId))
+    {
+        if (debug)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} District {} exhausted after {} NPC visits",
+                      bot->GetName(), info.currentDistrictId, districtVisit->npcsVisited);
+        }
+
+        info.RecordDistrictVisit(info.currentDistrictId, districtVisit->npcsVisited, districtVisit->npcsTotal);
+
+        uint32 nextDistrict = GetNextUnvisitedDistrict();
+        if (nextDistrict != 0)
+        {
+            WorldPosition districtCenter = GetDistrictCenter(bot, nextDistrict);
+            if (debug)
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Moving to next district {} (center {:.1f},{:.1f})",
+                          bot->GetName(), nextDistrict, districtCenter.GetPositionX(), districtCenter.GetPositionY());
+            }
+            info.wander_npc.npcOrGo = ObjectGuid();
+            info.wander_npc.lastReach = 0;
+            MoveFarTo(districtCenter);
+            return true;
+        }
+    }
+
+    // --- 9. Reset & pick new target ---
     info.wander_npc.npcOrGo = ObjectGuid();
     info.wander_npc.lastReach = 0;
-    info.recentNpcVisits[creature->GetGUID()] = getMSTime();
-
     return true;
 }
 

@@ -9,6 +9,27 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 
+struct CachedNpc
+{
+    ObjectGuid guid;
+    WorldPosition pos;
+    uint32 areaId{0};
+    float utility{0};
+    uint32 lastConsidered{0};
+    bool fromTravelMgr{false};
+    bool isFlightMaster{false};
+    uint32 taxiNodeId{0};
+    bool taxiNodeKnown{false};
+};
+
+struct DistrictVisit
+{
+    uint32 areaId{0};
+    uint32 lastVisitTs{0};
+    uint32 npcsVisited{0};
+    uint32 npcsTotal{0};
+};
+
 using NewRpgStatusTransitionProb = std::vector<std::vector<int>>;
 
 struct NewRpgInfo
@@ -69,7 +90,15 @@ struct NewRpgInfo
     NewRpgStatus status{RPG_IDLE};
 
     uint32 startT{0};  // start timestamp of the current status
-    std::unordered_map<ObjectGuid, uint32> recentNpcVisits; // Timestamp of recent NPC visits
+    std::unordered_map<ObjectGuid, uint32> ignoredRpgNpcs; // Timestamp of recent NPC visits
+
+    // WanderNpc cache + district tracking
+    std::vector<CachedNpc> cachedNpcs;
+    uint32 lastCacheUpdate{0};
+    uint32 cachedDistrictId{0};
+    std::vector<DistrictVisit> recentDistrictVisits;
+    uint32 currentDistrictId{0};
+    WorldPosition currentDistrictCenter;
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
@@ -106,6 +135,9 @@ struct NewRpgInfo
     void SetMoveFarTo(WorldPosition pos);
     std::string ToString();
     void PruneOldVisits(uint32 expirationTimeMs);
+    void PruneDistrictVisits(uint32 cooldownMs, uint32 maxVisits);
+    void RecordDistrictVisit(uint32 areaId, uint32 npcsVisited, uint32 npcsTotal);
+    DistrictVisit* GetCurrentDistrictVisit();
 };
 
 struct NewRpgStatistic

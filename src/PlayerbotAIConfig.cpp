@@ -654,6 +654,14 @@ bool PlayerbotAIConfig::Initialize()
     autoDoQuests = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoDoQuests", true);
     enableNewRpgStrategy = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableNewRpgStrategy", true);
 
+    // WanderNpc cache + district tracking
+    rpgNpcCacheTTL = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgNpcCacheTTL", 30000);
+    rpgDistrictCooldown = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictCooldown", 600000);
+    rpgMinNpcUtility = sConfigMgr->GetOption<float>("AiPlayerbot.RpgMinNpcUtility", 0.1f);
+    rpgDistrictExhaustThreshold = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictExhaustThreshold", 50);
+    rpgDistrictMaxVisits = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictMaxVisits", 10);
+    rpgDebugDistrictTracking = sConfigMgr->GetOption<bool>("AiPlayerbot.RpgDebugDistrictTracking", false);
+
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderNpc", 20);
     RpgStatusProbWeight[RPG_GO_GRIND] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.GoGrind", 15);

@@ -78,8 +78,18 @@ bool NewRpgInfo::CanChangeTo(NewRpgStatus status) { return true; }
 
 void NewRpgInfo::Reset()
 {
+    auto savedNpcVisits = std::move(ignoredRpgNpcs);
+    auto savedDistrictVisits = std::move(recentDistrictVisits);
+    uint32 savedDistrictId = currentDistrictId;
+    WorldPosition savedDistrictCenter = currentDistrictCenter;
+
     *this = NewRpgInfo();
     startT = getMSTime();
+
+    ignoredRpgNpcs = std::move(savedNpcVisits);
+    recentDistrictVisits = std::move(savedDistrictVisits);
+    currentDistrictId = savedDistrictId;
+    currentDistrictCenter = savedDistrictCenter;
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
@@ -156,11 +166,52 @@ std::string NewRpgInfo::ToString()
 void NewRpgInfo::PruneOldVisits(uint32 expirationTimeMs)
 {
     uint32 now = getMSTime();
-    for (auto it = recentNpcVisits.begin(); it != recentNpcVisits.end(); )
+    for (auto it = ignoredRpgNpcs.begin(); it != ignoredRpgNpcs.end(); )
     {
         if (getMSTimeDiff((uint32)it->second, (uint32)now) > expirationTimeMs)
-            it = recentNpcVisits.erase(it);
+            it = ignoredRpgNpcs.erase(it);
         else
             ++it;
     }
+}
+
+void NewRpgInfo::PruneDistrictVisits(uint32 cooldownMs, uint32 maxVisits)
+{
+    uint32 now = getMSTime();
+    for (auto it = recentDistrictVisits.begin(); it != recentDistrictVisits.end(); )
+    {
+        if (getMSTimeDiff(it->lastVisitTs, now) > cooldownMs)
+            it = recentDistrictVisits.erase(it);
+        else
+            ++it;
+    }
+    // Keep only the most recent maxVisits entries
+    while (recentDistrictVisits.size() > maxVisits)
+        recentDistrictVisits.erase(recentDistrictVisits.begin());
+}
+
+void NewRpgInfo::RecordDistrictVisit(uint32 areaId, uint32 npcsVisited, uint32 npcsTotal)
+{
+    // Remove existing entry for same area if present
+    for (auto it = recentDistrictVisits.begin(); it != recentDistrictVisits.end(); ++it)
+    {
+        if (it->areaId == areaId)
+        {
+            recentDistrictVisits.erase(it);
+            break;
+        }
+    }
+    recentDistrictVisits.push_back(DistrictVisit{areaId, getMSTime(), npcsVisited, npcsTotal});
+}
+
+DistrictVisit* NewRpgInfo::GetCurrentDistrictVisit()
+{
+    for (auto& dv : recentDistrictVisits)
+    {
+        if (dv.areaId == currentDistrictId)
+            return &dv;
+    }
+    // Create new entry
+    recentDistrictVisits.push_back(DistrictVisit{currentDistrictId, getMSTime(), 0, 0});
+    return &recentDistrictVisits.back();
 }

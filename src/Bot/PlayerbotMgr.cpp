@@ -1206,6 +1206,113 @@ std::vector<std::string> PlayerbotHolder::HandlePlayerbotCommand(char const* arg
         return messages;
     }
 
+    if (!strcmp(cmd, "rpg"))
+    {
+        if (!master)
+        {
+            messages.push_back("ERROR: No master player found.");
+            return messages;
+        }
+
+        PlayerbotAI* botAI = GET_PLAYERBOT_AI(master);
+        if (!botAI)
+        {
+            messages.push_back("ERROR: No bot AI found. Use 'self' command first.");
+            return messages;
+        }
+
+        if (!charname)
+        {
+            messages.push_back("Usage: .playerbot rpg [cache|district|utility] [subcommand]");
+            messages.push_back("  cache show    - dump cached NPCs");
+            messages.push_back("  cache clear   - force clear NPC cache");
+            messages.push_back("  district show - dump district visit records");
+            messages.push_back("  district clear - clear all district visits");
+            messages.push_back("  district remove <id> - remove district from recent list");
+            messages.push_back("  utility <name> - show utility for nearest matching NPC");
+            return messages;
+        }
+
+        if (!strcmp(charname, "cache"))
+        {
+            if (genderArg && !strcmp(genderArg, "clear"))
+            {
+                botAI->rpgInfo.cachedNpcs.clear();
+                botAI->rpgInfo.lastCacheUpdate = 0;
+                messages.push_back("NPC cache cleared.");
+            }
+            else
+            {
+                std::ostringstream out;
+                out << "Cached NPCs (" << botAI->rpgInfo.cachedNpcs.size() << "):\n";
+                for (auto const& npc : botAI->rpgInfo.cachedNpcs)
+                {
+                    out << "  GUID:" << npc.guid.GetCounter() << " Pos:" << npc.pos.GetPositionX() << "," << npc.pos.GetPositionY()
+                        << " Utility:" << npc.utility << " Area:" << npc.areaId;
+                    if (npc.isFlightMaster)
+                        out << " [FM" << (npc.taxiNodeKnown ? " known]" : " new!]");
+                }
+                messages.push_back(out.str());
+            }
+            return messages;
+        }
+
+        if (!strcmp(charname, "district"))
+        {
+            if (genderArg && !strcmp(genderArg, "clear"))
+            {
+                botAI->rpgInfo.recentDistrictVisits.clear();
+                botAI->rpgInfo.currentDistrictId = 0;
+                messages.push_back("District visits cleared.");
+            }
+            else if (genderArg && !strcmp(genderArg, "remove"))
+            {
+                char* areaIdArg = strtok(nullptr, " ");
+                if (areaIdArg)
+                {
+                    uint32 areaId = atoi(areaIdArg);
+                    for (auto it = botAI->rpgInfo.recentDistrictVisits.begin();
+                         it != botAI->rpgInfo.recentDistrictVisits.end(); ++it)
+                    {
+                        if (it->areaId == areaId)
+                        {
+                            botAI->rpgInfo.recentDistrictVisits.erase(it);
+                            messages.push_back("District " + std::to_string(areaId) + " removed from recent visits.");
+                            return messages;
+                        }
+                    }
+                    messages.push_back("District " + std::to_string(areaId) + " not found in recent visits.");
+                }
+                else
+                {
+                    messages.push_back("Usage: .playerbot rpg district remove <areaId>");
+                }
+            }
+            else
+            {
+                std::ostringstream out;
+                out << "Current district: " << botAI->rpgInfo.currentDistrictId << "\n";
+                out << "Recent visits (" << botAI->rpgInfo.recentDistrictVisits.size() << "):\n";
+                for (auto const& dv : botAI->rpgInfo.recentDistrictVisits)
+                {
+                    out << "  Area:" << dv.areaId << " Visited:" << dv.npcsVisited << "/" << dv.npcsTotal
+                        << " Last:" << dv.lastVisitTs;
+                }
+                messages.push_back(out.str());
+            }
+            return messages;
+        }
+
+        if (!strcmp(charname, "utility"))
+        {
+            messages.push_back("Utility check requires bot to be in RPG WanderNpc state.");
+            return messages;
+        }
+
+        messages.push_back("Unknown RPG subcommand: " + std::string(charname));
+        return messages;
+    }
+
     std::string charnameStr;
 
     if (!charname)

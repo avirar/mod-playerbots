@@ -374,6 +374,14 @@ public:
     bool autoDoQuests;
     bool enableNewRpgStrategy;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
+
+    // WanderNpc cache + district tracking
+    uint32 rpgNpcCacheTTL;
+    uint32 rpgDistrictCooldown;
+    float rpgMinNpcUtility;
+    uint32 rpgDistrictExhaustThreshold;
+    uint32 rpgDistrictMaxVisits;
+    bool rpgDebugDistrictTracking;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;
     bool autoTeleportForLevel;
