@@ -98,6 +98,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dy = y + sin(angle) * dis;
         float dz = z + 0.5f;
         PathGenerator path(bot);
+        path.SetSlopeCheck(true);
         path.CalculatePath(dx, dy, dz);
         PathType type = path.GetPathType();
         uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -185,6 +186,7 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
             continue;
 
         PathGenerator path(bot);
+        path.SetSlopeCheck(true);
         path.CalculatePath(dx, dy, dz);
         PathType type = path.GetPathType();
         uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;

@@ -787,6 +787,7 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(WorldPosition startPos
     loadMapAndVMaps(startPos);
 
     PathGenerator path(bot);
+    path.SetSlopeCheck(true);
     path.CalculatePath(startPos.GetPositionX(), startPos.GetPositionY(), startPos.GetPositionZ());
 
     Movement::PointsArray points = path.GetPath();
