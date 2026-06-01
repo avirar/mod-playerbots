@@ -136,6 +136,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
+        // Fishing holes are handled by the fishing system, not the loot system
+        if (go->GetGoType() == GAMEOBJECT_TYPE_FISHINGHOLE ||
+            go->GetGoType() == GAMEOBJECT_TYPE_FISHINGNODE)
+        {
+            return;
+        }
+
         if (debugLoot)
         {
             std::ostringstream out;
