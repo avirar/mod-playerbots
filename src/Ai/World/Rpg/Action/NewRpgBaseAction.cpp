@@ -9,6 +9,7 @@
 #include "GameGraveyard.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "ItemUsageValue.h"
 #include "LootMgr.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
@@ -733,7 +734,20 @@ bool NewRpgBaseAction::IsQuestWorthDoing(Quest const* quest)
         return false;
 
     if (quest->IsRepeatable())
-        return false;
+    {
+        bool hasUsefulReward = false;
+        for (uint8 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
+        {
+            if (quest->RewardChoiceItemId[i] &&
+                AI_VALUE2(ItemUsage, "item usage", quest->RewardChoiceItemId[i]) != ITEM_USAGE_NONE)
+            {
+                hasUsefulReward = true;
+                break;
+            }
+        }
+        if (!hasUsefulReward)
+            return false;
+    }
 
     if (quest->IsSeasonal())
         return false;
@@ -770,6 +784,73 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
         return false;
 
     return true;
+}
+
+bool NewRpgBaseAction::HasNeededQuestItemForSale(float distanceLimit)
+{
+    std::set<uint32> neededItems;
+
+    auto const& questStatusMap = bot->getQuestStatusMap();
+    for (auto const& qEntry : questStatusMap)
+    {
+        uint32 questId = qEntry.first;
+        QuestStatusData const& qStatus = qEntry.second;
+
+        if (qStatus.Status != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->RequiredItemId[i] && quest->RequiredItemCount[i])
+            {
+                uint32 current = qStatus.ItemCount[i];
+                if (current < quest->RequiredItemCount[i])
+                    neededItems.insert(quest->RequiredItemId[i]);
+            }
+        }
+    }
+
+    if (neededItems.empty())
+        return false;
+
+    GuidVector nearbyCreatures = AI_VALUE(GuidVector, "possible new rpg targets");
+    if (nearbyCreatures.empty())
+        nearbyCreatures = AI_VALUE(GuidVector, "possible new rpg targets no los");
+
+    for (ObjectGuid const& guid : nearbyCreatures)
+    {
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld() || !creature->IsVendor())
+            continue;
+
+        if (bot->GetExactDist(creature) > distanceLimit)
+            continue;
+
+        VendorItemData const* vendorData = creature->GetVendorItems();
+        if (!vendorData || vendorData->m_items.empty())
+            continue;
+
+        for (VendorItemList::const_iterator itr = vendorData->m_items.begin(); itr != vendorData->m_items.end(); ++itr)
+        {
+            if (neededItems.count((*itr)->item))
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    ItemTemplate const* proto = sObjectMgr->GetItemTemplate((*itr)->item);
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found needed quest item {} ({}) for sale at vendor {} ({:.0f}yd)",
+                              bot->GetName(), (*itr)->item, proto ? proto->Name1 : "Unknown",
+                              creature->GetName(), bot->GetExactDist(creature));
+                }
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
@@ -1645,8 +1726,8 @@ ObjectGuid NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool questgiverOnly
             }
         }
 
-        // Priority 5: Vendors if bags > 50% full
-        if (AI_VALUE(uint8, "bag space") > 50 && creature->IsVendor())
+        // Priority 5: Vendors if bags > 50% full or quest items needed
+        if ((AI_VALUE(uint8, "bag space") > 50 || HasNeededQuestItemForSale()) && creature->IsVendor())
         {
             if (distance < bestVendorDistance)
             {

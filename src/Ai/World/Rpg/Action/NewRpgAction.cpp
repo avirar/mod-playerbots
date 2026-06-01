@@ -638,9 +638,20 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             }
         }
         
-        // STEP 3: Still no position - give up on this quest
+        // STEP 3: Still no position - check if vendor has needed items before giving up
         if (botAI->rpgInfo.do_quest.pos == WorldPosition())
         {
+            if (HasNeededQuestItemForSale())
+            {
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Quest {} has no POI but vendor has needed items - wandering to find vendor",
+                              bot->GetName(), questId);
+                }
+                botAI->rpgInfo.ChangeToWanderNpc();
+                return true;
+            }
+
             if (botAI->HasStrategy("debug", BOT_STATE_NON_COMBAT))
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} Failed to find any position for quest {}, abandoning", 
