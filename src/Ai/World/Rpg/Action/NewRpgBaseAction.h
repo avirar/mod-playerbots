@@ -48,6 +48,7 @@ protected:
     uint32 BestRewardIndex(Quest const* quest);
     bool IsQuestWorthDoing(Quest const* quest);
     bool IsQuestCapableDoing(Quest const* quest);
+    bool HasNeededQuestItemForSale(float distanceLimit = 200.0f);
     bool IsRequiredQuestObjectiveNPC(Creature* creature);
     bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
     QuestStatusData const* GetSafeQuestStatus(uint32 questId);
