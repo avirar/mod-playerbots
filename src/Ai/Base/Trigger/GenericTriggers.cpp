@@ -200,10 +200,7 @@ bool NoTargetTrigger::IsActive()
         return false;
 
     // Don't attack if performing critical RPG activities
-    if (botAI->rpgInfo.status == RPG_WANDER_NPC)
-        return false;
-
-    if (botAI->rpgInfo.status == RPG_GO_CAMP)
+if (botAI->rpgInfo.status == RPG_GO_CAMP)
         return false;
 
     return true;
