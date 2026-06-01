@@ -80,6 +80,9 @@ protected:
 
     /* WANDER NPC CACHE + DISTRICT */
     bool IsInCapitalCity(Player* bot);
+    uint32 GetCityRoot(Player* bot);
+    void DiscoverCityDistricts(uint32 cityRootId);
+    std::vector<uint32> GetCityDistricts(uint32 cityRootId);
     uint32 GetCurrentDistrictId(Player* bot);
     WorldPosition GetDistrictCenter(Player* bot, uint32 areaId);
     void UpdateNpcCache();

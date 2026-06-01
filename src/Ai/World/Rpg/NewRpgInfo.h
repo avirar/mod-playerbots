@@ -100,6 +100,10 @@ struct NewRpgInfo
     uint32 currentDistrictId{0};
     WorldPosition currentDistrictCenter;
 
+    // City district discovery cache: cityRootAreaId -> [districtAreaIds]
+    std::unordered_map<uint32, std::vector<uint32>> cityDistricts;
+    uint32 lastCityDiscovery{0};
+
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};

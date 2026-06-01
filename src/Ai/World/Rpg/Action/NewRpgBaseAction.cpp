@@ -2996,6 +2996,80 @@ bool NewRpgBaseAction::IsInCapitalCity(Player* bot)
     return false;
 }
 
+uint32 NewRpgBaseAction::GetCityRoot(Player* bot)
+{
+    uint32 areaId = bot->GetAreaId();
+    while (areaId)
+    {
+        AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
+        if (!area)
+            break;
+        if (area->flags & AREA_FLAG_CAPITAL)
+            return areaId;
+        areaId = area->zone;
+    }
+    return 0;
+}
+
+void NewRpgBaseAction::DiscoverCityDistricts(uint32 cityRootId)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+
+    // Don't re-discover too frequently
+    if (info.cityDistricts.count(cityRootId) &&
+        GetMSTimeDiffToNow(info.lastCityDiscovery) < 5 * 60 * 1000)
+        return;
+
+    std::vector<uint32>& districts = info.cityDistricts[cityRootId];
+    districts.clear();
+
+    // Find all direct child areas (zone == cityRootId)
+    for (auto areaEntry : sAreaTableStore)
+    {
+        if (!areaEntry)
+            continue;
+        if (areaEntry->zone == cityRootId)
+        {
+            districts.push_back(areaEntry->ID);
+        }
+    }
+
+    // If no direct children found, the city root itself is the only district
+    if (districts.empty())
+    {
+        districts.push_back(cityRootId);
+    }
+
+    info.lastCityDiscovery = getMSTime();
+
+    bool debug = botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.rpgDebugDistrictTracking;
+    if (debug)
+    {
+        const AreaTableEntry* rootEntry = sAreaTableStore.LookupEntry(cityRootId);
+        std::string cityName = rootEntry ? rootEntry->area_name[0] : "Unknown";
+        LOG_DEBUG("playerbots", "[New RPG] {} Discovered {} districts in city {} ({}):",
+                  bot->GetName(), districts.size(), cityRootId, cityName);
+        for (uint32 districtId : districts)
+        {
+            const AreaTableEntry* distEntry = sAreaTableStore.LookupEntry(districtId);
+            std::string distName = distEntry ? distEntry->area_name[0] : "Unknown";
+            LOG_DEBUG("playerbots", "[New RPG]   - District {} ({})", districtId, distName);
+        }
+    }
+}
+
+std::vector<uint32> NewRpgBaseAction::GetCityDistricts(uint32 cityRootId)
+{
+    NewRpgInfo& info = botAI->rpgInfo;
+
+    if (!info.cityDistricts.count(cityRootId))
+    {
+        DiscoverCityDistricts(cityRootId);
+    }
+
+    return info.cityDistricts[cityRootId];
+}
+
 uint32 NewRpgBaseAction::GetCurrentDistrictId(Player* bot)
 {
     if (IsInCapitalCity(bot))
@@ -3005,44 +3079,25 @@ uint32 NewRpgBaseAction::GetCurrentDistrictId(Player* bot)
 
 WorldPosition NewRpgBaseAction::GetDistrictCenter(Player* bot, uint32 areaId)
 {
-    // Try TravelMgr hubs first
-    std::vector<WorldLocation> hubs = sTravelMgr.GetTravelHubs(bot);
+    Map* map = bot->GetMap();
+    uint32 phaseMask = bot->GetPhaseMask();
     WorldPosition center;
     float sumX = 0, sumY = 0, sumZ = 0;
     uint32 count = 0;
+
+    // Try TravelMgr hubs first — use GetAreaId() at coordinates to check membership
+    std::vector<WorldLocation> hubs = sTravelMgr.GetTravelHubs(bot);
     for (WorldLocation const& loc : hubs)
     {
-        WorldPosition pos(loc);
-        if (pos.GetMapId() == bot->GetMapId())
-        {
-            uint32 posAreaId = pos.getAreaId();
-            if (posAreaId == areaId)
-            {
-                sumX += pos.GetPositionX();
-                sumY += pos.GetPositionY();
-                sumZ += pos.GetPositionZ();
-                ++count;
-            }
-        }
-    }
-    if (count > 0)
-    {
-        center = WorldPosition(bot->GetMapId(), sumX / count, sumY / count, sumZ / count);
-        return center;
-    }
+        if (loc.GetMapId() != bot->GetMapId())
+            continue;
 
-    // Fallback: locs per level
-    auto const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
-    count = 0;
-    sumX = sumY = sumZ = 0;
-    for (WorldLocation const& loc : locs)
-    {
-        WorldPosition pos(loc);
-        if (pos.GetMapId() == bot->GetMapId() && pos.getAreaId() == areaId)
+        uint32 locAreaId = map->GetAreaId(phaseMask, loc.GetPositionX(), loc.GetPositionY(), loc.GetPositionZ());
+        if (locAreaId == areaId)
         {
-            sumX += pos.GetPositionX();
-            sumY += pos.GetPositionY();
-            sumZ += pos.GetPositionZ();
+            sumX += loc.GetPositionX();
+            sumY += loc.GetPositionY();
+            sumZ += loc.GetPositionZ();
             ++count;
         }
     }
@@ -3052,7 +3107,51 @@ WorldPosition NewRpgBaseAction::GetDistrictCenter(Player* bot, uint32 areaId)
         return center;
     }
 
-    // Fallback: current position
+    // Fallback: locs per level — same coordinate-based check
+    auto const& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
+    count = 0;
+    sumX = sumY = sumZ = 0;
+    for (WorldLocation const& loc : locs)
+    {
+        if (loc.GetMapId() != bot->GetMapId())
+            continue;
+
+        uint32 locAreaId = map->GetAreaId(phaseMask, loc.GetPositionX(), loc.GetPositionY(), loc.GetPositionZ());
+        if (locAreaId == areaId)
+        {
+            sumX += loc.GetPositionX();
+            sumY += loc.GetPositionY();
+            sumZ += loc.GetPositionZ();
+            ++count;
+        }
+    }
+    if (count > 0)
+    {
+        center = WorldPosition(bot->GetMapId(), sumX / count, sumY / count, sumZ / count);
+        return center;
+    }
+
+    // Fallback: cached NPC positions in this district
+    NewRpgInfo& info = botAI->rpgInfo;
+    count = 0;
+    sumX = sumY = sumZ = 0;
+    for (CachedNpc const& npc : info.cachedNpcs)
+    {
+        if (npc.areaId == areaId && npc.pos.GetMapId() == bot->GetMapId())
+        {
+            sumX += npc.pos.GetPositionX();
+            sumY += npc.pos.GetPositionY();
+            sumZ += npc.pos.GetPositionZ();
+            ++count;
+        }
+    }
+    if (count > 0)
+    {
+        center = WorldPosition(bot->GetMapId(), sumX / count, sumY / count, sumZ / count);
+        return center;
+    }
+
+    // Final fallback: current position
     return WorldPosition(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
 }
 
@@ -3338,23 +3437,36 @@ uint32 NewRpgBaseAction::GetNextUnvisitedDistrict()
 {
     NewRpgInfo& info = botAI->rpgInfo;
 
-    // Collect all districts from cache
-    std::unordered_map<uint32, float> districtCenters; // areaId -> avg distance
-    std::unordered_map<uint32, uint32> districtCounts;
+    // Collect all known district IDs from both city discovery and NPC cache
+    std::unordered_map<uint32, float> districtDistances; // areaId -> nearest distance
 
+    // 1. Add districts from city discovery
+    if (IsInCapitalCity(bot))
+    {
+        uint32 cityRoot = GetCityRoot(bot);
+        if (cityRoot)
+        {
+            std::vector<uint32> cityDistricts = GetCityDistricts(cityRoot);
+            for (uint32 areaId : cityDistricts)
+            {
+                WorldPosition center = GetDistrictCenter(bot, areaId);
+                float dist = bot->GetDistance(center);
+                if (!districtDistances.count(areaId) || dist < districtDistances[areaId])
+                {
+                    districtDistances[areaId] = dist;
+                }
+            }
+        }
+    }
+
+    // 2. Merge with districts from NPC cache (adds districts not in city discovery)
     for (CachedNpc const& npc : info.cachedNpcs)
     {
         float dist = npc.fromTravelMgr ?
             bot->GetDistance(npc.pos) : FLT_MAX;
-        if (districtCenters.count(npc.areaId))
+        if (!districtDistances.count(npc.areaId) || dist < districtDistances[npc.areaId])
         {
-            districtCenters[npc.areaId] = std::min(districtCenters[npc.areaId], dist);
-            districtCounts[npc.areaId]++;
-        }
-        else
-        {
-            districtCenters[npc.areaId] = dist;
-            districtCounts[npc.areaId] = 1;
+            districtDistances[npc.areaId] = dist;
         }
     }
 
@@ -3362,7 +3474,7 @@ uint32 NewRpgBaseAction::GetNextUnvisitedDistrict()
     uint32 bestDistrict = 0;
     float bestDist = FLT_MAX;
 
-    for (auto const& [areaId, dist] : districtCenters)
+    for (auto const& [areaId, dist] : districtDistances)
     {
         if (areaId == info.currentDistrictId)
             continue;

@@ -82,6 +82,8 @@ void NewRpgInfo::Reset()
     auto savedDistrictVisits = std::move(recentDistrictVisits);
     uint32 savedDistrictId = currentDistrictId;
     WorldPosition savedDistrictCenter = currentDistrictCenter;
+    auto savedCityDistricts = std::move(cityDistricts);
+    uint32 savedLastCityDiscovery = lastCityDiscovery;
 
     *this = NewRpgInfo();
     startT = getMSTime();
@@ -90,6 +92,8 @@ void NewRpgInfo::Reset()
     recentDistrictVisits = std::move(savedDistrictVisits);
     currentDistrictId = savedDistrictId;
     currentDistrictCenter = savedDistrictCenter;
+    cityDistricts = std::move(savedCityDistricts);
+    lastCityDiscovery = savedLastCityDiscovery;
 }
 
 void NewRpgInfo::SetMoveFarTo(WorldPosition pos)
