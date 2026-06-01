@@ -129,7 +129,6 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
 
     // Use standard PathGenerator to find a route.
     PathGenerator path(bot);
-    path.SetSlopeCheck(true);
     path.CalculatePath(x, y, z, false);
     PathType type = path.GetPathType();
     if (type != PATHFIND_NORMAL && type != PATHFIND_INCOMPLETE)
@@ -266,8 +265,6 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         Movement::PointsArray path =
             SearchForBestPath(x, y, z, modifiedZ, sPlayerbotAIConfig.maxMovementSearchTime, normal_only);
         if (modifiedZ == INVALID_HEIGHT)
-            return false;
-        if (!IsClimbableDest(x, y, modifiedZ))
             return false;
         float distance = bot->GetExactDist(x, y, modifiedZ);
         if (distance > 0.01f)
@@ -859,7 +856,6 @@ bool MovementAction::ReachCombatTo(Unit* target, float distance)
         return false;
 
     PathGenerator path(bot);
-    path.SetSlopeCheck(true);
     path.CalculatePath(tx, ty, tz, false);
     PathType type = path.GetPathType();
     int typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORTCUT;
@@ -1745,12 +1741,6 @@ bool MovementAction::MoveInside(uint32 mapId, float x, float y, float z, float d
 //     return current_z;
 // }
 
-bool MovementAction::IsClimbableDest(float destX, float destY, float destZ) const
-{
-    return PathGenerator::IsWalkableClimb(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
-                                           destX, destY, destZ, bot->GetCollisionHeight());
-}
-
 const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, float z, float& modified_z,
                                                               int maxSearchCount, bool normal_only, float step)
 {
@@ -1758,7 +1748,6 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     modified_z = INVALID_HEIGHT;
     float tempZ = bot->GetMapHeight(x, y, z);
     PathGenerator gen(bot);
-    gen.SetSlopeCheck(true);
     gen.CalculatePath(x, y, tempZ);
     Movement::PointsArray result = gen.GetPath();
     float min_length = gen.getPathLength();
@@ -1783,7 +1772,6 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
             continue;
         }
         PathGenerator gen(bot);
-        gen.SetSlopeCheck(true);
         gen.CalculatePath(x, y, tempZ);
         if ((gen.GetPathType() & typeOk) && gen.getPathLength() < min_length)
         {
@@ -1801,7 +1789,6 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
             continue;
         }
         PathGenerator gen(bot);
-        gen.SetSlopeCheck(true);
         gen.CalculatePath(x, y, tempZ);
         if ((gen.GetPathType() & typeOk) && gen.getPathLength() < min_length)
         {
@@ -1831,13 +1818,6 @@ void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool gen
     MotionMaster* mm = unit->GetMotionMaster();
     if (!mm)
         return;
-
-    if (!unit->IsFlying() && !unit->isSwimming() &&
-        !PathGenerator::IsWalkableClimb(unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ(),
-                                         x, y, z, unit->GetCollisionHeight()))
-    {
-        return;
-    }
 
     // bot water collision correction
     if (unit->HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING) && unit->HasWaterWalkAura())
