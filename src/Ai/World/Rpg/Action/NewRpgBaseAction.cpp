@@ -6,6 +6,7 @@
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GossipDef.h"
+#include "GameGraveyard.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
 #include "LootMgr.h"
@@ -213,6 +214,16 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
         .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
              duration, priority);
     return true;
+}
+
+// Safe quest status retrieval - prevents crashes from .at() on missing quests
+QuestStatusData const* NewRpgBaseAction::GetSafeQuestStatus(uint32 questId)
+{
+    auto questStatusMap = bot->getQuestStatusMap();
+    auto statusIt = questStatusMap.find(questId);
+    if (statusIt == questStatusMap.end())
+        return nullptr;
+    return &statusIt->second;
 }
 
 /// @TODO: Fix redundant code
@@ -856,7 +867,12 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
             if (requiredNpcOrGo > 0 && requiredNpcOrGo == (int32)creatureEntry)
             {
                 // Check if we still need this objective
-                const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+   auto questStatusMap = bot->getQuestStatusMap();
+    auto statusIt = questStatusMap.find(questId);
+    if (statusIt == questStatusMap.end())
+        return false;
+
+    const QuestStatusData& q_status = statusIt->second;
                 uint32 currentCount = q_status.CreatureOrGOCount[i];
                 uint32 requiredCount = quest->RequiredNpcOrGoCount[i];
                 
@@ -1823,8 +1839,9 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 continue;
 
-            if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
-                continue;
+            // Zone check removed for quest completion POIs
+            // Coastal NPCs are often detected in ocean zones due to boundary imprecision
+            // Map ID and distance checks provide sufficient safety
 
             // Create POI entry for quest completion (toComplete=true means going to turn in quest)
             POIInfo completionPOI;
@@ -1865,6 +1882,11 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         if (q_status.ItemCount[i] < quest->RequiredItemCount[i])
             incompleteObjectiveIdx.push_back(QUEST_OBJECTIVES_COUNT + i);
     }
+
+    // Handle quests with no objectives (talk-to-NPC quests like "The Missing Fisherman")
+    // For these quests, the turn-in POI (ObjectiveIndex = -1) is the destination
+    if (incompleteObjectiveIdx.empty())
+        incompleteObjectiveIdx.push_back(-1);
 
     // Get POIs to go
     for (const QuestPOI &qPoi : *poiVector)
@@ -2098,6 +2120,20 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
             lo_prepared_locs.push_back(loc);
         }
     }
+
+    // If no grind spots found in current zone, try graveyard as escape route
+    // This helps bots stuck in invalid zones (ocean, arena, etc.)
+    if (hi_prepared_locs.empty() && lo_prepared_locs.empty() && !inCity)
+    {
+        GraveyardStruct const* graveyard = sGraveyard->GetClosestGraveyard(bot, bot->GetTeamId());
+        if (graveyard)
+        {
+            WorldPosition escapePos(graveyard->Map, graveyard->x, graveyard->y, graveyard->z);
+            if (bot->GetMapId() == graveyard->Map && bot->GetExactDist(escapePos) <= 5000.0f)
+                hi_prepared_locs.push_back(escapePos);
+        }
+    }
+
     WorldPosition dest{};
     if (urand(1, 100) <= 50 && !hi_prepared_locs.empty())
     {
@@ -2147,6 +2183,20 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 
         prepared_locs.push_back(loc);
     }
+
+    // If no camps found in current zone, try graveyard as escape route
+    // This helps bots stuck in invalid zones (ocean, arena, etc.)
+    if (prepared_locs.empty() && !inCity)
+    {
+        GraveyardStruct const* graveyard = sGraveyard->GetClosestGraveyard(bot, bot->GetTeamId());
+        if (graveyard)
+        {
+            WorldPosition escapePos(graveyard->Map, graveyard->x, graveyard->y, graveyard->z);
+            if (bot->GetMapId() == graveyard->Map && bot->GetExactDist(escapePos) > 50.0f && bot->GetExactDist(escapePos) <= 5000.0f)
+                prepared_locs.push_back(escapePos);
+        }
+    }
+
     WorldPosition dest{};
     if (!prepared_locs.empty())
     {

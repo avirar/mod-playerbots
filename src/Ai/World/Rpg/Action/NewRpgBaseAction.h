@@ -50,6 +50,7 @@ protected:
     bool IsQuestCapableDoing(Quest const* quest);
     bool IsRequiredQuestObjectiveNPC(Creature* creature);
     bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
+    QuestStatusData const* GetSafeQuestStatus(uint32 questId);
 
     /* LOCK SYSTEM INTEGRATION */
     bool CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue);
