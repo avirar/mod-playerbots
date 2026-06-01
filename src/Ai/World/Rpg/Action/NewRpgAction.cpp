@@ -29,6 +29,7 @@
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
+#include "TravelNode.h"
 #include "World.h"
 #include "PossibleRpgTargetsValue.h"
 #include "Trainer.h"
@@ -1046,18 +1047,77 @@ bool NewRpgTravelFlightAction::Execute(Event event)
         botAI->rpgInfo.flight.inFlight = true;
         return false;
     }
-    Creature* flightMaster = ObjectAccessor::GetCreature(*bot, botAI->rpgInfo.flight.fromFlightMaster);
-    if (!flightMaster || !flightMaster->IsAlive())
+
+    ObjectGuid flightMasterGuid = botAI->rpgInfo.flight.fromFlightMaster;
+    uint32 flightMasterEntry = flightMasterGuid.GetEntry();
+    WorldPosition const& cachedPos = botAI->rpgInfo.flight.fromFlightMasterPos;
+
+    Creature* flightMaster = ObjectAccessor::GetCreature(*bot, flightMasterGuid);
+
+    if (!flightMaster && cachedPos != WorldPosition())
     {
+        float distToCached = bot->GetDistance(cachedPos);
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: flight master not in grid, moving to cached position ({:.1f}yd)", bot->GetName(), distToCached);
+
+        if (distToCached > INTERACTION_DISTANCE)
+            return MoveFarTo(cachedPos);
+
+        // Close to cached position — try to find creature by entry nearby
+        GuidVector nearby = AI_VALUE(GuidVector, "possible new rpg targets");
+        for (ObjectGuid const& guid : nearby)
+        {
+            Creature* c = ObjectAccessor::GetCreature(*bot, guid);
+            if (c && c->IsInWorld() && c->GetEntry() == flightMasterEntry &&
+                c->GetDistance2d(cachedPos.GetPositionX(), cachedPos.GetPositionY()) < 15.0f)
+            {
+                flightMaster = c;
+                break;
+            }
+        }
+
+        if (!flightMaster)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: flight master entry {} not found near cached position", bot->GetName(), flightMasterEntry);
+            botAI->rpgInfo.ChangeToIdle();
+            return true;
+        }
+    }
+    else if (!flightMaster)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: flight master creature not found (guid counter {}, no cached position)", bot->GetName(), flightMasterGuid.GetCounter());
+        botAI->rpgInfo.ChangeToIdle();
+        return true;
+    }
+
+    if (!flightMaster->IsAlive())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: flight master creature {} is dead", bot->GetName(), flightMaster->GetEntry());
         botAI->rpgInfo.ChangeToIdle();
         return true;
     }
     const TaxiNodesEntry* entry = sTaxiNodesStore.LookupEntry(botAI->rpgInfo.flight.toNode);
-    if (bot->GetDistance(flightMaster) > INTERACTION_DISTANCE)
+    float dist = bot->GetDistance(flightMaster);
+    if (dist > INTERACTION_DISTANCE)
     {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: moving to flight master {} from {:.1f}yd", bot->GetName(), flightMaster->GetEntry(), dist);
         return MoveFarTo(flightMaster);
     }
-    std::vector<uint32> nodes = {botAI->rpgInfo.flight.fromNode, botAI->rpgInfo.flight.toNode};
+    uint32 fromNode = botAI->rpgInfo.flight.fromNode;
+    uint32 toNode = botAI->rpgInfo.flight.toNode;
+    LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: at flight master entry {}, activating taxi from node {} to {}", bot->GetName(), flightMaster->GetEntry(), fromNode, toNode);
+    std::vector<uint32> nodes = sTravelNodeMap.FindTaxiPath(fromNode, toNode);
+    if (nodes.empty())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: FindTaxiPath returned empty, falling back to direct {}-{}", bot->GetName(), fromNode, toNode);
+        nodes = {fromNode, toNode};
+    }
+    else
+    {
+        std::string pathStr;
+        for (size_t i = 0; i < nodes.size(); i++)
+            pathStr += std::to_string(nodes[i]) + (i + 1 < nodes.size() ? " -> " : "");
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: FindTaxiPath returned {} nodes: {}", bot->GetName(), nodes.size(), pathStr);
+    }
 
     botAI->RemoveShapeshift();
     if (bot->IsMounted())
@@ -1066,12 +1126,12 @@ bool NewRpgTravelFlightAction::Execute(Event event)
     }
     if (!bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
     {
-        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
-                      flightMaster->GetEntry(), nodes[0], nodes[1]);
-        }
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: ActivateTaxiPathTo from node {} to node {} FAILED ({} nodes in path)", bot->GetName(), nodes[0], nodes.size() > 1 ? nodes[1] : 0, nodes.size());
         botAI->rpgInfo.ChangeToIdle();
+    }
+    else
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} NewRpgTravelFlightAction: ActivateTaxiPathTo SUCCESS, entering flight", bot->GetName());
     }
     return true;
 }

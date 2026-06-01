@@ -2323,29 +2323,53 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 bool NewRpgBaseAction::SelectRandomFlightTaxiNode(ObjectGuid& flightMasterGuid, uint32& fromNode, uint32& toNode, WorldPosition& flightMasterPos)
 {
     TravelMgr::FlightMasterInfo const* nearestFlightMaster = sTravelMgr.GetNearestFlightMasterInfo(bot);
-    if (!nearestFlightMaster || bot->GetDistance(nearestFlightMaster->pos) > 500.0f)
+    if (!nearestFlightMaster)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: no nearest flight master found", bot->GetName());
         return false;
+    }
+    float fmDist = bot->GetDistance(nearestFlightMaster->pos);
+    if (fmDist > 500.0f)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: nearest flight master too far ({:.1f}yd > 500)", bot->GetName(), fmDist);
+        return false;
+    }
 
     fromNode = nearestFlightMaster->taxiNodeId;
     if (!fromNode)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: flight master entry {} has no taxi node", bot->GetName(), nearestFlightMaster->templateEntry);
         return false;
+    }
 
     std::vector<std::vector<uint32>> optimalDestinations = sTravelMgr.GetOptimalFlightDestinations(bot);
     if (optimalDestinations.empty())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: GetOptimalFlightDestinations returned empty from node {}", bot->GetName(), fromNode);
         return false;
+    }
 
     std::vector<uint32> chosenPath = optimalDestinations[urand(0, optimalDestinations.size() - 1)];
     if (chosenPath.empty())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: chosen path is empty", bot->GetName());
         return false;
+    }
 
     toNode = chosenPath.back();
 
     TaxiNodesEntry const* destNode = sTaxiNodesStore.LookupEntry(toNode);
     if (!destNode)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: destination node {} not found in DBC", bot->GetName(), toNode);
         return false;
+    }
 
     if (!bot->isTaxiCheater() && !bot->m_taxi.IsTaximaskNodeKnown(toNode))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: destination node {} (map {}) not discovered", bot->GetName(), toNode, destNode->map_id);
         return false;
+    }
 
     flightMasterGuid = ObjectGuid::Create<HighGuid::Unit>(nearestFlightMaster->templateEntry, nearestFlightMaster->dbGuid);
     flightMasterPos = nearestFlightMaster->pos;
@@ -2459,7 +2483,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             WorldPosition flightMasterPos;
             if (SelectRandomFlightTaxiNode(flightMaster, fromNode, toNode, flightMasterPos))
             {
-                botAI->rpgInfo.ChangeToTravelFlight(flightMaster, fromNode, toNode);
+                botAI->rpgInfo.ChangeToTravelFlight(flightMaster, fromNode, toNode, flightMasterPos);
                 return true;
             }
             return false;

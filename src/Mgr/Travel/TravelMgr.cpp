@@ -4424,16 +4424,31 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
     std::vector<std::vector<uint32>> validDestinations;
 
     FlightMasterInfo const* nearestFlightMaster = GetNearestFlightMasterInfo(bot);
-    if (!nearestFlightMaster || bot->GetDistance(nearestFlightMaster->pos) > 500.0f)
+    if (!nearestFlightMaster)
+    {
+        LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: no nearest flight master found", bot->GetName());
         return validDestinations;
+    }
+    float fmDist = bot->GetDistance(nearestFlightMaster->pos);
+    if (fmDist > 500.0f)
+    {
+        LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: flight master too far ({:.1f}yd > 500)", bot->GetName(), fmDist);
+        return validDestinations;
+    }
 
     uint32 fromNode = nearestFlightMaster->taxiNodeId;
     if (!fromNode)
+    {
+        LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: fromNode is 0", bot->GetName());
         return validDestinations;
+    }
 
     TaxiNodesEntry const* startNode = sTaxiNodesStore.LookupEntry(fromNode);
     if (!startNode)
+    {
+        LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: fromNode {} not in DBC", bot->GetName(), fromNode);
         return validDestinations;
+    }
 
     uint32 botLevel = bot->GetLevel();
 
@@ -4468,8 +4483,17 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
     }
 
     if (candidateZones.empty())
+    {
+        if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
+            LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: no candidate zones for level {} in {} ({})",
+                      bot->GetName(), botLevel, bot->GetZoneId(), zone->area_name[0]);
+        else
+            LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: no candidate zones for level {}",
+                      bot->GetName(), botLevel);
         return validDestinations;
+    }
 
+    uint32 totalCandidates = candidateZones.size();
     while (!candidateZones.empty())
     {
         uint32 zoneIndex = urand(0, candidateZones.size() - 1);
@@ -4483,6 +4507,9 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
             std::vector<uint32> path = sTravelNodeMap.FindTaxiPath(fromNode, pickedNode);
             if (!path.empty())
             {
+                if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(pickedZone))
+                    LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: found path from node {} to node {} in {} ({})",
+                              bot->GetName(), fromNode, pickedNode, pickedZone, zone->area_name[0]);
                 validDestinations.push_back(std::move(path));
                 return validDestinations;
             }
@@ -4491,6 +4518,8 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
         candidateZones.erase(candidateZones.begin() + zoneIndex);
     }
 
+    LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: exhausted all {} candidates from node {}, no valid path found",
+              bot->GetName(), totalCandidates, fromNode);
     return validDestinations;
 }
 

@@ -70,6 +70,7 @@ struct NewRpgInfo
     struct TravelFlight
     {
         ObjectGuid fromFlightMaster{};
+        WorldPosition fromFlightMasterPos{};
         uint32 fromNode{0};
         uint32 toNode{0};
         bool inFlight{false};
@@ -130,7 +131,7 @@ struct NewRpgInfo
     void ChangeToWanderNpc();
     void ChangeToWanderRandom();
     void ChangeToDoQuest(uint32 questId, const Quest* quest);
-    void ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode);
+    void ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode, WorldPosition fromFlightMasterPos = WorldPosition());
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToRest();
     void ChangeToIdle();

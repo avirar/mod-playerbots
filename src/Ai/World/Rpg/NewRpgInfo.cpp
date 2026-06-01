@@ -43,12 +43,13 @@ void NewRpgInfo::ChangeToDoQuest(uint32 questId, const Quest* quest)
     do_quest.quest = quest;
 }
 
-void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode)
+void NewRpgInfo::ChangeToTravelFlight(ObjectGuid fromFlightMaster, uint32 fromNode, uint32 toNode, WorldPosition fromFlightMasterPos)
 {
     Reset();
     status = RPG_TRAVEL_FLIGHT;
     flight = TravelFlight();
     flight.fromFlightMaster = fromFlightMaster;
+    flight.fromFlightMasterPos = fromFlightMasterPos;
     flight.fromNode = fromNode;
     flight.toNode = toNode;
 }
