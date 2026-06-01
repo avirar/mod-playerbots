@@ -51,6 +51,9 @@ protected:
     bool IsRequiredQuestObjectiveNPC(Creature* creature);
     bool TryInteractWithQuestObjective(uint32 questId, int32 objectiveIdx);
 
+    // Safe quest status retrieval (prevents crashes from .at() on missing quests)
+    QuestStatusData const* GetSafeQuestStatus(uint32 questId);
+
     /* LOCK SYSTEM INTEGRATION */
     bool CheckGameObjectLockRequirements(GameObject* go, uint32& reqItem, uint32& skillId, uint32& reqSkillValue);
     bool CanAccessLockedGameObject(GameObject* go);

@@ -215,6 +215,18 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
     return true;
 }
 
+// Safe quest status retrieval - prevents crashes from .at() on missing quests
+QuestStatusData const* NewRpgBaseAction::GetSafeQuestStatus(uint32 questId)
+{
+    auto questStatusMap = bot->getQuestStatusMap();
+    auto statusIt = questStatusMap.find(questId);
+    if (statusIt == questStatusMap.end())
+    {
+        return nullptr;
+    }
+    return &statusIt->second;
+}
+
 /// @TODO: Fix redundant code
 /// Quest related method refer to TalkToQuestGiverAction.h
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
@@ -1813,7 +1825,21 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         return false;
     }
 
-    const QuestStatusData& q_status = bot->getQuestStatusMap().at(questId);
+    // Safety check: Ensure bot actually has this quest in their quest log
+    // Using .at() without checking causes crash when questId not in map
+    auto questStatusMap = bot->getQuestStatusMap();
+    auto statusIt = questStatusMap.find(questId);
+    if (statusIt == questStatusMap.end())
+    {
+        if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Quest {} not in quest status map, skipping POI lookup",
+                     bot->GetName(), questId);
+        }
+        return false;
+    }
+
+    const QuestStatusData& q_status = statusIt->second;
 
     if (toComplete && q_status.Status == QUEST_STATUS_COMPLETE)
     {
@@ -1887,8 +1913,53 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 continue;
             }
 
-            float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
-                               bot->GetMap()->GetWaterLevel(dx, dy));
+            // Try to get accurate Z coordinate from database for quest turn-in NPCs
+            // Use bounding box approach for performance (allows index usage)
+            float dz = INVALID_HEIGHT;
+            bool foundDbZ = false;
+            const float searchRadius = 150.0f;
+
+            // Query for quest ender NPCs near the turn-in POI using bounding box
+            QueryResult result = WorldDatabase.Query(
+                "SELECT c.position_z, "
+                "ABS(c.position_x - {}) + ABS(c.position_y - {}) AS approx_dist "
+                "FROM creature c "
+                "INNER JOIN creature_questender qe ON (c.id1 = qe.id OR c.id2 = qe.id OR c.id3 = qe.id) "
+                "WHERE qe.quest = {} AND c.map = {} "
+                "AND c.position_x BETWEEN {} AND {} "
+                "AND c.position_y BETWEEN {} AND {} "
+                "ORDER BY approx_dist ASC "
+                "LIMIT 1",
+                dx, dy,
+                questId, bot->GetMapId(),
+                dx - searchRadius, dx + searchRadius,
+                dy - searchRadius, dy + searchRadius);
+
+            if (result)
+            {
+                Field* fields = result->Fetch();
+                dz = fields[0].Get<float>();
+                foundDbZ = true;
+
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Found quest turn-in NPC Z from database: {} for quest {} at ({}, {})",
+                             bot->GetName(), dz, questId, dx, dy);
+                }
+            }
+
+            // Fall back to map height calculation if database lookup failed
+            if (!foundDbZ)
+            {
+                dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT),
+                             bot->GetMap()->GetWaterLevel(dx, dy));
+
+                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Using calculated Z from map for turn-in: {} at ({}, {})",
+                             bot->GetName(), dz, dx, dy);
+                }
+            }
 
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             {
@@ -2109,11 +2180,97 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             }
             continue;
         }
-        
-        // Use upstream clean approach for Z calculation
-        float dz = std::max(bot->GetMap()->GetHeight(randomX, randomY, MAX_HEIGHT), 
-                           bot->GetMap()->GetWaterLevel(randomX, randomY));
-        
+
+        // Try to get accurate Z coordinate from database by looking up NPC/GO spawn positions
+        // Use bounding box approach for performance (allows index usage)
+        float dz = INVALID_HEIGHT;
+        bool foundDbZ = false;
+        const float searchRadius = 150.0f;
+
+        // Check if this objective corresponds to an NPC or GameObject requirement
+        if (qPoi.ObjectiveIndex >= 0 && qPoi.ObjectiveIndex < QUEST_OBJECTIVES_COUNT)
+        {
+            int32 requiredNpcOrGo = quest->RequiredNpcOrGo[qPoi.ObjectiveIndex];
+
+            if (requiredNpcOrGo > 0) // NPC objective
+            {
+                uint32 creatureEntry = static_cast<uint32>(requiredNpcOrGo);
+
+                // Query creature table using bounding box (much faster, allows index usage)
+                QueryResult result = WorldDatabase.Query(
+                    "SELECT position_z, "
+                    "ABS(position_x - {}) + ABS(position_y - {}) AS approx_dist "
+                    "FROM creature "
+                    "WHERE (id1 = {} OR id2 = {} OR id3 = {}) AND map = {} "
+                    "AND position_x BETWEEN {} AND {} "
+                    "AND position_y BETWEEN {} AND {} "
+                    "ORDER BY approx_dist ASC "
+                    "LIMIT 1",
+                    randomX, randomY,
+                    creatureEntry, creatureEntry, creatureEntry, bot->GetMapId(),
+                    randomX - searchRadius, randomX + searchRadius,
+                    randomY - searchRadius, randomY + searchRadius);
+
+                if (result)
+                {
+                    Field* fields = result->Fetch();
+                    dz = fields[0].Get<float>();
+                    foundDbZ = true;
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found NPC spawn Z from database: {} for entry {} at ({}, {})",
+                                 bot->GetName(), dz, creatureEntry, randomX, randomY);
+                    }
+                }
+            }
+            else if (requiredNpcOrGo < 0) // GameObject objective
+            {
+                uint32 goEntry = static_cast<uint32>(-requiredNpcOrGo);
+
+                // Query gameobject table using bounding box (much faster, allows index usage)
+                QueryResult result = WorldDatabase.Query(
+                    "SELECT position_z, "
+                    "ABS(position_x - {}) + ABS(position_y - {}) AS approx_dist "
+                    "FROM gameobject "
+                    "WHERE id = {} AND map = {} "
+                    "AND position_x BETWEEN {} AND {} "
+                    "AND position_y BETWEEN {} AND {} "
+                    "ORDER BY approx_dist ASC "
+                    "LIMIT 1",
+                    randomX, randomY,
+                    goEntry, bot->GetMapId(),
+                    randomX - searchRadius, randomX + searchRadius,
+                    randomY - searchRadius, randomY + searchRadius);
+
+                if (result)
+                {
+                    Field* fields = result->Fetch();
+                    dz = fields[0].Get<float>();
+                    foundDbZ = true;
+
+                    if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                    {
+                        LOG_DEBUG("playerbots", "[New RPG] {} Found GameObject spawn Z from database: {} for entry {} at ({}, {})",
+                                 bot->GetName(), dz, goEntry, randomX, randomY);
+                    }
+                }
+            }
+        }
+
+        // Fall back to map height calculation if database lookup failed
+        if (!foundDbZ)
+        {
+            dz = std::max(bot->GetMap()->GetHeight(randomX, randomY, MAX_HEIGHT),
+                         bot->GetMap()->GetWaterLevel(randomX, randomY));
+
+            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} Using calculated Z from map: {} at ({}, {})",
+                         bot->GetName(), dz, randomX, randomY);
+            }
+        }
+
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
         {
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
@@ -2214,24 +2371,43 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         float escapeHiRange = 2500.0f;  // Prefer closer spots if available
         float escapeLoRange = 5000.0f;  // But accept anything within 5k yards
 
+        // Performance optimization: cache bot position for bounding box checks
+        float botX = bot->GetPositionX();
+        float botY = bot->GetPositionY();
+
         for (auto& loc : locs)
         {
             if (bot->GetMapId() != loc.GetMapId())
                 continue;
 
-            if (bot->GetExactDist(loc) > escapeMaxRange)
+            // OPTIMIZATION 1: Bounding box pre-filter (cheap Manhattan distance check)
+            // This avoids expensive sqrt calculations for clearly out-of-range locations
+            float deltaX = abs(loc.GetPositionX() - botX);
+            float deltaY = abs(loc.GetPositionY() - botY);
+            if (deltaX > escapeMaxRange || deltaY > escapeMaxRange)
+                continue;
+
+            // OPTIMIZATION 2: Calculate distance once and reuse (avoid 3 expensive calls)
+            float dist = bot->GetExactDist(loc);
+
+            if (dist > escapeMaxRange)
                 continue;
 
             // No zone check here - allow crossing zone boundaries to escape
-            if (bot->GetExactDist(loc) < escapeHiRange)
+            if (dist < escapeHiRange)
             {
                 hi_prepared_locs.push_back(loc);
             }
 
-            if (bot->GetExactDist(loc) < escapeLoRange)
+            if (dist < escapeLoRange)
             {
                 lo_prepared_locs.push_back(loc);
             }
+
+            // OPTIMIZATION 3: Early exit after finding enough locations
+            // No need to search through thousands more if we have plenty
+            if (hi_prepared_locs.size() >= 20)
+                break;
         }
 
         LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomGrindPos: After fallback with {}yd range, found {} hi + {} lo grind spots",
@@ -2302,19 +2478,38 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
         // Use much larger range to help bots escape from problematic zones (ocean, etc.)
         float escapeRange = 5000.0f;
 
+        // Performance optimization: cache bot position for bounding box checks
+        float botX = bot->GetPositionX();
+        float botY = bot->GetPositionY();
+
         for (auto& loc : locs)
         {
             if (bot->GetMapId() != loc.GetMapId())
                 continue;
 
-            if (bot->GetExactDist(loc) > escapeRange)
+            // OPTIMIZATION 1: Bounding box pre-filter (cheap Manhattan distance check)
+            // This avoids expensive sqrt calculations for clearly out-of-range locations
+            float deltaX = abs(loc.GetPositionX() - botX);
+            float deltaY = abs(loc.GetPositionY() - botY);
+            if (deltaX > escapeRange || deltaY > escapeRange)
                 continue;
 
-            if (bot->GetExactDist(loc) < 50.0f)
+            // OPTIMIZATION 2: Calculate distance once and reuse (avoid 2 expensive calls)
+            float dist = bot->GetExactDist(loc);
+
+            if (dist > escapeRange)
+                continue;
+
+            if (dist < 50.0f)
                 continue;
 
             // No zone check here - allow crossing zone boundaries to escape
             prepared_locs.push_back(loc);
+
+            // OPTIMIZATION 3: Early exit after finding enough locations
+            // No need to search through thousands more if we have plenty
+            if (prepared_locs.size() >= 20)
+                break;
         }
 
         LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomCampPos: After fallback with {}yd range, found {} camps",
@@ -2455,25 +2650,63 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                  bot->GetName(), candidateStatus.size(), bot->GetZoneId());
     }
 
+    // PERFORMANCE OPTIMIZATION: Cache expensive availability checks
+    // Expensive functions (SelectRandomGrindPos, SelectRandomCampPos, GetQuestPOIPosAndObjectiveIdx)
+    // are cached for 60 seconds to avoid repeated expensive lookups for unavailable statuses
+    // This prevents bots stuck in ocean/bad zones from repeatedly calling expensive fallback loops
+
     std::vector<NewRpgStatus> availableStatus;
     uint32 probSum = 0;
+    uint32 currentTime = getMSTime();
+    const uint32 CACHE_DURATION_MS = 60000;  // Cache for 60 seconds
+
     for (NewRpgStatus status : candidateStatus)
     {
         if (sPlayerbotAIConfig->RpgStatusProbWeight[status] == 0)
+            continue;
+
+        bool isAvailable = false;
+
+        // Check cache first
+        auto cacheIt = botAI->rpgInfo.statusAvailabilityCache.find(status);
+        if (cacheIt != botAI->rpgInfo.statusAvailabilityCache.end())
         {
+            uint32 cacheTime = cacheIt->second.second;
+            if (GetMSTimeDiffToNow(cacheTime) < CACHE_DURATION_MS)
+            {
+                // Use cached result
+                isAvailable = cacheIt->second.first;
+
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Status {} cached result: available={}",
+                             bot->GetName(), status, isAvailable);
+                }
+            }
+            else
+            {
+                // Cache expired, check again and update
+                isAvailable = CheckRpgStatusAvailable(status);
+                botAI->rpgInfo.statusAvailabilityCache[status] = {isAvailable, currentTime};
+
+                if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} Status {} cache expired, rechecked: available={}",
+                             bot->GetName(), status, isAvailable);
+                }
+            }
+        }
+        else
+        {
+            // Not in cache, check and cache result
+            isAvailable = CheckRpgStatusAvailable(status);
+            botAI->rpgInfo.statusAvailabilityCache[status] = {isAvailable, currentTime};
+
             if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
             {
-                LOG_DEBUG("playerbots", "[New RPG] {} Status {} has weight 0, skipping",
-                         bot->GetName(), status);
+                LOG_DEBUG("playerbots", "[New RPG] {} Status {} first check: available={}",
+                         bot->GetName(), status, isAvailable);
             }
-            continue;
-        }
-
-        bool isAvailable = CheckRpgStatusAvailable(status);
-        if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} Checking status {}: weight={}, available={}",
-                     bot->GetName(), status, sPlayerbotAIConfig->RpgStatusProbWeight[status], isAvailable);
         }
 
         if (isAvailable)
@@ -2483,13 +2716,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
     }
 
-    if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
-    {
-        LOG_DEBUG("playerbots", "[New RPG] {} Found {} available statuses with total weight {}",
-                 bot->GetName(), availableStatus.size(), probSum);
-    }
-
-    // Safety check. Default to "rest" if all RPG weights = 0
+    // Safety check. Default to "rest" if all RPG weights = 0 or no statuses available
     if (availableStatus.empty() || probSum == 0)
     {
         if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
@@ -2501,6 +2728,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         bot->SetStandState(UNIT_STAND_STATE_SIT);
         return true;
     }
+
     uint32 rand = urand(1, probSum);
     uint32 accumulate = 0;
     NewRpgStatus chosenStatus = RPG_STATUS_END;
@@ -2516,8 +2744,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
 
     if (botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT))
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Chosen status: {} (rand={}, probSum={})",
-                 bot->GetName(), chosenStatus, rand, probSum);
+        LOG_DEBUG("playerbots", "[New RPG] {} Chosen status: {} from {} available",
+                 bot->GetName(), chosenStatus, availableStatus.size());
     }
 
     switch (chosenStatus)

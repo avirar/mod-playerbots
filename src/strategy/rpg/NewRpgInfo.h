@@ -66,6 +66,9 @@ struct NewRpgInfo
     uint32 startT{0};  // start timestamp of the current status
     std::unordered_map<ObjectGuid, uint32> recentNpcVisits; // Timestamp of recent NPC visits
 
+    // Cache for expensive status availability checks (to avoid repeated SelectRandomGrindPos/CampPos calls)
+    std::map<NewRpgStatus, std::pair<bool, uint32>> statusAvailabilityCache; // status -> (available, timestamp)
+
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
     uint32 stuckTs{0};
