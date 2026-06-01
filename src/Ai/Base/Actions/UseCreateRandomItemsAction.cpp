@@ -16,8 +16,9 @@ public:
 protected:
     bool Accept(ItemTemplate const* itemTemplate) override
     {
-        // Check item properties
-        if (itemTemplate->Class != ITEM_CLASS_MISC)
+        // Check item properties - accept both MISC (15) and TRADE_GOODS (7) with Junk subclass (11)
+        // This includes clams, runes, and other openable containers
+        if (itemTemplate->Class != ITEM_CLASS_MISC && itemTemplate->Class != ITEM_CLASS_TRADE_GOODS)
             return false;
 
         if (itemTemplate->SubClass != 11) // Junk subclass
@@ -47,9 +48,16 @@ bool UseCreateRandomItemsAction::Execute(Event event)
     if (!item)
         return false;
 
+    ItemTemplate const* itemTemplate = item->GetTemplate();
+    if (!itemTemplate)
+        return false;
+
+    uint32 spellId = itemTemplate->Spells[0].SpellId;
+    if (!spellId)
+        return false;
+
     uint8 bagIndex = item->GetBagSlot();
     uint8 slot = item->GetSlot();
-    uint32 spellId = item->GetTemplate()->Spells[0].SpellId;
 
     // Verify we can cast the spell
     if (!botAI->CanCastSpell(spellId, bot, false, nullptr, item))
@@ -72,7 +80,7 @@ bool UseCreateRandomItemsAction::Execute(Event event)
     bot->GetSession()->HandleUseItemOpcode(packet);
 
     std::ostringstream out;
-    out << "Using " << item->GetTemplate()->Name1;
+    out << "Using " << itemTemplate->Name1;
     botAI->TellMasterNoFacing(out.str());
 
     return true;
@@ -92,7 +100,11 @@ bool UseCreateRandomItemsAction::IsValidCreateRandomItemSpell(uint32 spellId)
     if (!spellInfo)
         return false;
 
-    // Check that effect 0 is SPELL_EFFECT_CREATE_RANDOM_ITEM
+    // Safety check: ensure effect exists and is not empty (0 = no effect)
+    if (spellInfo->Effects[0].Effect == 0)
+        return false;
+
+    // Check that effect 0 is SPELL_EFFECT_CREATE_RANDOM_ITEM (59)
     if (spellInfo->Effects[0].Effect != SPELL_EFFECT_CREATE_RANDOM_ITEM)
         return false;
 
