@@ -30,6 +30,9 @@ public:
     CanLootValue(PlayerbotAI* botAI, std::string const name = "can loot") : BoolCalculatedValue(botAI, name) {}
 
     bool Calculate() override;
+
+private:
+    bool _lastResult = false;
 };
 
 #endif

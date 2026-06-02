@@ -5,6 +5,7 @@
 
 #include "AvailableLootValue.h"
 
+#include "Log.h"
 #include "LootObjectStack.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
@@ -25,6 +26,20 @@ LootTargetValue::LootTargetValue(PlayerbotAI* botAI, std::string const name)
 bool CanLootValue::Calculate()
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
-    return !loot.IsEmpty() && loot.GetWorldObject(bot) && loot.IsLootPossible(bot) &&
-           ServerFacade::instance().IsDistanceLessOrEqualThan(AI_VALUE2(float, "distance", "loot target"), INTERACTION_DISTANCE - 2);
+    bool notEmpty = !loot.IsEmpty();
+    bool hasWo = loot.GetWorldObject(bot) != nullptr;
+    bool possible = loot.IsLootPossible(bot);
+    float dist = AI_VALUE2(float, "distance", "loot target");
+    bool inRange = ServerFacade::instance().IsDistanceLessOrEqualThan(dist, INTERACTION_DISTANCE - 2);
+
+    bool result = notEmpty && hasWo && possible && inRange;
+
+    if (result != _lastResult)
+    {
+        LOG_DEBUG("playerbots", "CanLoot: notEmpty={} hasWo={} possible={} dist={:.1f} inRange={} => {}",
+            notEmpty, hasWo, possible, dist, inRange, result);
+        _lastResult = result;
+    }
+
+    return result;
 }

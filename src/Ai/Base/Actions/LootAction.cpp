@@ -32,8 +32,24 @@ bool LootAction::Execute(Event /*event*/)
     LootObject const& lootObject =
         AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig.lootDistance);
 
+    if (lootObject.IsEmpty())
+    {
+        LOG_DEBUG("playerbots", "LootSelect: No loot available from GetLoot");
+        return false;
+    }
+
+    WorldObject* newTarget = const_cast<LootObject&>(lootObject).GetWorldObject(bot);
+    float newDist = newTarget ? bot->GetDistance(newTarget) : -1.0f;
+
+    LOG_DEBUG("playerbots", "LootSelect: Selecting {} (guid={}, dist={:.1f})",
+        newTarget ? newTarget->GetName() : "null", lootObject.guid.ToString(), newDist);
+
     if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
     {
+        WorldObject* prevWo = prevLoot.GetWorldObject(bot);
+        LOG_DEBUG("playerbots", "LootSelect: Switching from {} (guid={})",
+            prevWo ? prevWo->GetName() : "null", prevLoot.guid.ToString());
+
         WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);
         *packet << prevLoot.guid;
         bot->GetSession()->QueuePacket(packet);
@@ -44,6 +60,7 @@ bool LootAction::Execute(Event /*event*/)
     // Check if the game object id is disallowed in the user configurable list or not.
     if (sPlayerbotAIConfig.disallowedGameObjects.find(lootObject.guid.GetEntry()) != sPlayerbotAIConfig.disallowedGameObjects.end())
     {
+        LOG_DEBUG("playerbots", "LootSelect: GameObject entry {} is disallowed", lootObject.guid.GetEntry());
         return false;  // Game object ID is disallowed, so do not proceed
     }
     else
