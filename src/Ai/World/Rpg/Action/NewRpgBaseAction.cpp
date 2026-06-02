@@ -38,12 +38,6 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     if (dest == WorldPosition())
         return false;
 
-    if (dest != botAI->rpgInfo.moveFarPos)
-    {
-        // clear stuck information if it's a new dest
-        botAI->rpgInfo.SetMoveFarTo(dest);
-    }
-
     // performance optimization
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {
@@ -343,11 +337,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                                          bot->GetName(), go->GetGOInfo()->name, questPair.first, i);
                             }
 
-                            if (bot->isMoving())
+                           if (bot->isMoving())
                             {
                                 bot->StopMoving();
                                 botAI->SetNextCheckDelay(sPlayerbotAIConfig.globalCoolDown);
-                                return false;
                             }
 
                             if (bot->IsMounted())
@@ -428,12 +421,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             
             bot->SetSelection(creature->GetGUID());
             
-            bool actionResult = botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
-            if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
-            {
-                LOG_DEBUG("playerbots", "[New RPG] {} DoSpecificAction('gossip hello') result: {}", 
-                         bot->GetName(), actionResult ? "SUCCESS" : "FAILED");
-            }
+            // Set cooldown BEFORE gossip hello to prevent re-entrancy
+            // (HandleGossipHelloOpcode can trigger quest callbacks that re-enter the AI loop)
+            botAI->rpgInfo.ignoredRpgNpcs[creature->GetGUID()] = getMSTime();
+            botAI->DoSpecificAction("gossip hello", Event("gossip hello", creature->GetGUID()));
             return true;
         }
         else
@@ -928,10 +919,12 @@ bool NewRpgBaseAction::IsRequiredQuestObjectiveNPC(Creature* creature)
             LOG_DEBUG("playerbots", "[New RPG] {} Checking quest {} for SPEAKTO flag", bot->GetName(), questId);
         
         // Check if this quest has SPEAKTO flag or similar talk requirements
-        if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+        CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+        bool isGossipObjective = (creatureTemplate->npcflag & UNIT_NPC_FLAG_GOSSIP) && creatureTemplate->GossipMenuId > 0;
+        if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO) && !isGossipObjective)
         {
             if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
-                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} does not have SPEAKTO flag", bot->GetName(), questId);
+                LOG_DEBUG("playerbots", "[New RPG] {} Quest {} does not have SPEAKTO flag and {} is not a gossip objective", bot->GetName(), questId, creature->GetName());
             continue;
         }
         
@@ -1032,7 +1025,7 @@ bool NewRpgBaseAction::TryInteractWithQuestObjective(uint32 questId, int32 objec
         for (const ObjectGuid& guid : nearbyNPCs) 
         {
             Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
-            if (creature && creature->GetEntry() == targetEntry) 
+            if (creature && creature->GetEntry() == targetEntry && !botAI->rpgInfo.ignoredRpgNpcs.count(guid))
             {
                 target = creature;
                 if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
@@ -3198,11 +3191,16 @@ void NewRpgBaseAction::UpdateNpcCache()
         if (!creature || !creature->IsInWorld())
             continue;
 
-        // Immediately ignore vendors with no useful items
+        // Ignore vendors with no useful items AND no need to sell (bags not full)
+        // A vendor is always worth visiting if bags are >50% full (sell junk)
         if (creature->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK) && !HasUsefulVendorItems(creature))
         {
-            info.ignoredRpgNpcs[guid] = getMSTime();
-            continue;
+            float bagUsage = CalculateBagUsage();
+            if (bagUsage < 0.5f)
+            {
+                info.ignoredRpgNpcs[guid] = getMSTime();
+                continue;
+            }
         }
 
         float utility = CalculateNpcUtility(creature);
@@ -3354,24 +3352,16 @@ float NewRpgBaseAction::CalculateNpcUtility(Creature* creature)
     // Vendor (higher utility when bags are full)
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
+        float bagUsage = CalculateBagUsage();
+
+        // Vendor is useful for selling if bags are >50% full, even if nothing to buy
+        if (bagUsage > 0.5f)
+            return 0.6f;
+
+        // Only useful for buying if vendor has items we want
         if (!HasUsefulVendorItems(creature))
             return 0.0f;
 
-        uint32 totalSlots = 0;
-        uint32 usedSlots = 0;
-        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
-        {
-            if (Item* bag = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-            {
-                totalSlots += MAX_BAG_SIZE;
-                for (uint8 j = 0; j < MAX_BAG_SIZE; ++j)
-                    if (bot->GetItemByPos(i, j))
-                        ++usedSlots;
-            }
-        }
-        float bagUsage = totalSlots > 0 ? (float)usedSlots / totalSlots : 0.0f;
-        if (bagUsage > 0.5f)
-            return 0.6f;
         return 0.2f;
     }
 
@@ -3659,4 +3649,21 @@ bool NewRpgBaseAction::HasUsefulVendorItems(Creature* creature)
         }
     }
     return false;
+}
+
+float NewRpgBaseAction::CalculateBagUsage()
+{
+    uint32 totalSlots = 0;
+    uint32 usedSlots = 0;
+    for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+    {
+        if (Item* bag = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+        {
+            totalSlots += MAX_BAG_SIZE;
+            for (uint8 j = 0; j < MAX_BAG_SIZE; ++j)
+                if (bot->GetItemByPos(i, j))
+                    ++usedSlots;
+        }
+    }
+    return totalSlots > 0 ? (float)usedSlots / totalSlots : 0.0f;
 }

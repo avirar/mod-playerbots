@@ -146,7 +146,30 @@ bool GossipHelloAction::Execute(ObjectGuid guid, int32 menuToSelect, bool silent
     GossipMenuItemsMapBounds pMenuItemBounds =
         sObjectMgr->GetGossipMenuItemsMapBounds(pCreature->GetCreatureTemplate()->GossipMenuId);
     if (pMenuItemBounds.first == pMenuItemBounds.second)
-        return false;
+    {
+        // Allow gossip hello for quest objective NPCs that rely on smart_script
+        // (e.g., SMART_EVENT_GOSSIP_HELLO giving kill credit) without menu options
+        bool isQuestObjective = false;
+        uint32 creatureEntry = pCreature->GetEntry();
+        for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            uint32 questId = bot->GetQuestSlotQuestId(slot);
+            if (!questId) continue;
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            if (!quest || bot->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE) continue;
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+            {
+                if (quest->RequiredNpcOrGo[i] > 0 && (uint32)quest->RequiredNpcOrGo[i] == creatureEntry)
+                {
+                    isQuestObjective = true;
+                    break;
+                }
+            }
+            if (isQuestObjective) break;
+        }
+        if (!isQuestObjective)
+            return false;
+    }
 
     if (menuToSelect == -1)
     {

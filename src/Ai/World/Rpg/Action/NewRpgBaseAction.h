@@ -95,6 +95,7 @@ protected:
     bool DiscoverFlightPath(Creature* flightMaster);
     uint32 GetTaxiNodeForCreature(Creature* creature);
     bool HasUsefulVendorItems(Creature* creature);
+    float CalculateBagUsage();
 
 protected:
     /* FOR MOVE FAR */

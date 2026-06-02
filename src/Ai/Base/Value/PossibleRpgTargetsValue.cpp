@@ -385,7 +385,9 @@ bool PossibleNewRpgTargetsValue::AcceptUnit(Unit* unit)
                     continue;
                     
                 // Check if this quest has SPEAKTO flag
-                if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO))
+                CreatureTemplate const* creatureTemplate = creature->GetCreatureTemplate();
+                bool isGossipObjective = (creatureTemplate->npcflag & UNIT_NPC_FLAG_GOSSIP) && creatureTemplate->GossipMenuId > 0;
+                if (!quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_SPEAKTO) && !isGossipObjective)
                     continue;
                     
                 // Check if this creature is a required objective
