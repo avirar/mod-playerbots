@@ -4430,7 +4430,7 @@ std::vector<std::vector<uint32>> TravelMgr::GetOptimalFlightDestinations(Player*
         return validDestinations;
     }
     float fmDist = bot->GetDistance(nearestFlightMaster->pos);
-    if (fmDist > 500.0f)
+    if (fmDist > 2500.0f)
     {
         LOG_DEBUG("playerbots", "[TravelMgr] {} GetOptimalFlightDestinations: flight master too far ({:.1f}yd > 500)", bot->GetName(), fmDist);
         return validDestinations;

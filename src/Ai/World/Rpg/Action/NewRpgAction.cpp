@@ -532,9 +532,16 @@ bool NewRpgWanderNpcAction::Execute(Event event)
     // 6e. Vendors
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
+        uint8 bagBefore = AI_VALUE(uint8, "bag space");
         botAI->DoSpecificAction("sell", Event("sell", "vendor"));
         botAI->DoSpecificAction("buy", Event("buy", "vendor"));
+        uint8 bagAfter = AI_VALUE(uint8, "bag space");
         interacted = true;
+        if (debug)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} Vendor sell+buy: {} bagSpace {}% -> {}%",
+                      bot->GetName(), creature->GetName(), bagBefore, bagAfter);
+        }
     }
 
     // 6f. Repair
