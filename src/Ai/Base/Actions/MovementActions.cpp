@@ -28,6 +28,8 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "Position.h"
+
+#define LOOT_INTERACTION_DISTANCE (INTERACTION_DISTANCE - 2.0f)
 #include "PositionValue.h"
 #include "Random.h"
 #include "ServerFacade.h"
@@ -2625,10 +2627,79 @@ bool RunAwayAction::Execute(Event /*event*/) { return Flee(AI_VALUE(Unit*, "grou
 bool MoveToLootAction::Execute(Event /*event*/)
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
-    if (!loot.IsLootPossible(bot))
+    if (loot.IsEmpty())
+    {
+        LOG_DEBUG("playerbots", "MoveToLoot: No loot target set");
         return false;
+    }
 
-    return MoveNear(loot.GetWorldObject(bot), sPlayerbotAIConfig.contactDistance);
+    WorldObject* target = loot.GetWorldObject(bot);
+    if (!target)
+    {
+        LOG_DEBUG("playerbots", "MoveToLoot: Target world object null (guid={})", loot.guid.ToString());
+        return false;
+    }
+
+    if (!loot.IsLootPossible(bot))
+    {
+        LOG_DEBUG("playerbots", "MoveToLoot: Target {} not lootable", target->GetName());
+        return false;
+    }
+
+    float dist = bot->GetDistance(target);
+    LOG_DEBUG("playerbots", "MoveToLoot: Moving to {} at {:.1f}yd",
+        target->GetName(), dist);
+
+    bool moved = MoveNear(target, LOOT_INTERACTION_DISTANCE);
+    LOG_DEBUG("playerbots", "MoveToLoot: MoveNear returned {}", moved ? "true" : "false");
+
+    if (!moved)
+    {
+        // Fallback: pathfind to target, move to closest reachable point on the path
+        // Pathfinding handles obstacle avoidance; LOS check not required here since
+        // MoveNear (above) already tried with LOS. This gets the bot closer so MoveNear
+        // can succeed on the next tick.
+        float tx = target->GetPositionX();
+        float ty = target->GetPositionY();
+        float tz = target->GetPositionZ();
+
+        PathGenerator path(bot);
+        path.CalculatePath(tx, ty, tz, false);
+        PathType type = path.GetPathType();
+        LOG_DEBUG("playerbots", "MoveToLoot: Fallback pathfinding type={}", static_cast<int>(type));
+
+        if (type == PATHFIND_NORMAL || type == PATHFIND_INCOMPLETE)
+        {
+            float closestDist = FLT_MAX;
+            PositionInfo dest;
+            for (auto const& point : path.GetPath())
+            {
+                float d = target->GetDistance(point.x, point.y, point.z);
+                float distFromBot = bot->GetDistance(point.x, point.y, point.z);
+                if (distFromBot < 1.0f)
+                    continue;
+
+                if (d < closestDist)
+                {
+                    closestDist = d;
+                    dest.Set(point.x, point.y, point.z, target->GetMapId());
+                }
+            }
+
+            if (dest.isSet())
+            {
+                moved = MoveTo(dest.mapId, dest.x, dest.y, dest.z);
+                LOG_DEBUG("playerbots", "MoveToLoot: Pathfallback to ({:.1f}, {:.1f}, {:.1f}) at {:.1f}yd from target, MoveTo={}",
+                    dest.x, dest.y, dest.z, closestDist, moved ? "true" : "false");
+            }
+            else
+            {
+                LOG_DEBUG("playerbots", "MoveToLoot: No valid path point found");
+            }
+        }
+    }
+
+    return moved;
 }
 
 bool MoveOutOfEnemyContactAction::Execute(Event /*event*/)
