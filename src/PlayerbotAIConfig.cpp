@@ -657,7 +657,7 @@ bool PlayerbotAIConfig::Initialize()
     // WanderNpc cache + district tracking
     rpgNpcCacheTTL = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgNpcCacheTTL", 30000);
     rpgDistrictCooldown = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictCooldown", 600000);
-    rpgMinNpcUtility = sConfigMgr->GetOption<float>("AiPlayerbot.RpgMinNpcUtility", 0.1f);
+    rpgMinNpcUtility = sConfigMgr->GetOption<float>("AiPlayerbot.RpgMinNpcUtility", 0.15f);
     rpgDistrictExhaustThreshold = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictExhaustThreshold", 50);
     rpgDistrictMaxVisits = sConfigMgr->GetOption<uint32>("AiPlayerbot.RpgDistrictMaxVisits", 10);
     rpgDebugDistrictTracking = sConfigMgr->GetOption<bool>("AiPlayerbot.RpgDebugDistrictTracking", false);

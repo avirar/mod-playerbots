@@ -2322,7 +2322,7 @@ bool NewRpgBaseAction::SelectRandomFlightTaxiNode(ObjectGuid& flightMasterGuid, 
         return false;
     }
     float fmDist = bot->GetDistance(nearestFlightMaster->pos);
-    if (fmDist > 500.0f)
+    if (fmDist > 2500.0f)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} SelectRandomFlightTaxiNode: nearest flight master too far ({:.1f}yd > 500)", bot->GetName(), fmDist);
         return false;
@@ -3185,6 +3185,10 @@ void NewRpgBaseAction::UpdateNpcCache()
     if (nearbyCreatures.empty())
         nearbyCreatures = AI_VALUE(GuidVector, "possible new rpg targets no los");
 
+    uint32 vendorFiltered = 0;
+    uint32 utilityFiltered = 0;
+    uint8 bagSpace = AI_VALUE(uint8, "bag space");
+
     for (ObjectGuid const& guid : nearbyCreatures)
     {
         Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
@@ -3195,17 +3199,20 @@ void NewRpgBaseAction::UpdateNpcCache()
         // A vendor is always worth visiting if bags are >50% full (sell junk)
         if (creature->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK) && !HasUsefulVendorItems(creature))
         {
-            float bagUsage = CalculateBagUsage();
-            if (bagUsage < 0.5f)
+            if (bagSpace < 50)
             {
                 info.ignoredRpgNpcs[guid] = getMSTime();
+                ++vendorFiltered;
                 continue;
             }
         }
 
         float utility = CalculateNpcUtility(creature);
         if (utility < sPlayerbotAIConfig.rpgMinNpcUtility)
+        {
+            ++utilityFiltered;
             continue;
+        }
 
         CachedNpc npc;
         npc.guid = guid;
@@ -3272,8 +3279,23 @@ void NewRpgBaseAction::UpdateNpcCache()
     bool debug = botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.rpgDebugDistrictTracking;
     if (debug)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} Cache rebuilt: {} visible + {} TravelMgr NPCs (total {})",
-                  bot->GetName(), visibleCount, travelMgrCount, info.cachedNpcs.size());
+        LOG_DEBUG("playerbots", "[New RPG] {} Cache rebuilt: {} visible + {} TravelMgr NPCs (total {}, {} vendor filtered, {} utility filtered, bagSpace={}%)",
+                  bot->GetName(), visibleCount, travelMgrCount, info.cachedNpcs.size(), vendorFiltered, utilityFiltered, bagSpace);
+
+        // Log each cached NPC for diagnostics
+        uint32 vendorCount = 0;
+        for (CachedNpc const& npc : info.cachedNpcs)
+        {
+            Creature* c = ObjectAccessor::GetCreature(*bot, npc.guid);
+            std::string name = c ? c->GetName() : "TravelMgr";
+            uint32 entry = c ? c->GetEntry() : 0;
+            uint32 flags = c ? c->GetCreatureTemplate()->npcflag : 0;
+            if (c && c->HasNpcFlag(UNIT_NPC_FLAG_VENDOR_MASK))
+                ++vendorCount;
+            LOG_DEBUG("playerbots", "[New RPG]   Cached: {} (entry {}, flags={:#x}) utility={:.2f} area={} fromTravelMgr={}",
+                      name, entry, flags, npc.utility, npc.areaId, npc.fromTravelMgr);
+        }
+        LOG_DEBUG("playerbots", "[New RPG]   -> Vendors in cache: {}", vendorCount);
     }
 }
 
@@ -3352,10 +3374,10 @@ float NewRpgBaseAction::CalculateNpcUtility(Creature* creature)
     // Vendor (higher utility when bags are full)
     if (npcFlags & UNIT_NPC_FLAG_VENDOR_MASK)
     {
-        float bagUsage = CalculateBagUsage();
+        uint8 bagSpace = AI_VALUE(uint8, "bag space");
 
         // Vendor is useful for selling if bags are >50% full, even if nothing to buy
-        if (bagUsage > 0.5f)
+        if (bagSpace > 50)
             return 0.6f;
 
         // Only useful for buying if vendor has items we want
@@ -3424,12 +3446,14 @@ ObjectGuid NewRpgBaseAction::SelectBestNpcFromCache()
     ObjectGuid bestGuid;
     float bestUtility = sPlayerbotAIConfig.rpgMinNpcUtility;
     float bestDist = FLT_MAX;
+    uint32 passShouldVisit = 0;
 
     for (CachedNpc& npc : info.cachedNpcs)
     {
         if (!ShouldVisit(npc.guid, npc))
             continue;
 
+        ++passShouldVisit;
         npc.lastConsidered = getMSTime() / 1000;
 
         float dist = npc.fromTravelMgr ?
@@ -3442,6 +3466,15 @@ ObjectGuid NewRpgBaseAction::SelectBestNpcFromCache()
             bestDist = dist;
             bestGuid = npc.guid;
         }
+    }
+
+    bool debug = botAI->HasStrategy("debug rpg", BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.rpgDebugDistrictTracking;
+    if (debug)
+    {
+        Creature* bestC = bestGuid.IsEmpty() ? nullptr : ObjectAccessor::GetCreature(*bot, bestGuid);
+        std::string bestName = bestC ? bestC->GetName() : "NONE";
+        LOG_DEBUG("playerbots", "[New RPG] {} SelectBestNpcFromCache: {} passed ShouldVisit, best={} (entry {}, utility={:.2f}, dist={:.0f}yd)",
+                  bot->GetName(), passShouldVisit, bestName, bestC ? bestC->GetEntry() : 0, bestUtility, bestDist);
     }
 
     return bestGuid;
@@ -3649,21 +3682,4 @@ bool NewRpgBaseAction::HasUsefulVendorItems(Creature* creature)
         }
     }
     return false;
-}
-
-float NewRpgBaseAction::CalculateBagUsage()
-{
-    uint32 totalSlots = 0;
-    uint32 usedSlots = 0;
-    for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
-    {
-        if (Item* bag = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
-        {
-            totalSlots += MAX_BAG_SIZE;
-            for (uint8 j = 0; j < MAX_BAG_SIZE; ++j)
-                if (bot->GetItemByPos(i, j))
-                    ++usedSlots;
-        }
-    }
-    return totalSlots > 0 ? (float)usedSlots / totalSlots : 0.0f;
 }
