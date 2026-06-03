@@ -8,6 +8,7 @@
 #include "ChooseRpgTargetAction.h"
 #include "Creature.h"
 #include "Event.h"
+#include "LootMgr.h"
 #include "LootObjectStack.h"
 #include "NewRpgStrategy.h"
 #include "ObjectMgr.h"
@@ -264,6 +265,18 @@ bool AttackAnythingAction::WouldTargetProvideQuestCredit(Unit* target)
                 uint32 currentCount = bot->GetQuestSlotCounter(slot, i);
                 if (currentCount < requiredCount)
                     return true;
+            }
+        }
+    }
+
+    if (target->GetTypeId() == TYPEID_UNIT)
+    {
+        CreatureTemplate const* cdata = sObjectMgr->GetCreatureTemplate(target->GetEntry());
+        if (cdata && cdata->lootid)
+        {
+            if (LootTemplates_Creature.HaveQuestLootForPlayer(cdata->lootid, bot))
+            {
+                return true;
             }
         }
     }

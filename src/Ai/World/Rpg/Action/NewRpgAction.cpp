@@ -704,6 +704,39 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
                 botAI->rpgInfo.do_quest.pos = WorldPosition();
                 botAI->rpgInfo.do_quest.objectiveIdx = 0;
             }
+
+            // Check if a previously locked GO objective is now accessible
+            // (e.g., bot just looted the key item from a creature)
+            if (!completed && quest && currentObjective >= 0 && currentObjective < QUEST_OBJECTIVES_COUNT)
+            {
+                int32 requiredNpcOrGo = quest->RequiredNpcOrGo[currentObjective];
+                if (requiredNpcOrGo < 0)
+                {
+                    uint32 goEntry = (uint32)(-requiredNpcOrGo);
+                    GuidVector checkGOs = AI_VALUE(GuidVector, "far game objects no los");
+                    for (const ObjectGuid& guid : checkGOs)
+                    {
+                        GameObject* go = ObjectAccessor::GetGameObject(*bot, guid);
+                        if (go && go->GetEntry() == goEntry && go->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+                        {
+                            uint32 reqItem, skillId, reqSkillValue;
+                            bool accessible = CheckGameObjectLockRequirements(go, reqItem, skillId, reqSkillValue);
+                            if (accessible && bot->GetDistance(go) > 50.0f)
+                            {
+                                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                {
+                                    LOG_DEBUG("playerbots", "[New RPG] {} Locked GO {} now accessible, clearing stale position for quest {}",
+                                              bot->GetName(), go->GetGOInfo()->name, questId);
+                                }
+                                botAI->rpgInfo.do_quest.lastReachPOI = 0;
+                                botAI->rpgInfo.do_quest.pos = WorldPosition();
+                                botAI->rpgInfo.do_quest.objectiveIdx = 0;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -870,7 +903,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
                                 }
                                 
                                 // Switch to hunting for the drop item instead
-                                return SearchForActualQuestTargets(questId);
+                                bool found = SearchForActualQuestTargets(questId);
+                                if (botAI->HasStrategy("debug quest", BOT_STATE_NON_COMBAT))
+                                {
+                                    LOG_DEBUG("playerbots", "[New RPG] {} SearchForActualQuestTargets returned {}", bot->GetName(), found ? "true" : "false");
+                                }
+                                return found;
                             }
                         }
                         break;

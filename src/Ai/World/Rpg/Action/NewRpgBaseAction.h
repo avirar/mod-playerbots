@@ -60,6 +60,8 @@ protected:
     bool CanAccessLockedGameObject(GameObject* go);
     bool HasRequiredKeyItem(uint32 itemId);
     bool HasQuestItemInDropTable(uint32 questId, uint32 itemId);
+    std::vector<uint32> FindCreatureEntriesByItemDrop(uint32 questId);
+    bool SearchCreatureByEntry(uint32 entry, WorldPosition& outPos);
 
     /* QUEST RELATED ACTION */
     bool SearchQuestGiverAndAcceptOrReward();
