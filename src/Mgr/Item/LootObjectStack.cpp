@@ -74,7 +74,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     if (debugLoot)
     {
         WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, lootGUID);
-        LOG_DEBUG("playerbots", "LootRefresh: Starting refresh for {} (GUID: {})",
+        LOG_DEBUG("playerbots", "[Loot] LootRefresh: Starting refresh for {} (GUID: {})",
             obj ? obj->GetName() : "Unknown", lootGUID.ToString());
     }
 
@@ -83,7 +83,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     {
         if (debugLoot)
         {
-            LOG_DEBUG("playerbots", "LootRefresh: Evaluating creature {} (Entry: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Evaluating creature {} (Entry: {})",
                 creature->GetName(), creature->GetEntry());
         }
 
@@ -92,12 +92,12 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             guid = lootGUID;
             isAccessible = true;  // FIX: Mark creature loot as accessible
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Creature is lootable");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Creature is lootable");
         }
         else
         {
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Creature not lootable - skipping");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Creature not lootable - skipping");
             return;
         }
 
@@ -112,13 +112,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 isAccessible = true;  // FIX: Mark skinnable creature as accessible
                 if (debugLoot)
                 {
-                    LOG_DEBUG("playerbots", "LootRefresh: Creature skinnable with skill {} (req: {}, have: {})",
+                    LOG_DEBUG("playerbots", "[Loot] LootRefresh: Creature skinnable with skill {} (req: {}, have: {})",
                         skillId, reqSkillValue, bot->GetSkillValue(skillId));
                 }
             }
             else if (debugLoot)
             {
-                LOG_DEBUG("playerbots", "LootRefresh: Cannot skin - missing skill {} (req: {}, have: {})",
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Cannot skin - missing skill {} (req: {}, have: {})",
                     skillId, reqSkillValue,
                     botAI->HasSkill((SkillType)skillId) ? std::to_string(bot->GetSkillValue(skillId)) : "0");
             }
@@ -132,7 +132,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     {
         if (debugLoot)
         {
-            LOG_DEBUG("playerbots", "LootRefresh: Evaluating gameobject {} (Entry: {}, Type: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Evaluating gameobject {} (Entry: {}, Type: {})",
                 go->GetName(), go->GetEntry(), go->GetGoType());
         }
 
@@ -160,7 +160,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 if (debugLoot)
                 {
                     const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
-                    LOG_DEBUG("playerbots", "LootRefresh: Found needed quest item {} (ID: {})",
+                    LOG_DEBUG("playerbots", "[Loot] LootRefresh: Found needed quest item {} (ID: {})",
                         proto ? proto->Name1 : "Unknown", itemId);
                 }
                 break;
@@ -180,7 +180,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
         {
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Gameobject has only unneeded quest items - skipping");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Gameobject has only unneeded quest items - skipping");
             return;
         }
 
@@ -231,13 +231,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     {
                         std::string hasCount = (maxCount > 0) ?
                             fmt::format(" - bot has {}/{}", bot->GetItemCount(itemId, true), maxCount) : "";
-                        LOG_DEBUG("playerbots", "LootRefresh: Found lootable item {} (ID: {}){}",
+                        LOG_DEBUG("playerbots", "[Loot] LootRefresh: Found lootable item {} (ID: {}){}",
                             proto->Name1, itemId, hasCount);
                     }
                 }
                 else if (debugLoot)
                 {
-                    LOG_DEBUG("playerbots", "LootRefresh: Skipping item {} (ID: {}) - already have max ({})",
+                    LOG_DEBUG("playerbots", "[Loot] LootRefresh: Skipping item {} (ID: {}) - already have max ({})",
                         proto->Name1, itemId, maxCount);
                 }
 
@@ -278,13 +278,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             {
                                 std::string hasCount = (refMaxCount > 0) ?
                                     fmt::format(" - bot has {}/{}", bot->GetItemCount(refItemId, true), refMaxCount) : "";
-                                LOG_DEBUG("playerbots", "LootRefresh: Found lootable referenced item {} (ID: {}){}",
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Found lootable referenced item {} (ID: {}){}",
                                     refProto->Name1, refItemId, hasCount);
                             }
                         }
                         else if (debugLoot)
                         {
-                            LOG_DEBUG("playerbots", "LootRefresh: Skipping referenced item {} (ID: {}) - already have max ({})",
+                            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Skipping referenced item {} (ID: {}) - already have max ({})",
                                 refProto->Name1, refItemId, refMaxCount);
                         }
                     }
@@ -296,7 +296,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (hasAnyQuestItems && onlyHasQuestItems && !hasNeededQuestItem)
         {
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Gameobject has only unneeded quest items - skipping");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Gameobject has only unneeded quest items - skipping");
             return;
         }
 
@@ -304,7 +304,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (!hasAnyLootableItem && !hasNeededQuestItem)
         {
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Gameobject has no lootable items (all unique limits reached) - skipping");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Gameobject has no lootable items (all unique limits reached) - skipping");
             return;
         }
 
@@ -319,13 +319,13 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             // No lock info means object is freely accessible
             isAccessible = true;
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootRefresh: Gameobject accepted - no lock info (freely accessible)");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Gameobject accepted - no lock info (freely accessible)");
             return;
         }
 
         if (debugLoot)
         {
-            LOG_DEBUG("playerbots", "LootRefresh: Gameobject has lock ID {}", lockId);
+            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Gameobject has lock ID {}", lockId);
         }
 
         // Find the most permissive lock (easiest to satisfy) - locks work with OR logic
@@ -344,7 +344,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         if (debugLoot)
                         {
                             const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(lockInfo->Index[i]);
-                            LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - requires key item {} (ID: {})",
+                            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - requires key item {} (ID: {})",
                                 i + 1,
                                 keyProto ? keyProto->Name1 : "Unknown",
                                 lockInfo->Index[i]);
@@ -358,7 +358,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             bestReqItem = lockInfo->Index[i];
                             foundAccessibleLock = true;
                             if (debugLoot)
-                                LOG_DEBUG("playerbots", "LootRefresh: Bot has required key - this is best option");
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Bot has required key - this is best option");
                             break; // Key access is always best, stop checking other locks
                         }
                         else
@@ -384,7 +384,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             uint32 reqSkill = std::max((uint32)1, lockInfo->Skill[i]);
                             if (debugLoot)
                             {
-                                LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - requires skill {} (level {})",
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - requires skill {} (level {})",
                                     i + 1, mappedSkill, reqSkill);
                             }
                             
@@ -400,12 +400,12 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                                     bestReqItem = 0;
                                     foundAccessibleLock = true;
                                     if (debugLoot)
-                                        LOG_DEBUG("playerbots", "LootRefresh: Bot can satisfy skill requirement - considering this option");
+                                        LOG_DEBUG("playerbots", "[Loot] LootRefresh: Bot can satisfy skill requirement - considering this option");
                                 }
                             }
                             else if (debugLoot)
                             {
-                                LOG_DEBUG("playerbots", "LootRefresh: Bot cannot satisfy skill {} (have {}, need {})",
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Bot cannot satisfy skill {} (have {}, need {})",
                                     mappedSkill,
                                     botAI->HasSkill((SkillType)mappedSkill) ? std::to_string(bot->GetSkillValue(mappedSkill)) : "0",
                                     reqSkill);
@@ -415,7 +415,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         {
                             if (debugLoot)
                             {
-                                LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - accessible lock type {} (no skill required)",
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - accessible lock type {} (no skill required)",
                                     i + 1, lockType);
                             }
                             
@@ -425,12 +425,12 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                             bestReqItem = 0;
                             foundAccessibleLock = true;
                             if (debugLoot)
-                                LOG_DEBUG("playerbots", "LootRefresh: No skill lock type - this is accessible");
+                                LOG_DEBUG("playerbots", "[Loot] LootRefresh: No skill lock type - this is accessible");
                             break; // No-skill access is very good, but key access would be better
                         }
                         else if (debugLoot)
                         {
-                            LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - inaccessible lock type {}",
+                            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - inaccessible lock type {}",
                                 i + 1, lockType);
                         }
                     }
@@ -444,7 +444,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         // This matches GameObject::GetSpellForLock() early break logic
                         if (debugLoot && lockInfo->Type[i] != 0)
                         {
-                            LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - non-skill type {} (stopping processing like server)",
+                            LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - non-skill type {} (stopping processing like server)",
                                 i + 1, lockInfo->Type[i]);
                         }
                         break; // Stop processing remaining slots like server does
@@ -452,7 +452,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     
                     if (debugLoot && lockInfo->Type[i] != 0)
                     {
-                        LOG_DEBUG("playerbots", "LootRefresh: Lock option {} - unknown lock type {}",
+                        LOG_DEBUG("playerbots", "[Loot] LootRefresh: Lock option {} - unknown lock type {}",
                             i + 1, lockInfo->Type[i]);
                     }
                     break;
@@ -503,7 +503,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     else
                         selected = fmt::format("skill {} (level {})", bestSkillId, bestReqSkillValue);
                 }
-                LOG_DEBUG("playerbots", "LootRefresh: Selected best lock option - {}", selected);
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: Selected best lock option - {}", selected);
             }
         }
         else
@@ -513,7 +513,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             guid.Clear(); // Clear guid so this object is marked as invalid
             if (debugLoot)
             {
-                LOG_DEBUG("playerbots", "LootRefresh: No accessible lock options found - bot cannot loot this object");
+                LOG_DEBUG("playerbots", "[Loot] LootRefresh: No accessible lock options found - bot cannot loot this object");
             }
         }
     }
@@ -522,19 +522,19 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         // GameObject exists but doesn't pass the state check
         std::string stateReason = !go->isSpawned() ? "not spawned" :
             fmt::format("state={} (need GO_STATE_READY={})", uint32(go->GetGoState()), uint32(GO_STATE_READY));
-        LOG_DEBUG("playerbots", "LootRefresh: GameObject {} failed state check - {}",
+        LOG_DEBUG("playerbots", "[Loot] LootRefresh: GameObject {} failed state check - {}",
             go->GetName(), stateReason);
     }
     else if (debugLoot)
     {
         // GameObject not found at all
-        LOG_DEBUG("playerbots", "LootRefresh: GameObject not found");
+        LOG_DEBUG("playerbots", "[Loot] LootRefresh: GameObject not found");
     }
 
     // Debug: Show final state of this LootObject after Refresh
     if (debugLoot)
     {
-        LOG_DEBUG("playerbots", "LootRefresh: Completed - guid={}, isAccessible={}, skillId={}",
+        LOG_DEBUG("playerbots", "[Loot] LootRefresh: Completed - guid={}, isAccessible={}, skillId={}",
             guid.IsEmpty() ? "EMPTY" : "valid",
             isAccessible ? "true" : "false",
             skillId);
@@ -687,7 +687,7 @@ bool LootObject::IsLootPossible(Player* bot)
     
     if (debugLoot)
     {
-        LOG_DEBUG("playerbots", "LootPossible: Checking {} (GUID: {})",
+        LOG_DEBUG("playerbots", "[Loot] LootPossible: Checking {} (GUID: {})",
             worldObj->GetName(), guid.ToString());
     }
     
@@ -696,7 +696,7 @@ bool LootObject::IsLootPossible(Player* bot)
         if (debugLoot)
         {
             const ItemTemplate* keyProto = sObjectMgr->GetItemTemplate(reqItem);
-            LOG_DEBUG("playerbots", "LootPossible: Missing required key {} (ID: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Missing required key {} (ID: {})",
                 keyProto ? keyProto->Name1 : "Unknown", reqItem);
         }
         return false;
@@ -755,7 +755,7 @@ bool LootObject::IsLootPossible(Player* bot)
                     canReachNearby = true;
                     if (debugLoot)
                     {
-                        LOG_DEBUG("playerbots", "LootPossible: Found reachable position toward bot at {:.1f}yd from object",
+                        LOG_DEBUG("playerbots", "[Loot] LootPossible: Found reachable position toward bot at {:.1f}yd from object",
                             testDistance);
                     }
                 }
@@ -771,7 +771,7 @@ bool LootObject::IsLootPossible(Player* bot)
                 {
                     canReachNearby = true;
                     if (debugLoot)
-                        LOG_DEBUG("playerbots", "LootPossible: Exact object position is reachable");
+                        LOG_DEBUG("playerbots", "[Loot] LootPossible: Exact object position is reachable");
                 }
             }
 
@@ -791,7 +791,7 @@ bool LootObject::IsLootPossible(Player* bot)
                         canReachNearby = true;
                         if (debugLoot)
                         {
-                            LOG_DEBUG("playerbots", "LootPossible: Found reachable position around object at angle {:.0f} degrees",
+                            LOG_DEBUG("playerbots", "[Loot] LootPossible: Found reachable position around object at angle {:.0f} degrees",
                                 angle * 180.0f / M_PI);
                         }
                         break;
@@ -802,13 +802,13 @@ bool LootObject::IsLootPossible(Player* bot)
             if (!canReachNearby)
             {
                 if (debugLoot)
-                    LOG_DEBUG("playerbots", "LootPossible: Cannot reach target or nearby positions - pathfinding failed");
+                    LOG_DEBUG("playerbots", "[Loot] LootPossible: Cannot reach target or nearby positions - pathfinding failed");
                 return false;
             }
         }
         else if (debugLoot)
         {
-            LOG_DEBUG("playerbots", "LootPossible: Loot in water - allowing swimming access");
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Loot in water - allowing swimming access");
         }
         // If loot is in water, allow bot to attempt swimming to it regardless of pathfinding
     }
@@ -819,7 +819,7 @@ bool LootObject::IsLootPossible(Player* bot)
         if (!bot->isAllowedToLoot(creature) && skillId != SKILL_SKINNING)
         {
             if (debugLoot)
-                LOG_DEBUG("playerbots", "LootPossible: Not allowed to loot creature");
+                LOG_DEBUG("playerbots", "[Loot] LootPossible: Not allowed to loot creature");
             return false;
         }
     }
@@ -867,13 +867,13 @@ bool LootObject::IsLootPossible(Player* bot)
         if (debugLoot)
         {
             if (skillId == SKILL_NONE)
-                LOG_DEBUG("playerbots", "LootPossible: Object not accessible (no lock requirements found)");
+                LOG_DEBUG("playerbots", "[Loot] LootPossible: Object not accessible (no lock requirements found)");
             else
             {
                 uint32 skillValue = botAI->HasSkill((SkillType)skillId) ? uint32(bot->GetSkillValue(skillId)) : 0;
                 std::string haveNeed = reqSkillValue > 0 ?
                     fmt::format(" - have {}, need {}", skillValue, reqSkillValue) : "";
-                LOG_DEBUG("playerbots", "LootPossible: Object not accessible (skill {}{})",
+                LOG_DEBUG("playerbots", "[Loot] LootPossible: Object not accessible (skill {}{})",
                     skillId, haveNeed);
             }
         }
@@ -887,7 +887,7 @@ bool LootObject::IsLootPossible(Player* bot)
         !bot->HasItemCount(40772, 1) && !bot->HasItemCount(40892, 1) && !bot->HasItemCount(40893, 1))
     {
         if (debugLoot)
-            LOG_DEBUG("playerbots", "LootPossible: Mining skill available but missing mining pick");
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Mining skill available but missing mining pick");
         return false;  // Bot is missing a mining pick
     }
 
@@ -895,17 +895,17 @@ bool LootObject::IsLootPossible(Player* bot)
         !bot->HasItemCount(40893, 1) && !bot->HasItemCount(12709, 1) && !bot->HasItemCount(19901, 1))
     {
         if (debugLoot)
-            LOG_DEBUG("playerbots", "LootPossible: Skinning skill available but missing skinning knife");
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Skinning skill available but missing skinning knife");
         return false;  // Bot is missing a skinning knife
     }
 
     if (debugLoot)
     {
         if (skillId == SKILL_NONE)
-            LOG_DEBUG("playerbots", "LootPossible: Object accessible (no skill required)");
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Object accessible (no skill required)");
         else
         {
-            LOG_DEBUG("playerbots", "LootPossible: Object accessible (skill {} satisfied)", skillId);
+            LOG_DEBUG("playerbots", "[Loot] LootPossible: Object accessible (skill {} satisfied)", skillId);
         }
     }
 
@@ -920,7 +920,7 @@ bool LootObjectStack::Add(ObjectGuid guid)
     {
         if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
         {
-            LOG_DEBUG("playerbots", "LootStack: Shrinking loot list (size: {} >= max: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootStack: Shrinking loot list (size: {} >= max: {})",
                 availableLoot.size(), MAX_LOOT_OBJECT_COUNT);
         }
         availableLoot.shrink(time(nullptr) - 30);
@@ -930,7 +930,7 @@ bool LootObjectStack::Add(ObjectGuid guid)
     {
         if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
         {
-            LOG_DEBUG("playerbots", "LootStack: Clearing all loot (still size: {} >= max: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootStack: Clearing all loot (still size: {} >= max: {})",
                 availableLoot.size(), MAX_LOOT_OBJECT_COUNT);
         }
         availableLoot.clear();
@@ -941,7 +941,7 @@ bool LootObjectStack::Add(ObjectGuid guid)
         if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
         {
             WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-            LOG_DEBUG("playerbots", "LootStack: Duplicate loot target {} (GUID: {})",
+            LOG_DEBUG("playerbots", "[Loot] LootStack: Duplicate loot target {} (GUID: {})",
                 obj ? obj->GetName() : "Unknown", guid.ToString());
         }
         return false;
@@ -950,7 +950,7 @@ bool LootObjectStack::Add(ObjectGuid guid)
     if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {
         WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-        LOG_DEBUG("playerbots", "LootStack: Added loot target {} (GUID: {}) - total: {}",
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Added loot target {} (GUID: {}) - total: {}",
             obj ? obj->GetName() : "Unknown", guid.ToString(), availableLoot.size());
     }
 
@@ -967,14 +967,14 @@ void LootObjectStack::Remove(ObjectGuid guid)
         if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
         {
             WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-            LOG_DEBUG("playerbots", "LootStack: Removed loot target {} (GUID: {}) - remaining: {}",
+            LOG_DEBUG("playerbots", "[Loot] LootStack: Removed loot target {} (GUID: {}) - remaining: {}",
                 obj ? obj->GetName() : "Unknown", guid.ToString(), availableLoot.size() - 1);
         }
         availableLoot.erase(i);
     }
     else if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {
-        LOG_DEBUG("playerbots", "LootStack: Attempted to remove non-existent loot target (GUID: {})", guid.ToString());
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Attempted to remove non-existent loot target (GUID: {})", guid.ToString());
     }
 }
 
@@ -1007,7 +1007,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
     if (debugLoot && !availableLoot.empty())
     {
         std::string distInfo = maxDistance > 0 ? fmt::format(" (max distance: {}yd)", maxDistance) : "";
-        LOG_DEBUG("playerbots", "LootStack: Evaluating {} loot targets{}",
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Evaluating {} loot targets{}",
             availableLoot.size(), distInfo);
     }
 
@@ -1055,7 +1055,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 
         if (debugLoot)
         {
-            LOG_DEBUG("playerbots", "LootStack: Selected {} at {:.1f}yd",
+            LOG_DEBUG("playerbots", "[Loot] LootStack: Selected {} at {:.1f}yd",
                 worldObj->GetName(), distance);
         }
 
@@ -1065,7 +1065,7 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 
     if (debugLoot)
     {
-        std::string summary = fmt::format("LootStack: Evaluated {} targets", evaluatedCount);
+        std::string summary = fmt::format("[Loot] LootStack: Evaluated {} targets", evaluatedCount);
         if (skippedDistance > 0)
             summary += fmt::format(", skipped {} (distance)", skippedDistance);
         if (skippedLootPossible > 0)
@@ -1091,7 +1091,7 @@ void LootObjectStack::MarkAsPending(ObjectGuid guid)
     if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {
         WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-        LOG_DEBUG("playerbots", "LootStack: Marked loot target as pending {} (GUID: {})",
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Marked loot target as pending {} (GUID: {})",
             obj ? obj->GetName() : "Unknown", guid.ToString());
     }
 }
@@ -1107,7 +1107,7 @@ void LootObjectStack::MarkAsCompleted(ObjectGuid guid)
     if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {
         WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-        LOG_DEBUG("playerbots", "LootStack: Marked loot target as completed {} (GUID: {})",
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Marked loot target as completed {} (GUID: {})",
             obj ? obj->GetName() : "Unknown", guid.ToString());
     }
 }
@@ -1134,7 +1134,7 @@ void LootObjectStack::ProcessPendingTimeouts()
 
                 if (debugLoot)
                 {
-                    LOG_DEBUG("playerbots", "LootStack: Pending loot timeout, moved back to available: {} (GUID: {})",
+                    LOG_DEBUG("playerbots", "[Loot] LootStack: Pending loot timeout, moved back to available: {} (GUID: {})",
                         obj->GetName(), guid.ToString());
                 }
             }
@@ -1165,7 +1165,7 @@ void LootObjectStack::MarkAsPartiallyLooted(ObjectGuid guid)
     if (botAI && botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT))
     {
         WorldObject* obj = ObjectAccessor::GetWorldObject(*bot, guid);
-        LOG_DEBUG("playerbots", "LootStack: Marked as partially looted {} (GUID: {})",
+        LOG_DEBUG("playerbots", "[Loot] LootStack: Marked as partially looted {} (GUID: {})",
             obj ? obj->GetName() : "Unknown", guid.ToString());
     }
 }
@@ -1192,7 +1192,7 @@ void LootObjectStack::ProcessPartialLootExpiry()
 
                 if (debugLoot)
                 {
-                    LOG_DEBUG("playerbots", "LootStack: Partially looted object expired, moved back to available: {} (GUID: {})",
+                    LOG_DEBUG("playerbots", "[Loot] LootStack: Partially looted object expired, moved back to available: {} (GUID: {})",
                         obj->GetName(), guid.ToString());
                 }
             }
@@ -1226,7 +1226,7 @@ void LootObjectStack::ClearPartialLootOnBagSpaceChange()
 
             if (debugLoot && !partiallyLootedObjects.empty())
             {
-                LOG_DEBUG("playerbots", "LootStack: Bag space improved, clearing {} partially looted objects",
+                LOG_DEBUG("playerbots", "[Loot] LootStack: Bag space improved, clearing {} partially looted objects",
                     partiallyLootedObjects.size());
             }
 

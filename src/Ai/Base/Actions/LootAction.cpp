@@ -28,27 +28,32 @@ bool LootAction::Execute(Event /*event*/)
     if (!AI_VALUE(bool, "has available loot"))
         return false;
 
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+
     LootObject prevLoot = AI_VALUE(LootObject, "loot target");
     LootObject const& lootObject =
         AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig.lootDistance);
 
     if (lootObject.IsEmpty())
     {
-        LOG_DEBUG("playerbots", "LootSelect: No loot available from GetLoot");
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] No loot available from GetLoot");
         return false;
     }
 
     WorldObject* newTarget = const_cast<LootObject&>(lootObject).GetWorldObject(bot);
     float newDist = newTarget ? bot->GetDistance(newTarget) : -1.0f;
 
-    LOG_DEBUG("playerbots", "LootSelect: Selecting {} (guid={}, dist={:.1f})",
-        newTarget ? newTarget->GetName() : "null", lootObject.guid.ToString(), newDist);
+    if (debugLoot)
+        LOG_DEBUG("playerbots", "[Loot] Selecting {} (guid={}, dist={:.1f})",
+            newTarget ? newTarget->GetName() : "null", lootObject.guid.ToString(), newDist);
 
     if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
     {
         WorldObject* prevWo = prevLoot.GetWorldObject(bot);
-        LOG_DEBUG("playerbots", "LootSelect: Switching from {} (guid={})",
-            prevWo ? prevWo->GetName() : "null", prevLoot.guid.ToString());
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] Switching from {} (guid={})",
+                prevWo ? prevWo->GetName() : "null", prevLoot.guid.ToString());
 
         WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);
         *packet << prevLoot.guid;
@@ -60,7 +65,8 @@ bool LootAction::Execute(Event /*event*/)
     // Check if the game object id is disallowed in the user configurable list or not.
     if (sPlayerbotAIConfig.disallowedGameObjects.find(lootObject.guid.GetEntry()) != sPlayerbotAIConfig.disallowedGameObjects.end())
     {
-        LOG_DEBUG("playerbots", "LootSelect: GameObject entry {} is disallowed", lootObject.guid.GetEntry());
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] GameObject entry {} is disallowed", lootObject.guid.GetEntry());
         return false;  // Game object ID is disallowed, so do not proceed
     }
     else
@@ -117,26 +123,30 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     if (lootObject.IsEmpty())
         return false;
 
+    bool debugLoot = botAI->HasStrategy("debug loot", BOT_STATE_NON_COMBAT);
+
     Creature* creature = botAI->GetCreature(lootObject.guid);
     if (creature && bot->GetDistance(creature) > LOOT_INTERACTION_DISTANCE)
     {
-        LOG_DEBUG("playerbots", "DoLoot: Creature {} too far ({:.1f} > {})",
-            creature->GetEntry(), bot->GetDistance(creature), LOOT_INTERACTION_DISTANCE);
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] Creature {} too far ({:.1f} > {})",
+                creature->GetEntry(), bot->GetDistance(creature), LOOT_INTERACTION_DISTANCE);
         return false;
     }
 
-    // Debug: log entry for gameobject path
     GameObject* dbgGo = botAI->GetGameObject(lootObject.guid);
     if (dbgGo && !creature)
     {
-        LOG_DEBUG("playerbots", "DoLoot: GO {} dist={:.1f} state={} flags={} lootSkill={} reqItem={}",
-            dbgGo->GetEntry(), bot->GetDistance(dbgGo),
-            uint32(dbgGo->GetGoState()), uint32(dbgGo->GetGameObjectFlags()),
-            lootObject.skillId, lootObject.reqItem);
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] GO {} dist={:.1f} state={} flags={} lootSkill={} reqItem={}",
+                dbgGo->GetEntry(), bot->GetDistance(dbgGo),
+                uint32(dbgGo->GetGoState()), uint32(dbgGo->GetGameObjectFlags()),
+                lootObject.skillId, lootObject.reqItem);
     }
     else if (!dbgGo && !creature)
     {
-        LOG_DEBUG("playerbots", "DoLoot: Object not found (GUID: {})", lootObject.guid.ToString());
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] Object not found (GUID: {})", lootObject.guid.ToString());
     }
 
     // Dismount if the bot is mounted
@@ -181,25 +191,29 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     GameObject* go = botAI->GetGameObject(lootObject.guid);
-    LOG_DEBUG("playerbots", "DoLoot: go={} for GO entry {}", go ? "valid" : "NULL", go ? go->GetEntry() : 0);
+    if (debugLoot)
+        LOG_DEBUG("playerbots", "[Loot] go={} for GO entry {}", go ? "valid" : "NULL", go ? go->GetEntry() : 0);
 
     if (go && bot->GetDistance(go) > LOOT_INTERACTION_DISTANCE)
     {
-        LOG_DEBUG("playerbots", "DoLoot: GO {} too far ({:.1f} > {})",
-            go->GetEntry(), bot->GetDistance(go), LOOT_INTERACTION_DISTANCE);
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] GO {} too far ({:.1f} > {})",
+                go->GetEntry(), bot->GetDistance(go), LOOT_INTERACTION_DISTANCE);
         return false;
     }
 
     if (go && (go->GetGoState() != GO_STATE_READY))
     {
-        LOG_DEBUG("playerbots", "DoLoot: GO {} not ready (state={})",
-            go->GetEntry(), uint32(go->GetGoState()));
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] GO {} not ready (state={})",
+                go->GetEntry(), uint32(go->GetGoState()));
         return false;
     }
 
     if (!go)
     {
-        LOG_DEBUG("playerbots", "DoLoot: go is NULL, skipping to GetOpeningSpell");
+        if (debugLoot)
+            LOG_DEBUG("playerbots", "[Loot] go is NULL, skipping to GetOpeningSpell");
     }
 
     // Prevent bot from looting chests that are unlootable (e.g. Gunship Armory before completing
@@ -229,8 +243,9 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
 
         if (!canLootForQuest)
         {
-            LOG_DEBUG("playerbots", "DoLoot: GO {} blocked by INTERACT_COND/NOT_SELECTABLE (no quest reason)",
-                go->GetEntry());
+            if (debugLoot)
+                LOG_DEBUG("playerbots", "[Loot] GO {} blocked by INTERACT_COND/NOT_SELECTABLE (no quest reason)",
+                    go->GetEntry());
             return false;
         }
     }
@@ -306,21 +321,26 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
     }
 
     uint32 spellId = GetOpeningSpell(lootObject);
-    LOG_DEBUG("playerbots", "DoLoot: GetOpeningSpell returned {} (go={})", spellId, go ? "valid" : "NULL");
+    if (debugLoot)
+        LOG_DEBUG("playerbots", "[Loot] GetOpeningSpell returned {} (go={})", spellId, go ? "valid" : "NULL");
     if (!spellId)
     {
         if (GameObject* go = botAI->GetGameObject(lootObject.guid))
-            LOG_DEBUG("playerbots", "DoLoot: GetOpeningSpell returned 0 for GO {} (lock {})",
-                go->GetEntry(), go->GetGOInfo()->GetLockId());
+            if (debugLoot)
+                LOG_DEBUG("playerbots", "[Loot] GetOpeningSpell returned 0 for GO {} (lock {})",
+                    go->GetEntry(), go->GetGOInfo()->GetLockId());
         return false;
     }
 
     bool castResult = botAI->CastSpell(spellId, go);
-    if (!castResult)
-        LOG_DEBUG("playerbots", "DoLoot: CastSpell({}) failed for GO {} (lock {})",
-            spellId, go ? go->GetEntry() : 0, go ? go->GetGOInfo()->GetLockId() : 0);
-    else
-        LOG_DEBUG("playerbots", "DoLoot: CastSpell({}) succeeded for GO {}", spellId, go ? go->GetEntry() : 0);
+    if (debugLoot)
+    {
+        if (!castResult)
+            LOG_DEBUG("playerbots", "[Loot] CastSpell({}) failed for GO {} (lock {})",
+                spellId, go ? go->GetEntry() : 0, go ? go->GetGOInfo()->GetLockId() : 0);
+        else
+            LOG_DEBUG("playerbots", "[Loot] CastSpell({}) succeeded for GO {}", spellId, go ? go->GetEntry() : 0);
+    }
     return castResult;
 }
 
