@@ -12,6 +12,7 @@
 #include "Queue.h"
 #include "Strategy.h"
 #include "Timer.h"
+#include "ScriptMgr.h"
 
 Engine::Engine(PlayerbotAI* botAI, AiObjectContext* factory) : PlayerbotAIAware(botAI), aiObjectContext(factory)
 {
@@ -601,6 +602,19 @@ bool Engine::ListenAndExecute(Action* action, Event event)
 
     actionExecuted = actionExecutionListeners.OverrideResult(action, actionExecuted, event);
     actionExecutionListeners.After(action, actionExecuted, event);
+
+    // Expose the executed action to external scripts (mod-neuralbot records expert
+    // demonstrations for behavior-cloning warm-start).
+    if (actionExecuted)
+    {
+        Player* bot = botAI->GetBot();
+        if (bot)
+        {
+            Unit* target = action->GetTarget();
+            sScriptMgr->OnPlayerbotActionExecuted(bot, action->getName(), target ? target->GetGUID() : ObjectGuid::Empty);
+        }
+    }
+
     return actionExecuted;
 }
 
