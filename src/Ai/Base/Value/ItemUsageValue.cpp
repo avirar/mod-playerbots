@@ -481,24 +481,23 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
     if (!botAI)
         return false;
 
+    // Use the core's canonical quest-item predicate - the same one the loot
+    // system uses to decide whether a quest item is offered at all
+    // (LootTemplate::HasQuestDropForPlayer / needs_quest gating). It covers both
+    // direct objectives (RequiredItemId) and quest source items
+    // (ItemDrop/RequiredSource - e.g. the key to a quest chest) with the proper
+    // owned-count/MaxCount/stack checks. Keeping the bot's valuation on this
+    // predicate means it agrees with what actually drops in a loot window, and
+    // quest keys are no longer dismissed as "Useless".
+    if (player->HasQuestForItem(proto->ItemId))
+        return true;
+
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 entry = player->GetQuestSlotQuestId(slot);
         Quest const* quest = sObjectMgr->GetQuestTemplate(entry);
         if (!quest)
             continue;
-
-        // Check if the item itself is needed for the quest
-        for (uint8 i = 0; i < 4; i++)
-        {
-            if (quest->RequiredItemId[i] == proto->ItemId)
-            {
-                if (player->GetItemCount(proto->ItemId, false) >= quest->RequiredItemCount[i])
-                    continue;
-
-                return true; // Item is directly required for a quest
-            }
-        }
 
         // Check if the item has spells that create a required quest item
         for (uint8 i = 0; i < MAX_ITEM_SPELLS; i++)
