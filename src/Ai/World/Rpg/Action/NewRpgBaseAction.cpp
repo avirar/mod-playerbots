@@ -614,6 +614,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         if (!IsQuestWorthDoing(quest) || !IsQuestCapableDoing(quest) ||
             bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED)
         {
+            botAI->questDropReasons[questId] = bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED ? "failed" :
+                (!IsQuestCapableDoing(quest) ? "not_capable" : "not_worth");
             LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
@@ -646,6 +648,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
         if (quest->GetZoneOrSort() < 0 || (quest->GetZoneOrSort() > 0 && quest->GetZoneOrSort() != botZoneId))
         {
+            botAI->questDropReasons[questId] = "wrong_zone";
             LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
@@ -673,6 +676,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        botAI->questDropReasons[questId] = "log_full";
         LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)i;

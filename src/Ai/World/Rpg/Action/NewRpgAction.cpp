@@ -551,6 +551,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             // we has reach the poi for more than 5 mins but no progession
             // may not be able to complete this quest, marked as abandoned
             /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
+            botAI->questDropReasons[questId] = "no_progress_at_poi";
             botAI->lowPriorityQuest.insert(questId);
             botAI->rpgStatistic.questAbandoned++;
             LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
@@ -626,6 +627,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
     {
         // e.g. Can not reward quest to gameobjects
         /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
+        botAI->questDropReasons[questId] = "cannot_reward";
         botAI->lowPriorityQuest.insert(questId);
         botAI->rpgStatistic.questAbandoned++;
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);

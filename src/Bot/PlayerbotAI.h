@@ -24,6 +24,7 @@
 #include "Util.h"
 #include "WorldPacket.h"
 #include <stack>
+#include <unordered_map>
 
 class AiObjectContext;
 class Creature;
@@ -598,6 +599,7 @@ public:
     std::vector<Quest const*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
     std::set<uint32> GetCurrentIncompleteQuestIds();
+    std::string const ListStrategies(BotState type);
     void PetFollow();
     static float GetItemScoreMultiplier(ItemQualities quality);
     static bool IsHealingSpell(uint32 spellFamilyName, flag96 spellFamilyFlags);
@@ -605,6 +607,8 @@ public:
     NewRpgInfo rpgInfo;
     NewRpgStatistic rpgStatistic;
     std::unordered_set<uint32> lowPriorityQuest;
+    // questId -> reason the RPG engine dropped/abandoned it (recorded at drop time; read by debug tooling)
+    std::unordered_map<uint32, std::string> questDropReasons;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;
 

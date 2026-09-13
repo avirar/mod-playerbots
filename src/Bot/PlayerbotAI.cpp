@@ -1589,6 +1589,14 @@ void PlayerbotAI::ChangeStrategy(std::string const names, BotState type)
     e->ChangeStrategy(names);
 }
 
+std::string const PlayerbotAI::ListStrategies(BotState type)
+{
+    Engine* e = engines[type];
+    if (!e)
+        return {};
+    return e->ListStrategies();
+}
+
 void PlayerbotAI::ClearStrategies(BotState type)
 {
     Engine* e = engines[type];
