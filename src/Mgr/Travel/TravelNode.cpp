@@ -114,6 +114,31 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
 
     if (bot)
     {
+        // 3.4 (OG getCost parity): level gates - prevent low-level bots from routing to
+        // the Outland (530) / Northrend (571) hubs. Destination = last path point.
+        if (!path.empty())
+        {
+            uint32 const destMap = path.back().GetMapId();
+            if ((destMap == 530 && bot->GetLevel() < 58) || (destMap == 571 && bot->GetLevel() < 68))
+                return -1.0f;
+        }
+
+        // 3.4 (OG getCost parity): static-portal faction gate - reject a portal whose GO
+        // faction (gameobject_template_addon) is hostile to the bot, so faction portals
+        // (Dalaran enclaves + the faction-specific Shattrath portals) are only used by
+        // the matching faction (wrong-faction bots get teleported out of the enclave).
+        if (getPathType() == TravelNodePathType::staticPortal && pathObject)
+        {
+            GameObjectTemplateAddon const* addon = sObjectMgr->GetGameObjectTemplateAddon(pathObject);
+            if (addon && addon->faction != 0)
+            {
+                FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(addon->faction);
+                if (factionEntry &&
+                    Unit::GetFactionReactionTo(factionEntry, bot->GetFactionTemplateEntry()) < REP_NEUTRAL)
+                    return -1.0f;
+            }
+        }
+
         if (getPathType() == TravelNodePathType::flightPath && pathObject)
         {
             if (!bot->IsAlive())
