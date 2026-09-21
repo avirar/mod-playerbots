@@ -1,15 +1,15 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #ifndef PLAYERBOTS_TRAVELNODE_H
 #define PLAYERBOTS_TRAVELNODE_H
 
-#include <shared_mutex>
-
-#include "G3D/Vector3.h"
 #include "TravelMgr.h"
+#include "G3D/Vector3.h"
+#include <shared_mutex>
 
 class PlayerbotAI;
 
@@ -432,7 +432,7 @@ struct PathNodePoint
     PathNodeType type = PathNodeType::NODE_PATH;
     uint32 entry = 0;
 
-    bool operator==(const PathNodePoint& p1) const
+    bool operator==(PathNodePoint const& p1) const
     {
         return point == p1.point && type == p1.type && entry == p1.entry;
     }
@@ -481,9 +481,9 @@ public:
 
     bool empty() const { return fullPath.empty(); }
     size_t size() const { return fullPath.size(); }
-    const PathNodePoint& operator[](size_t idx) const { return fullPath[idx]; }
+    PathNodePoint const& operator[](size_t idx) const { return fullPath[idx]; }
     std::vector<PathNodePoint> GetPath() { return fullPath; }
-    const std::vector<PathNodePoint>& GetPathRef() const { return fullPath; }
+    std::vector<PathNodePoint> const& GetPathRef() const { return fullPath; }
     WorldPosition getFront() { return fullPath.front().point; }
     WorldPosition getBack() { return fullPath.back().point; }
 
@@ -792,8 +792,8 @@ private:
     TravelNodeMap() = default;
     ~TravelNodeMap() = default;
 
-    TravelNodeMap(const TravelNodeMap&) = delete;
-    TravelNodeMap& operator=(const TravelNodeMap&) = delete;
+    TravelNodeMap(TravelNodeMap const&) = delete;
+    TravelNodeMap& operator=(TravelNodeMap const&) = delete;
 
     TravelNodeMap(TravelNodeMap&&) = delete;
     TravelNodeMap& operator=(TravelNodeMap&&) = delete;
@@ -802,9 +802,8 @@ private:
     void BuildTaxiGraph();
     void ComputeAllPaths();
     std::unordered_map<uint32, uint32> BFS(uint32 startNode);
-    std::vector<uint32> BuildPath(
-        uint32 fromNode, uint32 toNode,
-        const std::unordered_map<uint32, uint32>& parentMap);
+    std::vector<uint32> BuildPath(uint32 fromNode, uint32 toNode,
+                                  std::unordered_map<uint32, uint32> const& parentMap);
 
     std::unordered_map<uint32, std::vector<uint32>> m_taxiGraph;
     std::map<uint32, std::map<uint32, std::vector<uint32>>>

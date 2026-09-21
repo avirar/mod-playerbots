@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #ifndef PLAYERBOTS_POSSIBLERPGTARGETSVALUE_H
@@ -18,7 +19,7 @@ class PossibleRpgTargetsValue : public NearestUnitsValue
 public:
     PossibleRpgTargetsValue(PlayerbotAI* botAI, float range = 70.0f);
 
-    static std::vector<uint32> allowedNpcFlags;
+    static const std::vector<uint32> allowedNpcFlags;
 
 protected:
     void FindUnits(std::list<Unit*>& targets) override;
@@ -30,7 +31,7 @@ class PossibleNewRpgTargetsValue : public NearestUnitsValue
 public:
     PossibleNewRpgTargetsValue(PlayerbotAI* botAI, float range = 150.0f);
 
-    static std::vector<uint32> allowedNpcFlags;
+    static const std::vector<uint32> allowedNpcFlags;
     GuidVector Calculate() override;
 protected:
     void FindUnits(std::list<Unit*>& targets) override;
@@ -45,19 +46,9 @@ public:
     PossibleNewRpgGameObjectsValue(PlayerbotAI* botAI, float range = 150.0f, bool ignoreLos = true)
         : ObjectGuidListCalculatedValue(botAI, "possible new rpg game objects"), range(range), ignoreLos(ignoreLos)
     {
-        if (allowedGOFlags.empty())
-        {
-            // questgivers for accept/turn-in; rest for quest progression
-            // (chests, runes, altars, moonwells, lily piles, …)
-            allowedGOFlags.push_back(GAMEOBJECT_TYPE_QUESTGIVER);
-            allowedGOFlags.push_back(GAMEOBJECT_TYPE_CHEST);
-            allowedGOFlags.push_back(GAMEOBJECT_TYPE_GOOBER);
-            allowedGOFlags.push_back(GAMEOBJECT_TYPE_SPELL_FOCUS);
-            allowedGOFlags.push_back(GAMEOBJECT_TYPE_GENERIC);
-        }
     }
 
-    static std::vector<GameobjectTypes> allowedGOFlags;
+    static const std::vector<GameobjectTypes> allowedGOFlags;
     GuidVector Calculate() override;
 
 private:

@@ -1,21 +1,14 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #include "MovementActions.h"
-
-#include <cmath>
-#include <cstdlib>
-#include <iomanip>
-#include <sstream>
-#include <string>
-
 #include "Corpse.h"
 #include "DBCStores.h"
 #include "Event.h"
 #include "FleeManager.h"
-#include "G3D/Vector3.h"
 #include "GameObject.h"
 #include "GridDefines.h"
 #include "LastMovementValue.h"
@@ -48,6 +41,12 @@
 #include "WaypointMovementGenerator.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "G3D/Vector3.h"
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <sstream>
+#include <string>
 
 namespace
 {
@@ -246,7 +245,6 @@ void MovementAction::EmitDebugMove(char const* method, char const* generator, fl
     botAI->TellMasterNoFacing(out);
 }
 
-
 void MovementAction::CreateWp(Player* wpOwner, float x, float y, float z, float o, uint32 entry, bool important)
 {
     float dist = wpOwner->GetDistance(x, y, z);
@@ -422,11 +420,8 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
             if (bot->IsSitState())
                 bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-            // if (bot->IsNonMeleeSpellCast(true))
-            // {
-            //     bot->CastStop();
-            //     botAI->InterruptSpell();
-            // }
+            // bot->CastStop();
+
             DoMovePoint(bot, x, y, z, generatePath, backwards);
             float delay = 1000.0f * MoveDelay(distance, backwards);
             if (lessDelay)
@@ -843,12 +838,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     //     if (bot->IsSitState())
     //         bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-    //     if (bot->IsNonMeleeSpellCast(true))
-    //     {
-    //         bot->CastStop();
-    //         botAI->InterruptSpell();
-    //     }
-    // }
+    //     bot->CastStop();
 
     //  /* Why do we do this?
     // if (lastMove.lastMoveShort.distance(movePosition) < minDist)
@@ -1233,15 +1223,11 @@ void MovementAction::UpdateMovementState()
     wasMovementRestricted = isCurrentlyRestricted;
 
     // Temporary speed increase in group
-    // if (botAI->HasRealPlayerMaster())
-    // {
+    // if (botAI->HasGameClientMaster())
     //     bot->SetSpeedRate(MOVE_RUN, 1.1f);
-    // }
     // else
-    // {
     //     bot->SetSpeedRate(MOVE_RUN, 1.0f);
-    // }
-    // check if target is not reachable
+    // check if target is not reachable (from Vmangos)
     // if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE && bot->CanNotReachTarget() &&
     // !bot->InBattleground())
     // {
@@ -1328,7 +1314,7 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
         && ServerFacade::instance().IsDistanceLessOrEqualThan(ServerFacade::instance().GetDistance2d(bot, target->GetPositionX(),
     target->GetPositionY()), sPlayerbotAIConfig.sightDistance)
         && abs(bot->GetPositionZ() - target->GetPositionZ()) >= sPlayerbotAIConfig.spellDistance &&
-    botAI->HasRealPlayerMaster()
+    botAI->HasGameClientMaster()
         && (target->GetMapId() && bot->GetMapId() != target->GetMapId()))
     {
         bot->StopMoving();
@@ -1355,7 +1341,7 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
         return true;
     }
 
-    if (!IsMovingAllowed(target) && botAI->HasRealPlayerMaster())
+    if (!IsMovingAllowed(target) && botAI->HasGameClientMaster())
     {
         if ((target->GetMap() && target->GetMap()->IsBattlegroundOrArena()) || (bot->GetMap() &&
     bot->GetMap()->IsBattlegroundOrArena())) return false;
@@ -1464,11 +1450,7 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
     if (bot->IsSitState())
         bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-    if (bot->IsNonMeleeSpellCast(true))
-    {
-        bot->CastStop();
-        botAI->InterruptSpell();
-    }
+    bot->CastStop();
 
     // AI_VALUE(LastMovement&, "last movement").Set(target);
     ClearIdleState();
@@ -1514,11 +1496,7 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance)
     if (!bot->IsStandState())
         bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-    if (bot->IsNonMeleeSpellCast(true))
-    {
-        bot->CastStop();
-        botAI->InterruptSpell();
-    }
+    bot->CastStop();
 
     // bot->GetMotionMaster()->Clear();
     bot->GetMotionMaster()->MoveChase((Unit*)obj, distance);
@@ -2070,7 +2048,7 @@ bool AvoidAoeAction::AvoidAuraWithDynamicObj()
     {
         return false;
     }
-    const SpellInfo* spellInfo = aura->GetSpellInfo();
+    SpellInfo const* spellInfo = aura->GetSpellInfo();
     if (!spellInfo)
     {
         return false;
@@ -2126,7 +2104,7 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
         {
             continue;
         }
-        const GameObjectTemplate* goInfo = go->GetGOInfo();
+        GameObjectTemplate const* goInfo = go->GetGOInfo();
         if (!goInfo)
         {
             continue;
@@ -2145,7 +2123,7 @@ bool AvoidAoeAction::AvoidGameObjectWithDamage()
             sPlayerbotAIConfig.aoeAvoidSpellWhitelist.end())
             continue;
 
-        const SpellInfo* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
         if (!spellInfo || spellInfo->IsPositive())
         {
             continue;
@@ -2200,15 +2178,15 @@ bool AvoidAoeAction::AvoidUnitWithDamageAura()
             unit->GetAuraEffectsByType(SPELL_AURA_PERIODIC_TRIGGER_SPELL);
         Unit::AuraEffectList const& aurasPeriodicTriggerWithValueSpell =
             unit->GetAuraEffectsByType(SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE);
-        for (const Unit::AuraEffectList& list : {aurasPeriodicTriggerSpell, aurasPeriodicTriggerWithValueSpell})
+        for (Unit::AuraEffectList const& list : {aurasPeriodicTriggerSpell, aurasPeriodicTriggerWithValueSpell})
         {
             for (auto i = list.begin(); i != list.end(); ++i)
             {
                 AuraEffect* aurEff = *i;
-                const SpellInfo* spellInfo = aurEff->GetSpellInfo();
+                SpellInfo const* spellInfo = aurEff->GetSpellInfo();
                 if (!spellInfo)
                     continue;
-                const SpellInfo* triggerSpellInfo =
+                SpellInfo const* triggerSpellInfo =
                     sSpellMgr->GetSpellInfo(spellInfo->Effects[aurEff->GetEffIndex()].TriggerSpell);
                 if (!triggerSpellInfo)
                     continue;
@@ -2562,10 +2540,10 @@ float CombatFormationMoveAction::AverageGroupAngle(Unit* from, bool ranged, bool
     return atan2(sumY, sumX);
 }
 
-Position CombatFormationMoveAction::GetNearestPosition(const std::vector<Position>& positions)
+Position CombatFormationMoveAction::GetNearestPosition(std::vector<Position> const& positions)
 {
     Position result;
-    for (const Position& pos : positions)
+    for (Position const& pos : positions)
     {
         if (bot->GetExactDist(pos) < bot->GetExactDist(result))
             result = pos;
@@ -3190,7 +3168,6 @@ bool MovementAction::LaunchWalkSpline(TravelPlan& state)
         return false;
     }
 
-
     // Trim past any stored points the bot has already moved past — useful
     // when a spline is interrupted (combat, knockback, mid-spline reissue)
     // and we re-launch from a position later in the route.
@@ -3572,7 +3549,7 @@ bool MovementAction::WaitForTransport()
     return false;
 }
 
-bool MovementAction::FlyDirect(const WorldPosition& /*startPosition*/, const WorldPosition& /*endPosition*/,
+bool MovementAction::FlyDirect(WorldPosition const& /*startPosition*/, WorldPosition const& /*endPosition*/,
                                WorldPosition& /*movePosition*/, TravelPath /*movePath*/)
 {
     // Fly directly to the destination on a free-flying mount.
@@ -3623,7 +3600,7 @@ Unit* MovementAction::GetMover(Player* bot)
     return bot;
 }
 
-TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition,
+TravelPath MovementAction::ResolveMovePath(WorldPosition const& startPosition, WorldPosition const& endPosition,
                                            Unit* /*mover*/, LastMovement& lastMove)
 {
     // Non-const working copies: distance()/getPathTo() are non-const in the
@@ -4014,7 +3991,7 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
     WaitForReach(size);
 }
 
-bool MovementAction::MoveTo2(const WorldPosition& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
+bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
 {
     // Non-const working copy: several WorldPosition predicates
     // (IsValid/isInWater/isUnderWater) are non-const in the target.
@@ -4261,7 +4238,7 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
         return true;
     }
 
-    const PathNodePoint& pt = state.steps[state.stepIdx];
+    PathNodePoint const& pt = state.steps[state.stepIdx];
 
     switch (pt.type)
     {
@@ -4283,7 +4260,7 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
             float bestDistSq = FLT_MAX;
             for (size_t i = state.stepIdx + 1; i < state.steps.size(); ++i)
             {
-                const PathNodePoint& cand = state.steps[i];
+                PathNodePoint const& cand = state.steps[i];
                 if (cand.type != PathNodeType::NODE_PATH &&
                     cand.type != PathNodeType::NODE_NODE)
                     break;  // stop at portal/transport/etc — can't walk past
@@ -4346,7 +4323,7 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
             state.walkPoints.clear();
             while (state.stepIdx < state.steps.size() && state.walkPoints.size() < MAX_SPLINE_POINTS)
             {
-                const PathNodePoint& wp = state.steps[state.stepIdx];
+                PathNodePoint const& wp = state.steps[state.stepIdx];
                 if (wp.type != PathNodeType::NODE_PATH && wp.type != PathNodeType::NODE_NODE)
                     break;
                 state.walkPoints.push_back(G3D::Vector3(wp.point.GetPositionX(),
@@ -4420,8 +4397,8 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
                 return false;
             }
 
-            const PathNodePoint& src = state.steps[state.stepIdx];
-            const PathNodePoint& dst = state.steps[state.stepIdx + 1];
+            PathNodePoint const& src = state.steps[state.stepIdx];
+            PathNodePoint const& dst = state.steps[state.stepIdx + 1];
 
             // Already on destination map?
             if (bot->GetMapId() == dst.point.GetMapId())
@@ -4449,8 +4426,8 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
                 return false;
             }
 
-            const PathNodePoint& board = state.steps[state.stepIdx];
-            const PathNodePoint& arrive = state.steps[state.stepIdx + 1];
+            PathNodePoint const& board = state.steps[state.stepIdx];
+            PathNodePoint const& arrive = state.steps[state.stepIdx + 1];
             // Arrived at destination?
             if (bot->GetMapId() == arrive.point.GetMapId() && !bot->GetTransport())
             {
@@ -4504,8 +4481,8 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
                 return false;
             }
 
-            const PathNodePoint& dep = state.steps[state.stepIdx];
-            const PathNodePoint& arr = state.steps[state.stepIdx + 1];
+            PathNodePoint const& dep = state.steps[state.stepIdx];
+            PathNodePoint const& arr = state.steps[state.stepIdx + 1];
 
             if (bot->IsInFlight())
                 return true;

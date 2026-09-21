@@ -1,23 +1,24 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #ifndef PLAYERBOTS_MOVEMENTACTIONS_H
 #define PLAYERBOTS_MOVEMENTACTIONS_H
 
-#include <cmath>
-
 #include "Action.h"
 #include "LastMovementValue.h"
 #include "PathGenerator.h"
 #include "PlayerbotAIConfig.h"
+#include <cmath>
 
 class Player;
 class PlayerbotAI;
 class Unit;
 class WorldObject;
-class Position;
+
+struct Position;
 
 #define ANGLE_45_DEG (static_cast<float>(M_PI) / 4.f)
 #define ANGLE_90_DEG M_PI_2
@@ -97,7 +98,7 @@ protected:
     // Orchestrator: validates the endpoint, resolves a full route (node graph
     // for cross-map / long distance, navmesh otherwise), then either dispatches
     // a precomputed spline walk or hands off to a special-movement leg.
-    bool MoveTo2(const WorldPosition& endPos, bool idle = false, bool react = false,
+    bool MoveTo2(WorldPosition const& endPos, bool idle = false, bool react = false,
                  bool noPath = false, bool ignoreEnemyTargets = false);
     // Coordinate forwarding entry. Implemented as a MoveTo2 OVERLOAD (distinct
     // parameter list) rather than reusing the source name MoveTo(mapId,...):
@@ -111,7 +112,7 @@ protected:
     // the same destination; otherwise picks node-graph routing for cross-map /
     // long-distance and navmesh routing otherwise. Returns an EMPTY path on
     // pathfinding failure (never fabricates a 1-point path).
-    TravelPath ResolveMovePath(const WorldPosition& startPosition, const WorldPosition& endPosition,
+    TravelPath ResolveMovePath(WorldPosition const& startPosition, WorldPosition const& endPosition,
                                Unit* mover, LastMovement& lastMove);
     // Plays back the already-computed point path with MoveSplinePath
     // (usePath=true) to avoid the engine re-generating it and freezing the bot.
@@ -123,7 +124,7 @@ protected:
     Unit* GetMover(Player* bot);
 
     // Flight helpers (free-flying mounts only).
-    bool FlyDirect(const WorldPosition& startPosition, const WorldPosition& endPosition,
+    bool FlyDirect(WorldPosition const& startPosition, WorldPosition const& endPosition,
                    WorldPosition& movePosition, TravelPath movePath);
     void UpdateFlyingState(WorldPosition& movePosition, float totalDistance, float originalZ,
                            float maxDist, bool isWalking);
@@ -175,16 +176,12 @@ private:
 class FleeAction : public MovementAction
 {
 public:
-    FleeAction(PlayerbotAI* botAI, float distance = sPlayerbotAIConfig.spellDistance)
-        : MovementAction(botAI, "flee"), distance(distance)
+    FleeAction(PlayerbotAI* botAI) : MovementAction(botAI, "flee")
     {
     }
 
     bool Execute(Event event) override;
     bool isUseful() override;
-
-private:
-    float distance;
 };
 
 class FleeWithPetAction : public MovementAction
@@ -230,7 +227,7 @@ protected:
     Position AverageGroupPos(float dis = sPlayerbotAIConfig.sightDistance, bool ranged = false, bool self = false);
     Player* NearestGroupMember(float dis = sPlayerbotAIConfig.sightDistance);
     float AverageGroupAngle(Unit* from, bool ranged = false, bool self = false);
-    Position GetNearestPosition(const std::vector<Position>& positions);
+    Position GetNearestPosition(std::vector<Position> const& positions);
     int lastMoveTimer = 0;
     int moveInterval;
 };

@@ -1,75 +1,132 @@
-#include <unordered_map>
-#include <ctime>
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
 
 #include "MagMultipliers.h"
+#include "ChooseTargetActions.h"
+#include "EncounterHelpers.h"
+#include "FollowActions.h"
+#include "HunterActions.h"
 #include "MagActions.h"
 #include "MagHelpers.h"
-#include "ChooseTargetActions.h"
-#include "GenericSpellActions.h"
+#include "MageActions.h"
+#include "MovementActions.h"
 #include "Playerbots.h"
-#include "WarlockActions.h"
-#include "WipeAction.h"
+#include "ReachTargetActions.h"
 
-using namespace MagtheridonHelpers;
+using namespace MagHelpers;
+using namespace EncounterHelpers;
 
-// Don't do anything other than clicking cubes when Magtheridon is casting Blast Nova
-float MagtheridonUseManticronCubeMultiplier::GetValue(Action* action)
+float MagtheridonUseManticronCubeMultiplier::GetValueInEncounter(Action* action)
 {
-    Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
-    if (!magtheridon)
-        return 1.0f;
-
-    if (magtheridon->HasUnitState(UNIT_STATE_CASTING) &&
-        magtheridon->FindCurrentSpellBySpellId(SPELL_BLAST_NOVA))
+    if (dynamic_cast<AttackAction*>(action) ||
+        dynamic_cast<MagtheridonUseManticronCubeAction*>(action))
     {
-        auto it = botToCubeAssignment.find(bot->GetGUID());
-        if (it != botToCubeAssignment.end())
-        {
-            if (dynamic_cast<WipeAction*>(action))
-                return 1.0f;
-            else if (!dynamic_cast<MagtheridonUseManticronCubeAction*>(action))
-                return 0.0f;
-        }
+        return 1.0f;
     }
 
-    return 1.0f;
-}
-
-// Bots will wait for 6 seconds after Magtheridon becomes attackable before engaging
-float MagtheridonWaitToAttackMultiplier::GetValue(Action* action)
-{
-    Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
-    if (!magtheridon || magtheridon->HasAura(SPELL_SHADOW_CAGE))
-        return 1.0f;
-
-    if (botAI->IsMainTank(bot))
-        return 1.0f;
-
-    const uint8 dpsWaitSeconds = 6;
-    auto it = dpsWaitTimer.find(magtheridon->GetMap()->GetInstanceId());
-    if (it == dpsWaitTimer.end() ||
-        (time(nullptr) - it->second) < dpsWaitSeconds)
+    if (!dynamic_cast<MovementAction*>(action) &&
+        !dynamic_cast<CastReachTargetSpellAction*>(action) &&
+        !dynamic_cast<CastBlinkBackAction*>(action) &&
+        !dynamic_cast<CastDisengageAction*>(action))
     {
-        if (dynamic_cast<AttackAction*>(action) ||
-            (!botAI->IsHeal(bot) && dynamic_cast<CastSpellAction*>(action)))
-            return 0.0f;
+        return 1.0f;
     }
 
-    return 1.0f;
+    if (!IsCubeClicker(bot))
+        return 1.0f;
+
+    Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
+    if (!magtheridon || !IsMagtheridonActive(magtheridon))
+        return 1.0f;
+
+    auto timerIt = blastNovaTimer.find(bot->GetInstanceId());
+    if (timerIt == blastNovaTimer.end())
+        return 1.0f;
+
+    return getMSTimeDiff(timerIt->second, getMSTime()) >= BLAST_NOVA_INTERIM_MS ? 0.0f : 1.0f;
 }
 
-float MagtheridonDisableOffTankAssistMultiplier::GetValue(Action* action)
+float MagtheridonHoldDpsMultiplier::GetValueInEncounter(Action* action)
 {
+    if (!dynamic_cast<AttackAction*>(action) && !dynamic_cast<CastSpellAction*>(action))
+        return 1.0f;
+
+    if (dynamic_cast<CastHealingSpellAction*>(action))
+        return 1.0f;
+
     Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
-    if (!magtheridon)
+    if (!magtheridon || !IsMagtheridonActive(magtheridon))
         return 1.0f;
 
-    if (bot->GetVictim() == nullptr)
+    if (PlayerbotAI::IsMainTank(bot))
         return 1.0f;
 
-    if ((botAI->IsAssistTankOfIndex(bot, 0) || botAI->IsAssistTankOfIndex(bot, 1)) &&
-        dynamic_cast<TankAssistAction*>(action))
+    auto it = magDpsWaitTimer.find(magtheridon->GetInstanceId());
+    if (it == magDpsWaitTimer.end())
         return 0.0f;
 
-    return 1.0f;
+    return getMSTimeDiff(it->second, getMSTime()) <= MAG_DPS_HOLD_MS ? 0.0f : 1.0f;
+}
+
+float MagtheridonControlTankActionsMultiplier::GetValueInEncounter(Action* action)
+{
+    if (botAI->GetState() == BOT_STATE_NON_COMBAT)
+        return 1.0f;
+
+    if (!PlayerbotAI::IsTank(bot))
+        return 1.0f;
+
+    bool const isAvoidAoe = dynamic_cast<AvoidAoeAction*>(action);
+    bool const isReachTargetSpell = dynamic_cast<CastReachTargetSpellAction*>(action);
+
+    if (!isAvoidAoe && !isReachTargetSpell && !IsTauntAction(bot, action) &&
+        !dynamic_cast<TankAssistAction*>(action) &&
+        !dynamic_cast<CombatFormationMoveAction*>(action))
+    {
+        return 1.0f;
+    }
+
+    Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
+    if (!magtheridon)
+        return 1.0f;
+
+    if (isAvoidAoe && magtheridon->GetVictim() != bot)
+        return 1.0f;
+
+    // The purpose is to block the main tank from charging the assist tanks' Channelers while moving
+    // to the waiting position.
+    if (isReachTargetSpell && PlayerbotAI::IsMainTank(bot))
+        return IsMagtheridonActive(magtheridon) ? 1.0f : 0.0f;
+
+    return 0.0f;
+}
+
+float MagtheridonAvoidDebrisDangerMultiplier::GetValueInEncounter(Action* action)
+{
+    if (dynamic_cast<AttackAction*>(action) ||
+        dynamic_cast<MagtheridonUseManticronCubeAction*>(action) ||
+        dynamic_cast<MagtheridonMoveOutOfDebrisAction*>(action))
+    {
+        return 1.0f;
+    }
+
+    if (!dynamic_cast<MovementAction*>(action) &&
+        !dynamic_cast<CastReachTargetSpellAction*>(action))
+    {
+        return 1.0f;
+    }
+
+    if (!IsCeilingCollapsed(bot))
+        return 1.0f;
+
+    Unit* magtheridon = AI_VALUE2(Unit*, "find target", "magtheridon");
+    if (!magtheridon || !IsMagtheridonActive(magtheridon))
+        return 1.0f;
+
+    constexpr float debrisSuppressionZone = 15.0f;
+    return IsPositionInActiveDebris(
+        botAI, bot->GetPositionX(), bot->GetPositionY(), debrisSuppressionZone) ? 0.0f : 1.0f;
 }

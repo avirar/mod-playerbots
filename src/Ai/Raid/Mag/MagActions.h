@@ -1,98 +1,118 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
 #ifndef PLAYERBOTS_MAGACTIONS_H
 #define PLAYERBOTS_MAGACTIONS_H
 
-#include "MagHelpers.h"
 #include "Action.h"
 #include "AttackAction.h"
+#include "MagHelpers.h"
 #include "MovementActions.h"
+
+class MagtheridonResetEncounterStatesAction : public Action
+{
+public:
+    MagtheridonResetEncounterStatesAction(PlayerbotAI* botAI)
+        : Action(botAI, "magtheridon reset encounter states") {}
+    bool Execute(Event event) override;
+};
 
 class MagtheridonMainTankAttackFirstThreeChannelersAction : public AttackAction
 {
 public:
-    MagtheridonMainTankAttackFirstThreeChannelersAction(PlayerbotAI* botAI, std::string const name = "magtheridon main tank attack first three channelers") : AttackAction(botAI, name) {};
-
+    MagtheridonMainTankAttackFirstThreeChannelersAction(PlayerbotAI* botAI)
+        : AttackAction(botAI, "magtheridon main tank attack first three channelers") {}
     bool Execute(Event event) override;
 };
 
-class MagtheridonFirstAssistTankAttackNWChannelerAction : public AttackAction
+class MagtheridonAssistTanksAttackLastTwoChannelersAction : public AttackAction
 {
 public:
-    MagtheridonFirstAssistTankAttackNWChannelerAction(PlayerbotAI* botAI, std::string const name = "magtheridon first assist tank attack nw channeler") : AttackAction(botAI, name) {};
-
+    MagtheridonAssistTanksAttackLastTwoChannelersAction(PlayerbotAI* botAI)
+        : AttackAction(botAI, "magtheridon assist tanks attack last two channelers") {}
     bool Execute(Event event) override;
 };
 
-class MagtheridonSecondAssistTankAttackNEChannelerAction : public AttackAction
+class MagtheridonMisdirectHellfireChannelersToMainTankAction : public Action
 {
 public:
-    MagtheridonSecondAssistTankAttackNEChannelerAction(PlayerbotAI* botAI, std::string const name = "magtheridon second assist tank attack ne channeler") : AttackAction(botAI, name) {};
-
+    MagtheridonMisdirectHellfireChannelersToMainTankAction(PlayerbotAI* botAI)
+        : Action(botAI, "magtheridon misdirect hellfire channelers to main tank") {}
     bool Execute(Event event) override;
 };
 
-class MagtheridonMisdirectHellfireChannelers : public AttackAction
+class MagtheridonAssignDpsPriorityAction : public AttackAction
 {
 public:
-    MagtheridonMisdirectHellfireChannelers(PlayerbotAI* botAI, std::string const name = "magtheridon misdirect hellfire channelers") : AttackAction(botAI, name) {};
-
+    MagtheridonAssignDpsPriorityAction(PlayerbotAI* botAI)
+        : AttackAction(botAI, "magtheridon assign dps priority") {}
     bool Execute(Event event) override;
 };
 
-class MagtheridonAssignDPSPriorityAction : public AttackAction
+class MagtheridonWarlockCcBurningAbyssalAction : public Action
 {
 public:
-    MagtheridonAssignDPSPriorityAction(PlayerbotAI* botAI, std::string const name = "magtheridon assign dps priority") : AttackAction(botAI, name) {};
-
-    bool Execute(Event event) override;
-};
-
-class MagtheridonWarlockCCBurningAbyssalAction : public AttackAction
-{
-public:
-    MagtheridonWarlockCCBurningAbyssalAction(PlayerbotAI* botAI, std::string const name = "magtheridon warlock cc burning abyssal") : AttackAction(botAI, name) {};
-
+    MagtheridonWarlockCcBurningAbyssalAction(PlayerbotAI* botAI)
+        : Action(botAI, "magtheridon warlock cc burning abyssal") {}
     bool Execute(Event event) override;
 };
 
 class MagtheridonMainTankPositionBossAction : public AttackAction
 {
 public:
-    MagtheridonMainTankPositionBossAction(PlayerbotAI* botAI, std::string const name = "magtheridon main tank position boss") : AttackAction(botAI, name) {};
-
+    MagtheridonMainTankPositionBossAction(PlayerbotAI* botAI)
+        : AttackAction(botAI, "magtheridon main tank position boss") {}
     bool Execute(Event event) override;
 };
 
 class MagtheridonSpreadRangedAction : public MovementAction
 {
 public:
-    static std::unordered_map<ObjectGuid, Position> initialPositions;
-    static std::unordered_map<ObjectGuid, bool> hasReachedInitialPosition;
-
-    MagtheridonSpreadRangedAction(PlayerbotAI* botAI, std::string const name = "magtheridon spread ranged") : MovementAction(botAI, name) {};
-
+    MagtheridonSpreadRangedAction(PlayerbotAI* botAI)
+        : MovementAction(botAI, "magtheridon spread ranged") {}
     bool Execute(Event event) override;
+};
+
+class MagtheridonMoveOutOfDebrisAction : public MovementAction
+{
+public:
+    MagtheridonMoveOutOfDebrisAction(PlayerbotAI* botAI)
+        : MovementAction(botAI, "magtheridon move out of debris") {}
+    bool Execute(Event event) override;
+
+private:
+    bool FindSafePosition(Position& outPos);
 };
 
 class MagtheridonUseManticronCubeAction : public MovementAction
 {
 public:
-    MagtheridonUseManticronCubeAction(PlayerbotAI* botAI, std::string const name = "magtheridon use manticron cube") : MovementAction(botAI, name) {};
-
+    MagtheridonUseManticronCubeAction(PlayerbotAI* botAI)
+        : MovementAction(botAI, "magtheridon use manticron cube") {}
     bool Execute(Event event) override;
 
 private:
+    MagHelpers::CubeInfo const* GetAssignedCube();
     bool HandleCubeRelease(Unit* magtheridon);
-    bool ShouldActivateCubeLogic(Unit* magtheridon);
-    bool HandleWaitingPhase(const MagtheridonHelpers::CubeInfo& cubeInfo);
-    bool HandleCubeInteraction(const MagtheridonHelpers::CubeInfo& cubeInfo, GameObject* cube);
+    bool HandleCubeInteraction(GameObject* cube);
+    bool HandleWaitingPhase(MagHelpers::CubeInfo const& cubeInfo);
+    bool FindSafePositionNearCube(
+        MagHelpers::CubeInfo const& cubeInfo, float preferredDistance, Position& outPos);
 };
 
-class MagtheridonManageTimersAndAssignmentsAction : public Action
+class MagtheridonUpdateTimersAndAssignmentsAction : public Action
 {
 public:
-    MagtheridonManageTimersAndAssignmentsAction(PlayerbotAI* botAI, std::string const name = "magtheridon manage timers and assignments") : Action(botAI, name) {};
-
+    MagtheridonUpdateTimersAndAssignmentsAction(PlayerbotAI* botAI)
+        : Action(botAI, "magtheridon update timers and assignments") {}
     bool Execute(Event event) override;
+
+private:
+    bool AssignCubeClickers(uint32 instanceId, Unit* magtheridon);
+    bool NeedsCubeReassignment(uint32 instanceId);
 };
 
 #endif

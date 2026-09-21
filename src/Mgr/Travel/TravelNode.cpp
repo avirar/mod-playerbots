@@ -1,16 +1,11 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #include "TravelNode.h"
-
-#include <array>
-#include <iomanip>
-#include <queue>
-#include <regex>
-#include <unordered_set>
-
+#include "PlayerbotsDatabase.h"
 #include "BudgetValues.h"
 #include "MapMgr.h"
 #include "PathGenerator.h"
@@ -19,6 +14,11 @@
 #include "ServerFacade.h"
 #include "Transport.h"
 #include "TransportMgr.h"
+#include <array>
+#include <iomanip>
+#include <queue>
+#include <regex>
+#include <unordered_set>
 
 // TravelNodePath(float distance = 0.1f, float extraCost = 0, TravelNodePathType pathType = TravelNodePathType::walk,
 // uint32 pathObject = 0, bool calculated = false, std::vector<uint8> maxLevelCreature = { 0,0,0 }, float swimDistance =
@@ -3307,7 +3307,6 @@ void TravelNodeMap::BuildTaxiGraph()
             continue;
 
         tempGraph[path->from].insert(path->to);
-        tempGraph[path->to].insert(path->from);
     }
     for (auto const& [node, neighbors] : tempGraph)
         m_taxiGraph[node] = std::vector<uint32>(neighbors.begin(), neighbors.end());
@@ -3317,7 +3316,10 @@ void TravelNodeMap::ComputeAllPaths()
 {
     std::set<uint32> allNodes;
     for (auto const& [source, neighbors] : m_taxiGraph)
+    {
         allNodes.insert(source);
+        allNodes.insert(neighbors.begin(), neighbors.end());
+    }
 
     for (uint32 source : allNodes)
     {
@@ -3350,7 +3352,11 @@ std::unordered_map<uint32, uint32> TravelNodeMap::BFS(uint32 fromNode)
         uint32 current = workQueue.front();
         workQueue.pop();
 
-        for (uint32 next : m_taxiGraph.at(current))
+        auto graphItr = m_taxiGraph.find(current);
+        if (graphItr == m_taxiGraph.end())
+            continue;
+
+        for (uint32 next : graphItr->second)
         {
             if (visited.count(next))
                 continue;
@@ -3364,7 +3370,7 @@ std::unordered_map<uint32, uint32> TravelNodeMap::BFS(uint32 fromNode)
 }
 
 std::vector<uint32> TravelNodeMap::BuildPath(uint32 fromNode, uint32 toNode,
-                                              const std::unordered_map<uint32, uint32>& parentMap)
+                                              std::unordered_map<uint32, uint32> const& parentMap)
 {
     if (!parentMap.count(toNode))
         return {}; // unreachable

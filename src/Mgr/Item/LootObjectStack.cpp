@@ -1,10 +1,10 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #include "LootObjectStack.h"
-
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
@@ -102,12 +102,15 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
 
             if (IsNeededForQuest(bot, itemId))
             {
+                // A gathering node can also drop a needed quest item (e.g.
+                // Root Sample off Barrens herbs); gathering yields both, so
+                // keep reading the lock below to set skillId rather than
+                // bailing here.
                 this->guid = lootGUID;
                 this->isNeededQuestItem = true;
-                return;
             }
 
-            const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto)
                 continue;
 
@@ -123,18 +126,18 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             return;
 
         // Check the main loot template
-        if (const LootTemplate* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
+        if (LootTemplate const* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
         {
             Loot loot;
             lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
 
-            for (const LootItem& item : loot.items)
+            for (LootItem const& item : loot.items)
             {
                 uint32 itemId = item.itemid;
                 if (!itemId)
                     continue;
 
-                const ItemTemplate* proto = sObjectMgr->GetItemTemplate(itemId);
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
                 if (!proto)
                     continue;
 
@@ -156,18 +159,18 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                 }
 
                 // If this item references another loot table, process it
-                if (const LootTemplate* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
+                if (LootTemplate const* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
                 {
                     Loot refLoot;
                     refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
 
-                    for (const LootItem& refItem : refLoot.items)
+                    for (LootItem const& refItem : refLoot.items)
                     {
                         uint32 refItemId = refItem.itemid;
                         if (!refItemId)
                             continue;
 
-                        const ItemTemplate* refProto = sObjectMgr->GetItemTemplate(refItemId);
+                        ItemTemplate const* refProto = sObjectMgr->GetItemTemplate(refItemId);
                         if (!refProto)
                             continue;
 
@@ -186,7 +189,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         }
 
         // If gameobject has only quest items that bot doesn’t need, skip it.
-        if (hasAnyQuestItems && onlyHasQuestItems)
+        if (!isNeededQuestItem && hasAnyQuestItems && onlyHasQuestItems)
             return;
 
         // Otherwise, loot it.
@@ -324,7 +327,11 @@ bool LootObject::IsLootPossible(Player* bot)
     GameObject* go = botAI->GetGameObject(guid);
     if (go && (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE) || !go->isSpawned()))
         return false;
-    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) && !isNeededQuestItem)
+    // Conditional objects (quest chests, goobers, ...) are gated client-side on quest state.
+    // A bot has no client, so make the same call the server makes for one; additionally allow
+    // when the GO's loot holds a quest item the bot still needs (richer branch scan).
+    if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) &&
+        !go->ActivateToQuest(bot) && !isNeededQuestItem)
         return false;
 
     if (skillId == SKILL_NONE)

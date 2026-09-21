@@ -1,27 +1,71 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
 #ifndef PLAYERBOTS_MAGMULTIPLIERS_H
 #define PLAYERBOTS_MAGMULTIPLIERS_H
 
+#include "EncounterHelpers.h"
+#include "MagHelpers.h"
 #include "Multiplier.h"
+#include <string>
 
-class MagtheridonUseManticronCubeMultiplier : public Multiplier
+class MagtheridonEncounterMultiplier : public Multiplier
 {
 public:
-    MagtheridonUseManticronCubeMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "magtheridon use manticron cube multiplier") {}
-    float GetValue(Action* action) override;
+    MagtheridonEncounterMultiplier(PlayerbotAI* botAI, std::string const name)
+        : Multiplier(botAI, name) {}
+
+    float GetValue(Action* action) final
+    {
+        return EncounterHelpers::IsEncounterInProgress(bot, MagHelpers::MAG_MAP_ID)
+            ? GetValueInEncounter(action) : 1.0f;
+    }
+
+protected:
+    virtual float GetValueInEncounter(Action* action) = 0;
 };
 
-class MagtheridonWaitToAttackMultiplier : public Multiplier
+class MagtheridonUseManticronCubeMultiplier : public MagtheridonEncounterMultiplier
 {
 public:
-    MagtheridonWaitToAttackMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "magtheridon wait to attack multiplier") {}
-    float GetValue(Action* action) override;
+    MagtheridonUseManticronCubeMultiplier(PlayerbotAI* botAI)
+        : MagtheridonEncounterMultiplier(botAI, "magtheridon use manticron cube") {}
+
+protected:
+    float GetValueInEncounter(Action* action) override;
 };
 
-class MagtheridonDisableOffTankAssistMultiplier : public Multiplier
+class MagtheridonHoldDpsMultiplier : public MagtheridonEncounterMultiplier
 {
 public:
-    MagtheridonDisableOffTankAssistMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "magtheridon disable off tank assist multiplier") {}
-    float GetValue(Action* action) override;
+    MagtheridonHoldDpsMultiplier(PlayerbotAI* botAI)
+        : MagtheridonEncounterMultiplier(botAI, "magtheridon hold dps") {}
+
+protected:
+    float GetValueInEncounter(Action* action) override;
+};
+
+class MagtheridonControlTankActionsMultiplier : public MagtheridonEncounterMultiplier
+{
+public:
+    MagtheridonControlTankActionsMultiplier(PlayerbotAI* botAI)
+        : MagtheridonEncounterMultiplier(botAI, "magtheridon control tank actions") {}
+
+protected:
+    float GetValueInEncounter(Action* action) override;
+};
+
+class MagtheridonAvoidDebrisDangerMultiplier : public MagtheridonEncounterMultiplier
+{
+public:
+    MagtheridonAvoidDebrisDangerMultiplier(PlayerbotAI* botAI)
+        : MagtheridonEncounterMultiplier(botAI, "magtheridon avoid debris danger") {}
+
+protected:
+    float GetValueInEncounter(Action* action) override;
 };
 
 #endif
