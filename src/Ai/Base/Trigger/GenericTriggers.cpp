@@ -8,8 +8,10 @@
 #include "Corpse.h"
 #include "CreatureAI.h"
 #include "GenericBuffUtils.h"
+#include "Group.h"
 #include "ItemVisitors.h"
 #include "LastSpellCastValue.h"
+#include "ObjectAccessor.h"
 #include "ObjectGuid.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -124,41 +126,50 @@ bool OutNumberedTrigger::IsActive()
     if (bot->GetGroup() && bot->GetGroup()->isRaidGroup())
         return false;
 
-    int32 botLevel = bot->GetLevel();
-    // Weight by health so being "outnumbered" DE-ESCALATES as the fight
-    // progresses: friend power drops as the bot is hurt, and each foe
-    // contributes in proportion to its remaining health. A pack the bot has
-    // already whittled down no longer trips flee, so it finishes the mobs
-    // one by one instead of fleeing back through them and pulling more.
-    uint32 friendPower = 100 + uint32(100.0f * bot->GetHealthPct() / 100.0f);
-    uint32 foePower = 0;
-    for (auto& attacker : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+    // Numeric superiority, not power weighting: a lone bot can take on a single
+    // (even higher-level) mob, so only flee when the bot is actually outnumbered.
+    // The "attackers" list is already filtered to alive, in-world, non-CC'd,
+    // non-friendly threats (AttackersValue::hasRealThreat), so each guid is one
+    // active foe.
+    uint32 foeCount = 0;
+    for (ObjectGuid const& attacker : botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
     {
-        Creature* creature = botAI->GetCreature(attacker);
-        if (!creature)
-            continue;
-
-        int32 dLevel = creature->GetLevel() - botLevel;
-        if (dLevel > -10)
-            foePower += uint32(std::max(100 + 10 * dLevel, dLevel * 200) * creature->GetHealthPct() / 100.0f);  // accumulate, weighted by foe health
+        if (Unit* unit = botAI->GetUnit(attacker))
+            if (unit->IsAlive() && unit->IsInWorld())
+                ++foeCount;
     }
 
-    if (!foePower)
+    if (foeCount < 2)
         return false;
 
-    for (auto& helper : botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest friendly players")->Get())
+    // Friends = the bot itself plus grouped bots that will actively assist:
+    // alive, same map, in range, and bot-controlled (a real player may be AFK).
+    uint32 friendCount = 1;
+    if (Group* group = bot->GetGroup())
     {
-        Unit* player = botAI->GetUnit(helper);
-        if (!player || player == bot)
-            continue;
+        Group::MemberSlotList const& groupSlot = group->GetMemberSlots();
+        for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); ++itr)
+        {
+            Player* member = ObjectAccessor::FindPlayer(itr->guid);
+            if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
+                continue;
 
-        int32 dLevel = player->GetLevel() - botLevel;
+            if (!GET_PLAYERBOT_AI(member))
+                continue;
 
-        if (dLevel > -10 && bot->GetDistance(player) < 10.0f)
-            friendPower += std::max(200 + 20 * dLevel, dLevel * 200);
+            if (bot->GetExactDist2d(member) > sPlayerbotAIConfig.sightDistance)
+                continue;
+
+            ++friendCount;
+        }
     }
 
-    return friendPower < foePower;
+    // Tanks are built to hold several mobs; count them as one extra friend so
+    // they only flee when clearly outnumbered.
+    if (botAI->IsTank(bot))
+        ++friendCount;
+
+    return foeCount > friendCount;
 }
 
 bool BuffTrigger::IsActive()
