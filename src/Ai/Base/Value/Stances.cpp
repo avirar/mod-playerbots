@@ -17,7 +17,7 @@ Unit* Stance::GetTarget()
 
     ObjectGuid pullTarget = context->GetValue<ObjectGuid>("pull target")->Get();
     if (pullTarget)
-        botAI->GetUnit(pullTarget);
+        return botAI->GetUnit(pullTarget);
 
     return nullptr;
 }
@@ -195,6 +195,13 @@ public:
 StanceValue::StanceValue(PlayerbotAI* botAI) : ManualSetValue<Stance*>(botAI, new NearStance(botAI), "stance") {}
 
 std::string const StanceValue::Save() { return value ? value->getName() : "?"; }
+
+void StanceValue::Reset()
+{
+    if (value)
+        delete value;
+    value = new NearStance(botAI);
+}
 
 bool StanceValue::Load(std::string const name)
 {

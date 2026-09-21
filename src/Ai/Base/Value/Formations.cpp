@@ -13,6 +13,11 @@
 
 WorldLocation Formation::NullLocation = WorldLocation();
 
+float Formation::GetMaxDistance()
+{
+    return botAI->GetRange("follow");
+}
+
 bool IsSameLocation(WorldLocation const& a, WorldLocation const& b)
 {
     return a.GetPositionX() == b.GetPositionX() && a.GetPositionY() == b.GetPositionY() &&
@@ -127,7 +132,7 @@ public:
         return WorldLocation(master->GetMapId(), x, y, z);
     }
 
-    float GetMaxDistance() override { return sPlayerbotAIConfig.followDistance; }
+    float GetMaxDistance() override { return botAI->GetRange("follow"); }
 };
 
 class ChaosFormation : public MoveAheadFormation
@@ -173,7 +178,7 @@ public:
         return WorldLocation(master->GetMapId(), x, y, z);
     }
 
-    float GetMaxDistance() override { return sPlayerbotAIConfig.followDistance + dr; }
+    float GetMaxDistance() override { return botAI->GetRange("follow") + dr; }
 
 private:
     time_t lastChangeTime;

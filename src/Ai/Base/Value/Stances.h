@@ -46,6 +46,7 @@ public:
 
     std::string const Save() override;
     bool Load(std::string const value) override;
+    void Reset() override;
 };
 
 class SetStanceAction : public Action

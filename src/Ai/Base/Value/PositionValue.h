@@ -22,6 +22,11 @@ public:
     {
     }
 
+    PositionInfo(WorldPosition const& pos)
+        : x(pos.GetPositionX()), y(pos.GetPositionY()), z(pos.GetPositionZ()), mapId(pos.GetMapId()), valueSet(true)
+    {
+    }
+
     void Set(float newX, float newY, float newZ, uint32 newMapId)
     {
         x = newX;
@@ -30,6 +35,13 @@ public:
         mapId = newMapId;
         valueSet = true;
     }
+
+    void Set(WorldPosition const& pos)
+    {
+        Set(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), pos.GetMapId());
+    }
+
+    WorldPosition Get() { return WorldPosition(mapId, x, y, z); }
 
     void Reset() { valueSet = false; }
 
