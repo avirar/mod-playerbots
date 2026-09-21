@@ -798,6 +798,9 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(WorldPosition startPos
     // runtime mover so planned routes stay walkable. Redundant-but-harmless when pathUnit is the bot.
     path.SetExcludeFlags(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP);
     path.SetNavTerrainCost(NAV_WATER, 20.0f);
+    // Custom mob-avoidance areas (ids identical to cmangos numbering; see core PathGenerator::MarkNavArea).
+    path.SetAreaCost(12, 5.0f);   // mob proximity
+    path.SetAreaCost(13, 20.0f);  // mob aggro
     auto result = getPathStepFrom(startPos, path);
 
     if (tempCreature)
@@ -954,6 +957,9 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
     // steep for a bot source, not a temp creature). Area costs mirror the reference.
     path.SetExcludeFlags(NAV_MAGMA | NAV_SLIME | NAV_GROUND_STEEP);
     path.SetNavTerrainCost(NAV_WATER, 10.0f);
+    // Custom mob-avoidance areas (ids identical to cmangos numbering).
+    path.SetAreaCost(12, 5.0f);   // mob proximity
+    path.SetAreaCost(13, 20.0f);  // mob aggro
     std::vector<WorldPosition> fullPath = runChain(path);
 
     if (tempCreature)
@@ -983,6 +989,8 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
                 softPath.SetExcludeFlags(NAV_MAGMA | NAV_SLIME);
                 softPath.SetNavTerrainCost(NAV_GROUND_STEEP, sPlayerbotAIConfig.botSteepTravelCost);
                 softPath.SetNavTerrainCost(NAV_WATER, 10.0f);
+                softPath.SetAreaCost(12, 5.0f);   // mob proximity
+                softPath.SetAreaCost(13, 20.0f);  // mob aggro
                 fullPath = runChain(softPath);
             }
             delete softCreature;
