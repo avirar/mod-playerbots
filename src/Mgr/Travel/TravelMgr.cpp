@@ -4489,6 +4489,75 @@ void TravelMgr::Init()
     sTravelNodeMap.Init();
 }
 
+void TravelMgr::SetMobAvoidAreaMap(uint32 mapId)
+{
+    // Adapted from cmangos playerbots TravelMgr::SetMobAvoidAreaMap (OG TravelMgr.cpp:1262,
+    // commits 71ec10c5 / 268b44a3). OG used a mapless PathFinder(mapId, 0); AC's PathGenerator is
+    // unit/map-anchored, so anchor it to a temp creature on the base map (the same pattern
+    // getPathFromPath uses for no-bot pathing). Offline marking: one temp creature per map,
+    // deleted after.
+    Map* map = sMapMgr->FindBaseMap(mapId);
+    if (!map)
+        return;
+
+    Creature* tempCreature = new Creature();
+    if (!tempCreature->Create(map->GenerateLowGuid<HighGuid::Unit>(), map, PHASEMASK_NORMAL, 1 /*entry*/, 0,
+                              0.0f, 0.0f, 0.0f, 0.0f))
+    {
+        delete tempCreature;
+        return;
+    }
+
+    PathGenerator path(tempCreature);
+
+    FactionTemplateEntry const* humanFaction = sFactionTemplateStore.LookupEntry(1);
+    FactionTemplateEntry const* orcFaction = sFactionTemplateStore.LookupEntry(2);
+
+    for (CreatureData const* cData : WorldPosition(mapId, 1, 1).getCreaturesNear())
+    {
+        CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(cData->id);
+        if (!cInfo)
+            continue;
+
+        // Friendly / NPC-flagged spawns need no avoidance areas.
+        if (cInfo->npcflag > 0)
+            continue;
+
+        FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(cInfo->faction);
+        if (!factionEntry)
+            continue;
+
+        ReputationRank reactionHum = Unit::GetFactionReactionTo(humanFaction, factionEntry);
+        ReputationRank reactionOrc = Unit::GetFactionReactionTo(orcFaction, factionEntry);
+
+        if (reactionHum >= REP_NEUTRAL || reactionOrc >= REP_NEUTRAL)
+            continue;
+
+        // Load the grid (and its mmap tile) so the navmesh query sees the poly.
+        map->EnsureGridCreated(Acore::ComputeGridCoord(cData->posX, cData->posY));
+
+        // 12 = mob proximity @ 50y, 13 = mob aggro @ 20y (OG TravelMgr.cpp:1296-97).
+        path.MarkNavArea(cData->posX, cData->posY, cData->posZ, 12, 50.0f);
+        path.MarkNavArea(cData->posX, cData->posY, cData->posZ, 13, 20.0f);
+    }
+
+    delete tempCreature;
+}
+
+void TravelMgr::SetMobAvoidArea()
+{
+    // Synchronous per-map marking. OG ran SetMobAvoidAreaMap per map via std::async
+    // (OG TravelMgr.cpp:1234); we deliberately do NOT copy the raw-async + shared-graph
+    // pattern (flagged as a race class in the inventories). No consumer is wired yet
+    // (Phase 1.3+), so this runs offline; threading can be revisited via src/Script/WorldThr
+    // when it becomes hot-path.
+    for (uint32 i = 0; i < sMapStore.GetNumRows(); ++i)
+    {
+        if (MapEntry const* mapEntry = sMapStore.LookupEntry(i))
+            SetMobAvoidAreaMap(mapEntry->MapID);
+    }
+}
+
 TravelMgr::FlightMasterInfo const* TravelMgr::GetNearestFlightMasterInfo(Player* bot) const
 {
     auto const& flightMasterCache =

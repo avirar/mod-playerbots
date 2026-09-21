@@ -905,6 +905,8 @@ public:
 
     // Navigation
     void Init();
+    void SetMobAvoidArea();
+    void SetMobAvoidAreaMap(uint32 mapId);
 
     FlightMasterInfo const* GetNearestFlightMasterInfo(Player* bot) const;
     std::vector<std::vector<uint32>> GetOptimalFlightDestinations(Player* bot);
