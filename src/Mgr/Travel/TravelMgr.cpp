@@ -495,6 +495,30 @@ float WorldPosition::getHeight()  // remove const - whipowill
     return getMap()->GetHeight(GetPositionX(), GetPositionY(), GetPositionZ());
 }
 
+void WorldPosition::EnsureGridsLoaded(Map* map)
+{
+    if (!map)
+        return;
+
+    // The pathfinder's single-step reach is bounded by MAX_POINT_PATH_LENGTH
+    // (148 points, ~4y each => ~600y, just over one grid). Ensure the grids in
+    // a 2-grid border window around the step start so the navmesh tiles for the
+    // whole step are available. OG loaded the entire leg rectangle per step
+    // (loadMapAndVMaps); this is the bounded port — a whole-zone rectangle is
+    // not needed and would be far more expensive on long legs.
+    GridCoord const center = getGridCoord();
+    for (int32 dx = -2; dx <= 2; ++dx)
+    {
+        for (int32 dy = -2; dy <= 2; ++dy)
+        {
+            int32 const gx = center.x_coord + dx;
+            int32 const gy = center.y_coord + dy;
+            if (gx >= 0 && gx < MAX_NUMBER_OF_GRIDS && gy >= 0 && gy < MAX_NUMBER_OF_GRIDS)
+                map->EnsureGridCreated(GridCoord(gx, gy));
+        }
+    }
+}
+
 G3D::Vector3 WorldPosition::getVector3() { return G3D::Vector3(GetPositionX(), GetPositionY(), GetPositionZ()); }
 
 std::string const WorldPosition::print()
@@ -912,12 +936,16 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
     // EXTENDS the corridor further around an obstacle each step; clearing
     // re-plans from scratch toward the goal every step and keeps re-hitting
     // the same barrier, so the bot walks to a ridge foot and stalls).
-    auto runChain = [&](PathGenerator& path) -> std::vector<WorldPosition>
+    auto runChain = [&](PathGenerator& path, Map* map) -> std::vector<WorldPosition>
     {
         std::vector<WorldPosition> subPath, chainPath = startPath;
         WorldPosition cur = startPath.back();
         for (uint32 i = 0; i < maxAttempt; i++)
         {
+            // Ensure the mmap tiles for the step's reach are loaded before
+            // pathfinding (OG loaded the whole leg rectangle each step; bounded
+            // to a window around the step start — see EnsureGridsLoaded).
+            cur.EnsureGridsLoaded(map);
             subPath = getPathStepFrom(cur, path);
             if (subPath.empty() || cur.distance(&subPath.back()) < sPlayerbotAIConfig.targetPosRecalcDistance)
                 break;
@@ -960,7 +988,7 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
     // Custom mob-avoidance areas (ids identical to cmangos numbering).
     path.SetAreaCost(12, 5.0f);   // mob proximity
     path.SetAreaCost(13, 20.0f);  // mob aggro
-    std::vector<WorldPosition> fullPath = runChain(path);
+    std::vector<WorldPosition> fullPath = runChain(path, pathUnit->GetMap());
 
     if (tempCreature)
         delete tempCreature;
@@ -991,7 +1019,7 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
                 softPath.SetNavTerrainCost(NAV_WATER, 10.0f);
                 softPath.SetAreaCost(12, 5.0f);   // mob proximity
                 softPath.SetAreaCost(13, 20.0f);  // mob aggro
-                fullPath = runChain(softPath);
+                fullPath = runChain(softPath, softCreature->GetMap());
             }
             delete softCreature;
         }

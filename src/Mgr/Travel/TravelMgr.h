@@ -251,6 +251,10 @@ public:
     uint32 getInstanceId();
     Map* getMap();
     float getHeight();  // remove const - whipowill
+    // Ensure the map grids around this position are created so the pathfinder's
+    // single-step reach has its mmap tiles available (bounded port of OG's
+    // per-step loadMapAndVMaps leg-rectangle load).
+    void EnsureGridsLoaded(Map* map);
 
     std::set<Transport*> getTransports(uint32 entry = 0);
 
