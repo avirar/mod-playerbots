@@ -31,6 +31,7 @@
 #include "EstimatedLifetimeValue.h"
 #include "FishValues.h"
 #include "Formations.h"
+#include "FreeMoveValues.h"
 #include "GrindTargetValue.h"
 #include "GroupLeaderValue.h"
 #include "GroupValues.h"
@@ -234,6 +235,9 @@ public:
         creators["enemy healer target"] = &ValueContext::enemy_healer_target;
         creators["snare target"] = &ValueContext::snare_target;
         creators["formation"] = &ValueContext::formation;
+        creators["free move center"] = &ValueContext::free_move_center;
+        creators["free move range"] = &ValueContext::free_move_range;
+        creators["can free move"] = &ValueContext::can_free_move;
         creators["stance"] = &ValueContext::stance;
         creators["item usage"] = &ValueContext::item_usage;
         creators["item upgrade"] = &ValueContext::item_upgrade;
@@ -369,6 +373,9 @@ private:
     static UntypedValue* item_usage(PlayerbotAI* botAI) { return new ItemUsageValue(botAI); }
     static UntypedValue* item_upgrade(PlayerbotAI* botAI) { return new ItemUpgradeValue(botAI); }
     static UntypedValue* formation(PlayerbotAI* botAI) { return new FormationValue(botAI); }
+    static UntypedValue* free_move_center(PlayerbotAI* botAI) { return new FreeMoveCenterValue(botAI); }
+    static UntypedValue* free_move_range(PlayerbotAI* botAI) { return new FreeMoveRangeValue(botAI); }
+    static UntypedValue* can_free_move(PlayerbotAI* botAI) { return new CanFreeMoveValue(botAI); }
     static UntypedValue* stance(PlayerbotAI* botAI) { return new StanceValue(botAI); }
     static UntypedValue* mana_save_level(PlayerbotAI* botAI) { return new ManaSaveLevelValue(botAI); }
     static UntypedValue* invalid_target(PlayerbotAI* botAI) { return new InvalidTargetValue(botAI); }
