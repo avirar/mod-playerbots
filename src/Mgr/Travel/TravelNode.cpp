@@ -7,6 +7,7 @@
 #include "TravelNode.h"
 #include "PlayerbotsDatabase.h"
 #include "BudgetValues.h"
+#include "HazardsValue.h"
 #include "MapMgr.h"
 #include "PathGenerator.h"
 #include "Playerbots.h"
@@ -1089,29 +1090,72 @@ void TravelPath::ClipPath(PlayerbotAI* ai, Unit* mover, bool ignoreEnemyTargets)
     if (fullPath.empty())
         return;
 
-    // PORT-TODO: cmangos enemy-target + hazard clipping needs symbols absent in
-    // modpb: PlayerbotAI::IsStateActive / BotState combat-state query, the
-    // "possible attack targets" value (AI_VALUE_LAZY std::list<ObjectGuid>),
-    // and the "hazards" value + HazardPosition type (AI_VALUE std::list<
-    // HazardPosition>). These belong to the broader cmangos movement infra
-    // (Phase B). Until they exist, only the distance/walkability/discontinuity
-    // clipping below runs.
-    //
-    // ORIGINAL cmangos enemy/hazard pre-scan (kept verbatim for Phase B):
-    //   AiObjectContext* context = ai->GetAiObjectContext();
-    //   std::list<ObjectGuid> targets;
-    //   if (!ai->IsStateActive(BotState::BOT_STATE_COMBAT) && !ai->GetBot()->isDead() && !ignoreEnemyTargets)
-    //       targets = AI_VALUE_LAZY(std::list<ObjectGuid>, "possible attack targets");
-    //   std::list<HazardPosition> hazards = AI_VALUE(std::list<HazardPosition>, "hazards");
+    // Hostile targets that could attack the bot along the route. Ported
+    // from cmangos (TravelNode.cpp ClipPath); the "possible attack targets"
+    // value was ported in Phase 1.4. Skipped while the bot is already in
+    // combat, dead, or the caller asks to ignore enemies.
+    AiObjectContext* context = ai->GetAiObjectContext();
+    GuidVector targets;
+    if (!ai->GetBot()->IsInCombat() && !ai->GetBot()->isDead() && !ignoreEnemyTargets)
+        targets = context->GetValue<GuidVector>("possible attack targets")->Get();
+
+    // Environment hazards (dungeon traps, etc.) anchored to world positions;
+    // the "hazards" value was ported in Phase 1.3.
+    std::list<HazardPosition> hazards = context->GetValue<std::list<HazardPosition>>("hazards")->Get();
 
     auto endP = fullPath.end();
     auto prevP = fullPath.begin();
 
     for (auto p = fullPath.begin(); p != fullPath.end(); p++)
     {
-        // PORT-TODO (Phase B): per-point enemy-target scan and hazard scan go
-        // here (see verbatim cmangos block above). Both depend on the missing
-        // values/types noted above.
+        // Enemy-target clip: stop the path at the first point a hostile mob
+        // (level-filtered, in attack range, hostile & visible) could reach.
+        // cmangos used CanAttackOnSight + IsWithinLOSInMap; the AC-native
+        // equivalent is IsHostileTo + CanSeeOrDetect (CanSeeOrDetect folds in
+        // the map/LOS/stealth checks). cmangos' GetAttackDistance (an
+        // aggro-radius formula) has no AC equivalent, so the unit's melee
+        // reach is used as the attack-range proxy.
+        for (ObjectGuid const& targetGuid : targets)
+        {
+            if (!targetGuid.IsCreature())
+                continue;
+
+            Unit* unit = ai->GetUnit(targetGuid);
+            if (!unit || unit->isDead() || !unit->IsCreature())
+                continue;
+
+            if (unit->GetLevel() > mover->GetLevel() + 5)
+                continue;
+
+            float const range = unit->GetMeleeReach();
+            if (WorldPosition(unit).sqDistance(p->point) > range * range)
+                continue;
+
+            if (!unit->IsHostileTo(mover) || !unit->CanSeeOrDetect(mover))
+                continue;
+
+            endP = p;
+            break;
+        }
+
+        if (endP != fullPath.end())
+            break;
+
+        // Hazard clip: stop the path at the first point inside a hazard's
+        // radius.
+        for (HazardPosition const& hazard : hazards)
+        {
+            WorldPosition const& hazardPosition = hazard.first;
+            float const hazardRange = hazard.second;
+            if (p->point.sqDistance(hazardPosition) <= hazardRange * hazardRange)
+            {
+                endP = p;
+                break;
+            }
+        }
+
+        if (endP != fullPath.end())
+            break;
 
         if (p->point.sqDistance(fullPath.begin()->point) >
             sPlayerbotAIConfig.reactDistance * sPlayerbotAIConfig.reactDistance)
@@ -1133,10 +1177,6 @@ void TravelPath::ClipPath(PlayerbotAI* ai, Unit* mover, bool ignoreEnemyTargets)
         return;
 
     fullPath.erase(std::next(endP), fullPath.end());
-
-    (void)ai;
-    (void)mover;
-    (void)ignoreEnemyTargets;
 }
 
 float TravelNodeRoute::getTotalDistance()
