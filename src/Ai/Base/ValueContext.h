@@ -90,6 +90,7 @@
 #include "SpellIdValue.h"
 #include "Stances.h"
 #include "StatsValues.h"
+#include "StuckValues.h"
 #include "TankTargetValue.h"
 #include "TargetValue.h"
 #include "ThreatValues.h"
@@ -209,6 +210,8 @@ public:
         creators["position"] = &ValueContext::position;
         creators["pos"] = &ValueContext::pos;
         creators["current position"] = &ValueContext::current_position;
+        creators["time since last change"] = &ValueContext::time_since_last_change;
+        creators["distance moved since"] = &ValueContext::distance_moved_since;
         creators["threat"] = &ValueContext::threat;
 
         creators["balance"] = &ValueContext::balance;
@@ -369,6 +372,8 @@ private:
     static UntypedValue* position(PlayerbotAI* botAI) { return new PositionValue(botAI); }
     static UntypedValue* pos(PlayerbotAI* botAI) { return new SinglePositionValue(botAI); }
     static UntypedValue* current_position(PlayerbotAI* botAI) { return new CurrentPositionValue(botAI); }
+    static UntypedValue* time_since_last_change(PlayerbotAI* botAI) { return new TimeSinceLastChangeValue(botAI); }
+    static UntypedValue* distance_moved_since(PlayerbotAI* botAI) { return new DistanceMovedSinceValue(botAI); }
     static UntypedValue* rti(PlayerbotAI* botAI) { return new RtiValue(botAI); }
     static UntypedValue* rti_cc(PlayerbotAI* botAI) { return new RtiCcValue(botAI); }
 

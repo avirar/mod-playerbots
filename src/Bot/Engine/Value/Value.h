@@ -40,6 +40,9 @@ public:
     virtual std::string const Format() { return "?"; }
     virtual std::string const Save() { return "?"; }
     virtual bool Load([[maybe_unused]] std::string const value) { return false; }
+
+    // Time in seconds since the underlying value last changed; 0 for non-memoized values.
+    virtual uint32 LastChangeDelay() { return 0; }
 };
 
 template <class T>
@@ -207,7 +210,7 @@ public:
         return lastChangeTime;
     }
 
-    uint32 LastChangeDelay() { return time(0) - LastChangeOn(); }
+    uint32 LastChangeDelay() override { return time(0) - LastChangeOn(); }
 
     void Reset() override
     {
