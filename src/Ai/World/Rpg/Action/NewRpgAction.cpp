@@ -872,7 +872,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     if (!TakeFlight(data.path, flightMaster))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
-                  flightMaster->GetEntry(), nodes.empty() ? 0 : nodes.front(), nodes.empty() ? 0 : nodes.back());
+                  flightMaster->GetEntry(), data.path.empty() ? 0 : data.path.front(), data.path.empty() ? 0 : data.path.back());
         info.ChangeToIdle();
         return true;
     }

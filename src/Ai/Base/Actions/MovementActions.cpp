@@ -4145,7 +4145,7 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
             bot->SetStandState(UNIT_STAND_STATE_STAND);
 
         if (bot->IsNonMeleeSpellCast(true, false, true))
-            botAI->InterruptSpell();
+            bot->InterruptNonMeleeSpells(true);
     }
 
     if (totalDistance > sPlayerbotAIConfig.reactDistance && !detailedMove)

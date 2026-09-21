@@ -785,7 +785,7 @@ void PlayerbotAI::TeleportTo(WorldLocation loc, bool resetAI)
     if (resetAI)
         Reset(true);
     else
-        InterruptSpell();
+        bot->InterruptNonMeleeSpells(true);
     bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
     bot->TeleportTo(loc.GetMapId(), loc.GetPositionX(), loc.GetPositionY(), loc.GetPositionZ(), 0);
     bot->SendMovementFlagUpdate();
