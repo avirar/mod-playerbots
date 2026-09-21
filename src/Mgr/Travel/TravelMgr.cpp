@@ -492,7 +492,15 @@ Map* WorldPosition::getMap()
 
 float WorldPosition::getHeight()  // remove const - whipowill
 {
-    return getMap()->GetHeight(GetPositionX(), GetPositionY(), GetPositionZ());
+    Map* map = getMap();
+    // OG returns the position's own z when the map is not loaded (OG
+    // WorldPosition.h:244) rather than dereferencing a null map.
+    return map ? map->GetHeight(GetPositionX(), GetPositionY(), GetPositionZ()) : GetPositionZ();
+}
+
+float WorldPosition::currentHeight()
+{
+    return GetPositionZ() - getHeight();
 }
 
 void WorldPosition::EnsureGridsLoaded(Map* map)
@@ -1030,20 +1038,25 @@ std::vector<WorldPosition> WorldPosition::getPathFromPath(std::vector<WorldPosit
 
 bool WorldPosition::GetReachableRandomPointOnGround(Player* bot, float radius, bool randomRange)
 {
+    Map* map = getMap();
+    if (!map)
+        return false;
+
     radius *= randomRange ? rand_norm() : 1.f;
     float angle = rand_norm() * static_cast<float>(2 * M_PI);
-    setX(GetPositionX() + radius * cosf(angle));
-    setY(GetPositionY() + radius * sinf(angle));
-
-    float x = GetPositionX();
-    float y = GetPositionY();
+    float x = GetPositionX() + radius * cosf(angle);
+    float y = GetPositionY() + radius * sinf(angle);
     float z = GetPositionZ();
-    bool canReach = getMap()->CanReachPositionAndGetValidCoords(bot, x, y, z);
+
+    // Only mutate on success, matching OG's contract: callers rely on the
+    // position being unchanged when no reachable point is found.
+    if (!map->CanReachPositionAndGetValidCoords(bot, x, y, z))
+        return false;
+
     setX(x);
     setY(y);
     setZ(z);
-
-    return canReach;
+    return true;
 }
 
 uint32 WorldPosition::getUnitsAggro(GuidVector& units, Player* bot)

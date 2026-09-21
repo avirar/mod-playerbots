@@ -251,6 +251,9 @@ public:
     uint32 getInstanceId();
     Map* getMap();
     float getHeight();  // remove const - whipowill
+    // Height of this position above the ground (OG WorldPosition.h:248);
+    // negative when the position is below ground level.
+    float currentHeight();
     // Ensure the map grids around this position are created so the pathfinder's
     // single-step reach has its mmap tiles available (bounded port of OG's
     // per-step loadMapAndVMaps leg-rectangle load).
