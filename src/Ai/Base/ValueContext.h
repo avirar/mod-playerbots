@@ -37,6 +37,7 @@
 #include "GuildValues.h"
 #include "HasAvailableLootValue.h"
 #include "HasTotemValue.h"
+#include "HazardsValue.h"
 #include "InvalidTargetValue.h"
 #include "IsBehindValue.h"
 #include "IsFacingValue.h"
@@ -212,6 +213,9 @@ public:
         creators["current position"] = &ValueContext::current_position;
         creators["time since last change"] = &ValueContext::time_since_last_change;
         creators["distance moved since"] = &ValueContext::distance_moved_since;
+        creators["stored hazards"] = &ValueContext::stored_hazards;
+        creators["add hazard"] = &ValueContext::add_hazard;
+        creators["hazards"] = &ValueContext::hazards;
         creators["threat"] = &ValueContext::threat;
 
         creators["balance"] = &ValueContext::balance;
@@ -374,6 +378,9 @@ private:
     static UntypedValue* current_position(PlayerbotAI* botAI) { return new CurrentPositionValue(botAI); }
     static UntypedValue* time_since_last_change(PlayerbotAI* botAI) { return new TimeSinceLastChangeValue(botAI); }
     static UntypedValue* distance_moved_since(PlayerbotAI* botAI) { return new DistanceMovedSinceValue(botAI); }
+    static UntypedValue* stored_hazards(PlayerbotAI* botAI) { return new StoredHazardsValue(botAI); }
+    static UntypedValue* add_hazard(PlayerbotAI* botAI) { return new AddHazardValue(botAI); }
+    static UntypedValue* hazards(PlayerbotAI* botAI) { return new HazardsValue(botAI); }
     static UntypedValue* rti(PlayerbotAI* botAI) { return new RtiValue(botAI); }
     static UntypedValue* rti_cc(PlayerbotAI* botAI) { return new RtiCcValue(botAI); }
 
