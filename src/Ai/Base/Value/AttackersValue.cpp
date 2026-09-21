@@ -251,7 +251,7 @@ bool AttackersValue::IsValidTarget(Unit* attacker, Player* bot)
 bool PossibleAddsValue::Calculate()
 {
     GuidVector possible = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible targets no los")->Get();
-    GuidVector attackers = botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get();
+    GuidVector attackers = botAI->GetAiObjectContext()->GetValue<GuidVector>("possible attack targets")->Get();
 
     for (ObjectGuid const guid : possible)
     {

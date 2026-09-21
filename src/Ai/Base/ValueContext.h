@@ -75,6 +75,7 @@
 #include "PetTargetValue.h"
 #include "PositionValue.h"
 #include "PossibleRpgTargetsValue.h"
+#include "PossibleAttackTargetsValue.h"
 #include "PossibleTargetsValue.h"
 #include "PvpValues.h"
 #include "QuestValues.h"
@@ -122,6 +123,7 @@ public:
         creators["closest friendly players"] = &ValueContext::closest_friendly_players;
         creators["nearest enemy players"] = &ValueContext::nearest_enemy_players;
         creators["possible targets"] = &ValueContext::possible_targets;
+        creators["possible attack targets"] = &ValueContext::possible_attack_targets;
         creators["possible targets no los"] = &ValueContext::possible_targets_no_los;
         creators["possible triggers"] = &ValueContext::possible_triggers;
         creators["possible adds"] = &ValueContext::possible_adds;
@@ -450,6 +452,7 @@ private:
     static UntypedValue* possible_new_rpg_targets(PlayerbotAI* botAI) { return new PossibleNewRpgTargetsValue(botAI); }
     static UntypedValue* possible_new_rpg_game_objects(PlayerbotAI* botAI) { return new PossibleNewRpgGameObjectsValue(botAI); }
     static UntypedValue* possible_targets(PlayerbotAI* botAI) { return new PossibleTargetsValue(botAI); }
+    static UntypedValue* possible_attack_targets(PlayerbotAI* botAI) { return new PossibleAttackTargetsValue(botAI); }
     static UntypedValue* possible_triggers(PlayerbotAI* botAI) { return new PossibleTriggersValue(botAI); }
     static UntypedValue* possible_targets_no_los(PlayerbotAI* botAI)
     {
