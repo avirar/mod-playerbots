@@ -824,9 +824,12 @@ std::vector<WorldPosition> WorldPosition::getPathStepFrom(WorldPosition startPos
     // NORMAL | NOT_USING_PATH when start/end poly is INVALID_POLYREF
     // (BuildShortcut produces a 2-point straight line through whatever's
     // in the way). Reject those to avoid silently dispatching a
-    // geometry-ignoring shortcut.
+    // geometry-ignoring shortcut. Also reject PATHFIND_SHORT: when the
+    // smooth path saturates the point budget, BuildPointPath falls back to
+    // a 2-point straight line flagged SHORT|SHORTCUT. Either flag must never
+    // enter a travel chain (OG rejected them by exact-equality on the type).
     if (!(type & (PATHFIND_NORMAL | PATHFIND_INCOMPLETE)) ||
-        (type & PATHFIND_NOT_USING_PATH))
+        (type & (PATHFIND_NOT_USING_PATH | PATHFIND_SHORT)))
         return {};
 
     std::vector<WorldPosition> retvec = fromPointsArray(points);
