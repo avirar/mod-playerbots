@@ -54,7 +54,7 @@ void NewRpgInfo::ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition fl
 
 void NewRpgInfo::ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId)
 {
-    startT = getMSTime();
+    Reset();
     OutdoorPvP pvp;
     pvp.capturePointSpawnId = capturePointSpawnId;
     data = pvp;
