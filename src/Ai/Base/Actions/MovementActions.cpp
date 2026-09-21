@@ -4105,7 +4105,11 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
         return false;
     }
 
-    if (!bot->GetTransport())
+    // OG runs makeShortCut only 50% of the time (urand(0,1) coin-flip, off-transport)
+    // to spread bot paths and throttle the (costly) re-anchor; ported faithfully
+    // per plan Q2 (default: port). TGT additionally collapses the path on a failed
+    // shortcut (see makeShortCut) so the next tick re-resolves a fresh route.
+    if (!bot->GetTransport() && urand(0, 1))
         movePath.makeShortCut(startPos, sPlayerbotAIConfig.reactDistance, bot);
 
     if (movePath.empty())
