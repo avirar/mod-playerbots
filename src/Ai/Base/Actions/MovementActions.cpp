@@ -1526,7 +1526,7 @@ float MovementAction::MoveDelay(float distance, bool backwards)
 }
 
 // TODO should this be removed? (or modified to use "last movement" value?)
-void MovementAction::WaitForReach(float distance)
+float MovementAction::WaitForReach(float distance)
 {
     float delay = 1000.0f * MoveDelay(distance) + sPlayerbotAIConfig.reactDelay;
 
@@ -1547,6 +1547,7 @@ void MovementAction::WaitForReach(float distance)
         delay = 0;
 
     botAI->SetNextCheckDelay((uint32)delay);
+    return delay;
 }
 
 // similiar to botAI->SetNextCheckDelay() but only stops movement
@@ -3986,7 +3987,14 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
         mm.MoveSplinePath(&pointPath, moveMode);
     }
 
-    WaitForReach(size);
+    float waitDelay = WaitForReach(size);
+
+    // Arm the priority/timing system so IsWaitingForLastMove / IsDuplicateMove
+    // see this MoveTo2 dispatch as in-progress (the old MoveTo armed it via
+    // LastMovement::Set at each dispatch point).
+    AI_VALUE(LastMovement&, "last movement")
+        .Set(movePosition.GetMapId(), movePosition.GetPositionX(), movePosition.GetPositionY(),
+             movePosition.GetPositionZ(), bot->GetOrientation(), waitDelay, MovementPriority::MOVEMENT_NORMAL);
 }
 
 bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
