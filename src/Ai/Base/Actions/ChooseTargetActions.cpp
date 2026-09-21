@@ -124,7 +124,10 @@ static bool IsQuestObjectiveCreature(Player* bot, Creature* creature)
         if (!quest)
             continue;
 
-        QuestStatusData const& qs = bot->getQuestStatusMap().at(questId);
+        auto qsItr = bot->getQuestStatusMap().find(questId);
+        if (qsItr == bot->getQuestStatusMap().end())
+            continue;
+        QuestStatusData const& qs = qsItr->second;
         for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
         {
             int32 req = quest->RequiredNpcOrGo[i];
