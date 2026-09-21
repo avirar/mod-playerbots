@@ -113,7 +113,10 @@ public:
     float sightDistance, spellDistance, reactDistance, grindDistance, lootDistance, shootDistance, fleeDistance,
         tooCloseDistance, meleeDistance, followDistance, whisperDistance, contactDistance, aoeRadius, rpgDistance,
         targetPosRecalcDistance, farDistance, healDistance, aggroDistance, walkDistance, botSteepTravelCost,
-        wanderMaxDistance, guardDistance;
+        wanderMinDistance, wanderMaxDistance, guardDistance, raidFollowDistance, proximityDistance,
+        maxFreeMoveDistance, freeMoveDelay, groupMemberLootDistance, groupMemberLootDistanceWithActiveMaster,
+        gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster,
+        travelNodeThreshold;
     uint32 transportTeleportType;
     uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
     uint32 lowMana, mediumMana, highMana;

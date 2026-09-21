@@ -127,7 +127,23 @@ bool PlayerbotAIConfig::Initialize()
     // when following) to SELECT a grind/attack target. Stops a bot striking
     // out past nearer mobs toward a distant one or a far camp. 0 disables.
     wanderMaxDistance = sConfigMgr->GetOption<float>("AiPlayerbot.WanderMaxDistance", 50.0f);
+    wanderMinDistance = sConfigMgr->GetOption<float>("AiPlayerbot.WanderMinDistance", 5.0f);
     guardDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GuardDistance", sightDistance);
+    raidFollowDistance = sConfigMgr->GetOption<float>("AiPlayerbot.RaidFollowDistance", 5.0f);
+    proximityDistance = sConfigMgr->GetOption<float>("AiPlayerbot.ProximityDistance", 20.0f);
+    maxFreeMoveDistance = sConfigMgr->GetOption<float>("AiPlayerbot.MaxFreeMoveDistance", 150.0f);
+    freeMoveDelay = sConfigMgr->GetOption<float>("AiPlayerbot.FreeMoveDelay", 30.0f);
+    groupMemberLootDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GroupMemberLootDistance", 15.0f);
+    groupMemberLootDistanceWithActiveMaster =
+        sConfigMgr->GetOption<float>("AiPlayerbot.GroupMemberLootDistanceWithActiveMaster", 10.0f);
+    gatheringDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GatheringDistance", 15.0f);
+    groupMemberGatheringDistance = sConfigMgr->GetOption<float>("AiPlayerbot.GroupMemberGatheringDistance", 10.0f);
+    groupMemberGatheringDistanceWithActiveMaster =
+        sConfigMgr->GetOption<float>("AiPlayerbot.GroupMemberGatheringDistanceWithActiveMaster", 5.0f);
+    // Travel-node graph threshold: trips longer than this consult the node
+    // graph for cross-zone routing. Decoupled from sightDistance (a combat
+    // key) so raising sightDistance can't silently disable node routing.
+    travelNodeThreshold = sConfigMgr->GetOption<float>("AiPlayerbot.TravelNodeThreshold", 50.0f);
     reactDistance = sConfigMgr->GetOption<float>("AiPlayerbot.ReactDistance", 150.0f);
     // Steep-slope travel policy. The core bot nav filter hard-excludes
     // 50-60deg NAV_GROUND_STEEP and cannot re-include it (no

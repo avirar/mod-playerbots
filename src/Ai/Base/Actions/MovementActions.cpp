@@ -3624,17 +3624,15 @@ TravelPath MovementAction::ResolveMovePath(WorldPosition const& startPosition, W
 
     bool needsLongPath = false;
 
-    // Hardcoded graph threshold: gating on sightDistance ties routing to
-    // a combat-tuning key that deployments raise freely — with it raised,
-    // multi-hundred-yard trips never consult the node graph and fall to
-    // raw probes that dead-end against terrain. 50y is the established
-    // cutoff; getFullPath's probe-first shortcut still takes the direct
-    // walk whenever one exists, so short trips lose nothing.
-    constexpr float TRAVELNODE_THRESHOLD = 50.0f;
-
+    // Travel-node graph threshold (AiPlayerbot.TravelNodeThreshold): gating on
+    // sightDistance ties routing to a combat-tuning key that deployments raise
+    // freely — with it raised, multi-hundred-yard trips never consult the node
+    // graph and fall to raw probes that dead-end against terrain. 50y is the
+    // established cutoff; getFullPath's probe-first shortcut still takes the
+    // direct walk whenever one exists, so short trips lose nothing.
     if (startPos.GetMapId() != endPos.GetMapId())
         needsLongPath = true;
-    else if (totalDistance > TRAVELNODE_THRESHOLD)
+    else if (totalDistance > sPlayerbotAIConfig.travelNodeThreshold)
         needsLongPath = true;
     // Acherus: The Ebon Hold (DK start, map 609) is a floating citadel; large
     // vertical moves cross elevator/platform Z-stratification that navmesh-only

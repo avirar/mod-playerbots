@@ -420,10 +420,63 @@ AiPlayerbot.GrindDistance = 75.0
 AiPlayerbot.WanderMaxDistance = 50.0
 
 #
+#    AiPlayerbot.WanderMinDistance
+#        Inner radius (yards) for the wander trigger band. Used with
+#        WanderMaxDistance by the free-move wander triggers.
+#        Default: 5.0
+AiPlayerbot.WanderMinDistance = 5.0
+
+#
 #    AiPlayerbot.GuardDistance
 #        Free-move leash radius while on a guard position. Default: SightDistance.
 AiPlayerbot.GuardDistance = 100.0
 AiPlayerbot.ReactDistance = 150.0
+
+#
+#    AiPlayerbot.RaidFollowDistance
+#        Follow spacing (yards) applied to bots in a raid group.
+#        Default: 5.0
+AiPlayerbot.RaidFollowDistance = 5.0
+
+#
+#    AiPlayerbot.ProximityDistance
+#        Distance (yards) used by proximity checks for nearby companions.
+#        Default: 20.0
+AiPlayerbot.ProximityDistance = 20.0
+
+#
+#    AiPlayerbot.MaxFreeMoveDistance
+#        Free-move range (yards) a bot may roam from its free-move center
+#        before the out-of-range trigger fires. Default: 150.0
+AiPlayerbot.MaxFreeMoveDistance = 150.0
+
+#
+#    AiPlayerbot.FreeMoveDelay
+#        Delay (seconds) used to scale the free-move range over time.
+#        Default: 30.0
+AiPlayerbot.FreeMoveDelay = 30.0
+
+#
+#    AiPlayerbot.GroupMemberLootDistance / .WithActiveMaster
+#        Max distance (yards) a bot may travel to loot a group member's corpse.
+#        Default: 15.0 / 10.0
+AiPlayerbot.GroupMemberLootDistance = 15.0
+AiPlayerbot.GroupMemberLootDistanceWithActiveMaster = 10.0
+
+#
+#    AiPlayerbot.GatheringDistance / GroupMemberGatheringDistance[.WithActiveMaster]
+#        Max distance (yards) a bot may travel to a gather node (mining/herb).
+#        Default: 15.0 / 10.0 / 5.0
+AiPlayerbot.GatheringDistance = 15.0
+AiPlayerbot.GroupMemberGatheringDistance = 10.0
+AiPlayerbot.GroupMemberGatheringDistanceWithActiveMaster = 5.0
+
+#
+#    AiPlayerbot.TravelNodeThreshold
+#        Trips longer than this (yards, same-map) consult the travel-node graph.
+#        Decoupled from sightDistance (a combat key) so raising it can't
+#        silently disable cross-zone routing. Default: 50.0
+AiPlayerbot.TravelNodeThreshold = 50.0
 
 #
 #    AiPlayerbot.BotSteepTravelCost
