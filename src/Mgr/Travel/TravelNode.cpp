@@ -2630,8 +2630,17 @@ void TravelNodeMap::generateTaxiPaths()
 
         std::vector<WorldPosition> ppath;
 
+        // OG endpoint fix-ups: when the taxi path starts/ends more than 0.1y
+        // from the node it connects, prepend/append the node position so the
+        // flight leg doesn't begin or end mid-air relative to the node.
+        if (startNode->fDist(WorldPosition(nodes.front()->mapid, nodes.front()->x, nodes.front()->y, nodes.front()->z, 0.0)) > 0.1f)
+            ppath.push_back(*startNode->getPosition());
+
         for (auto& n : nodes)
             ppath.push_back(WorldPosition(n->mapid, n->x, n->y, n->z, 0.0));
+
+        if (endNode->fDist(ppath.back()) > 0.1f)
+            ppath.push_back(*endNode->getPosition());
 
         float totalTime = startPos.getPathLength(ppath) / (450 * 8.0f);
 
