@@ -1055,6 +1055,8 @@ std::vector<std::string> PlayerbotHolder::HandlePlayerbotCommand(char const* arg
         if (GET_PLAYERBOT_AI(master))
         {
             messages.push_back("Disable player botAI");
+            master->GetMotionMaster()->Clear();
+            master->StopMoving();
             delete GET_PLAYERBOT_AI(master);
         }
         else if (sPlayerbotAIConfig.selfBotLevel == 0)

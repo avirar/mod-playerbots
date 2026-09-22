@@ -261,6 +261,7 @@ bool CheckMountStateAction::StopForMountCast() const
     // the walker from re-dispatching and interrupting the cast); COMBAT
     // itself can still break it, which is the desired behaviour when an
     // enemy engages mid-mount.
+    bot->GetMotionMaster()->Clear();
     bot->StopMoving();
 
     AI_VALUE(LastMovement&, "last movement")
