@@ -3064,16 +3064,20 @@ uint32 RandomPlayerbotMgr::GetTradeDiscount(Player* bot, Player* master)
 
 std::string const RandomPlayerbotMgr::HandleRemoteCommand(std::string const request)
 {
-    std::string::const_iterator pos = std::find(request.begin(), request.end(), ',');
-    if (pos == request.end())
+    // Protocol: "<command>[,args...],<guid>" — the guid is the LAST comma
+    // token; the command (which may itself carry comma-separated args, e.g.
+    // "movefar,x,y,z,map") is everything before it. Legacy arg-less requests
+    // ("position,<guid>") keep their shape.
+    size_t const lastComma = request.rfind(',');
+    if (lastComma == std::string::npos || lastComma == 0)
     {
         std::ostringstream out;
         out << "invalid request: " << request;
         return out.str();
     }
 
-    std::string const command = std::string(request.begin(), pos);
-    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(atoi(std::string(pos + 1, request.end()).c_str()));
+    std::string const command = request.substr(0, lastComma);
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(atoi(request.c_str() + lastComma + 1));
     Player* bot = GetPlayerBot(guid);
     if (!bot)
         bot = ObjectAccessor::FindConnectedPlayer(guid);  // self-bot / real player driven by bot AI

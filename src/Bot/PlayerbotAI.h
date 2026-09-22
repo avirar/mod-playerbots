@@ -20,6 +20,7 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotSecurity.h"
 #include "PlayerbotTextMgr.h"
+#include "Position.h"
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
@@ -405,6 +406,13 @@ public:
     void ChangeEngineOnCombat();
     void ChangeEngineOnNonCombat();
     void DoNextAction(bool minimal = false);
+
+    // Remote move ("movefar" command / buddy verb): arm a destination that is
+    // pursued by the new travel system (travel-node graph + navmesh, via
+    // MovementAction::MoveTo2) without requiring any strategy. UpdateRemoteMove
+    // (from DoNextAction) re-dispatches each tick until arrival, expiry or cancel.
+    bool MoveFarToPos(float x, float y, float z, uint32 mapId);
+    bool CancelRemoteMove();
     virtual bool DoSpecificAction(std::string const name, Event event = Event(), bool silent = false,
                                   std::string const qualifier = "");
     void ChangeStrategy(std::string const name, BotState type);
@@ -624,6 +632,7 @@ private:
     void UpdateAIGroupMaster();
     Item* FindItemInInventory(std::function<bool(ItemTemplate const*)> checkItem) const;
     void HandleCommands();
+    void UpdateRemoteMove();
     void HandleCommand(uint32 type, std::string const& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
     inline bool IsValidUnit(Unit const* unit) const
     {
@@ -660,6 +669,11 @@ protected:
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
     bool spellInterruptRequested = false;
+    // Remote-move state (see MoveFarToPos): destination armed by an explicit
+    // command; expiry/fail-backoff timestamps in ms.
+    WorldPosition remoteMoveDest;
+    uint32 remoteMoveExpireMs = 0;
+    uint32 remoteMoveFailUntilMs = 0;
 };
 
 #endif

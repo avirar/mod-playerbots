@@ -4248,6 +4248,48 @@ bool MovementAction::MoveTo2(uint32 mapId, float x, float y, float z, bool idle,
     return MoveTo2(WorldPosition(mapId, x, y, z), idle, react, noPath, ignoreEnemyTargets);
 }
 
+namespace
+{
+// Throwaway action used only to run the MoveTo2 orchestrator (and its
+// IsWaitingForLastMove gate) on behalf of a bot. The movement state lives in
+// the per-bot AI object context ("last movement"), not in the action instance,
+// so a fresh executor per call is safe.
+class MoveFarExecutor : public MovementAction
+{
+public:
+    explicit MoveFarExecutor(PlayerbotAI* botAI) : MovementAction(botAI, "remote movefar") {}
+};
+}
+
+bool MovementAction::MoveFarDispatch(PlayerbotAI* botAI, WorldPosition const& dest)
+{
+    if (!botAI)
+        return false;
+
+    // Non-const working copy: WorldPosition::IsValid is non-const in the target.
+    WorldPosition destNc = dest;
+    if (!destNc.IsValid())
+        return false;
+
+    Player* bot = botAI->GetBot();
+    if (!bot || !bot->IsInWorld())
+        return false;
+
+    // Don't start a ground move while the bot is on a taxi (parity with
+    // NewRpgBaseAction::MoveFarTo): a MovePoint would fight the flight spline.
+    if (bot->IsInFlight())
+        return true;
+
+    MoveFarExecutor executor(botAI);
+
+    // A NORMAL+ movement (including our own dispatched path) is in flight:
+    // the orchestrator would only re-dispatch, so yield.
+    if (executor.IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+        return true;
+
+    return executor.MoveTo2(destNc);
+}
+
 bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
 {
     if (!state.IsActive())

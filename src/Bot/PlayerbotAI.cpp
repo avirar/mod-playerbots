@@ -28,6 +28,7 @@
 #include "LootObjectStack.h"
 #include "MapMgr.h"
 #include "MotionMaster.h"
+#include "MovementActions.h"
 #include "MoveSplineInit.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
@@ -1549,6 +1550,10 @@ void PlayerbotAI::DoNextAction(bool min)
         }
     }
 
+    // Continue an armed remote move (movefar) each tick even with no strategy
+    // enabled: explicit owner commands must not wait for a strategy to queue.
+    UpdateRemoteMove();
+
     bool minimal = !this->AllowActivity();
 
     currentEngine->DoNextAction(nullptr, 0, (minimal || min));
@@ -1593,6 +1598,84 @@ void PlayerbotAI::DoNextAction(bool min)
         bot->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED);
         bot->RemoveAurasByType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED);
     }
+}
+
+bool PlayerbotAI::MoveFarToPos(float x, float y, float z, uint32 mapId)
+{
+    if (!bot || !bot->IsInWorld())
+        return false;
+
+    if (!MapMgr::IsValidMapCoord(mapId, x, y, z))
+        return false;
+
+    WorldPosition dest(mapId, x, y, z);
+    if (!dest.IsValid())
+        return false;
+
+    remoteMoveDest = dest;
+    remoteMoveExpireMs = getMSTime() + 15 * MINUTE;
+    remoteMoveFailUntilMs = 0;
+    return true;
+}
+
+bool PlayerbotAI::CancelRemoteMove()
+{
+    if (remoteMoveDest == WorldPosition())
+        return false;
+
+    remoteMoveDest = WorldPosition();
+    remoteMoveExpireMs = 0;
+    remoteMoveFailUntilMs = 0;
+
+    if (bot)
+        bot->StopMoving();
+
+    return true;
+}
+
+void PlayerbotAI::UpdateRemoteMove()
+{
+    if (remoteMoveDest == WorldPosition() || !bot || !bot->IsInWorld())
+        return;
+
+    // An explicit owner command lapses after its window so a stale destination
+    // never re-arms after a long trip, relog or death-res cycle.
+    if (GetMSTimeDiffToNow(remoteMoveExpireMs) > 15 * MINUTE)
+    {
+        remoteMoveDest = WorldPosition();
+        remoteMoveExpireMs = 0;
+        return;
+    }
+
+    // Yield while death/combat/taxi/teleport handling owns the bot; the
+    // destination is re-checked (and the route re-dispatched from the current
+    // position) on the next tick once the state clears.
+    if (!bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->IsBeingTeleported())
+        return;
+
+    // Arrival: same map, small radius.
+    if (remoteMoveDest.GetMapId() == bot->GetMapId() && bot->GetDistance(remoteMoveDest) < 5.0f)
+    {
+        WorldPosition const arrived = remoteMoveDest;
+        remoteMoveDest = WorldPosition();
+        remoteMoveExpireMs = 0;
+        TellMasterNoFacing("movefar: arrived near (" + std::to_string((int)arrived.GetPositionX()) + "," +
+                              std::to_string((int)arrived.GetPositionY()) + ") map" + std::to_string(arrived.GetMapId()));
+        return;
+    }
+
+    // Back off after a failed dispatch so a permanently unreachable destination
+    // does not re-run pathfinding every tick.
+    if (remoteMoveFailUntilMs && getMSTime() < remoteMoveFailUntilMs)
+        return;
+
+    // The MoveTo2 orchestrator is per-tick safe: it yields while a NORMAL+
+    // movement is already in flight and resumes the remaining route from the
+    // current position otherwise.
+    if (!MovementAction::MoveFarDispatch(this, remoteMoveDest))
+        remoteMoveFailUntilMs = getMSTime() + 5000;
+    else
+        remoteMoveFailUntilMs = 0;
 }
 
 void PlayerbotAI::ReInitCurrentEngine()
@@ -5403,6 +5486,31 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 
         out << " Retry " << target->getRetryCount(true) << "/" << target->getRetryCount(false);
 
+        return out.str();
+    }
+    else if (command.rfind("movefar", 0) == 0)
+    {
+        // "movefar,<x>,<y>,<z>[,<mapId>]" — move the bot to the position via the
+        // new travel system (travel-node graph routing + navmesh), independent of
+        // any strategy. The destination persists until arrival or the 15-minute
+        // window. Bare "movefar" cancels an armed move.
+        std::istringstream iss(command.substr(7));
+        float x = 0, y = 0, z = 0;
+        if (!(iss >> x >> y >> z))
+            // bare "movefar" (or unparseable args): cancel an armed move
+            return CancelRemoteMove() ? "movefar: cancelled" : "movefar: nothing armed (usage: movefar <x> <y> <z> [mapId])";
+
+        uint32 mapId = bot->GetMapId();
+        uint32 mapArg = 0;
+        if (iss >> mapArg)
+            mapId = mapArg;
+
+        if (!MoveFarToPos(x, y, z, mapId))
+            return "movefar: invalid destination (map " + std::to_string(mapId) + ")";
+
+        std::ostringstream out;
+        out << "movefar: moving to (" << (int)x << "," << (int)y << ") map" << mapId
+            << " — auto-cancels on arrival or after 15 min (\'movefar\' cancels)";
         return out.str();
     }
     else if (command == "budget")

@@ -42,6 +42,13 @@ class MovementAction : public Action
 public:
     MovementAction(PlayerbotAI* botAI, std::string const name);
 
+    // Non-strategy one-shot entry for the A->B dispatch (remote commands such as
+    // movefar): runs the MoveTo2 orchestrator on behalf of botAI. Yields (true)
+    // while the bot is on a taxi or a NORMAL+ movement is already in flight,
+    // mirroring NewRpgBaseAction::MoveFarTo. Returns false only when no movement
+    // is progressing and the dispatch failed (callers should back off).
+    static bool MoveFarDispatch(PlayerbotAI* botAI, WorldPosition const& dest);
+
 protected:
     // Emit a one-line trace describing the imminent movement. No-op
     // unless the bot has the "debug move" non-combat strategy.
