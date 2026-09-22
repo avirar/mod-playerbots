@@ -1579,6 +1579,15 @@ void MovementAction::SetNextMovementDelay(float delayMillis)
              delayMillis, MovementPriority::MOVEMENT_FORCED);
 }
 
+// Static-context equivalent (same write, no instance context needed).
+void MovementAction::SetNextMovementDelay(PlayerbotAI* botAI, float delayMillis)
+{
+    Player* bot = botAI->GetBot();
+    botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")
+        ->Get().Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
+                    delayMillis, MovementPriority::MOVEMENT_FORCED);
+}
+
 bool MovementAction::Flee(Unit* target)
 {
     Player* master = GetMaster();
@@ -3443,11 +3452,41 @@ bool MovementAction::UseTaxi(PlayerbotAI* botAI, uint32 entry, bool needNpc)
     return goTaxi;
 }
 
+bool MovementAction::ClearTransportState(Player* bot, Transport* exceptTransport)
+{
+    Transport* prior = bot->GetTransport();
+    if (!prior)
+        return true;
+
+    if (prior == exceptTransport)
+        return false; // already aboard the target transport
+
+    // Full removal: also clears m_transport when the bot is still in the passenger set.
+    prior->RemovePassenger(bot, true);
+
+    // Core gap: RemovePassenger's withAll cleanup only runs when the erase above
+    // succeeds. If m_transport is stale (bot not in the passenger set), force-clear it.
+    if (bot->GetTransport())
+    {
+        bot->SetTransport(nullptr);
+        bot->m_movementInfo.RemoveMovementFlag(MOVEMENTFLAG_ONTRANSPORT);
+        bot->m_movementInfo.transport.guid.Clear();
+    }
+
+    return true;
+}
+
 bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport)
 {
     Player* bot = botAI->GetBot();
     if (!transport)
         return false;
+
+    // CORE BUG WORKAROUND: MotionTransport::AddPassenger self-deadlocks (non-recursive
+    // re-lock of its Lock via the "SHOULD NEVER HAPPEN" RemovePassenger branch) when the
+    // bot's m_transport is stale. Board only with clean transport state.
+    if (!ClearTransportState(bot, transport))
+        return true; // already aboard
 
     // PORT-TODO: the source walks onto a transport using
     // WorldPosition::RandomPointOnTrans + getPathStepFrom(transport-offset) +
@@ -3475,7 +3514,9 @@ bool MovementAction::MoveOffTransport(PlayerbotAI* botAI, WorldPosition exitPos,
         return false;
 
     Transport* transport = bot->GetTransport();
-    transport->RemovePassenger(bot);
+    // Full removal (withAll=true): clears m_transport, so the next board cannot hit the
+    // MotionTransport::AddPassenger stale-state self-deadlock.
+    ClearTransportState(bot, nullptr);
 
     // PORT-TODO: the source's spline disembark path uses getPathStepFrom +
     // toPointsArray (transport navmesh), absent in the target. v1 supports the
@@ -3508,8 +3549,11 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
             return true;
         }
 
-        if (urand(0, 50))
-            MoveOnTransport(botAI, transport, doTeleport);
+        // Ride in progress (boat still under way to the dock): wait aboard without
+        // re-issuing boarding every tick - stop, clear motion, 1s re-check delay.
+        bot->StopMoving();
+        bot->GetMotionMaster()->Clear();
+        SetNextMovementDelay(botAI, 1000);
 
         return false;
     }
@@ -3532,6 +3576,16 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
     {
         MoveOnTransport(botAI, transport, doTeleport);
         return true;
+    }
+
+    // Boat not at the dock yet. If we're already at the dock, wait there quietly
+    // (stop, clear motion, 1s re-check delay) instead of re-issuing every tick;
+    // otherwise keep walking to the dock via the normal path.
+    if (dockPosition.GetMapId() == bot->GetMapId() && dockPosition.sqDistance2d(botPos) < 100.0f)
+    {
+        bot->StopMoving();
+        bot->GetMotionMaster()->Clear();
+        SetNextMovementDelay(botAI, 1000);
     }
 
     return false;
@@ -4559,14 +4613,21 @@ bool MovementAction::ExecuteTravelPlan(TravelPlan& state)
                 state.stepIdx += 2;
                 return true;
             }
-            // On transport — wait
+            // On transport — wait for the stop to arrive (no movement while aboard)
             if (bot->GetTransport())
             {
                 if (bot->GetMapId() == arrive.point.GetMapId())
                 {
-                    bot->GetTransport()->RemovePassenger(bot);
+                    // withAll=true: clears m_transport (stale state would self-deadlock
+                    // the next MotionTransport::AddPassenger).
+                    ClearTransportState(bot, nullptr);
                     bot->StopMovingOnCurrentPos();
                     state.stepIdx += 2;
+                }
+                else
+                {
+                    bot->StopMoving();
+                    bot->GetMotionMaster()->Clear();
                 }
                 return true;
             }
@@ -4767,6 +4828,10 @@ bool MovementAction::BoardTransport(Transport* transport)
     // Already on this transport
     if (bot->GetTransport() == transport)
         return true;
+
+    // CORE BUG WORKAROUND: clear any other/stale transport state before AddPassenger
+    // (stale m_transport self-deadlocks MotionTransport::AddPassenger).
+    ClearTransportState(bot, transport);
 
     // Check if bot is on the transport surface
     float probeZ = std::max(bot->GetPositionZ(), transport->GetPositionZ());

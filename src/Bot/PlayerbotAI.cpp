@@ -397,8 +397,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         {
             LOG_DEBUG("playerbots", "Bot {} is on a transport", bot->GetName());
 
-            if (bot->GetTransport())
-                bot->GetTransport()->RemovePassenger(bot, true);
+            // CORE BUG WORKAROUND: clear any prior/stale transport state (stale
+            // m_transport self-deadlocks MotionTransport::AddPassenger).
+            MovementAction::ClearTransportState(bot, nullptr);
 
             if (newTransport)
                 newTransport->AddPassenger(bot, true);

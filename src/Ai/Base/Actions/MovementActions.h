@@ -49,6 +49,13 @@ public:
     // is progressing and the dispatch failed (callers should back off).
     static bool MoveFarDispatch(PlayerbotAI* botAI, WorldPosition const& dest);
 
+    // Clears the bot's transport state (passenger-set entry + any stale m_transport)
+    // before boarding. MotionTransport::AddPassenger self-deadlocks (non-recursive
+    // re-lock of Lock via its "SHOULD NEVER HAPPEN" RemovePassenger branch) when the
+    // bot's m_transport is stale - RemovePassenger(withAll=false) leaves it set.
+    // Returns false when the bot is already on exceptTransport (boarded).
+    static bool ClearTransportState(Player* bot, Transport* exceptTransport);
+
 protected:
     // Emit a one-line trace describing the imminent movement. No-op
     // unless the bot has the "debug move" non-combat strategy.
@@ -79,6 +86,8 @@ protected:
     float WaitDelay(float distance);
     float WaitForReach(float distance);
     void SetNextMovementDelay(float delayMillis);
+    // Static-context equivalent (for static methods like UseTransport/MoveOnTransport).
+    static void SetNextMovementDelay(PlayerbotAI* botAI, float delayMillis);
     bool IsMovingAllowed(WorldObject* target);
     bool IsDuplicateMove(float x, float y, float z);
     bool IsWaitingForLastMove(MovementPriority priority);

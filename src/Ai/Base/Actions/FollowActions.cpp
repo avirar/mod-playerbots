@@ -59,6 +59,9 @@ bool FollowAction::Execute(Event /*event*/)
 
             if (botSurfaceTransport == transport)
             {
+                // CORE BUG WORKAROUND: stale m_transport self-deadlocks
+                // MotionTransport::AddPassenger - board only with clean state.
+                ClearTransportState(bot, transport);
                 transport->AddPassenger(bot, true);
                 bot->StopMovingOnCurrentPos();
                 return true;
