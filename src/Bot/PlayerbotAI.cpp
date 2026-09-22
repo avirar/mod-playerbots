@@ -5494,7 +5494,12 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
         // new travel system (travel-node graph routing + navmesh), independent of
         // any strategy. The destination persists until arrival or the 15-minute
         // window. Bare "movefar" cancels an armed move.
-        std::istringstream iss(command.substr(7));
+        std::string args = command.substr(7);
+        size_t const argBegin = args.find_first_not_of(", \t");
+        if (argBegin != std::string::npos)
+            args = args.substr(argBegin);
+
+        std::istringstream iss(args);
         float x = 0, y = 0, z = 0;
         if (!(iss >> x >> y >> z))
             // bare "movefar" (or unparseable args): cancel an armed move
