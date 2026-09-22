@@ -5390,6 +5390,58 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 
         return out.str();
     }
+    else if (command == "mounted" || command == "mount")
+    {
+        std::ostringstream out;
+        out << (bot->IsMounted() ? "MOUNTED" : "NOT-MOUNTED");
+
+        uint32 mountSpell = 0;
+        auto const& mountAuras = bot->GetAuraEffectsByType(SPELL_AURA_MOUNTED);
+        if (!mountAuras.empty())
+            mountSpell = mountAuras.front()->GetSpellInfo()->Id;
+        out << " spell=" << mountSpell;
+
+        out << " form=" << static_cast<uint32>(bot->GetShapeshiftForm());
+        out << " moving=" << (bot->isMoving() ? "y" : "n");
+        out << " combat=" << (bot->IsInCombat() ? "y" : "n");
+        out << " outdoors=" << (bot->IsOutdoors() ? "y" : "n");
+        out << " level=" << bot->GetLevel();
+        out << " riding=" << bot->GetPureSkillValue(SKILL_RIDING);
+
+        uint32 groundCount = 0, flightCount = 0;
+        for (auto const& entry : bot->GetSpellMap())
+        {
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(entry.first);
+            if (!spellInfo || spellInfo->Effects[0].ApplyAuraName != SPELL_AURA_MOUNTED)
+                continue;
+            if (entry.second->State == PLAYERSPELL_REMOVED || !entry.second->Active || spellInfo->IsPassive())
+                continue;
+            if (spellInfo->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
+                spellInfo->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED)
+                ++flightCount;
+            else
+                ++groundCount;
+        }
+        out << " mounts(ground=" << groundCount << " flight=" << flightCount << ")";
+
+        LastMovement& lastMove = *GetAiObjectContext()->GetValue<LastMovement&>("last movement");
+        char const* prio = "?";
+        switch (lastMove.priority)
+        {
+            case MovementPriority::MOVEMENT_IDLE:   prio = "idle";   break;
+            case MovementPriority::MOVEMENT_WANDER: prio = "wander"; break;
+            case MovementPriority::MOVEMENT_NORMAL: prio = "normal"; break;
+            case MovementPriority::MOVEMENT_COMBAT: prio = "combat"; break;
+            case MovementPriority::MOVEMENT_FORCED: prio = "forced"; break;
+        }
+        uint32 const windowEnd = static_cast<uint32>(lastMove.lastdelayTime + lastMove.msTime);
+        uint32 const now = getMSTime();
+        uint32 const holdMs = windowEnd > now ? windowEnd - now : 0;
+        out << " lastMove=" << prio << " hold=" << holdMs << "ms";
+        out << " action=" << currentEngine->GetLastAction();
+
+        return out.str();
+    }
 
     std::ostringstream out;
     out << "invalid command: " << command;

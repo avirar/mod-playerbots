@@ -23,6 +23,7 @@
 #include "MapMgr.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
+#include "ObjectAccessor.h"
 #include "ObjectGuid.h"
 #include "PerfMonitor.h"
 #include "Player.h"
@@ -3074,6 +3075,8 @@ std::string const RandomPlayerbotMgr::HandleRemoteCommand(std::string const requ
     std::string const command = std::string(request.begin(), pos);
     ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(atoi(std::string(pos + 1, request.end()).c_str()));
     Player* bot = GetPlayerBot(guid);
+    if (!bot)
+        bot = ObjectAccessor::FindConnectedPlayer(guid);  // self-bot / real player driven by bot AI
     if (!bot)
         return "invalid guid";
 
