@@ -2215,7 +2215,11 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // [[Node pathfinding system]]
     // Find nodes near the bot and near the end position that have a route between them, then move
     // towards/along the route.
-    sTravelNodeMap.m_nMapMtx.lock_shared();
+    // Scoped shared lock (RAII): the OG getFullPath took lock_shared() by hand
+    // and its route.isEmpty() early-return leaked the lock (the documented OG
+    // "leak class" — an abandoned shared_timed_mutex wedging every later lock
+    // attempt). The guard releases on all paths, including the early returns.
+    std::shared_lock<std::shared_timed_mutex> guard(m_nMapMtx);
 
     // How far the raw mmap probe reached before node routing — the key
     // datum for the no-node case (a bot stalling at a ridge foot means
@@ -2236,7 +2240,7 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
 
         // modpb's FindRouteNearestNodes creates no temp nodes, so there is nothing to clean up here
         // (cmangos calls route.cleanTempNodes(); modpb's TravelNodeRoute has no tempNodes).
-        sTravelNodeMap.m_nMapMtx.unlock_shared();
+        // The scoped guard above releases the shared lock on this early return.
 
         // The node graph can be fragmented (cross-map links absent, distant same-map nodes in separate
         // components), so the route is often empty for long travels. But getPathFromPath above usually
@@ -2261,8 +2265,6 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     // threads. Without a unit an incomplete link degrades to a plain
     // move-to-node point, which the path walker handles.
     movePath = route.buildPath(beginPath, endPath, nullptr);
-
-    sTravelNodeMap.m_nMapMtx.unlock_shared();
 
     return movePath;
 }
