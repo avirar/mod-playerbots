@@ -69,6 +69,7 @@ protected:
     bool ChaseTo(WorldObject* obj, float distance = 0.0f);
     bool ReachCombatTo(Unit* target, float distance = 0.0f);
     float MoveDelay(float distance, bool backwards = false);
+    float WaitDelay(float distance);
     float WaitForReach(float distance);
     void SetNextMovementDelay(float delayMillis);
     bool IsMovingAllowed(WorldObject* target);

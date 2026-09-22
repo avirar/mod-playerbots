@@ -1525,8 +1525,9 @@ float MovementAction::MoveDelay(float distance, bool backwards)
     return delay;
 }
 
-// TODO should this be removed? (or modified to use "last movement" value?)
-float MovementAction::WaitForReach(float distance)
+// In-flight window used to arm the "last movement" value so
+// IsWaitingForLastMove can suppress re-dispatch while a committed spline runs.
+float MovementAction::WaitDelay(float distance)
 {
     float delay = 1000.0f * MoveDelay(distance) + sPlayerbotAIConfig.reactDelay;
 
@@ -1546,6 +1547,12 @@ float MovementAction::WaitForReach(float distance)
     if (delay < 0)
         delay = 0;
 
+    return delay;
+}
+
+float MovementAction::WaitForReach(float distance)
+{
+    float delay = WaitDelay(distance);
     botAI->SetNextCheckDelay((uint32)delay);
     return delay;
 }
@@ -3987,7 +3994,15 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
         mm.MoveSplinePath(&pointPath, moveMode);
     }
 
-    float waitDelay = WaitForReach(size);
+    float waitDelay = WaitDelay(size);
+
+    // Do NOT sleep the whole AI for the hop duration (the old WaitForReach
+    // behaviour) — that starved the timer-driven mount check and every other
+    // action while the bot walked, because SetNextCheckDelay suppresses the
+    // entire action loop. Tick at reactDelay so checks interleave with the
+    // running spline; the armed waitDelay below makes IsWaitingForLastMove
+    // suppress re-dispatch until that in-flight window lapses.
+    botAI->SetNextCheckDelay(sPlayerbotAIConfig.reactDelay);
 
     // Arm the priority/timing system so IsWaitingForLastMove / IsDuplicateMove
     // see this MoveTo2 dispatch as in-progress (the old MoveTo armed it via
