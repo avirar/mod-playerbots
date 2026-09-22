@@ -2299,6 +2299,71 @@ int32 PlayerbotAI::GetMeleeIndex(Player* player)
     return 0;
 }
 
+bool PlayerbotAI::IsOutnumbered()
+{
+    if (bot->GetMap() && (bot->GetMap()->IsDungeon() || bot->GetMap()->IsRaid()))
+        return false;
+
+    if (bot->GetGroup() && bot->GetGroup()->isRaidGroup())
+        return false;
+
+    // Numeric superiority, not power weighting: a lone bot can handle a couple
+    // of (even higher-level) mobs, so only flee when clearly outnumbered. The
+    // "attackers" list is already filtered to alive, in-world, non-CC'd,
+    // non-friendly threats (AttackersValue::hasRealThreat), so each guid is one
+    // active foe.
+    uint32 foeCount = 0;
+    for (ObjectGuid const& attacker : GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get())
+    {
+        if (Unit* unit = GetUnit(attacker))
+            if (unit->IsAlive() && unit->IsInWorld())
+                ++foeCount;
+    }
+
+    if (foeCount < 2)
+        return false;
+
+    // Friends = the bot itself plus grouped bots that will actively assist:
+    // alive, same map, in range, and bot-controlled (a real player may be AFK).
+    uint32 friendCount = 1;
+    if (Group* group = bot->GetGroup())
+    {
+        Group::MemberSlotList const& groupSlot = group->GetMemberSlots();
+        for (Group::member_citerator itr = groupSlot.begin(); itr != groupSlot.end(); ++itr)
+        {
+            Player* member = ObjectAccessor::FindPlayer(itr->guid);
+            if (!member || member == bot || !member->IsAlive() || member->GetMapId() != bot->GetMapId())
+                continue;
+
+            if (!GET_PLAYERBOT_AI(member))
+                continue;
+
+            if (bot->GetExactDist2d(member) > sPlayerbotAIConfig.sightDistance)
+                continue;
+
+            ++friendCount;
+        }
+    }
+
+    // Tanks are built to hold several mobs; count them as one extra friend so
+    // they only flee when clearly outnumbered.
+    if (IsTank(bot))
+        ++friendCount;
+
+    // +1 flee tolerance: a bot can hold its ground against one foe beyond
+    // numeric parity (e.g. a solo bot handles 2 mobs, flees at 3).
+    return foeCount > friendCount + 1;
+}
+
+bool PlayerbotAI::IsFleeing()
+{
+    if (IsOutnumbered())
+        return true;
+
+    // Panic and critical-health flees both fire below criticalHealth.
+    return GetAiObjectContext()->GetValue<uint8>("health", "self target")->Get() < sPlayerbotAIConfig.criticalHealth;
+}
+
 bool PlayerbotAI::IsTank(Player* player, bool bySpec)
 {
     PlayerbotAI* botAi = GET_PLAYERBOT_AI(player);

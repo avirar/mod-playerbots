@@ -11,12 +11,23 @@
 
 class PlayerbotAI;
 
+// Zeroes out the "set facing" (face-target) action while the bot is fleeing so
+// the bot keeps running away instead of turning to face the mob it is escaping.
+class FleeFacingMultiplier : public Multiplier
+{
+public:
+    FleeFacingMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "flee facing") {}
+
+    float GetValue(Action* action) override;
+};
+
 class FleeStrategy : public Strategy
 {
 public:
     FleeStrategy(PlayerbotAI* botAI) : Strategy(botAI) {}
 
     void InitTriggers(std::vector<TriggerNode*>& triggers) override;
+    void InitMultipliers(std::vector<Multiplier*>& multipliers) override;
     std::string const getName() override { return "flee"; };
 };
 

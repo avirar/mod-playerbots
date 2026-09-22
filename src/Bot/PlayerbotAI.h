@@ -423,6 +423,11 @@ public:
     void ReInitCurrentEngine();
     void Reset(bool full = false);
     void LeaveOrDisbandGroup();
+    // True when alive hostile attackers outnumber the bot's active allies by
+    // more than the flee tolerance (see OutNumberedTrigger).
+    bool IsOutnumbered();
+    // True while the bot is fleeing: outnumbered, or at panic/critical health.
+    bool IsFleeing();
     static bool IsTank(Player* player, bool bySpec = false);
     static bool IsHeal(Player* player, bool bySpec = false);
     static bool IsDps(Player* player, bool bySpec = false);

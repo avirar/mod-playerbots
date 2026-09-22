@@ -7,6 +7,14 @@
 #include "FleeStrategy.h"
 #include "Playerbots.h"
 
+float FleeFacingMultiplier::GetValue(Action* action)
+{
+    if (!action || action->getName() != "set facing")
+        return 1.0f;
+
+    return botAI->IsFleeing() ? 0.0f : 1.0f;
+}
+
 void FleeStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(
@@ -15,6 +23,11 @@ void FleeStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
         new TriggerNode("outnumbered", { NextAction("flee", ACTION_EMERGENCY + 9) }));
     triggers.push_back(
         new TriggerNode("critical health", { NextAction("flee", ACTION_MEDIUM_HEAL) }));
+}
+
+void FleeStrategy::InitMultipliers(std::vector<Multiplier*>& multipliers)
+{
+    multipliers.push_back(new FleeFacingMultiplier(botAI));
 }
 
 void FleeFromAddsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
