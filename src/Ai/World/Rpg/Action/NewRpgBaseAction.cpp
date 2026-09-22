@@ -65,6 +65,16 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // MoveTo2 dispatch path.
     if (bot->IsInFlight())
         return true;
+
+    // Yield while a NORMAL+ movement is already in flight (main-branch
+    // parity). Returning false lets the engine fall through to the lower-
+    // relevance actions (check mount state, attack anything) instead of
+    // re-dispatching a fresh spline every tick and starving them. The
+    // COMBAT-armed mount-stop window (StopForMountCast) is strictly higher
+    // and therefore also holds the walker so the mount cast can land.
+    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+        return false;
+
     EmitDebugMove("MoveFar", "moveto2", dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     return MoveTo2(dest);
 }

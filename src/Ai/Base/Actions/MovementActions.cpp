@@ -3991,13 +3991,14 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
 
     // Arm the priority/timing system so IsWaitingForLastMove / IsDuplicateMove
     // see this MoveTo2 dispatch as in-progress (the old MoveTo armed it via
-    // LastMovement::Set at each dispatch point). Arm at WANDER -- one notch
-    // below the normal action priority -- so every NORMAL+ movement (loot
-    // approach, grind, follow, combat, forced) can break an in-flight hop
-    // while same-or-lower re-issues (wander mill, idle) stay suppressed.
+    // LastMovement::Set at each dispatch point). Arm at NORMAL (main-branch
+    // parity): the walker's own re-dispatch is suppressed via the
+    // IsWaitingForLastMove(NORMAL) checks in MoveTo2/MoveFarTo, which is what
+    // lets lower-relevance actions (mount check, attack anything) run while a
+    // hop is in flight; COMBAT/FORCED arms can still break it.
     AI_VALUE(LastMovement&, "last movement")
         .Set(movePosition.GetMapId(), movePosition.GetPositionX(), movePosition.GetPositionY(),
-             movePosition.GetPositionZ(), bot->GetOrientation(), waitDelay, MovementPriority::MOVEMENT_WANDER);
+             movePosition.GetPositionZ(), bot->GetOrientation(), waitDelay, MovementPriority::MOVEMENT_NORMAL);
 }
 
 bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react, bool noPath, bool ignoreEnemyTargets)
@@ -4014,12 +4015,13 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
     if (!botAI->CanMove())
         return false;
 
-    // Respect a strictly-higher-priority arm from another dispatcher (e.g.
-    // the COMBAT-armed mount-stop window in CheckMountStateAction::
-    // StopForMountCast): re-dispatching here would interrupt the in-flight
-    // mount cast via InterruptNonMeleeSpells below. The walker's own hop arm
-    // is WANDER (see DispatchMovement), strictly lower than this NORMAL
-    // check, so the walker is never blocked against its own hops.
+    // Respect a strictly-higher-or-equal-priority arm (e.g. the COMBAT-armed
+    // mount-stop window in CheckMountStateAction::StopForMountCast):
+    // re-dispatching here would interrupt the in-flight mount cast via
+    // InterruptNonMeleeSpells below. The walker's own hop arm is NORMAL (see
+    // DispatchMovement), so this also suppresses the walker's per-tick
+    // re-dispatch and lets lower-relevance actions (check mount state, attack
+    // anything) run while a hop is in flight.
     if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
         return false;
 

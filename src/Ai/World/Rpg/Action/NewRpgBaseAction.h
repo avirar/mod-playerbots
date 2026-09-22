@@ -36,10 +36,10 @@ protected:
     /* MOVEMENT RELATED */
     bool MoveFarTo(WorldPosition dest);
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
-    // WANDER by default: MoveRandomNear is a wander mill -- its per-tick
-    // re-issues must stay suppressed while a dispatched path is in flight
-    // (IsWaitingForLastMove only lets strictly-higher priorities through).
-    bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_WANDER, WorldObject* center = nullptr);
+    // NORMAL by default (main-branch parity): MoveRandomNear re-issues are
+    // suppressed while a dispatched NORMAL+ path is in flight via
+    // IsWaitingForLastMove (which only lets strictly-higher priorities through).
+    bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool TakeFlight(std::vector<uint32> const& taxiNodes, Creature* flightMaster);
 
