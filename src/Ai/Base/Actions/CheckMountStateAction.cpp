@@ -12,6 +12,7 @@
 #include "BattlegroundWS.h"
 #include "DBCStores.h"
 #include "Event.h"
+#include "LastMovementValue.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
@@ -243,6 +244,34 @@ bool CheckMountStateAction::Mount()
     return false;
 }
 
+bool CheckMountStateAction::StopForMountCast() const
+{
+    if (!bot->isMoving())
+        return false;
+
+    // Every mount cast (shapeshift or mount spell) has a cast time, and
+    // PlayerbotAI::CastSpell refuses cast-time spells while isMoving();
+    // StopMoving() is async ("only asks the spline to end"), so a cast in
+    // the same tick is guaranteed to be refused -- and the old call sites
+    // returned true anyway, silently swallowing the failure. The next timer
+    // pass (~1s) usually caught the bot moving again because movement had
+    // been re-issued in between, so the cast never landed. Stop, and arm a
+    // COMBAT-priority lastMove window holding the bot standing still across
+    // the timer period and the 1.5-3.0s cast (the MoveTo2 head check keeps
+    // the walker from re-dispatching and interrupting the cast); COMBAT
+    // itself can still break it, which is the desired behaviour when an
+    // enemy engages mid-mount.
+    bot->StopMoving();
+
+    AI_VALUE(LastMovement&, "last movement")
+        .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+             bot->GetOrientation(), 3000.0f, MovementPriority::MOVEMENT_COMBAT);
+
+    botAI->SetNextCheckDelay(sPlayerbotAIConfig.reactDelay);
+    LOG_DEBUG("playerbots", "check mount state: stopped bot {} to land the mount cast", bot->GetName());
+    return true;
+}
+
 void CheckMountStateAction::Dismount()
 {
     if (bot->isMoving())
@@ -306,6 +335,8 @@ bool CheckMountStateAction::TryForms(Player* master, int32 masterMountType, int3
     if (botAI->CanCastSpell(SPELL_TRAVEL_FORM, bot, true) &&
         masterInShapeshiftForm == FORM_TRAVEL && botInShapeshiftForm != FORM_TRAVEL)
     {
+        if (StopForMountCast())
+            return true;
         botAI->CastSpell(SPELL_TRAVEL_FORM, bot);
         return true;
     }
@@ -315,6 +346,8 @@ bool CheckMountStateAction::TryForms(Player* master, int32 masterMountType, int3
         ((masterInShapeshiftForm == FORM_FLIGHT && botInShapeshiftForm != FORM_FLIGHT) ||
         (masterMountType == 1 && masterSpeed == 149)))
     {
+        if (StopForMountCast())
+            return true;
         botAI->CastSpell(SPELL_FLIGHT_FORM, bot);
 
         // Compensate speedbuff
@@ -327,6 +360,8 @@ bool CheckMountStateAction::TryForms(Player* master, int32 masterMountType, int3
         ((masterInShapeshiftForm == FORM_FLIGHT_EPIC && botInShapeshiftForm != FORM_FLIGHT_EPIC) ||
         (masterMountType == 1 && masterSpeed >= 279)))
     {
+        if (StopForMountCast())
+            return true;
         botAI->CastSpell(SPELL_SWIFT_FLIGHT_FORM, bot);
 
         // Compensate speedbuff
@@ -402,9 +437,10 @@ bool CheckMountStateAction::TryPreferredMount(Player* master) const
         return false;
     }
 
-    // Required here as otherwise bots won't mount in BG's due to them constant moving
-    if (bot->isMoving())
-        bot->StopMoving();
+    // Required here as otherwise bots won't mount in BG's due to them constant moving:
+    // stop and hold still until the next pass so the cast lands (see StopForMountCast).
+    if (StopForMountCast())
+        return true;
 
     // Check if spell can be cast - for now allow all, even if the bot does not have the actual mount
     //if (botAI->CanCastSpell(mountId, botAI->GetBot()))
@@ -430,9 +466,10 @@ bool CheckMountStateAction::TryRandomMountFiltered(std::map<int32, std::vector<u
         auto const& ids = it->second;
         if (!ids.empty())
         {
-            // Required here as otherwise bots won't mount in BGs due to them constant moving
-            if (bot->isMoving())
-                bot->StopMoving();
+            // Required here as otherwise bots won't mount in BGs due to them constant moving:
+            // stop and hold still until the next pass so the cast lands (see StopForMountCast).
+            if (StopForMountCast())
+                return true;
 
             uint32 index = urand(0, ids.size() - 1);
 

@@ -63,6 +63,7 @@ private:
     bool TryPreferredMount(Player* master) const;
     uint32 GetMountType(Player* master) const;
     bool TryRandomMountFiltered(std::map<int32, std::vector<uint32>> const& spells, int32 masterSpeed) const;
+    bool StopForMountCast() const;
 };
 
 #endif
