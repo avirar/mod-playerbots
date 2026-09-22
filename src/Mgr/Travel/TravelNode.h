@@ -10,6 +10,7 @@
 #include "TravelMgr.h"
 #include "G3D/Vector3.h"
 #include <shared_mutex>
+#include <utility>
 
 class PlayerbotAI;
 
@@ -236,6 +237,10 @@ public:
         important = baseNode->important;
     }
 
+    // Virtual so transient derived nodes (PortalNode) are destroyed correctly
+    // through a base pointer in TravelNodeRoute::tempNodes.
+    virtual ~TravelNode() = default;
+
     // Setters
     void setLinked(bool linked1) { linked = linked1; }
     void setPoint(WorldPosition point1) { point = point1; }
@@ -410,6 +415,25 @@ protected:
     // uint32 transportId = 0;
 };
 
+// Transient A* seed (cmangos PortalNode): a virtual start node whose position
+// equals the real start node but whose single outgoing link is a spell-based
+// teleport (hearthstone / mage teleport) to a destination node. Seeded into
+// GetNodeRoute's open set so routing may begin with a teleport hop when that
+// beats walking. Owned by TravelNodeRoute::tempNodes; never part of the shared
+// node graph, so its outgoing link does not mutate any shared node.
+class PortalNode : public TravelNode
+{
+public:
+    PortalNode(TravelNode* baseNode) : TravelNode(baseNode) {}
+
+    void SetPortal(TravelNode* endNode, uint32 portalSpell)
+    {
+        // position/name copied by the base ctor; links start empty.
+        TravelNodePath path(0.1f, 0.1f, (uint8)TravelNodePathType::teleportSpell, portalSpell, true);
+        setPathTo(endNode, path);
+    }
+};
+
 // Route step type
 // Ported to cmangos's values (cmangos TravelNode.h:250): value 3 is now
 // NODE_AREA_TRIGGER (was NODE_PORTAL) and value 7 is NODE_STATIC_PORTAL
@@ -540,6 +564,41 @@ public:
     {
         nodes = nodes1;
     }
+    TravelNodeRoute(std::vector<TravelNode*> nodes1, std::vector<TravelNode*> tempNodes1)
+        : nodes(std::move(nodes1)), tempNodes(std::move(tempNodes1))
+    {
+    }
+
+    // Owns transient PortalNodes seeded during A*; delete them on teardown
+    // (the OG leaked these when a route owning them was dropped).
+    ~TravelNodeRoute()
+    {
+        for (TravelNode* node : tempNodes)
+            delete node;
+    }
+
+    // Non-copyable: tempNodes ownership is single. All call sites move or
+    // elide (return-by-value / move-assign), so copy is never needed.
+    TravelNodeRoute(TravelNodeRoute const&) = delete;
+    TravelNodeRoute& operator=(TravelNodeRoute const&) = delete;
+
+    TravelNodeRoute(TravelNodeRoute&& other) noexcept
+        : nodes(std::move(other.nodes)), tempNodes(std::move(other.tempNodes))
+    {
+        other.tempNodes.clear();
+    }
+    TravelNodeRoute& operator=(TravelNodeRoute&& other) noexcept
+    {
+        if (this != &other)
+        {
+            for (TravelNode* node : tempNodes)
+                delete node;
+            nodes = std::move(other.nodes);
+            tempNodes = std::move(other.tempNodes);
+            other.tempNodes.clear();
+        }
+        return *this;
+    }
 
     bool isEmpty() { return nodes.empty(); }
 
@@ -572,6 +631,7 @@ private:
         return std::find(nodes.begin(), nodes.end(), node);
     }
     std::vector<TravelNode*> nodes;
+    std::vector<TravelNode*> tempNodes;
 };
 
 // A node container to aid A* calculations with nodes.

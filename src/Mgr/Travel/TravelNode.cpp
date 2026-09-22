@@ -13,6 +13,7 @@
 #include "Playerbots.h"
 #include "RaceMgr.h"
 #include "ServerFacade.h"
+#include "SpellMgr.h"
 #include "Transport.h"
 #include "TransportMgr.h"
 #include <array>
@@ -1694,6 +1695,89 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
     // Min-heap: smallest f at front
     auto heapComp = [](TravelNodeStub* i, TravelNodeStub* j) { return i->totalCost > j->totalCost; };
 
+    // Transient teleport seeds (cmangos PortalNode parity): when the bot knows a
+    // usable hearthstone or mage teleport, seed a virtual start node whose single
+    // outgoing link is that spell. A* then weighs "walk the whole way" against
+    // "teleport, then continue from the destination node" via the time penalty
+    // below. The seeds are owned by portNodes and transferred to the route on
+    // success (deleted here on failure) so they never dangle.
+    std::vector<TravelNode*> portNodes;
+    if (bot && bot->IsAlive())
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot))
+        {
+            AiObjectContext* context = botAI->GetAiObjectContext();
+
+            if (bot->HasSpell(8690) && !bot->HasSpellCooldown(8690))
+            {
+                WorldPosition homePos = context->GetValue<WorldPosition>("home bind")->Get();
+                if (TravelNode* homeNode = getNode(homePos, nullptr, 50.0f))
+                {
+                    PortalNode* portNode = new PortalNode(start);
+                    portNode->SetPortal(homeNode, 8690);
+                    TravelNodeStub* child = &m_stubs.insert(std::make_pair(portNode, TravelNodeStub(portNode))).first->second;
+                    // ~10 min walk-equivalent penalty (OG scales this down with
+                    // death count; fixed here — 0 deaths is the common case).
+                    child->costFromStart = 600.0f;
+                    child->heuristic = child->dataNode->fDist(goal) / botSpeed;
+                    child->totalCost = child->costFromStart + child->heuristic;
+                    open.push_back(child);
+                    std::push_heap(open.begin(), open.end(), heapComp);
+                    child->open = true;
+                    portNodes.push_back(portNode);
+                }
+            }
+
+            if (!bot->IsInCombat())
+            {
+                static std::vector<uint32> const teleSpells = { 3561, 3562, 3563, 3565, 3566, 3567, 18960 };
+                for (uint32 spellId : teleSpells)
+                {
+                    if (!bot->HasSpell(spellId) || bot->HasSpellCooldown(spellId))
+                        continue;
+
+                    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                    if (!spellInfo)
+                        continue;
+
+                    bool hasReagents = true;
+                    for (uint32 i = 0; i < MAX_SPELL_REAGENTS; ++i)
+                    {
+                        if (spellInfo->Reagent[i] &&
+                            !bot->HasItemCount(spellInfo->Reagent[i], spellInfo->ReagentCount[i]))
+                        {
+                            hasReagents = false;
+                            break;
+                        }
+                    }
+                    if (!hasReagents)
+                        continue;
+
+                    SpellTargetPosition const* telePos = sSpellMgr->GetSpellTargetPosition(spellId, EFFECT_0);
+                    if (!telePos)
+                        continue;
+
+                    WorldPosition teleWorldPos(telePos->target_mapId, telePos->target_X, telePos->target_Y,
+                                               telePos->target_Z, telePos->target_Orientation);
+                    TravelNode* teleNode = getNode(teleWorldPos, nullptr, 10.0f);
+                    if (!teleNode)
+                        continue;
+
+                    PortalNode* portNode = new PortalNode(start);
+                    portNode->SetPortal(teleNode, spellId);
+                    TravelNodeStub* child = &m_stubs.insert(std::make_pair(portNode, TravelNodeStub(portNode))).first->second;
+                    child->costFromStart = 60.0f;  // 1 min walk-equivalent penalty
+                    child->heuristic = child->dataNode->fDist(goal) / botSpeed;
+                    child->totalCost = child->costFromStart + child->heuristic;
+                    open.push_back(child);
+                    std::push_heap(open.begin(), open.end(), heapComp);
+                    child->open = true;
+                    portNodes.push_back(portNode);
+                }
+            }
+        }
+    }
+
     open.push_back(startStub);
     std::push_heap(open.begin(), open.end(), heapComp);
     startStub->open = true;
@@ -1719,7 +1803,11 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
             continue;
 
         if (++nodesExplored > MAX_A_STAR_EXPLORED)
+        {
+            for (TravelNode* node : portNodes)
+                delete node;
             return TravelNodeRoute();
+        }
 
         currentNode->open = false;
 
@@ -1741,7 +1829,7 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
 
             reverse(path.begin(), path.end());
 
-            return TravelNodeRoute(path);
+            return TravelNodeRoute(path, portNodes);
         }
 
         for (auto const& link : *currentNode->dataNode->getLinks())  // for each successor n' of n
@@ -1778,6 +1866,9 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
             childNode->open = true;
         }
     }
+
+    for (TravelNode* node : portNodes)
+        delete node;
 
     return TravelNodeRoute();
 }

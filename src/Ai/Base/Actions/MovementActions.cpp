@@ -3842,7 +3842,10 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
 
         if (nextPoint.entry == 8690)  // Hearthstone
         {
-            if (AI_VALUE2(bool, "action useful", "hearthstone") && canCastNow)
+            // AC-native gate (OG used AI_VALUE2(bool, "action useful",
+            // "hearthstone") — absent from the target's ValueContext, so it
+            // would null-deref).
+            if (bot->HasSpell(8690) && !bot->HasSpellCooldown(8690) && canCastNow)
                 return botAI->DoSpecificAction("hearthstone", Event("move action"), true);
         }
         else if (!bot->HasSpellCooldown(nextPoint.entry) && canCastNow)
