@@ -1448,15 +1448,16 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             dy += point.y * weights[i];
         }
 
-        if (bot->GetDistance2d(dx, dy) >= 1500.0f)
-            continue;
-
+        // Legacy proximity/zone filters removed: with the travel-node graph
+        // MoveFarTo can route cross-zone (portals, area triggers), so an
+        // objective 10km away in another zone is reachable. Dropping it here
+        // made DoIncompleteQuest give up (ChangeToIdle) on any quest whose POI
+        // sat outside a 1500y / same-zone window — e.g. Shattrath kill quests
+        // with objectives on Bloodmyst Isle. Height validity and the cross-map
+        // filter above are still enforced.
         float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
-            continue;
-
-        if (bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
             continue;
 
         poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex});
