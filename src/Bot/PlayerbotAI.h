@@ -672,8 +672,10 @@ protected:
     // Remote-move state (see MoveFarToPos): destination armed by an explicit
     // command; expiry/fail-backoff timestamps in ms.
     WorldPosition remoteMoveDest;
-    uint32 remoteMoveExpireMs = 0;
+    uint32 remoteMoveArmMs = 0; // getMSTime() when armed (elapsed window via GetMSTimeDiffToNow)
     uint32 remoteMoveFailUntilMs = 0;
+    float remoteMoveLastDist = 0.0f; // last same-map distance to dest (progress tracking)
+    uint32 remoteMoveLastDistMs = 0; // getMSTime() of that sample
 };
 
 #endif

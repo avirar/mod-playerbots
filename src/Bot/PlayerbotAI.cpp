@@ -1613,8 +1613,10 @@ bool PlayerbotAI::MoveFarToPos(float x, float y, float z, uint32 mapId)
         return false;
 
     remoteMoveDest = dest;
-    remoteMoveExpireMs = getMSTime() + 15 * MINUTE;
+    remoteMoveArmMs = getMSTime(); // armed now; the 15-minute window is measured as elapsed time
     remoteMoveFailUntilMs = 0;
+    remoteMoveLastDist = 0.0f;
+    remoteMoveLastDistMs = 0;
     return true;
 }
 
@@ -1624,7 +1626,7 @@ bool PlayerbotAI::CancelRemoteMove()
         return false;
 
     remoteMoveDest = WorldPosition();
-    remoteMoveExpireMs = 0;
+    remoteMoveArmMs = 0;
     remoteMoveFailUntilMs = 0;
 
     if (bot)
@@ -1639,11 +1641,14 @@ void PlayerbotAI::UpdateRemoteMove()
         return;
 
     // An explicit owner command lapses after its window so a stale destination
-    // never re-arms after a long trip, relog or death-res cycle.
-    if (GetMSTimeDiffToNow(remoteMoveExpireMs) > 15 * MINUTE)
+    // never re-arms after a long trip, relog or death-res cycle. GetMSTimeDiffToNow
+    // returns ELAPSED MILLISECONDS since the arm timestamp (it is now - armMs),
+    // so the 15-minute window is 15*60*1000 ms. (The global MINUTE constant is
+    // in SECONDS, not ms - do not use it with getMSTime-based diffs.)
+    if (GetMSTimeDiffToNow(remoteMoveArmMs) > 15 * 60 * 1000u)
     {
         remoteMoveDest = WorldPosition();
-        remoteMoveExpireMs = 0;
+        remoteMoveArmMs = 0;
         return;
     }
 
@@ -1658,7 +1663,7 @@ void PlayerbotAI::UpdateRemoteMove()
     {
         WorldPosition const arrived = remoteMoveDest;
         remoteMoveDest = WorldPosition();
-        remoteMoveExpireMs = 0;
+        remoteMoveArmMs = 0;
         TellMasterNoFacing("movefar: arrived near (" + std::to_string((int)arrived.GetPositionX()) + "," +
                               std::to_string((int)arrived.GetPositionY()) + ") map" + std::to_string(arrived.GetMapId()));
         return;
@@ -1669,9 +1674,48 @@ void PlayerbotAI::UpdateRemoteMove()
     if (remoteMoveFailUntilMs && getMSTime() < remoteMoveFailUntilMs)
         return;
 
-    // The MoveTo2 orchestrator is per-tick safe: it yields while a NORMAL+
-    // movement is already in flight and resumes the remaining route from the
-    // current position otherwise.
+    // An explicit owner command must WIN against the strategy's own moves
+    // (New RPG wander/grind/quest-hop keep re-arming NORMAL-priority moves; the
+    // shared IsWaitingForLastMove gate MoveTo2 checks would otherwise starve the
+    // command - the orchestrator yields and the strategy re-arms the window before
+    // our next tick can dispatch).
+    //
+    // We cannot tell "whose" move is in flight from lastPath: after we dispatch,
+    // lastPath holds OUR route (ending at the dest) even if the strategy has
+    // since re-armed a different move and is steering the bot elsewhere. The
+    // reliable signal is the bot's ACTUAL progress: if its distance to the dest
+    // is shrinking, the in-flight move is carrying us there - leave it and let
+    // the orchestrator's gate handle the per-tick yield / segment resume. If it
+    // is NOT shrinking (a foreign move or a stuck bot), take over: clear the
+    // in-flight move (opens the gate) and stop the current spline so our
+    // dispatch gets through. Cross-map falls back to the resolved route's
+    // endpoint (lastPath), since distance is not comparable across maps.
+    LastMovement& lastMove = *aiObjectContext->GetValue<LastMovement&>("last movement");
+    bool const takeover = [&]() -> bool
+    {
+        if (remoteMoveDest.GetMapId() != bot->GetMapId())
+        {
+            return lastMove.lastPath.empty() ||
+                lastMove.lastPath.getBack().GetMapId() != remoteMoveDest.GetMapId() ||
+                lastMove.lastPath.getBack().distance(remoteMoveDest) >= 25.0f;
+        }
+        float const distToDest = bot->GetDistance(remoteMoveDest);
+        uint32 const now = getMSTime();
+        bool const notApproaching = remoteMoveLastDistMs != 0 && (now - remoteMoveLastDistMs >= 1500) &&
+            distToDest > remoteMoveLastDist - 1.0f;
+        remoteMoveLastDist = distToDest;
+        remoteMoveLastDistMs = now;
+        return notApproaching;
+    }();
+    if (takeover)
+    {
+        lastMove.clear();
+        bot->StopMoving();
+    }
+
+    // Per-tick safe: MoveTo2 yields while a NORMAL+ movement is in flight
+    // (our own, after the takeover cleared a foreign one) and resumes the
+    // remaining route from the current position otherwise.
     if (!MovementAction::MoveFarDispatch(this, remoteMoveDest))
         remoteMoveFailUntilMs = getMSTime() + 5000;
     else
