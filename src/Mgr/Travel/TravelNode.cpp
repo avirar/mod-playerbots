@@ -115,13 +115,23 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
 
     if (bot)
     {
-        // 3.4 (OG getCost parity): level gates - prevent low-level bots from routing to
-        // the Outland (530) / Northrend (571) hubs. Destination = last path point.
+        // 3.4 (OG getCost parity): level gates - prevent low-level bots from routing
+        // to the Outland (530) / Northrend (571) leveling zones. Destination = last
+        // path point. Cities (Shattrath/Dalaran) and the Draenei/Blood Elf starting
+        // zones are safe low-level transit hubs (players hearth there for the
+        // portals), so routing to an exempt zone is allowed regardless of level.
         if (!path.empty())
         {
             uint32 const destMap = path.back().GetMapId();
-            if ((destMap == 530 && bot->GetLevel() < 58) || (destMap == 571 && bot->GetLevel() < 68))
-                return -1.0f;
+            bool const levelGated = (destMap == 530 && bot->GetLevel() < 58) ||
+                                    (destMap == 571 && bot->GetLevel() < 68);
+            if (levelGated)
+            {
+                AreaTableEntry const* area = path.back().getArea();
+                uint32 const zoneId = area ? (area->zone ? area->zone : area->ID) : 0;
+                if (!sPlayerbotAIConfig.levelGateExemptZones.count(zoneId))
+                    return -1.0f;
+            }
         }
 
         // 3.4 (OG getCost parity): static-portal faction gate - reject a portal whose GO

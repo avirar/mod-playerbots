@@ -1297,6 +1297,17 @@ AiPlayerbot.RandomGearLoweringChance = 0
 #           Oracle Talisman of Ablution test/on-use row (44870), Totem of the Earthen Ring (46978)
 AiPlayerbot.UnobtainableItems = 12468,44869,44870,46978
 
+# Zones exempt from the Outland/Northrend level gates (comma-separated zone IDs).
+# Low-level bots may route to these zones regardless of level - they are safe
+# transit hubs (players commonly hearth to Shattrath/Dalaran for their portals)
+# and low-level starting zones.
+# Defaults:
+#   3703 Shattrath City         3524 Azuremyst Isle (Draenei 1-10)
+#   4395 Dalaran                3525 Bloodmyst Isle (Draenei 10-20)
+#                               3430 Eversong Woods (Blood Elf 1-10)
+#                               3433 Ghostlands (Blood Elf 10-20)
+AiPlayerbot.LevelGateExemptZones = 3703,4395,3524,3525,3430,3433
+
 # Randombots check player's gearscore level and deny the group invitation if it's too low
 # Default: 0 (disabled)
 AiPlayerbot.GearScoreCheck = 0

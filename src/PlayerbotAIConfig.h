@@ -135,6 +135,9 @@ public:
     std::set<uint32> disallowedGameObjects;
     std::set<uint32> attunementQuests;
     std::set<uint32> unobtainableItems;
+    // Zones exempt from the Outland/Northrend level gates (cities + Draenei/Blood
+    // Elf starting zones): low-level bots may route to these regardless of level.
+    std::set<uint32> levelGateExemptZones;
 
     uint32 openGoSpell;
     bool randomBotAutologin;
