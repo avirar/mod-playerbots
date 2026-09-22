@@ -2351,6 +2351,16 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
         // progress (cross-map, or beginPath is empty). Mirrors mod-cmangosbots' early-return.
         if (beginPath.size() > 1)
         {
+            // Cap the carried chunk: a 40-step probe can densify to 300-400+
+            // points. The bot only needs a visible chunk — it re-resolves from
+            // its new spot when the leg completes, and carrying a giant path
+            // (per-tick walker bookkeeping, distance/LOS checks) is expensive
+            // on 800 bots. The cap is generous enough that the bot makes real
+            // progress before the re-resolve fires.
+            static size_t const kPartialProbeCap = 96;
+            if (beginPath.size() > kPartialProbeCap)
+                beginPath.resize(kPartialProbeCap);
+
             LOG_DEBUG("playerbots", "[Travel] no node route ({:.0f},{:.0f}) -> ({:.0f},{:.0f}) map {}, following partial probe ({} pts)",
                       startPos.GetPositionX(), startPos.GetPositionY(), endPos.GetPositionX(), endPos.GetPositionY(),
                       startPos.GetMapId(), uint32(beginPath.size()));

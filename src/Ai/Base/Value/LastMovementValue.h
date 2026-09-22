@@ -41,6 +41,10 @@ public:
         nextTeleport = other.nextTeleport;
         priority = other.priority;
         lastTransportEntry = other.lastTransportEntry;
+        noPathMs = other.noPathMs;
+        noPathDestMapId = other.noPathDestMapId;
+        noPathDestX = other.noPathDestX;
+        noPathDestY = other.noPathDestY;
         return *this;
     };
 
@@ -72,6 +76,19 @@ public:
     // Entry of the transport the bot is mid-journey on; used by the
     // cross-continent transport leg to resume boarding/disembarking.
     uint32 lastTransportEntry = 0;
+    // No-path failure state (debounces repeated resolutions): when
+    // ResolveMovePath produced no path at all for a destination, re-running
+    // the full probe + node-graph search every tick is pure waste (a single
+    // resolution can cost ~100ms; with many bots stalling on unreachable POIs
+    // that alone inflates world ticks into the hundreds of milliseconds).
+    // noPathMs holds getMSTime() of the last such failure plus the failed
+    // destination, so MoveTo2 skips re-resolving until the cooldown elapses
+    // (by then the unstick nudge / the caller's MoveRandomNear fallback has
+    // moved the bot anyway).
+    uint32 noPathMs = 0;
+    uint32 noPathDestMapId = 0;
+    float noPathDestX = 0.0f;
+    float noPathDestY = 0.0f;
 };
 
 class LastMovementValue : public ManualSetValue<LastMovement&>

@@ -25,6 +25,10 @@ LastMovement::LastMovement(LastMovement& other)
     lastPath = other.lastPath;
     priority = other.priority;
     lastTransportEntry = other.lastTransportEntry;
+    noPathMs = other.noPathMs;
+    noPathDestMapId = other.noPathDestMapId;
+    noPathDestX = other.noPathDestX;
+    noPathDestY = other.noPathDestY;
 }
 
 void LastMovement::clear()
@@ -44,6 +48,10 @@ void LastMovement::clear()
     lastdelayTime = 0;
     priority = MovementPriority::MOVEMENT_NORMAL;
     lastTransportEntry = 0;
+    noPathMs = 0;
+    noPathDestMapId = 0;
+    noPathDestX = 0.0f;
+    noPathDestY = 0.0f;
 }
 
 void LastMovement::Set(Unit* follow)

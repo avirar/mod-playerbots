@@ -58,6 +58,20 @@ namespace
 // tick and re-paths) when the Z cannot be made valid.
 bool SafeBotTeleport(Player* bot, WorldPosition dst, float orientation)
 {
+    // A default-constructed WorldPosition carries INVALID_MAP_ID (0xFFFFFFFF):
+    // teleporting to it is rejected by Player::TeleportTo and spams the error
+    // log ("TeleportTo: invalid map (4294967295)"). Reaching here with such a
+    // map means a path's final point never got a map assigned — log it with the
+    // bot's identity so the offending path builder is traceable. (The MoveTo2
+    // no-path debounce above also throttles the retry rate while this is
+    // diagnosed.)
+    if (dst.GetMapId() == 0xFFFFFFFFu || dst.GetMapId() > 60000u)
+    {
+        LOG_ERROR("playerbots", "SafeBotTeleport: rejecting invalid map {} at ({:.2f},{:.2f},{:.2f}) for bot {} (guid {})",
+                  uint32(dst.GetMapId()), dst.GetPositionX(), dst.GetPositionY(), dst.GetPositionZ(),
+                  bot->GetName().c_str(), bot->GetGUID().ToString());
+        return false;
+    }
     float z = dst.GetPositionZ();
     bot->UpdateAllowedPositionZ(dst.GetPositionX(), dst.GetPositionY(), z);
     if (z <= -2000.0f || !Acore::IsValidMapCoord(dst.GetPositionX(), dst.GetPositionY(), z))
@@ -4063,6 +4077,22 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
     if (WaitForTransport())
         return true;
 
+    // Debounce repeated no-path resolutions: if the last resolution for this
+    // same destination produced no path at all, re-running the full probe +
+    // node-graph search every tick costs ~100ms+ each and, with many bots
+    // stalling on unreachable POIs, is what pushes world ticks into the
+    // hundreds of milliseconds. The unstick nudge (or the caller's
+    // MoveRandomNear fallback) has already moved the bot, so skip
+    // re-resolving until the cooldown elapses. Returning true consumes the
+    // tick without starving the lower-relevance actions that follow.
+    if (lastMove.noPathMs && lastMove.noPathDestMapId == endPosNc.GetMapId())
+    {
+        float const ddx = lastMove.noPathDestX - endPosNc.GetPositionX();
+        float const ddy = lastMove.noPathDestY - endPosNc.GetPositionY();
+        if (ddx * ddx + ddy * ddy < 25.0f && GetMSTimeDiffToNow(lastMove.noPathMs) < 2000)
+            return true;
+    }
+
     WorldPosition startPos(bot);
     float totalDistance = startPos.distance(endPos);
 
@@ -4091,6 +4121,14 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
 
     if (movePath.empty())
     {
+        // Record the no-path failure for the debounce above: both exits below
+        // (unstick nudge / plain failure) would re-enter this branch next tick
+        // and re-pay the probe + node-graph cost without any state change.
+        lastMove.noPathMs = getMSTime();
+        lastMove.noPathDestMapId = endPosNc.GetMapId();
+        lastMove.noPathDestX = endPosNc.GetPositionX();
+        lastMove.noPathDestY = endPosNc.GetPositionY();
+
         // Nothing resolves from HERE at all — the bot is usually
         // standing on a poly its own nav filter excludes (a steep
         // ledge it strayed onto): probes and begin legs all fail from
@@ -4189,6 +4227,9 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
         if (bot->IsNonMeleeSpellCast(true, false, true))
             bot->InterruptNonMeleeSpells(true);
     }
+
+    // A path resolved cleanly — clear any stale no-path failure state.
+    lastMove.noPathMs = 0;
 
     if (totalDistance > sPlayerbotAIConfig.reactDistance && !detailedMove)
     {
