@@ -17,9 +17,13 @@
 #include "Transport.h"
 #include "TransportMgr.h"
 #include <array>
+#include <chrono>
 #include <iomanip>
+#include <mutex>
 #include <queue>
 #include <regex>
+#include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 
 // TravelNodePath(float distance = 0.1f, float extraCost = 0, TravelNodePathType pathType = TravelNodePathType::walk,
@@ -104,6 +108,41 @@ void TravelNodePath::calculateCost(bool distanceOnly)
         calculated = true;
 }
 
+// ROUTE-DBG: rate-limited routing diagnostics. A* explores many edges per
+// resolve, so per-key logging is throttled (5s) to surface which zones/gates
+// reject edges and which route A* chose, without spamming the log. Uses
+// steady_clock (no game-time dependency).
+namespace {
+std::mutex s_routeDbgLogMtx;
+std::unordered_map<uint32, int64_t> s_routeDbgGateLast;  // zone/gate key -> last ms
+std::unordered_map<uint32, int64_t> s_routeDbgRouteLast;  // bot guid -> last ms
+int64_t RouteDbgNowMs()
+{
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+bool RouteGateShouldLog(uint32 key)
+{
+    int64_t const now = RouteDbgNowMs();
+    std::lock_guard<std::mutex> lk(s_routeDbgLogMtx);
+    int64_t& last = s_routeDbgGateLast[key];
+    bool const emit = (last == 0) || (now - last > 5000);
+    if (emit)
+        last = now;
+    return emit;
+}
+bool RouteShouldLog(uint32 guid)
+{
+    int64_t const now = RouteDbgNowMs();
+    std::lock_guard<std::mutex> lk(s_routeDbgLogMtx);
+    int64_t& last = s_routeDbgRouteLast[guid];
+    bool const emit = (last == 0) || (now - last > 5000);
+    if (emit)
+        last = now;
+    return emit;
+}
+}  // namespace
+
 // The cost to travel this path.
 float TravelNodePath::getCost(Player* bot, uint32 cGold)
 {
@@ -130,7 +169,17 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
                 AreaTableEntry const* area = path.back().getArea();
                 uint32 const zoneId = area ? (area->zone ? area->zone : area->ID) : 0;
                 if (!sPlayerbotAIConfig.levelGateExemptZones.count(zoneId))
-                    return -1.0f;
+                {
+                    // ROUTE-DBG: the level gate is now applied at the ROUTE level
+                    // (getFullPath/GetFullPath check the FINAL DESTINATION zone),
+                    // so a per-edge landing in a non-exempt TRANSIT zone no longer
+                    // rejects the edge. A route may pass through non-exempt zones
+                    // (e.g., open sea) to reach an exempt destination (the Exodar).
+                    if (RouteGateShouldLog(0x10000000u | zoneId))
+                        LOG_INFO("playerbots",
+                            "ROUTE-DBG [level-gate] NOTE: edge lands map{} area{} zone{} (NOT exempt) for bot {} lvl{} — edge ALLOWED (route-level gate checks the destination zone)",
+                            destMap, area ? area->ID : 0, zoneId, bot->GetName().c_str(), bot->GetLevel());
+                }
             }
         }
 
@@ -144,9 +193,17 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
             if (addon && addon->faction != 0)
             {
                 FactionTemplateEntry const* factionEntry = sFactionTemplateStore.LookupEntry(addon->faction);
-                if (factionEntry &&
-                    Unit::GetFactionReactionTo(factionEntry, bot->GetFactionTemplateEntry()) < REP_NEUTRAL)
+                int32 const reaction = factionEntry ?
+                    Unit::GetFactionReactionTo(factionEntry, bot->GetFactionTemplateEntry()) : REP_NEUTRAL;
+                if (reaction < REP_NEUTRAL)
+                {
+                    // ROUTE-DBG: which faction portal is blocking this bot.
+                    if (RouteGateShouldLog(0x20000000u | pathObject))
+                        LOG_INFO("playerbots",
+                            "ROUTE-DBG [static-portal-faction] REJECT: portal={} faction={} reaction={} (< NEUTRAL) for bot {} lvl{} — A* cannot use this portal",
+                            pathObject, addon->faction, reaction, bot->GetName().c_str(), bot->GetLevel());
                     return -1.0f;
+                }
             }
         }
 
@@ -2378,7 +2435,29 @@ bool TravelNodeMap::GetFullPath(TravelPlan& plan,
     std::vector<WorldPosition> endPath;
     TravelNodeRoute route = getRoute(botPos, destination, beginPath, endPath, bot);
     if (route.isEmpty())
+    {
+        if (Player* p = bot->ToPlayer())
+            LOG_INFO("playerbots", "ROUTE-DBG [no-route] bot {} (map{}) -> map{} ({:.0f},{:.0f}) reason: {}",
+                p->GetName().c_str(), botPos.GetMapId(), destination.GetMapId(),
+                destination.GetPositionX(), destination.GetPositionY(), s_lastRouteFailReason.c_str());
         return false;
+    }
+    if (Player* p = bot->ToPlayer())
+    {
+        if (RouteShouldLog(p->GetGUID().GetCounter()))
+        {
+            auto const nodes = route.getNodes();
+            std::ostringstream dbg;
+            dbg << "ROUTE-DBG [route] bot " << p->GetName() << " lvl" << p->GetLevel()
+                << " map" << botPos.GetMapId() << " -> map" << destination.GetMapId()
+                << " (" << destination.GetPositionX() << "," << destination.GetPositionY() << ") nodes:";
+            for (TravelNode* n : nodes)
+                dbg << " [" << n->getName() << " m" << n->GetMapId() << " ("
+                    << n->getX() << "," << n->getY() << ")]";
+            dbg << " totalDist=" << route.getTotalDistance();
+            LOG_INFO("playerbots", "{}", dbg.str().c_str());
+        }
+    }
 
     // BuildPath gets no unit on purpose: with one it rebuilds missing
     // link paths at runtime, mutating the shared node graph under only
@@ -2397,6 +2476,33 @@ bool TravelNodeMap::GetFullPath(TravelPlan& plan,
 // (modpb's TravelPlan-based resolver), removed in Phase C.
 TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Unit* unit)
 {
+    // Level gate (route-level): reject the route if the FINAL DESTINATION zone
+    // is not exempt (for low-level bots). This replaces the per-edge level gate
+    // (which blocked routes that merely passed through non-exempt transit zones,
+    // e.g., open sea between the Exodar and Azuremyst Isle). Applied before the
+    // A* to avoid wasted work.
+    if (Player* p = unit->ToPlayer())
+    {
+        uint32 const destMap = endPos.GetMapId();
+        bool const levelGated = (destMap == 530 && p->GetLevel() < 58) ||
+                                (destMap == 571 && p->GetLevel() < 68);
+        if (levelGated)
+        {
+            AreaTableEntry const* area = endPos.getArea();
+            uint32 const zoneId = area ? (area->zone ? area->zone : area->ID) : 0;
+            if (!sPlayerbotAIConfig.levelGateExemptZones.count(zoneId))
+            {
+                s_lastRouteFailReason = "level-gate: destination zone " + std::to_string(zoneId) +
+                                        " not exempt for lvl " + std::to_string(p->GetLevel());
+                if (RouteGateShouldLog(0x30000000u | zoneId))
+                    LOG_INFO("playerbots",
+                        "ROUTE-DBG [level-gate-route] REJECT route: bot {} lvl{} -> map{} zone{} not exempt",
+                        p->GetName().c_str(), p->GetLevel(), destMap, zoneId);
+                return TravelPath();
+            }
+        }
+    }
+
     TravelPath movePath;
     std::vector<WorldPosition> beginPath, endPath;
 
@@ -2451,6 +2557,13 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     {
         s_lastRouteFailReason = "rawProbeGap=" + std::to_string((int)rawProbeGap) + "/" +
                                 std::to_string(rawProbePts) + "pts | " + s_lastRouteFailReason;
+        if (Player* p = unit->ToPlayer())
+        {
+            if (RouteShouldLog(p->GetGUID().GetCounter()))
+                LOG_INFO("playerbots", "ROUTE-DBG [no-route] bot {} (map{}) -> map{} ({:.0f},{:.0f}) reason: {}",
+                    p->GetName().c_str(), startPos.GetMapId(), endPos.GetMapId(),
+                    endPos.GetPositionX(), endPos.GetPositionY(), s_lastRouteFailReason.c_str());
+        }
 
         // modpb's FindRouteNearestNodes creates no temp nodes, so there is nothing to clean up here
         // (cmangos calls route.cleanTempNodes(); modpb's TravelNodeRoute has no tempNodes).
@@ -2481,6 +2594,25 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
         }
 
         return movePath;
+    }
+
+    // ROUTE-DBG: the chosen node route (sequence + total distance) — reveals
+    // whether A* picked a portal leg and which nodes it routed through.
+    if (Player* p = unit->ToPlayer())
+    {
+        if (RouteShouldLog(p->GetGUID().GetCounter()))
+        {
+            auto const nodes = route.getNodes();
+            std::ostringstream dbg;
+            dbg << "ROUTE-DBG [route] bot " << p->GetName() << " lvl" << p->GetLevel()
+                << " map" << startPos.GetMapId() << " -> map" << endPos.GetMapId()
+                << " (" << endPos.GetPositionX() << "," << endPos.GetPositionY() << ") nodes:";
+            for (TravelNode* n : nodes)
+                dbg << " [" << n->getName() << " m" << n->GetMapId() << " ("
+                    << n->getX() << "," << n->getY() << ")]";
+            dbg << " totalDist=" << route.getTotalDistance();
+            LOG_INFO("playerbots", "{}", dbg.str().c_str());
+        }
     }
 
     // buildPath gets no unit on purpose: with one it rebuilds missing
