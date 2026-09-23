@@ -7,6 +7,7 @@
 #include "TravelNode.h"
 #include "PlayerbotsDatabase.h"
 #include "BudgetValues.h"
+#include "ConditionMgr.h"
 #include "HazardsValue.h"
 #include "MapMgr.h"
 #include "PathGenerator.h"
@@ -203,6 +204,54 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
                             "ROUTE-DBG [static-portal-faction] REJECT: portal={} faction={} reaction={} (< NEUTRAL) for bot {} lvl{} — A* cannot use this portal",
                             pathObject, addon->faction, reaction, bot->GetName().c_str(), bot->GetLevel());
                     return -1.0f;
+                }
+            }
+        }
+
+        // Portal-eligibility gate (core condition system): reject a portal the bot cannot
+        // actually use because the portal's spell is gated by the core's `conditions` table
+        // -- level / active quest / prerequisite quest / class / race / etc. This is the
+        // general mechanism for gated portals: "Portal to Blasted Lands" (spell
+        // 65728/65729) carries CONDITION_LEVEL >= 58, so a level-15 bot otherwise routes
+        // there, clicks the portal and gets the cast refused ("you must reach level 58 to
+        // use this portal"), wasting the whole route. Mirrors the core Spell::CheckCast
+        // condition check (CONDITION_SOURCE_TYPE_SPELL) on the portal spell, so every
+        // gating factor the core enforces is honoured. Fast path: a portal with no
+        // conditions (the common case) has an empty list and skips the (relatively
+        // expensive) per-condition evaluation entirely.
+        if (pathObject &&
+            (getPathType() == TravelNodePathType::staticPortal ||
+             getPathType() == TravelNodePathType::teleportSpell))
+        {
+            uint32 portalSpell = 0;
+            if (getPathType() == TravelNodePathType::teleportSpell)
+                portalSpell = pathObject;  // spell-teleport links store the spell id in pathObject
+            else
+            {
+                GameObjectTemplate const* goTemplate = sObjectMgr->GetGameObjectTemplate(pathObject);
+                if (goTemplate && goTemplate->type == GAMEOBJECT_TYPE_SPELLCASTER)
+                    portalSpell = goTemplate->spellcaster.spellId;
+            }
+
+            if (portalSpell)
+            {
+                ConditionList conditions = sConditionMgr->GetConditionsForNotGroupedEntry(CONDITION_SOURCE_TYPE_SPELL, portalSpell);
+                if (!conditions.empty())
+                {
+                    ConditionSourceInfo condInfo(bot);
+                    if (!sConditionMgr->IsObjectMeetToConditions(condInfo, conditions))
+                    {
+                        // ROUTE-DBG: which gated portal is blocking this bot (cond type
+                        // 27=level, 8/9/14/28/47=quest family, 15=class, 16=race, ...).
+                        Condition* failed = condInfo.mLastFailedCondition;
+                        if (RouteGateShouldLog(0x40000000u | pathObject))
+                            LOG_INFO("playerbots",
+                                "ROUTE-DBG [portal-conditions] REJECT: portal={} spell={} cond_type={} v1={} v2={} for bot {} lvl{} -- A* cannot use this portal",
+                                pathObject, portalSpell, failed ? (int)failed->ConditionType : -1,
+                                failed ? failed->ConditionValue1 : 0, failed ? failed->ConditionValue2 : 0,
+                                bot->GetName().c_str(), bot->GetLevel());
+                        return -1.0f;
+                    }
                 }
             }
         }
