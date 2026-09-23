@@ -44,6 +44,7 @@
 #include "RBAC.h"
 #include "RandomPlayerbotMgr.h"
 #include "SayAction.h"
+#include "Mgr/Travel/TravelNode.h"
 #include "ScriptMgr.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
@@ -390,22 +391,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!nextTransportCheck)
     {
         nextTransportCheck = 1000;
-        Transport* newTransport = bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(),
-                                                                    bot->GetPositionY(), bot->GetPositionZ(), bot);
-
-        if (newTransport != bot->GetTransport())
-        {
-            LOG_DEBUG("playerbots", "Bot {} is on a transport", bot->GetName());
-
-            // CORE BUG WORKAROUND: clear any prior/stale transport state (stale
-            // m_transport self-deadlocks MotionTransport::AddPassenger).
-            MovementAction::ClearTransportState(bot, nullptr);
-
-            if (newTransport)
-                newTransport->AddPassenger(bot, true);
-
-            bot->StopMovingOnCurrentPos();
-        }
+        CheckTransport();
     }
 
     // Update the bot's group status (moved to helper function)
@@ -416,7 +402,154 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     YieldThread(bot, GetReactDelay());
 }
 
-// Helper function for UpdateAI to check group membership and handle removal if necessary
+// Transport attach/detach (ray) + aboard disembark trigger. Called from the
+// main AI at 1s cadence and from UpdateRemoteMove at 500ms cadence while aboard.
+void PlayerbotAI::CheckTransport()
+{
+    // Transport attach/detach (ray-based) + the aboard disembark trigger.
+    // Called from the main AI (1s cadence) AND from UpdateRemoteMove (500ms
+    // cadence while aboard): the main AI cadence for remote-move bots is
+    // sporadic (5-26s observed 2026-09-23) and the 60s DBC stop dwell must
+    // not be missed for the disembark.
+    Transport* newTransport = bot->GetMap()->GetTransportForPos(bot->GetPhaseMask(), bot->GetPositionX(),
+                                                                bot->GetPositionY(), bot->GetPositionZ(), bot);
+
+    // Don't re-attach a bot that just disembarked: while it walks off the
+    // boat it is still above the hull for a few ticks, and the raycast
+    // would board it again (the client's equivalent is the ONTRANSPORT
+    // flag being cleared once the player is off the deck).
+    bool const suppressReattach = newTransport && aiObjectContext->GetValue<LastMovement&>("last movement")->Get().DisembarkRecent(getMSTime());
+
+    if (newTransport != bot->GetTransport() && !suppressReattach)
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] 1s transport check: bot {} (guid {}) at ({:.1f},{:.1f},{:.1f}) map{}: newTransport={} prevTransport={} -> {}",
+                 bot->GetName(), bot->GetGUID().ToString(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                 bot->GetMapId(), newTransport ? newTransport->GetEntry() : 0,
+                 bot->GetTransport() ? bot->GetTransport()->GetEntry() : 0, newTransport ? "BOARD" : "DISMOUNT");
+
+        // CORE BUG WORKAROUND: clear any prior/stale transport state (stale
+        // m_transport self-deadlocks MotionTransport::AddPassenger).
+        MovementAction::ClearTransportState(bot, nullptr);
+
+        if (newTransport)
+        {
+            newTransport->AddPassenger(bot, true);
+
+            // Remember the board position: the disembark trigger below
+            // must not fire at the departure stop — the ride starts within
+            // 20y of the departure stop keyframe while the bot waits for
+            // the boat to leave the dock.
+            aiObjectContext->GetValue<LastMovement&>("last movement")->Get().SetBoarded(newTransport->GetEntry(),
+                                                                                       bot->GetPositionX(),
+                                                                                       bot->GetPositionY(),
+                                                                                       bot->GetPositionZ(), getMSTime());
+        }
+
+        bot->StopMovingOnCurrentPos();
+        // Clear the bot's own motion: the board-walk point movement (or any
+        // leftover spline) would keep running against the transport's
+        // passenger positioning and drag the bot down through the deck
+        // (client-only collision, no server navmesh) into the water.
+        bot->GetMotionMaster()->Clear();
+        bot->StopMoving();
+    }
+
+    // Dismount trigger: while aboard, the route cannot be re-resolved from
+    // open water (no travel nodes on the water), so nothing else would make
+    // the bot get off at the destination dock — it stayed aboard the docked
+    // boat (observed 2026-09-23, Moonspray @ Auberdine). Dismount when the
+    // boat is stopped (dwell at a DBC stop keyframe) and the bot is near
+    // it — never at the departure stop.
+    WorldPosition dismountStop;
+    if (Transport* aboardTransport = bot->GetTransport())
+    {
+        LastMovement& lm = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+
+        // Deck-z maintenance (client-only deck collision): the core only
+        // repositions passengers while the transport MOVES (UpdatePosition /
+        // UpdatePassengerPositions). A docked boat leaves the bot to the
+        // server's fall/gravity, which drops it through the deck into the
+        // water (observed 2026-09-23). Re-lift to the board deck z whenever
+        // the bot is aboard and below it (not while it is actively walking).
+        if (lm.boardedZ > 0.0f && !bot->isMoving() &&
+            bot->GetPositionZ() < lm.boardedZ - 0.5f)
+        {
+            float const liftedFrom = bot->GetPositionZ();
+            bot->UpdatePosition(bot->GetPositionX(), bot->GetPositionY(), lm.boardedZ, bot->GetOrientation());
+            LOG_INFO("playerbots", "[DBG-TRAV] 1s transport check: bot {} (guid {}) aboard {} deck-z lift {:.1f} -> {:.1f}",
+                     bot->GetName(), bot->GetGUID().ToString(), aboardTransport->GetEntry(), liftedFrom, lm.boardedZ);
+        }
+
+        // Public-API stand-in for the private MotionTransport::IsMoving():
+        // a boat on a taxi path only pauses at stop keyframes, so a wall-clock
+        // position stall of >=5s means "docked at a stop" (time-based so it
+        // works at any sampling cadence).
+        float const boatX = aboardTransport->GetPositionX();
+        float const boatY = aboardTransport->GetPositionY();
+        float const boatZ = aboardTransport->GetPositionZ();
+        bool const boatMoving = lm.NoteTransportMoving(aboardTransport->GetEntry(), boatX, boatY, boatZ, getMSTime());
+        if (boatMoving)
+        {
+            // boat is moving (or within 5s of the last observed movement) — keep riding
+            if (getMSTime() - lastDisembarkDiagMs >= 5000)
+            {
+                lastDisembarkDiagMs = getMSTime();
+                LOG_INFO("playerbots", "[DBG-TRAV] 1s transport check: bot {} (guid {}) aboard {} at ({:.1f},{:.1f},{:.1f}) map{}: BOAT MOVING (last move <5s ago) — keep riding",
+                         bot->GetName(), bot->GetGUID().ToString(), aboardTransport->GetEntry(), boatX, boatY, boatZ, bot->GetMapId());
+            }
+        }
+        else
+        {
+            TransportTemplate const* tmpl = sTransportMgr->GetTransportTemplate(aboardTransport->GetEntry());
+            if (tmpl)
+            {
+                int kfCount = 0; int stopCount = 0; int mapMatch = 0; int distOk = 0; int boardedGuard = 0;
+                float minDist = 1e9f;
+                for (KeyFrame const& kf : tmpl->keyFrames)
+                {
+                    ++kfCount;
+                    if (!kf.IsStopFrame())
+                        continue;
+                    ++stopCount;
+                    WorldPosition const stop(kf.Node->mapid, kf.Node->x, kf.Node->y, kf.Node->z);
+                    if (kf.Node->mapid != bot->GetMapId())
+                        continue;
+                    ++mapMatch;
+                    float const dStop = bot->GetDistance(stop);
+                    if (dStop < minDist)
+                        minDist = dStop;
+                    if (dStop > 15.0f)
+                        continue;
+                    ++distOk;
+                    if (lm.BoardedNearStop(aboardTransport->GetEntry(), kf.Node->x, kf.Node->y, getMSTime(), 50.0f))
+                    {
+                        ++boardedGuard;
+                        continue; // departure dock — wait for the boat to leave
+                    }
+                    dismountStop = stop;
+                    break;
+                }
+                if (getMSTime() - lastDisembarkDiagMs >= 1000)
+                {
+                    lastDisembarkDiagMs = getMSTime();
+                    LOG_INFO("playerbots", "[DBG-TRAV] 1s transport check: bot {} (guid {}) aboard {} BOAT DOCKED at ({:.1f},{:.1f},{:.1f}) map{}: kfs={} stops={} mapMatch={} distOk={} boardedGuard={} minDist={:.1f} dismount={}",
+                             bot->GetName(), bot->GetGUID().ToString(), aboardTransport->GetEntry(), boatX, boatY, boatZ, bot->GetMapId(),
+                             kfCount, stopCount, mapMatch, distOk, boardedGuard, minDist, dismountStop.IsValid() ? 1 : 0);
+                }
+            }
+        }
+    }
+    if (dismountStop.IsValid())
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] 1s transport check: bot {} (guid {}) aboard {} stopped at stop ({:.1f},{:.1f},{:.1f}) map{} d={:.1f} -> DISMOUNT",
+                 bot->GetName(), bot->GetGUID().ToString(), bot->GetTransport()->GetEntry(),
+                 dismountStop.GetPositionX(), dismountStop.GetPositionY(), dismountStop.GetPositionZ(),
+                 dismountStop.GetMapId(), bot->GetDistance(dismountStop));
+        MovementAction::MoveOffTransport(this, dismountStop, sPlayerbotAIConfig.transportTeleportType > 0);
+        aiObjectContext->GetValue<LastMovement&>("last movement")->Get().ClearBoarded();
+    }
+}
+
 void PlayerbotAI::UpdateAIGroupMaster()
 {
     if (!bot)
@@ -1659,6 +1792,15 @@ void PlayerbotAI::UpdateRemoteMove()
     if (!bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->IsBeingTeleported())
         return;
 
+    // Aboard the boat: run the disembark trigger at this (500ms) cadence —
+    // the main AI cadence for remote-move bots is sporadic (5-26s observed
+    // 2026-09-23) and the 60s DBC stop dwell must not be missed.
+    if (bot->GetTransport() && getMSTime() - lastRemoteTransportCheckMs >= 500)
+    {
+        lastRemoteTransportCheckMs = getMSTime();
+        CheckTransport();
+    }
+
     // Arrival: same map, small radius.
     if (remoteMoveDest.GetMapId() == bot->GetMapId() && bot->GetDistance(remoteMoveDest) < 5.0f)
     {
@@ -1668,6 +1810,62 @@ void PlayerbotAI::UpdateRemoteMove()
         TellMasterNoFacing("movefar: arrived near (" + std::to_string((int)arrived.GetPositionX()) + "," +
                               std::to_string((int)arrived.GetPositionY()) + ") map" + std::to_string(arrived.GetMapId()));
         return;
+    }
+
+    // A transport leg owns the movement: when the route's next stop is a
+    // transport dock within the special radius the special-movement branch
+    // drives the approach walk / board-walk / ride / dock-wait. A driver
+    // takeover here would wipe lastMove (killing the board-walk state) and
+    // re-dispatch a route leg, clobbering the board-walk and dragging the bot
+    // off the dock (observed: board-walk dispatched at 18.9y, then the bot
+    // was dragged 70y back down the pier while the boat sat docked). Yield
+    // until the leg is done — disembark sets DisembarkRecent (5s), which
+    // releases the driver for the next stage.
+    {
+        // The transport leg owns movement while it is physically driving
+        // (approach/board walk, or the ride itself): a driver takeover here
+        // would wipe lastMove (killing the board-walk state) and re-dispatch a
+        // route leg, clobbering the board-walk (observed: board-walk
+        // dispatched at 18.9y, then the bot was dragged 70y back down the
+        // pier while the boat sat docked).
+        //
+        // When the bot is standing still (walk completed, waiting at the
+        // dock, boat not yet docked) the leg is NOT driving — the driver
+        // must re-dispatch so the special branch (UseTransport ->
+        // MoveOnTransport / WaitForTransport) can board or enter its
+        // wait state. Yielding unconditionally deadlocks there: nobody
+        // dispatches the board walk and the bot stands at the pier tip.
+        // DisembarkRecent (5s) releases the driver after a disembark so the
+        // next route stage can start.
+        LastMovement& lm = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+        uint32 const nowMs = getMSTime();
+        // A degenerate zero-length dispatch (1-point path to where the bot
+        // already stands) leaves isMoving() true forever; a 4s position stall
+        // with isMoving()==true means the movement generator is wedged — do
+        // NOT yield, or the special-movement branch (board leg / quiet wait)
+        // is starved forever and the bot idles at the pier while the boat is
+        // docked 11m away (observed 2026-09-23, Elune's @ Auberdine).
+        bool const botMoving = bot->isMoving() &&
+            !lm.NoteBotStalled(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), nowMs);
+        if ((botMoving || bot->GetTransport()) && !lm.DisembarkRecent(nowMs) && !lm.lastPath.empty())
+        {
+            WorldPosition cur(bot);
+            for (auto const& p : lm.lastPath.GetPathRef())
+            {
+                if (p.type == PathNodeType::NODE_TRANSPORT && p.entry && p.point.GetMapId() == cur.GetMapId())
+                {
+                    WorldPosition pn(p.point);  // distance() takes non-const refs; GetPathRef() is const&
+                    if (cur.distance(pn) < 150.0f)
+                    {
+                        LOG_INFO("playerbots", "[DBG-TRAV] UpdateRemoteMove: bot {} (guid {}) yield — transport leg in flight (node entry {} at ({:.0f},{:.0f}), d={:.1f}, dest=({:.0f},{:.0f}) map{})",
+                                 bot->GetName(), bot->GetGUID().ToString(), p.entry, p.point.GetPositionX(), p.point.GetPositionY(),
+                                 cur.distance(pn), remoteMoveDest.GetPositionX(), remoteMoveDest.GetPositionY(),
+                                 remoteMoveDest.GetMapId());
+                        return; // transport leg in flight — the special branch owns the movement
+                    }
+                }
+            }
+        }
     }
 
     // Back off after a failed dispatch so a permanently unreachable destination
@@ -1710,6 +1908,9 @@ void PlayerbotAI::UpdateRemoteMove()
     }();
     if (takeover)
     {
+        LOG_INFO("playerbots", "[DBG-TRAV] UpdateRemoteMove: bot {} (guid {}) TAKEOVER (lastPath empty/wrong-map/stale, distToDest={:.1f}, lastDist={:.1f}); clearing lastMove + StopMoving",
+                 bot->GetName(), bot->GetGUID().ToString(),
+                 remoteMoveDest.GetMapId() == bot->GetMapId() ? bot->GetDistance(remoteMoveDest) : -1.0f, remoteMoveLastDist);
         lastMove.clear();
         bot->StopMoving();
     }

@@ -1492,10 +1492,11 @@ AiPlayerbot.RestrictedHealerDPSMaps = "33,34,36,43,47,48,70,90,109,129,209,229,2
 AiPlayerbot.EnableNewRpgStrategy = 1
 
 # How bots traverse transport (boat/zeppelin) legs on travel-node routes:
-#   0/1 = walk to the dock and ride the transport
+#   0/1 = walk onto/off the boat at the dock (straight-line deck walk; the
+#         server-side transport attach engages once the bot is above the hull)
 #   2   = teleport across the transport leg
-# Default: 2
-AiPlayerbot.TransportTeleportType = 2
+# Default: 0
+AiPlayerbot.TransportTeleportType = 0
 
 # Control probability weights for RPG status of bots. Takes effect only when the status meets its premise.​
 # Sum of weights need not be 100. Set to 0 to disable the status.

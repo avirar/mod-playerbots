@@ -213,7 +213,30 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
     else if (getPathType() == TravelNodePathType::flightPath || getPathType() == TravelNodePathType::flyingMount)
         return -1.0f;
 
-    if (getPathType() != TravelNodePathType::walk)
+    if (getPathType() == TravelNodePathType::transport)
+    {
+        // Ride cost = straight-line dock-to-dock distance / boat speed. The
+        // seeded route points trace the boat's full DBC loop, so the
+        // accumulated path length (and thus extraCost = distance/speed) is
+        // several times the actual ride; pricing the edge by that makes A*
+        // detour the long way around the strait on foot (observed 2026-09-23:
+        // Moonspray leg priced ~4000y-equivalent and the A* picked a 301-node
+        // land route through the Darkshore corridor instead of the boat).
+        // Straight line between the two stops at ~10y/s matches the observed
+        // ~3-min Moonspray ride (1955y / 10 = 195s).
+        if (path.size() >= 2)
+        {
+            WorldPosition a(path.front());
+            WorldPosition b(path.back());
+            float rideDist = a.distance(b);
+            if (rideDist < 50.0f)
+                rideDist = 50.0f;
+            timeCost = (rideDist / 10.0f) * modifier;
+        }
+        else
+            timeCost = extraCost * modifier;
+    }
+    else if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
     else
         timeCost = (runDistance / speed + swimDistance / swimSpeed) * modifier;
@@ -1068,6 +1091,59 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
     }
 
     // Walk on / teleport to transport.
+    // Approach case first: the bot is a few yards short of the dock — the path
+    // front is still a walk point and the transport node is the NEXT point
+    // (observed 2026-09-23, Elune's Blessing dock @ Auberdine: the bot stood
+    // 6.8y from the node, the branch below never fired and the dispatcher
+    // fell back to a straight-line cross-map walk into the water). Cut to the
+    // transport node itself; next tick startP becomes the transport node and
+    // the board leg below engages.
+    if (sPlayerbotAIConfig.transportTeleportType < 2 && !onTransport &&
+        nextP->type == PathNodeType::NODE_TRANSPORT && nextP->entry &&
+        startPos.distance(nextP->point) <= maxDist)
+    {
+        cutTo(*nextP, false);
+        LOG_INFO("playerbots", "[DBG-TRAV] UpcommingSpecialMovement: board leg (approach) — cut to transport node [t=4 e={} d={:.1f}] (startP=[t={} e={} d={:.1f}])",
+                 nextP->entry, startPos.distance(nextP->point), (int)startP->type, startP->entry, startPos.distance(startP->point));
+        return true;
+    }
+
+    // Cross-map arrival side (observed 2026-09-23, Elune's @ Auberdine, bot at
+    // the dock): the clipped dispatch segment is [t=1 dock point (bot's map),
+    // t=4 arrival-side point (far map)] — the depart-side t=4 point is not in
+    // the segment, so no branch above can engage and the bot idles at the pier
+    // while the boat sits docked 11m away. Promote the same-map walk point to
+    // the transport node (same boat entry) so the board leg below engages:
+    // UseTransport(dock) -> MoveOnTransport board walk / quiet wait. Gate on
+    // the boat actually being at this dock (within the mooring offset of the
+    // walk point) so a mid-approach bot keeps walking instead of parking 100y
+    // short of the pier.
+    if (sPlayerbotAIConfig.transportTeleportType < 2 && !onTransport &&
+        nextP->type == PathNodeType::NODE_TRANSPORT && nextP->entry &&
+        nextP->point.GetMapId() != startPos.GetMapId())
+    {
+        WorldPosition dockPt(startP->point);
+        if (startP->point.GetMapId() == startPos.GetMapId() &&
+            startPos.distance(dockPt) <= std::max(maxDist, 50.0f))
+        {
+            for (Transport* trans : dockPt.getTransports(nextP->entry))
+            {
+                WorldPosition boatPos(trans);
+                if (dockPt.sqDistance2d(boatPos) < 20.0f * 20.0f)
+                {
+                    startP->type = PathNodeType::NODE_TRANSPORT;
+                    startP->entry = nextP->entry;
+                    cutTo(*startP, false);
+                    LOG_INFO("playerbots", "[DBG-TRAV] UpcommingSpecialMovement: board leg (cross-map arrival) — promoted dock point to [t=4 e={} at ({:.1f},{:.1f})] (bot d={:.1f}, boat d={:.1f})",
+                             startP->entry, startP->point.GetPositionX(), startP->point.GetPositionY(),
+                             startPos.distance(dockPt), dockPt.distance(boatPos));
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Walk on / teleport to transport.
     if (sPlayerbotAIConfig.transportTeleportType < 2 && startP->type == PathNodeType::NODE_TRANSPORT)
     {
         uint32 entry = nextP->entry;
@@ -1075,6 +1151,8 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
         if (!onTransport)
         {
             cutTo(*prevP, false);  // Previous point = dock, startP = where transport will stop.
+            LOG_INFO("playerbots", "[DBG-TRAV] UpcommingSpecialMovement: board leg — cut to [t={} e={}] (startP dock=[t={} e={} d={:.1f}] entry {})", (int)prevP->type,
+                     prevP->entry, (int)startP->type, startP->entry, startPos.distance(startP->point), entry);
             return true;
         }
 
@@ -1083,6 +1161,8 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
             if (p->type != PathNodeType::NODE_TRANSPORT || (p->entry && p->entry != entry))
             {
                 cutTo(*p, false);  // prevP = where transport will stop, startP = dock where we want to walk to.
+                LOG_INFO("playerbots", "[DBG-TRAV] UpcommingSpecialMovement: ride leg — cut to [t={} e={} d={:.1f}] (entry {})", (int)p->type, p->entry,
+                         startPos.distance(p->point), entry);
                 return true;
             }
 
@@ -1102,6 +1182,9 @@ bool TravelPath::UpcommingSpecialMovement(WorldPosition startPos, float maxDist,
             }
         }
     }
+
+    LOG_INFO("playerbots", "[DBG-TRAV] UpcommingSpecialMovement: no special movement (startP=[t={} e={} d={:.1f}] nextP=[t={} e={}] maxDist={:.0f} pathsz={})",
+             (int)startP->type, startP->entry, startPos.distance(startP->point), (int)nextP->type, nextP->entry, maxDist, fullPath.size());
 
     return false;
 }
@@ -1299,9 +1382,14 @@ TravelPath TravelNodeRoute::BuildPath(std::vector<WorldPosition> pathToStart, st
             }
             else if (nodePath->getPathType() == TravelNodePathType::transport)  // Move onto transport
             {
-                travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_TRANSPORT,
-                                    nodePath->getPathObject());  // Departure point
-                travelPath.addPoint(*node->getPosition(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());  // Arrival point
+                // A degenerate transport link (object=0: no boat entry) must not
+                // emit NODE_TRANSPORT points — UseTransport(0) finds no boat and
+                // stalls the bot at the dock (observed: 2 min idle, 2026-09-23).
+                // Demote to a plain walk leg; the dock nodes it connects sit
+                // within walking distance of each other.
+                PathNodeType const tType = nodePath->getPathObject() ? PathNodeType::NODE_TRANSPORT : PathNodeType::NODE_PATH;
+                travelPath.addPoint(*prevNode->getPosition(), tType, nodePath->getPathObject());  // Departure point
+                travelPath.addPoint(*node->getPosition(), tType, nodePath->getPathObject());  // Arrival point
             }
             else if (nodePath->getPathType() == TravelNodePathType::flightPath)  // Use the flightpath
             {
@@ -1473,7 +1561,10 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
             }
             else if (nodePath->getPathType() == TravelNodePathType::transport)  // Move onto transport
             {
-                travelPath.addPath(nodePath->GetPath(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());
+                // Degenerate link (object=0): no boat to ride — emit the
+                // segment as a walk path instead of a transport path.
+                PathNodeType const tType = nodePath->getPathObject() ? PathNodeType::NODE_TRANSPORT : PathNodeType::NODE_PATH;
+                travelPath.addPath(nodePath->GetPath(), tType, nodePath->getPathObject());
             }
             else if (nodePath->getPathType() == TravelNodePathType::flightPath)  // Use the flightpath
             {
@@ -2100,6 +2191,18 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                         }
                     }
 
+                    if (!hasEndPath && endPos.distance(endNodePosition) <= 30.0f)
+                    {
+                        // The destination is at the end node — e.g. a movefar
+                        // to a dock node where the MMap has no navmesh, so a
+                        // live tail can never validate no matter how close.
+                        // A straight-line walk from the node to the
+                        // destination is trivially valid at this distance;
+                        // accept it without navmesh validation.
+                        tailPath = {endNodePosition, endPos};
+                        hasEndPath = true;
+                    }
+
                     if (!hasEndPath)
                     {
                         ++tailFails;
@@ -2136,6 +2239,16 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
                     newStartPath = surfaceStart.getPathTo(surfaceNode, unit);
                     hasPath = surfaceNode.isPathTo(newStartPath, maxStartDistance);
                 }
+            }
+            if (!hasPath && startPos.distance(startNodePosition) <= maxStartDistance)
+            {
+                // The bot is effectively AT the node — e.g. standing on a dock
+                // node where the MMap has no navmesh, so a live begin leg can
+                // never validate no matter how close. A straight-line walk to
+                // the node is trivially valid at this distance; accept it
+                // without navmesh validation.
+                newStartPath = {startPos, startNodePosition};
+                hasPath = true;
             }
             if (!hasPath)
             {

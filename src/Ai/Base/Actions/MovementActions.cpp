@@ -11,6 +11,7 @@
 #include "FleeManager.h"
 #include "GameObject.h"
 #include "GridDefines.h"
+#include "IVMapMgr.h"
 #include "LastMovementValue.h"
 #include "LootObjectStack.h"
 #include "Map.h"
@@ -3482,26 +3483,112 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
     if (!transport)
         return false;
 
+    {
+        WorldPosition boat(transport);
+        WorldPosition cur(bot);
+        LOG_INFO("playerbots", "[DBG-TRAV] MoveOnTransport: bot {} (guid {}) entry={} boat=({:.1f},{:.1f}) d={:.1f} aboard={} doTeleport={} boardWalkInFlight={}",
+                 bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), boat.GetPositionX(), boat.GetPositionY(),
+                 cur.distance(boat), bot->GetTransport() ? 1 : 0, doTeleport ? 1 : 0,
+                 botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().BoardWalkInFlight(
+                     transport->GetEntry(), getMSTime()) ? 1 : 0);
+    }
+
     // CORE BUG WORKAROUND: MotionTransport::AddPassenger self-deadlocks (non-recursive
     // re-lock of its Lock via the "SHOULD NEVER HAPPEN" RemovePassenger branch) when the
     // bot's m_transport is stale. Board only with clean transport state.
     if (!ClearTransportState(bot, transport))
         return true; // already aboard
 
-    // PORT-TODO: the source walks onto a transport using
-    // WorldPosition::RandomPointOnTrans + getPathStepFrom(transport-offset) +
-    // toPointsArray, none of which exist in the target (AC has no transport
-    // navmesh — see transport-navmesh-gap). v1 supports only the teleport path
-    // (transportTeleportType > 0), which AC fully handles: relocate the bot to
-    // the transport, then board. The spline-walk-onto-transport variant is
-    // deferred to the transport-navmesh chapter.
     if (!doTeleport)
+    {
+        // Walk-on boarding (TransportTeleportType=0): the boat deck is a few
+        // yards of ordinary walking from the dock node. Dispatch a straight-
+        // line walk (generatePath=false — no MMap navmesh exists at the dock
+        // and none is needed) to the boat's origin. Once the bot is above the
+        // hull the server-side attach (1s PlayerbotAI check: GetTransportForPos
+        // vmap raycast from the deck) engages — the same state a real client
+        // produces when it walks onto the deck. The backstop below attaches
+        // directly if the raycast cannot see the boat (vmap not loaded).
+        // No teleport either way.
+        LastMovement& lastMove = botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
+        uint32 const nowMs = getMSTime();
+        WorldPosition const transPos(transport);
+        float const distToBoat = WorldPosition(bot).distance(transPos);
+
+        if (lastMove.BoardWalkInFlight(transport->GetEntry(), nowMs))
+        {
+            if (nowMs - lastMove.boardWalkMs > 3500 && !bot->GetTransport() && distToBoat < 8.0f)
+            {
+                // Walk reached the deck but the attach never fired: attach
+                // directly (same calls as the teleport path minus the
+                // relocation — the bot is already at the boat).
+                if (!ClearTransportState(bot, transport))
+                    return true; // boarded meanwhile
+                transport->AddPassenger(bot, true);
+                bot->GetMotionMaster()->Clear();
+                bot->StopMoving();
+                bot->SendMovementFlagUpdate();
+                lastMove.ClearBoardWalk();
+                LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) board-walk reached the deck without attach; backstop-attached to transport {}",
+                         bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry());
+                return true;
+            }
+            return false; // walk in progress — don't re-dispatch
+        }
+
+        // Approach walk: within the special-movement radius the bot walks to
+        // the boat instead of waiting in place. The old hard 30y gate parked
+        // the bot anywhere in the 150y special radius, so the boat would leave
+        // while it stood 70y down the pier. >30y: generatePath=true — the dock
+        // node sits in an MMap void so the path normally fails and the engine
+        // falls back to a straight-line spline (the shoreline approach is
+        // walkable; the last few yards are waded, which is fine — the
+        // server-side attach is purely geometric). <30y: straight-line board
+        // walk. Once the bot is above the hull the 1s PlayerbotAI attach check
+        // (vmap raycast) engages.
+        if (distToBoat > 150.0f)
+        {
+            LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) too far from docked transport {} ({:.1f}y); route walk approaches",
+                     bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat);
+            return false;
+        }
+
+        lastMove.SetBoardWalk(transport->GetEntry(), nowMs);
+
+        // Board-walk target z: the DECK surface, not the boat origin. A real
+        // client boards from the deck (captured 2026-09-23, Moonspray @
+        // Rut'Theran: first on-boat packet z=5.20, aboard z~5.04 vs boat
+        // origin z~0). The server-side attach ray (GetTransportForPos)
+        // starts at (x, y, z+2) and only goes DOWN — a bot walking to the
+        // boat origin (below the deck) can never be hit by it and wades
+        // back to land. Probe the vmap from above the boat for the deck
+        // surface; fall back to +5y above the origin (the observed Moonspray
+        // deck offset) when the probe finds nothing.
+        float boardWalkZ = transPos.GetPositionZ() + 5.0f;
+        if (Map* botMap = bot->GetMap())
+        {
+            float const probe = botMap->GetHeight(transPos.GetPositionX(), transPos.GetPositionY(),
+                                                  transPos.GetPositionZ() + 10.0f, /*checkVMap=*/true,
+                                                  /*maxSearchDist=*/20.0f);
+            if (probe > transPos.GetPositionZ() && probe < transPos.GetPositionZ() + 25.0f)
+                boardWalkZ = probe;
+        }
+
+        DoMovePoint(bot, transPos.GetPositionX(), transPos.GetPositionY(), boardWalkZ,
+                    /*generatePath=*/distToBoat > 30.0f, /*backwards=*/false);
+        LOG_INFO("playerbots", "[DBG-TRAV] MoveOnTransport: bot {} (guid {}) walking to docked transport {} ({:.1f}y away, {}), boardWalkTarget=({:.1f},{:.1f},{:.1f})",
+                 bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat,
+                 distToBoat > 30.0f ? "approach walk" : "board walk",
+                 transPos.GetPositionX(), transPos.GetPositionY(), boardWalkZ);
         return false;
+    }
 
     WorldPosition transPos(transport);
     bot->GetMap()->PlayerRelocation(bot, transPos.GetPositionX(), transPos.GetPositionY(),
                                     transPos.GetPositionZ(), bot->GetOrientation());
     transport->AddPassenger(bot, true);
+    bot->GetMotionMaster()->Clear();
+    bot->StopMoving();
     bot->SendMovementFlagUpdate();
     return true;
 }
@@ -3518,18 +3605,69 @@ bool MovementAction::MoveOffTransport(PlayerbotAI* botAI, WorldPosition exitPos,
     // MotionTransport::AddPassenger stale-state self-deadlock.
     ClearTransportState(bot, nullptr);
 
-    // PORT-TODO: the source's spline disembark path uses getPathStepFrom +
-    // toPointsArray (transport navmesh), absent in the target. v1 supports the
-    // teleport disembark (transportTeleportType > 0), which AC fully handles.
+    // Suppress the 1s attach check for a few seconds: right after disembark the
+    // bot is still above the hull (the dock node is at the boat's rest
+    // position), and the raycast would re-board it (both the teleport and the
+    // walk variant land on the deck for a moment).
+    botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().SetDisembark(getMSTime());
+
     if (doTeleport)
     {
         SafeBotTeleport(bot, exitPos, exitPos.GetOrientation());
         return true;
     }
 
-    bot->NearTeleportTo(bot->m_movementInfo.pos.GetPositionX(), bot->m_movementInfo.pos.GetPositionY(),
-                        bot->m_movementInfo.pos.GetPositionZ(), bot->m_movementInfo.pos.GetOrientation());
-    return false;
+    // Walk-off disembark (TransportTeleportType=0): the DBC stop keyframe is
+    // the boat's MOORING position (~11m off the pier, over open water) — the
+    // server MMap has no pier/boat-deck collision (client-only), so the old
+    // navmesh findNearestPoly found nothing nearby and the bot teleported to
+    // the water stop and swam (observed 2026-09-23, Elune's @ Azuremyst).
+    // Walk to the nearest pier-end travel dock node instead (seeded at the
+    // solid pier edge for every stop), straight-line (generatePath=false —
+    // the pier is VMap-only, no navmesh).
+    WorldPosition landPos;
+    for (TravelNode* node : sTravelNodeMap.getNodes(WorldPosition(bot), 30.0f))
+    {
+        if (!node->isTransport())
+            continue;
+        WorldPosition np = *node->getPosition();
+        if (WorldPosition(bot).distance(np) <= 30.0f)
+        {
+            landPos = np;
+            break;
+        }
+    }
+
+    // Fall back: nearest walkable navmesh ground (shore/land a few yards away).
+    if (!landPos.IsValid() && bot->GetMap())
+        if (dtNavMeshQuery const* navMeshQuery = bot->GetMap()->GetMapCollisionData().GetMMapData().GetNavMeshQuery())
+        {
+            dtQueryFilter filter;
+            filter.setIncludeFlags(NAV_GROUND | NAV_GROUND_STEEP);
+            filter.setExcludeFlags(NAV_WATER | NAV_MAGMA | NAV_SLIME);
+            float const point[VERTEX_SIZE] = { bot->GetPositionY(), bot->GetPositionZ() + 1.0f, bot->GetPositionX() };
+            float const extents[VERTEX_SIZE] = { 15.0f, 10.0f, 15.0f };
+            float closest[VERTEX_SIZE] = { 0.0f, 0.0f, 0.0f };
+            dtPolyRef polyRef = INVALID_POLYREF;
+            if (dtStatusSucceed(navMeshQuery->findNearestPoly(point, extents, &filter, &polyRef, closest)) &&
+                polyRef != INVALID_POLYREF && std::fabs(closest[1] - (bot->GetPositionZ() + 1.0f)) <= 10.0f)
+                landPos = WorldPosition(bot->GetMapId(), closest[2], closest[0], closest[1]);
+        }
+
+    if (!landPos.IsValid() || WorldPosition(bot).distance(landPos) > 30.0f)
+    {
+        SafeBotTeleport(bot, exitPos, exitPos.GetOrientation());
+        LOG_INFO("playerbots", "MoveOffTransport: bot {} (guid {}) disembarked from {} (no walkable dock land nearby, teleported to exit)",
+                 bot->GetName(), bot->GetGUID().ToString(), transport->GetName());
+        return true;
+    }
+
+    DoMovePoint(bot, landPos.GetPositionX(), landPos.GetPositionY(), landPos.GetPositionZ(),
+                /*generatePath=*/false, /*backwards=*/false);
+    LOG_INFO("playerbots", "MoveOffTransport: bot {} (guid {}) disembarked from {}; walking off the boat to dock node ({:.1f},{:.1f},{:.1f})",
+             bot->GetName(), bot->GetGUID().ToString(), transport->GetName(),
+             landPos.GetPositionX(), landPos.GetPositionY(), landPos.GetPositionZ());
+    return true;
 }
 
 bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPosition dockPosition,
@@ -3540,10 +3678,19 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
 
     Transport* transport = bot->GetTransport();
 
+    LOG_INFO("playerbots", "[DBG-TRAV] UseTransport: bot {} (guid {}) entry={} dock=({:.1f},{:.1f}) map{} botToDock={:.1f} aboard={}",
+             bot->GetName(), bot->GetGUID().ToString(), entry, dockPosition.GetPositionX(), dockPosition.GetPositionY(),
+             dockPosition.GetMapId(), dockPosition.GetMapId() == bot->GetMapId() ? botPos.distance(dockPosition) : -1.0f,
+             transport ? 1 : 0);
+
     if (transport)
     {
+        // Disembark gate: the boat's mooring origin (DBC stop keyframe) sits a
+        // few yards off the pier, so "at the dock" must tolerate the mooring
+        // offset (~11y observed, Moonspray/Elune's) — the old 5.5y gate kept
+        // the bot aboard forever at a moored boat.
         if (dockPosition.GetMapId() == bot->GetMapId() &&
-            dockPosition.sqDistance2d(WorldPosition(transport)) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
+            dockPosition.sqDistance2d(WorldPosition(transport)) < 15.0f * 15.0f)
         {
             MoveOffTransport(botAI, exitPosition, doTeleport);
             return true;
@@ -3554,6 +3701,7 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
         bot->StopMoving();
         bot->GetMotionMaster()->Clear();
         SetNextMovementDelay(botAI, 1000);
+        LOG_INFO("playerbots", "[DBG-TRAV] UseTransport: ride in progress (boat under way); waiting aboard");
 
         return false;
     }
@@ -3571,8 +3719,14 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
         minDist = distance;
     }
 
+    // Board gate: the boat's mooring origin is ~11y off the pier dock node
+    // (DBC stop keyframe), so dock->boat proximity must tolerate the mooring
+    // offset — the old INTERACTION_DISTANCE (5.5y) gate parked the bot at the
+    // pier while the boat sat docked 11m away (2026-09-23, Elune's @
+    // Auberdine: boat present, bot never boarded, boat sailed). MoveOnTransport
+    // owns the final approach (board walk to the deck surface).
     if (transport && dockPosition.GetMapId() == bot->GetMapId() &&
-        dockPosition.sqDistance2d(WorldPosition(transport)) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
+        dockPosition.sqDistance2d(WorldPosition(transport)) < 15.0f * 15.0f)
     {
         MoveOnTransport(botAI, transport, doTeleport);
         return true;
@@ -3586,6 +3740,13 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
         bot->StopMoving();
         bot->GetMotionMaster()->Clear();
         SetNextMovementDelay(botAI, 1000);
+        LOG_INFO("playerbots", "[DBG-TRAV] UseTransport: boat not docked (entry {}); quiet wait at the dock (botToDock={:.1f})",
+                 entry, botPos.distance(dockPosition));
+    }
+    else
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] UseTransport: boat not docked (entry {}); bot not at dock (botToDock={:.1f}); route walk approaches",
+                 entry, dockPosition.GetMapId() == bot->GetMapId() ? botPos.distance(dockPosition) : -1.0f);
     }
 
     return false;
@@ -3599,12 +3760,21 @@ bool MovementAction::WaitForTransport()
     if (!lastMove.lastTransportEntry)
         return false;
 
+    LOG_INFO("playerbots", "[DBG-TRAV] WaitForTransport: bot {} (guid {}) entry={} aboard={} frontType={} frontEntry={} frontD={:.1f}",
+             bot->GetName(), bot->GetGUID().ToString(), lastMove.lastTransportEntry, bot->GetTransport() ? 1 : 0,
+             lastMove.lastPath.empty() ? -1 : (int)lastMove.lastPath.getPath().front().type,
+             lastMove.lastPath.empty() ? 0 : lastMove.lastPath.getPath().front().entry,
+             lastMove.lastPath.empty() ? -1.0f
+                 : WorldPosition(bot).distance(lastMove.lastPath.getPath().front().point));
+
     Transport* transport = bot->GetTransport();
 
     if (!transport || transport->GetEntry() != lastMove.lastTransportEntry || lastMove.lastPath.empty() ||
         lastMove.lastPath.getPath().front().type != PathNodeType::NODE_TRANSPORT ||
         lastMove.lastPath.getPath().front().entry != lastMove.lastTransportEntry)
     {
+        LOG_INFO("playerbots", "[DBG-TRAV] WaitForTransport: leg state invalid (aboard={} entry mismatch/front not transport node); clearing lastTransportEntry",
+                 transport ? 1 : 0);
         lastMove.lastTransportEntry = 0;
         return false;
     }
@@ -3619,8 +3789,13 @@ bool MovementAction::WaitForTransport()
 
     if (!UseTransport(botAI, dockPoint.entry, dockPoint.point, telePoint.point,
                       sPlayerbotAIConfig.transportTeleportType > 0))
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] WaitForTransport: UseTransport returned false; waiting (dock=({:.1f},{:.1f}))",
+                 dockPoint.point.GetPositionX(), dockPoint.point.GetPositionY());
         return true;
+    }
 
+    LOG_INFO("playerbots", "[DBG-TRAV] WaitForTransport: UseTransport succeeded; clearing lastTransportEntry (ride complete / disembarked)");
     lastMove.lastTransportEntry = 0;
     return false;
 }
@@ -3775,6 +3950,36 @@ TravelPath MovementAction::ResolveMovePath(WorldPosition const& startPosition, W
             outMovePath.clear();
     }
 
+    // Same-map dispatch whose endpoint has no MMap polygon at all (an MMap
+    // void — open ocean with no tile data; e.g. a cross-strait probe from a
+    // dock with no node route) must not be dispatched: the MoveTo2 teleport
+    // leg would move the bot into the ocean and the walk would wade in. Legit
+    // water approaches have NAV_WATER polygons and pass; cross-map endpoints
+    // are graph nodes (validated elsewhere) and stay allowed.
+    if (!outMovePath.empty() && outMovePath.getBack().GetMapId() == bot->GetMapId())
+    {
+        WorldPosition const& tail = outMovePath.getBack();
+        if (Map* map = bot->GetMap())
+            if (dtNavMeshQuery const* navMeshQuery = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery())
+            {
+                dtQueryFilter filter;
+                filter.setIncludeFlags(NAV_GROUND | NAV_GROUND_STEEP | NAV_WATER);
+                float const point[VERTEX_SIZE] = { tail.GetPositionY(), tail.GetPositionZ(), tail.GetPositionX() };
+                float const extents[VERTEX_SIZE] = { 10.0f, 10.0f, 10.0f };
+                float closest[VERTEX_SIZE] = { 0.0f, 0.0f, 0.0f };
+                dtPolyRef polyRef = INVALID_POLYREF;
+                bool const tailValid = dtStatusSucceed(navMeshQuery->findNearestPoly(point, extents, &filter, &polyRef, closest)) &&
+                                       polyRef != INVALID_POLYREF && std::fabs(closest[1] - tail.GetPositionZ()) <= 15.0f;
+                if (!tailValid)
+                {
+                    LOG_INFO("playerbots", "ResolveMovePath: bot {} (guid {}) same-map path tail ({:.1f},{:.1f},{:.1f}) map{} has no MMap polygon (open water/void); path cleared",
+                             bot->GetName(), bot->GetGUID().ToString(), tail.GetPositionX(), tail.GetPositionY(),
+                             tail.GetPositionZ(), tail.GetMapId());
+                    outMovePath.clear();
+                }
+            }
+    }
+
     if (!lastMove.lastPath.empty() && !outMovePath.empty() &&
         lastMove.lastPath.getBack().distance(endPos) <= outMovePath.getBack().distance(endPos))
         outMovePath = lastMove.lastPath;
@@ -3787,6 +3992,28 @@ TravelPath MovementAction::ResolveMovePath(WorldPosition const& startPosition, W
     // -> the travel driver increments its move-retry and eventually teleports
     // (when no player is watching). Reachable targets are unaffected (their
     // paths are non-empty).
+    if (!outMovePath.empty())
+    {
+        bool const hasTransportLeg = [&]()
+        {
+            for (auto const& p : outMovePath.GetPathRef())
+                if (p.type == PathNodeType::NODE_TRANSPORT && p.entry)
+                    return true;
+            return false;
+        }();
+        LOG_INFO("playerbots", "[DBG-TRAV] ResolveMovePath: bot {} (guid {}) resolved {} nodes: ({:.0f},{:.0f}) map{} -> ({:.0f},{:.0f}) map{} transportLeg={} firstT={} lastT={}",
+                 bot->GetName(), bot->GetGUID().ToString(), outMovePath.GetPathRef().size(), startPosition.GetPositionX(),
+                 startPosition.GetPositionY(), startPosition.GetMapId(), outMovePath.getBack().GetPositionX(),
+                 outMovePath.getBack().GetPositionY(), outMovePath.getBack().GetMapId(), hasTransportLeg ? 1 : 0,
+                 (int)outMovePath.GetPathRef().front().type, (int)outMovePath.GetPathRef().back().type);
+    }
+    else
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] ResolveMovePath: bot {} (guid {}) NO PATH: ({:.0f},{:.0f}) map{} -> ({:.0f},{:.0f}) map{}",
+                 bot->GetName(), bot->GetGUID().ToString(), startPosition.GetPositionX(), startPosition.GetPositionY(),
+                 startPosition.GetMapId(), endPos.GetPositionX(), endPos.GetPositionY(), endPos.GetMapId());
+    }
+
     return outMovePath;
 }
 
@@ -3796,6 +4023,15 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     PathNodePoint nextPoint;
     if (path.getPath().size() > 1)
         nextPoint = *std::next(path.getPath().begin());
+
+    {
+        WorldPosition cur(bot);
+        LOG_INFO("playerbots", "[DBG-TRAV] HandleSpecialMovement: bot {} (guid {}) cur=[t={} e={} d={:.1f}] next=[t={} e={} d={:.1f}] pathsz={} aboard={}",
+                 bot->GetName(), bot->GetGUID().ToString(), (int)currentPoint.type, currentPoint.entry,
+                 currentPoint.point.IsValid() ? cur.distance(currentPoint.point) : -1.0f, (int)nextPoint.type,
+                 nextPoint.entry, nextPoint.point.IsValid() ? cur.distance(nextPoint.point) : -1.0f, path.getPath().size(),
+                 bot->GetTransport() ? 1 : 0);
+    }
 
     // Game object portals (static spellcaster GO with a teleport effect).
     if (currentPoint.type == PathNodeType::NODE_STATIC_PORTAL && currentPoint.entry)
@@ -3863,7 +4099,25 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
     // We are getting 'on' transport.
     if (nextPoint.type == PathNodeType::NODE_TRANSPORT)
     {
-        bool usedTransport = UseTransport(botAI, nextPoint.entry, nextPoint.point, WorldPosition(),
+        // The transport point may be the ARRIVAL side (cross-map: the segment
+        // is [t=1 dock walk point (bot's map), t=4 arrival (far map)] — the
+        // depart-side t=4 point is not in the clipped segment). Passing the
+        // far point as the dock made UseTransport search boats on the far map
+        // and "route walk" to a point 1955y away (observed Elune's @ Auberdine
+        // 2026-09-23: dock=(-4264,-11328) map530 while the boat sat docked at
+        // (6550,938) map1 11m from the pier). When the transport point is
+        // cross-map, the front walk point is the departure dock on the bot's
+        // map — use it as the boarding location.
+        WorldPosition dockPosition = nextPoint.point;
+        if (nextPoint.point.GetMapId() != bot->GetMapId() && currentPoint.point.GetMapId() == bot->GetMapId())
+        {
+            dockPosition = currentPoint.point;
+            LOG_INFO("playerbots", "[DBG-TRAV] HandleSpecialMovement: bot {} (guid {}) nextPoint is cross-map arrival (map{}); using front walk point as dock ({:.1f},{:.1f})",
+                     bot->GetName(), bot->GetGUID().ToString(), nextPoint.point.GetMapId(),
+                     dockPosition.GetPositionX(), dockPosition.GetPositionY());
+        }
+
+        bool usedTransport = UseTransport(botAI, nextPoint.entry, dockPosition, WorldPosition(),
                                           sPlayerbotAIConfig.transportTeleportType > 0);
 
         if (usedTransport)
@@ -3888,9 +4142,15 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         else
         {
             if (!bot->GetTransport())
-                return SafeBotTeleport(bot, nextPoint.point, nextPoint.point.GetOrientation());
-
-            lastTransportEntry = nextPoint.entry;
+            {
+                if (sPlayerbotAIConfig.transportTeleportType > 0)
+                    return SafeBotTeleport(bot, nextPoint.point, nextPoint.point.GetOrientation());
+                // Walk-on: the board/approach walk dispatched by
+                // MoveOnTransport owns the movement — do not teleport across
+                // the leg (the boat is docked; the bot walks on, not over).
+            }
+            else
+                lastTransportEntry = nextPoint.entry;
         }
 
         if (lastTransportEntry)
@@ -3960,6 +4220,66 @@ void MovementAction::DispatchMovement(TravelPath movePath, bool generatePath, bo
     ForcedMovement moveMode = masterWalking ? FORCED_MOVEMENT_WALK : FORCED_MOVEMENT_RUN;
     if (bot->IsFlying())
         moveMode = FORCED_MOVEMENT_RUN;  // AC ForcedMovement has no FLIGHT mode.
+
+    LOG_INFO("playerbots", "[DBG-TRAV] DispatchMovement: bot {} (guid {}) target=({:.1f},{:.1f},{:.1f}) map{} pointsz={} genPath={} mode={} walkDist={:.1f}",
+             bot->GetName(), bot->GetGUID().ToString(), movePosition.GetPositionX(), movePosition.GetPositionY(),
+             movePosition.GetPositionZ(), movePosition.GetMapId(), path.size(), generatePath ? 1 : 0,
+             (int)moveMode, size);
+
+    // TEMP-CAPTURE (2026-09-23): dump the dispatch segment WITH node types
+    // while diagnosing the Moonspray-leg failure (bot walked off the pier end
+    // into the strait; the arrival-side transport point 1955y away became the
+    // walk target). Remove after the root cause is fixed.
+    for (size_t dbgI = 0; dbgI < movePath.size() && dbgI < 50; ++dbgI)
+    {
+        PathNodePoint const& pp = movePath.GetPathRef()[dbgI];
+        LOG_INFO("playerbots", "[DBG-TRAV] DispatchMovement: bot {} seg[{}] t={} e={} ({:.1f},{:.1f},{:.1f}) map{}",
+                 bot->GetName(), dbgI, (int)pp.type, pp.entry,
+                 pp.point.GetPositionX(), pp.point.GetPositionY(), pp.point.GetPositionZ(), pp.point.GetMapId());
+    }
+
+    // Cross-map guard: a dispatched walk/spline whose endpoint is on another
+    // map cannot be walked as-is. Cross-map hops happen via teleports/ports
+    // (separate code paths) or by physically riding a boat (while aboard the
+    // bot's own map tracks the boat, so this never fires mid-ride). The
+    // observed failure (2026-09-23, Elune's Blessing dock @ Auberdine): a
+    // clipped/trimmed path ending at the far side of a transport leg was
+    // dispatched as a straight-line cross-map "walk" and the bot waded off
+    // the pier end into the strait.
+    //
+    // A transport leg emits BOTH a departure-side point (bot's map: the dock
+    // the bot walks to and boards) and an arrival-side point (the far map).
+    // When only the arrival-side tail is cross-map, walk the bot to the
+    // departure dock: trim the path to its same-map prefix and let the
+    // special-movement branch own boarding there. Drop only when no same-map
+    // prefix remains (whole path is foreign).
+    if (movePosition.GetMapId() != bot->GetMapId() && !bot->GetTransport())
+    {
+        size_t keep = 0;
+        for (size_t i = 0; i < path.size(); ++i)
+        {
+            if (path[i].GetMapId() != bot->GetMapId())
+                break;
+            keep = i + 1;
+        }
+        if (keep == 0)
+        {
+            LOG_INFO("playerbots", "[DBG-TRAV] DispatchMovement: bot {} (guid {}) refusing cross-map dispatch to ({:.1f},{:.1f},{:.1f}) map{} (bot map {}); path dropped",
+                     bot->GetName(), bot->GetGUID().ToString(), movePosition.GetPositionX(), movePosition.GetPositionY(),
+                     movePosition.GetPositionZ(), movePosition.GetMapId(), bot->GetMapId());
+            return;
+        }
+        if (keep < path.size())
+        {
+            LOG_INFO("playerbots", "[DBG-TRAV] DispatchMovement: bot {} (guid {}) trimming cross-map tail: {} -> {} points, last same-map point ({:.1f},{:.1f},{:.1f}) map{} (arrival side dropped, special branch owns boarding)",
+                     bot->GetName(), bot->GetGUID().ToString(), path.size(), keep,
+                     path[keep - 1].GetPositionX(), path[keep - 1].GetPositionY(), path[keep - 1].GetPositionZ(),
+                     path[keep - 1].GetMapId());
+            movePath.getPath().erase(movePath.getPath().begin() + keep, movePath.getPath().end());
+            path.resize(keep);
+            movePosition = path.back();
+        }
+    }
 
     if (!generatePath || bot->IsFreeFlying())
     {
@@ -4163,6 +4483,113 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
         return false;
     }
 
+    // Frozen-in-place escape (stuck at a ridge foot / on an excluded nav
+    // poly): from such spots neither the probe nor the unstick step below
+    // can produce any movement — the bot re-resolves the same dead end
+    // forever (observed: bots pinned for hours, re-resolving every 2s).
+    // If the bot has made no real progress (>=3y) for 20s+, teleport it to
+    // a navmesh-verified spot a few yards away so the next resolution has
+    // a valid start. Arrived bots (within targetPosRecalcDistance of the
+    // goal) already returned above; transport/vehicle/flight/taxi waits
+    // exit MoveTo2 earlier via WaitForTransport / IsWaitingForLastMove,
+    // so only genuinely idle, frozen bots reach this.
+    WorldPosition curPos(bot);
+    // Transport-dock wait: if the route's next stop is a transport dock
+    // within the special radius, the bot is legitimately idle (boat docked
+    // with the approach walk pending, or en route with the bot waiting at the
+    // dock) — a 20s freeze-escape would drag it off the pier (observed: 6y
+    // drift steps away from the docked Moonspray). Released 5s after
+    // disembark (DisembarkRecent) so a genuinely stuck bot right after a ride
+    // can still escape.
+    bool const nearTransportDock = [&]() -> bool
+    {
+        if (lastMove.lastPath.empty() || lastMove.DisembarkRecent(getMSTime()))
+            return false;
+        WorldPosition cur(bot);
+        for (auto const& p : lastMove.lastPath.getPath())
+        {
+            if (p.type == PathNodeType::NODE_TRANSPORT && p.entry && p.point.GetMapId() == cur.GetMapId() &&
+                cur.distance(p.point) < 150.0f)
+                return true;
+        }
+        return false;
+    }();
+
+    bool const frozenStanding = lastMove.IsFrozenStanding(bot, getMSTime()) && !nearTransportDock &&
+        !bot->IsInCombat() && !bot->GetTransport() && !bot->GetVehicle() && !bot->IsInFlight() &&
+        !bot->GetTradeData();
+
+    if (frozenStanding)
+    {
+        if (Map* map = bot->GetMap())
+        {
+            dtNavMeshQuery const* navMeshQuery = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+            WorldPosition escapePos;
+            float const baseX = curPos.GetPositionX();
+            float const baseY = curPos.GetPositionY();
+            float const baseZ = curPos.GetPositionZ();
+            float const jolt = urand(0, 900) * 0.001f;  // degrees
+            if (navMeshQuery)
+            {
+                for (float dist : { 6.0f, 9.0f })
+                {
+                    for (uint8 angle = 0; angle < 8 && !escapePos.IsValid(); ++angle)
+                    {
+                        float const a = (angle * 45.0f + (dist > 7.0f ? 22.5f : 0.0f) + jolt) * M_PI / 180.0f;
+                        float const px = baseX + cosf(a) * dist;
+                        float const py = baseY + sinf(a) * dist;
+
+                        dtQueryFilter filter;
+                        filter.setIncludeFlags(NAV_GROUND | NAV_GROUND_STEEP);
+                        filter.setExcludeFlags(NAV_WATER | NAV_MAGMA | NAV_SLIME);
+
+                        float const point[VERTEX_SIZE] = { py, baseZ, px };
+                        float const extents[VERTEX_SIZE] = { 4.0f, 5.0f, 4.0f };
+                        float closest[VERTEX_SIZE] = { 0.0f, 0.0f, 0.0f };
+                        dtPolyRef polyRef = INVALID_POLYREF;
+
+                        if (!dtStatusSucceed(navMeshQuery->findNearestPoly(point, extents, &filter, &polyRef, closest)) ||
+                            polyRef == INVALID_POLYREF || std::fabs(closest[1] - baseZ) > 10.0f)
+                            continue;
+
+                        escapePos = WorldPosition(bot->GetMapId(), closest[2], closest[0], closest[1]);
+                    }
+                    if (escapePos.IsValid())
+                        break;
+                }
+            }
+
+            if (escapePos.IsValid())
+            {
+                bot->StopMoving();
+                bot->GetMotionMaster()->Clear();
+                lastMove.clear();
+                bool const done = SafeBotTeleport(bot, escapePos, bot->GetOrientation());
+                LOG_INFO("playerbots", "MoveTo2: bot {} (guid {}) frozen in place for 20s+ at ({:.1f},{:.1f}) map{}; unstuck-teleported to ({:.1f},{:.1f},{:.1f}) {}",
+                         bot->GetName(), bot->GetGUID().ToString(), baseX, baseY, bot->GetMapId(),
+                         escapePos.GetPositionX(), escapePos.GetPositionY(), escapePos.GetPositionZ(),
+                         done ? "ok" : "FAILED");
+                return false;
+            }
+        }
+        // No navmesh-verified spot found: fall through to the normal
+        // resolution (the unstick step below may still apply).
+    }
+    else if (lastMove.frozenSinceMs)
+    {
+        // Made real progress since the reference (or the reference is from
+        // another map): restart the frozen window from the current position.
+        float const fdx = curPos.GetPositionX() - lastMove.frozenRefX;
+        float const fdy = curPos.GetPositionY() - lastMove.frozenRefY;
+        float const fdz = curPos.GetPositionZ() - lastMove.frozenRefZ;
+        if (lastMove.frozenRefMap != bot->GetMapId() || fdx * fdx + fdy * fdy + fdz * fdz >= 9.0f)
+            lastMove.RefreshFrozenRef(bot->GetMapId(), curPos.GetPositionX(), curPos.GetPositionY(), curPos.GetPositionZ());
+    }
+    else
+    {
+        lastMove.RefreshFrozenRef(bot->GetMapId(), curPos.GetPositionX(), curPos.GetPositionY(), curPos.GetPositionZ());
+    }
+
     WorldPosition flyMovePosition;
     if (FlyDirect(startPos, endPos, flyMovePosition, lastMove.lastPath))
         return true;
@@ -4246,7 +4673,13 @@ bool MovementAction::MoveTo2(WorldPosition const& endPos, bool idle, bool react,
         movePath.UpcommingSpecialMovement(startPos, sPlayerbotAIConfig.reactDistance, bot->GetTransport());
 
     if (specialMovement)
-        return HandleSpecialMovement(movePath);
+    {
+        bool const handled = HandleSpecialMovement(movePath);
+        LOG_INFO("playerbots", "[DBG-TRAV] MoveTo2: special movement engaged -> HandleSpecialMovement returned {}; path now [{}..{}] sz={}",
+                 handled ? "true" : "false", (int)movePath.getPath().front().type, (int)movePath.getPath().back().type,
+                 movePath.getPath().size());
+        return handled;
+    }
 
     if (bot->GetTransport())  // Transports needed to be handled before now.
         return false;
@@ -4380,9 +4813,17 @@ bool MovementAction::MoveFarDispatch(PlayerbotAI* botAI, WorldPosition const& de
     // A NORMAL+ movement (including our own dispatched path) is in flight:
     // the orchestrator would only re-dispatch, so yield.
     if (executor.IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+    {
+        LOG_INFO("playerbots", "[DBG-TRAV] MoveFarDispatch: bot {} (guid {}) dest=({:.0f},{:.0f}) map{}; yield (NORMAL move in flight)",
+                 bot->GetName(), bot->GetGUID().ToString(), destNc.GetPositionX(), destNc.GetPositionY(), destNc.GetMapId());
         return true;
+    }
 
-    return executor.MoveTo2(destNc);
+    bool const ok = executor.MoveTo2(destNc);
+    LOG_INFO("playerbots", "[DBG-TRAV] MoveFarDispatch: bot {} (guid {}) dest=({:.0f},{:.0f}) map{} -> MoveTo2 {}",
+             bot->GetName(), bot->GetGUID().ToString(), destNc.GetPositionX(), destNc.GetPositionY(), destNc.GetMapId(),
+             ok ? "true" : "false");
+    return ok;
 }
 
 bool MovementAction::ExecuteTravelPlan(TravelPlan& state)

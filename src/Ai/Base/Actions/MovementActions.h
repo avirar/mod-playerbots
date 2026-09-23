@@ -56,6 +56,10 @@ public:
     // Returns false when the bot is already on exceptTransport (boarded).
     static bool ClearTransportState(Player* bot, Transport* exceptTransport);
 
+    // Also exposed publicly for the 1s transport check in PlayerbotAI (the
+    // disembark trigger fires from there, not from a MovementAction context).
+    static bool MoveOffTransport(PlayerbotAI* botAI, WorldPosition exitPos, bool doTeleport);
+
 protected:
     // Emit a one-line trace describing the imminent movement. No-op
     // unless the bot has the "debug move" non-combat strategy.
@@ -149,7 +153,6 @@ protected:
     // Cross-continent leg helpers.
     static bool UseTaxi(PlayerbotAI* botAI, uint32 entry, bool needNpc);
     static bool MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport);
-    static bool MoveOffTransport(PlayerbotAI* botAI, WorldPosition exitPos, bool doTeleport);
     static bool UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPosition dockPosition,
                              WorldPosition exitPosition, bool doTeleport);
     bool WaitForTransport();
@@ -187,7 +190,7 @@ protected:
 
 private:
     bool wasMovementRestricted = false;
-    void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
+    static void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
 };
 
 class FleeAction : public MovementAction

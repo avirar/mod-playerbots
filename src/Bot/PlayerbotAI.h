@@ -668,6 +668,9 @@ protected:
     BotCheatMask cheatMask = BotCheatMask::none;
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
+    uint32 lastDisembarkDiagMs = 0;  // [DBG-TRAV] per-second disembark diagnostics rate limit
+    uint32 lastRemoteTransportCheckMs = 0;  // 500ms cadence gate for CheckTransport() from UpdateRemoteMove
+    void CheckTransport();
     bool spellInterruptRequested = false;
     // Remote-move state (see MoveFarToPos): destination armed by an explicit
     // command; expiry/fail-backoff timestamps in ms.
