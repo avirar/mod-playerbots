@@ -3515,26 +3515,40 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
         WorldPosition const transPos(transport);
         float const distToBoat = WorldPosition(bot).distance(transPos);
 
-        if (lastMove.BoardWalkInFlight(transport->GetEntry(), nowMs))
+        // Reliable board (primary mechanism): the bot is at the hull (within
+        // 8y, 3D — the last few yards are the deck/pier height gap) and not
+        // yet aboard, so attach directly. The geometric raycast attach
+        // (GetTransportForPos) is vmap-dependent and fails at docks without
+        // vmap, so this is the deterministic board. TOP-LEVEL (not gated on
+        // BoardWalkInFlight, which expires between the ~10s dispatch cadence
+        // and left the bot frozen at the hull until the stuck-unstuck
+        // teleported it back — observed 2026-09-23).
+        if (distToBoat < 8.0f && !bot->GetTransport())
         {
-            if (nowMs - lastMove.boardWalkMs > 3500 && !bot->GetTransport() && distToBoat < 8.0f)
-            {
-                // Walk reached the deck but the attach never fired: attach
-                // directly (same calls as the teleport path minus the
-                // relocation — the bot is already at the boat).
-                if (!ClearTransportState(bot, transport))
-                    return true; // boarded meanwhile
-                transport->AddPassenger(bot, true);
-                bot->GetMotionMaster()->Clear();
-                bot->StopMoving();
-                bot->SendMovementFlagUpdate();
-                lastMove.ClearBoardWalk();
-                LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) board-walk reached the deck without attach; backstop-attached to transport {}",
-                         bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry());
-                return true;
-            }
-            return false; // walk in progress — don't re-dispatch
+            if (!ClearTransportState(bot, transport))
+                return true; // boarded meanwhile
+            // Snap to the deck surface before attaching: the boat origin is at
+            // water level (z~0) and the bot is at the pier height (z~6), so
+            // attaching as-is would make the bot ride ~1y above the deck.
+            // +5y matches the observed deck offset (Rut'Theran capture).
+            bot->UpdatePosition(bot->GetPositionX(), bot->GetPositionY(),
+                                transPos.GetPositionZ() + 5.0f, bot->GetOrientation());
+            transport->AddPassenger(bot, true);
+            bot->GetMotionMaster()->Clear();
+            bot->StopMoving();
+            bot->SendMovementFlagUpdate();
+            lastMove.SetBoarded(transport->GetEntry(), bot->GetPositionX(), bot->GetPositionY(),
+                                bot->GetPositionZ(), getMSTime());
+            lastMove.ClearBoardWalk();
+            LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) at transport {} ({:.1f}y); attached",
+                     bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat);
+            return true;
         }
+
+        // Board walk in progress — the top-level backstop above engages when
+        // the bot reaches the hull; don't re-dispatch the walk.
+        if (lastMove.BoardWalkInFlight(transport->GetEntry(), nowMs))
+            return false;
 
         // Approach walk: within the special-movement radius the bot walks to
         // the boat instead of waiting in place. The old hard 30y gate parked
@@ -3590,6 +3604,8 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
     bot->GetMotionMaster()->Clear();
     bot->StopMoving();
     bot->SendMovementFlagUpdate();
+    botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().SetBoarded(
+        transport->GetEntry(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), getMSTime());
     return true;
 }
 

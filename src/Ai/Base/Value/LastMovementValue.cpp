@@ -177,7 +177,10 @@ bool LastMovement::NoteTransportMoving(uint32 entry, float x, float y, float z, 
     float const dx = x - transportStallX;
     float const dy = y - transportStallY;
     float const dz = z - transportStallZ;
-    if (dx * dx + dy * dy + dz * dz > 0.01f)
+    // 0.5m threshold: a docked boat bobs/tilts slightly (a few-decm of z and
+    // heading); changes below that are the bob, not forward motion. A boat on
+    // a taxi path moves many yards per second, so 0.5m is far below real travel.
+    if (dx * dx + dy * dy + dz * dz > 0.25f)
     {
         transportStallX = x;
         transportStallY = y;
