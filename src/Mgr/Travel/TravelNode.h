@@ -799,6 +799,16 @@ public:
 
     void generateAll();
 
+    // Server-side boat/zeppelin dock tooling (GM console + 8888 command server).
+    // The pier is a VMap-only structure (not in the MMap navmesh) and the boat's
+    // DBC mooring sits over open water, so the bot walks a straight-line spline to
+    // the dock node; if that node is in the water the bot swims. These commands
+    // probe the vmap pier surface and compute a wait (pier) point on solid ground
+    // plus the walk path. Args: "boatprobe,<deckNodeName>" (diagnostic trace) or
+    // "boatgen,<deckNodeName>" (wait point + draft SQL). <deckNodeName> is the deck
+    // node name (the boat's mooring node), e.g. "Ship (The Moonspray)".
+    std::string HandleTravelGenCmd(std::string const& args);
+
     void Init();
 
     void printMap();

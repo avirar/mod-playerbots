@@ -17,6 +17,7 @@
 #include "SpellMgr.h"
 #include "Transport.h"
 #include "TransportMgr.h"
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <iomanip>
@@ -3236,6 +3237,209 @@ void TravelNodeMap::generateAll()
 
     BuildZoneIndex();
     PrecomputeReachability();
+}
+
+std::string TravelNodeMap::HandleTravelGenCmd(std::string const& args)
+{
+    size_t const comma = args.find(',');
+    if (comma == std::string::npos)
+        return "usage: travel.boatgen,<deckNodeName> | travel.boatprobe,<deckNodeName>";
+
+    std::string const sub = args.substr(0, comma);
+    std::string const name = args.substr(comma + 1);
+
+    std::vector<TravelNode*> deckNodes;
+    for (TravelNode* node : getNodes())
+    {
+        if (node && node->getName() == name)
+            deckNodes.push_back(node);
+    }
+
+    if (deckNodes.empty())
+        return "no travel node named '" + name + "'";
+
+    bool const gen = (sub == "boatgen");
+    std::ostringstream out;
+    out << std::fixed;
+    out << "travel." << sub << " '" << name << "' (" << deckNodes.size() << " terminus node(s))\n";
+
+    for (TravelNode* deck : deckNodes)
+    {
+        WorldPosition const* dp = deck->getPosition();
+        uint32 const mapId = dp->GetMapId();
+
+        Map* map = sMapMgr->FindBaseMap(mapId);
+        if (!map)
+        {
+            out << "  [m" << mapId << "] (" << dp->GetPositionX() << "," << dp->GetPositionY()
+                << "): no base map loaded -- a bot must be on this map first\n";
+            continue;
+        }
+
+        // The existing wait/dock node (name = <deckName>"dock") if present.
+        TravelNode* waitNode = nullptr;
+        for (TravelNode* cand : getNodes())
+        {
+            if (!cand || cand->GetMapId() != mapId || cand->getName() != name + "dock")
+                continue;
+            float const ddx = cand->getPosition()->GetPositionX() - dp->GetPositionX();
+            float const ddy = cand->getPosition()->GetPositionY() - dp->GetPositionY();
+            if (std::sqrt(ddx * ddx + ddy * ddy) < 60.0f)
+            {
+                waitNode = cand;
+                break;
+            }
+        }
+
+        // Nearest on-foot node (non-transport, non-portal, on land): the town/village
+        // the pier leads back to (used for the walk path).
+        TravelNode* onFoot = nullptr;
+        float bestD = 10000.0f;
+        for (TravelNode* cand : getNodes())
+        {
+            if (!cand || cand == deck || cand->GetMapId() != mapId || cand->isTransport() || cand->isPortal())
+                continue;
+            WorldPosition* cp = cand->getPosition();
+            if (cp->isInWater())
+                continue;
+            float const dx = cp->GetPositionX() - dp->GetPositionX();
+            float const dy = cp->GetPositionY() - dp->GetPositionY();
+            float const d = std::sqrt(dx * dx + dy * dy);
+            if (d < bestD)
+            {
+                bestD = d;
+                onFoot = cand;
+            }
+        }
+        if (!onFoot || bestD > 1500.0f)
+        {
+            out << "  [m" << mapId << "] (" << dp->GetPositionX() << "," << dp->GetPositionY()
+                << "): no on-foot node found within 1500y\n";
+            continue;
+        }
+
+        // Probe direction: prefer the existing dock node (it sits ~on the pier); the
+        // nearest on-foot node is on the wrong side of some docks. Fall back to the
+        // on-foot node when there is no usable dock node.
+        WorldPosition* dirRef = nullptr;
+        if (waitNode)
+        {
+            WorldPosition* const wp0 = waitNode->getPosition();
+            float const wdx = wp0->GetPositionX() - dp->GetPositionX();
+            float const wdy = wp0->GetPositionY() - dp->GetPositionY();
+            if (std::sqrt(wdx * wdx + wdy * wdy) > 5.0f)
+                dirRef = wp0;
+        }
+        if (!dirRef)
+            dirRef = onFoot->getPosition();
+
+        WorldPosition const* fp = onFoot->getPosition();
+        float const dxo = dirRef->GetPositionX() - dp->GetPositionX();
+        float const dyo = dirRef->GetPositionY() - dp->GetPositionY();
+        float const leno = std::sqrt(dxo * dxo + dyo * dyo);
+        if (leno < 5.0f)
+        {
+            out << "  [m" << mapId << "]: probe reference too close to the boat\n";
+            continue;
+        }
+        float const ux = dxo / leno;
+        float const uy = dyo / leno;
+        out << std::setprecision(2) << "  [m" << mapId << "] deck (" << dp->GetPositionX() << "," << dp->GetPositionY()
+            << "," << dp->GetPositionZ() << ") -> onFoot " << onFoot->getName() << " (" << fp->GetPositionX() << ","
+            << fp->GetPositionY() << "," << fp->GetPositionZ() << ") dist=" << bestD
+            << " [probe dir: " << (dirRef == onFoot->getPosition() ? "onFoot" : "existing dock node") << "]\n";
+        if (waitNode)
+        {
+            WorldPosition* wp = waitNode->getPosition();
+            out << "\n    current dock node '" << waitNode->getName() << "' at (" << wp->GetPositionX() << ","
+                << wp->GetPositionY() << "," << wp->GetPositionZ() << ") inWater=" << (wp->isInWater() ? "yes" : "no")
+                << " vmapZ=" << map->GetHeight(wp->GetPositionX(), wp->GetPositionY(), wp->GetPositionZ() + 15.0f, true, 40.0f);
+        }
+        else
+        {
+            out << "\n    (no existing dock node -> will INSERT one)";
+        }
+
+        out << "\n    d    x        y       z(vmap)  water  solid\n";
+
+        // Probe the vmap along the line from the boat's mooring (in water) toward the
+        // on-foot node (inland). A vmap surface above the boat origin is the pier.
+        float firstSolidD = -1.0f;
+        for (float d = 2.0f; d <= 55.0f; d += 2.0f)
+        {
+            float const sx = dp->GetPositionX() + ux * d;
+            float const sy = dp->GetPositionY() + uy * d;
+            float const vz = map->GetHeight(sx, sy, dp->GetPositionZ() + 15.0f, /*checkVMap=*/true, /*maxSearchDist=*/40.0f);
+            WorldPosition p(mapId, sx, sy, vz);
+            bool const inWater = p.isInWater();
+            bool const solid = (vz > -500.0f) && !inWater;  // dry surface: vmap pier or land
+            if (solid && firstSolidD < 0.0f)
+                firstSolidD = d;
+            out << "    " << std::setw(3) << d << std::setw(9) << sx << std::setw(9) << sy << std::setw(10) << vz
+                << (inWater ? "  yes  " : "  no   ") << (solid ? " PIER" : "") << "\n";
+        }
+
+        if (firstSolidD < 0.0f)
+        {
+            out << "    -> no vmap pier found along the line; boat skipped (needs manual review)\n";
+            continue;
+        }
+
+        // Wait point: a few yards inland from the pier's edge (first solid sample),
+        // capped at 35y (the UseTransport board/disembark gate), at the vmap surface.
+        float const waitD = std::min(firstSolidD + 3.0f, 35.0f);
+        float const wx = dp->GetPositionX() + ux * waitD;
+        float const wy = dp->GetPositionY() + uy * waitD;
+        float const wz = map->GetHeight(wx, wy, dp->GetPositionZ() + 15.0f, /*checkVMap=*/true, /*maxSearchDist=*/40.0f);
+        WorldPosition waitPt(mapId, wx, wy, wz);
+        bool const waitDry = !waitPt.isInWater();
+
+        out << "    -> wait point (" << wx << "," << wy << "," << wz << ") [d=" << waitD
+            << "y from boat, " << (waitDry ? "DRY (vmap pier)" : "WET (adjust!)") << "]\n";
+
+        if (!gen)
+            continue;
+
+        // Walk path from the on-foot node to the wait point: the server pathfinder
+        // covers the on-land (navmesh) portion; the last leg onto the vmap pier is a
+        // straight line (the navmesh cannot cover the pier). The bot follows the
+        // on-land waypoints then straight-lines onto the pier.
+        WorldPosition start(mapId, fp->GetPositionX(), fp->GetPositionY(), fp->GetPositionZ());
+        WorldPosition goal(mapId, wx, wy, wz);
+        std::vector<WorldPosition> walkPath = start.getPathTo(goal, nullptr);
+        if (walkPath.empty())
+        {
+            walkPath.push_back(start);
+        }
+        if (!goal.isPathTo(walkPath, 3.0f))
+            walkPath.push_back(goal);
+
+        out << "\n-- boatgen '" << name << "' [m" << mapId << "]  wait point (" << std::setprecision(4) << wx << ","
+            << wy << "," << wz << ")\n";
+        if (waitNode)
+        {
+            out << "UPDATE `playerbots_travelnode` SET x=" << wx << ", y=" << wy << ", z=" << wz
+                << " WHERE `name`=" << "'" << name << "dock'" << " AND `map_id`=" << mapId << ";\n";
+        }
+        else
+        {
+            out << "-- INSERT a new dock node named '" << name << "dock' at (" << wx << "," << wy << "," << wz
+                << ") map " << mapId << " (then wire the walk + dock legs below)\n";
+        }
+        out << "-- walk path  onFoot '<onFootId>' -> dock '<dockId>'  (" << walkPath.size()
+            << " points; fill node_ids from playerbots_travelnode)\n";
+        for (size_t i = 0; i < walkPath.size(); ++i)
+        {
+            out << "  (" << walkPath[i].GetPositionX() << "," << walkPath[i].GetPositionY() << ","
+                << walkPath[i].GetPositionZ() << ")\n";
+        }
+        out << "-- dock leg  dock -> deck: (" << wx << "," << wy << "," << wz << ") -> (" << dp->GetPositionX() << ","
+            << dp->GetPositionY() << ",0)  [type=3, object=0]\n";
+    }
+
+    std::string const result = out.str();
+    LOG_INFO("playerbots", "travel.{}:\n{}", sub, result.c_str());
+    return result;
 }
 
 void TravelNodeMap::Init()

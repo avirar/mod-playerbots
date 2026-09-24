@@ -39,6 +39,7 @@
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "TravelMgr.h"
+#include "TravelNode.h"
 #include "Unit.h"
 #include "World.h"
 #include "WorldSessionMgr.h"
@@ -3077,6 +3078,14 @@ std::string const RandomPlayerbotMgr::HandleRemoteCommand(std::string const requ
     }
 
     std::string const command = request.substr(0, lastComma);
+
+    // Global travel commands (no bot): "travel.boatgen,<deckNodeName>" /
+    // "travel.boatprobe,<deckNodeName>". The name is everything after the first
+    // comma (node names contain no commas); the trailing-guid protocol does not
+    // apply. Runs on the 8888 session thread -- only read-only map/vmap probing.
+    if (request.rfind("travel.", 0) == 0)
+        return sTravelNodeMap.HandleTravelGenCmd(request.substr(7));
+
     ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(atoi(request.c_str() + lastComma + 1));
     Player* bot = GetPlayerBot(guid);
     if (!bot)

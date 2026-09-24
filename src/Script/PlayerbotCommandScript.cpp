@@ -36,6 +36,8 @@ public:
 
         static ChatCommandTable playerbotsTravelCommandTable = {
             {"generatenode", HandleGenerateTravelNodesCommand, SEC_GAMEMASTER, Console::Yes},
+            {"boatgen", HandleBoatGenCommand, SEC_GAMEMASTER, Console::Yes},
+            {"boatprobe", HandleBoatProbeCommand, SEC_GAMEMASTER, Console::Yes},
         };
 
         static ChatCommandTable playerbotsCommandTable = {
@@ -114,6 +116,45 @@ public:
         sTravelNodeMap.generateAll();
         handler->PSendSysMessage("Travel node regeneration complete. Paths saved to database.");
         return true;
+    }
+
+    // .playerbot travel boatgen <deckNodeName> / boatprobe <deckNodeName>:
+    // server-side boat/zeppelin dock pathgen (vmap pier probe + wait point + walk
+    // path). See TravelNodeMap::HandleTravelGenCmd. Also available over the 8888
+    // command server as "travel.boatgen,<deckNodeName>".
+    static bool HandleBoatGenCommandImpl(ChatHandler* handler, char const* args, char const* sub)
+    {
+        std::string name = args;
+        size_t const start = name.find_first_not_of(' ');
+        if (start == std::string::npos)
+        {
+            handler->PSendSysMessage("Usage: .playerbot travel {} <deckNodeName> (e.g. 'Ship (The Moonspray)')", sub);
+            return false;
+        }
+
+        name = name.substr(start);
+        std::string const result = sTravelNodeMap.HandleTravelGenCmd(std::string(sub) + "," + name);
+
+        size_t pos = 0;
+        while (pos < result.size())
+        {
+            size_t const nl = result.find('\n', pos);
+            std::string const line = (nl == std::string::npos) ? result.substr(pos) : result.substr(pos, nl - pos);
+            if (!line.empty())
+                handler->PSendSysMessage("%s", line.c_str());
+            pos = (nl == std::string::npos) ? result.size() : nl + 1;
+        }
+        return true;
+    }
+
+    static bool HandleBoatGenCommand(ChatHandler* handler, char const* args)
+    {
+        return HandleBoatGenCommandImpl(handler, args, "boatgen");
+    }
+
+    static bool HandleBoatProbeCommand(ChatHandler* handler, char const* args)
+    {
+        return HandleBoatGenCommandImpl(handler, args, "boatprobe");
     }
 
     static bool HandleDebugBGCommand(ChatHandler* handler, char const* args)

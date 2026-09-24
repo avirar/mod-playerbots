@@ -51,7 +51,15 @@
 
 namespace
 {
-// Conform a teleport destination's Z to the live ground when resolvable, and
+// Board/disembark proximity gate (yards). The boat's mooring origin (DBC taxi
+// stop keyframe) sits up to ~16y off the pier's dry edge (e.g. The Maidens
+// Fancy's Darkshore/Booty Bay stops, DBC moorings over open water), so the bot
+// must be allowed to trigger board/disembark at that distance. The actual
+// attach (GetTransportForPos raycast) still requires the bot to be over the
+// boat's hull, so the gate only controls WHEN the attempt is triggered, not
+// the final attach.
+constexpr float kTransportDockGateYards = 35.0f;
+
 // REJECT an unresolved / out-of-bounds Z before it reaches Player::TeleportTo. A
 // baked travel-node position can carry Z = VMAP_INVALID_HEIGHT_VALUE (-200000),
 // which UpdateAllowedPositionZ cannot re-resolve; teleporting to it makes the
@@ -3477,7 +3485,7 @@ bool MovementAction::ClearTransportState(Player* bot, Transport* exceptTransport
     return true;
 }
 
-bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport)
+bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport, WorldPosition const& dockPos)
 {
     Player* bot = botAI->GetBot();
     if (!transport)
@@ -3515,15 +3523,25 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
         WorldPosition const transPos(transport);
         float const distToBoat = WorldPosition(bot).distance(transPos);
 
-        // Reliable board (primary mechanism): the bot is at the hull (within
-        // 8y, 3D — the last few yards are the deck/pier height gap) and not
-        // yet aboard, so attach directly. The geometric raycast attach
-        // (GetTransportForPos) is vmap-dependent and fails at docks without
-        // vmap, so this is the deterministic board. TOP-LEVEL (not gated on
-        // BoardWalkInFlight, which expires between the ~10s dispatch cadence
-        // and left the bot frozen at the hull until the stuck-unstuck
-        // teleported it back — observed 2026-09-23).
-        if (distToBoat < 8.0f && !bot->GetTransport())
+        // Reliable board (primary mechanism): attach directly when the bot is
+        // over the hull. Two cases:
+        //   (a) within 8y (3D) of the boat origin -- the last few yards are the
+        //       deck/pier height gap;
+        //   (b) the bot is at the dock node (the pier) and the boat is docked
+        //       (within the board gate of the dock node). The boat's mooring
+        //       origin sits ~15y offshore (DBC stops over open water), but the
+        //       hull (a ~50y-long ship model) reaches the pier, so the bot at
+        //       the pier is over the hull and can attach without wading in.
+        // The geometric raycast attach (GetTransportForPos) is vmap-dependent
+        // and fails at docks without vmap, so this is the deterministic board.
+        // TOP-LEVEL (not gated on BoardWalkInFlight, which expires between the
+        // ~10s dispatch cadence and left the bot frozen at the hull until the
+        // stuck-unstuck teleported it back -- observed 2026-09-23).
+        float const distToDock = WorldPosition(bot).distance(dockPos);
+        // distance() is non-const (it tracks visitors); use a non-const copy for
+        // the boat-to-dock check.
+        bool const atDockNode = (distToDock < 5.0f) && (WorldPosition(dockPos).distance(transPos) < kTransportDockGateYards);
+        if ((distToBoat < 8.0f || atDockNode) && !bot->GetTransport())
         {
             if (!ClearTransportState(bot, transport))
                 return true; // boarded meanwhile
@@ -3540,8 +3558,9 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
             lastMove.SetBoarded(transport->GetEntry(), bot->GetPositionX(), bot->GetPositionY(),
                                 bot->GetPositionZ(), getMSTime());
             lastMove.ClearBoardWalk();
-            LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) at transport {} ({:.1f}y); attached",
-                     bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat);
+            LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) at transport {} ({:.1f}y{}); attached",
+                     bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat,
+                     atDockNode ? " [from dock node]" : "");
             return true;
         }
 
@@ -3564,6 +3583,18 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
         {
             LOG_INFO("playerbots", "MoveOnTransport: bot {} (guid {}) too far from docked transport {} ({:.1f}y); route walk approaches",
                      bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat);
+            return false;
+        }
+
+        // Only board-walk when the bot is at the dock node (within 10y). If the
+        // bot is en route to the dock node, the route walk (dispatched by the
+        // travel system) continues and the dock-node attach above engages when
+        // the bot arrives. Walking to the boat's mooring origin (~15y offshore,
+        // over open water) from a distance would put the bot in the water.
+        if (distToDock > 10.0f)
+        {
+            LOG_INFO("playerbots", "[DBG-TRAV] MoveOnTransport: bot {} (guid {}) {:.1f}y from dock node; route walk continues",
+                     bot->GetName(), bot->GetGUID().ToString(), distToDock);
             return false;
         }
 
@@ -3706,7 +3737,8 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
         // offset (~11y observed, Moonspray/Elune's) — the old 5.5y gate kept
         // the bot aboard forever at a moored boat.
         if (dockPosition.GetMapId() == bot->GetMapId() &&
-            dockPosition.sqDistance2d(WorldPosition(transport)) < 15.0f * 15.0f)
+            dockPosition.sqDistance2d(WorldPosition(transport)) <
+            kTransportDockGateYards * kTransportDockGateYards)
         {
             MoveOffTransport(botAI, exitPosition, doTeleport);
             return true;
@@ -3742,9 +3774,9 @@ bool MovementAction::UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPositio
     // Auberdine: boat present, bot never boarded, boat sailed). MoveOnTransport
     // owns the final approach (board walk to the deck surface).
     if (transport && dockPosition.GetMapId() == bot->GetMapId() &&
-        dockPosition.sqDistance2d(WorldPosition(transport)) < 15.0f * 15.0f)
+        dockPosition.sqDistance2d(WorldPosition(transport)) < kTransportDockGateYards * kTransportDockGateYards)
     {
-        MoveOnTransport(botAI, transport, doTeleport);
+        MoveOnTransport(botAI, transport, doTeleport, dockPosition);
         return true;
     }
 

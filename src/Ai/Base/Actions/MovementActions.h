@@ -152,7 +152,7 @@ protected:
 
     // Cross-continent leg helpers.
     static bool UseTaxi(PlayerbotAI* botAI, uint32 entry, bool needNpc);
-    static bool MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport);
+    static bool MoveOnTransport(PlayerbotAI* botAI, Transport* transport, bool doTeleport, WorldPosition const& dockPos);
     static bool UseTransport(PlayerbotAI* botAI, uint32 entry, WorldPosition dockPosition,
                              WorldPosition exitPosition, bool doTeleport);
     bool WaitForTransport();
