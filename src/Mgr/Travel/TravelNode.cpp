@@ -322,26 +322,15 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
 
     if (getPathType() == TravelNodePathType::transport)
     {
-        // Ride cost = straight-line dock-to-dock distance / boat speed. The
-        // seeded route points trace the boat's full DBC loop, so the
-        // accumulated path length (and thus extraCost = distance/speed) is
-        // several times the actual ride; pricing the edge by that makes A*
-        // detour the long way around the strait on foot (observed 2026-09-23:
-        // Moonspray leg priced ~4000y-equivalent and the A* picked a 301-node
-        // land route through the Darkshore corridor instead of the boat).
-        // Straight line between the two stops at ~10y/s matches the observed
-        // ~3-min Moonspray ride (1955y / 10 = 195s).
-        if (path.size() >= 2)
-        {
-            WorldPosition a(path.front());
-            WorldPosition b(path.back());
-            float rideDist = a.distance(b);
-            if (rideDist < 50.0f)
-                rideDist = 50.0f;
-            timeCost = (rideDist / 10.0f) * modifier;
-        }
-        else
+        // extraCost is the precomputed ride time (seconds), set at generation
+        // (same-map path length / moveSpeed). Boarding legs (object=0) keep
+        // extraCost=0 and fall back to the walk distance. This avoids the
+        // cross-map offset that inflated a boat leg to ~20000s and made A*
+        // detour around it on foot (observed 2026-09-24, Northspear/Stormwind).
+        if (extraCost > 0.0f)
             timeCost = extraCost * modifier;
+        else
+            timeCost = (distance / speed) * modifier;
     }
     else if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
@@ -1489,14 +1478,24 @@ TravelPath TravelNodeRoute::BuildPath(std::vector<WorldPosition> pathToStart, st
             }
             else if (nodePath->getPathType() == TravelNodePathType::transport)  // Move onto transport
             {
-                // A degenerate transport link (object=0: no boat entry) must not
-                // emit NODE_TRANSPORT points — UseTransport(0) finds no boat and
-                // stalls the bot at the dock (observed: 2 min idle, 2026-09-23).
-                // Demote to a plain walk leg; the dock nodes it connects sit
-                // within walking distance of each other.
-                PathNodeType const tType = nodePath->getPathObject() ? PathNodeType::NODE_TRANSPORT : PathNodeType::NODE_PATH;
-                travelPath.addPoint(*prevNode->getPosition(), tType, nodePath->getPathObject());  // Departure point
-                travelPath.addPoint(*node->getPosition(), tType, nodePath->getPathObject());  // Arrival point
+                if (nodePath->getPathObject())
+                {
+                    // Ride leg (has a boat entry): emit departure + arrival as
+                    // NODE_TRANSPORT so the special-movement branch boards/rides.
+                    travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());
+                    travelPath.addPoint(*node->getPosition(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());
+                }
+                else
+                {
+                    // Boarding leg (object=0: dock -> deck). Emit ONLY the dock
+                    // (departure) as a walk target. Emitting the deck (the boat's
+                    // offshore mooring origin) as a walk point made the bot wade
+                    // to it even while the boat was away (observed 2026-09-24,
+                    // Valgarde Northspear: bot in the water under the boat). The
+                    // deck point is the departure of the next ride leg, which the
+                    // special branch boards at the dock.
+                    travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_PATH, 0);
+                }
             }
             else if (nodePath->getPathType() == TravelNodePathType::flightPath)  // Use the flightpath
             {
@@ -1668,10 +1667,23 @@ TravelPath TravelNodeRoute::buildPath(std::vector<WorldPosition> pathToStart, st
             }
             else if (nodePath->getPathType() == TravelNodePathType::transport)  // Move onto transport
             {
-                // Degenerate link (object=0): no boat to ride — emit the
-                // segment as a walk path instead of a transport path.
-                PathNodeType const tType = nodePath->getPathObject() ? PathNodeType::NODE_TRANSPORT : PathNodeType::NODE_PATH;
-                travelPath.addPath(nodePath->GetPath(), tType, nodePath->getPathObject());
+                if (nodePath->getPathObject())
+                {
+                    // Ride leg (has a boat entry): emit the full leg path as
+                    // NODE_TRANSPORT so the special-movement branch boards/rides.
+                    travelPath.addPath(nodePath->GetPath(), PathNodeType::NODE_TRANSPORT, nodePath->getPathObject());
+                }
+                else
+                {
+                    // Boarding leg (object=0: dock -> deck). Emit ONLY the dock
+                    // (departure) as a walk target. Emitting the deck (the boat's
+                    // offshore mooring origin) as a walk point made the bot wade
+                    // to it even while the boat was away (observed 2026-09-24,
+                    // Valgarde Northspear: bot in the water under the boat). The
+                    // deck point is the departure of the next ride leg, which the
+                    // special branch boards at the dock.
+                    travelPath.addPoint(*prevNode->getPosition(), PathNodeType::NODE_PATH, 0);
+                }
             }
             else if (nodePath->getPathType() == TravelNodePathType::flightPath)  // Use the flightpath
             {
@@ -2505,6 +2517,17 @@ bool TravelNodeMap::GetFullPath(TravelPlan& plan,
                 dbg << " [" << n->getName() << " m" << n->GetMapId() << " ("
                     << n->getX() << "," << n->getY() << ")]";
             dbg << " totalDist=" << route.getTotalDistance();
+            // Projected per-leg cost (getCost): reveals whether A* priced a
+            // boat/flight/portal leg correctly or detoured around it.
+            // type legend: 1=walk 2=portal 3=transport 4=flight 5=teleport
+            //              6=staticPortal 7=flyingMount
+            for (size_t i = 0; i + 1 < nodes.size(); ++i)
+            {
+                TravelNodePath* edge = nodes[i]->getPathTo(nodes[i + 1]);
+                dbg << "\n    [" << i << "] " << nodes[i]->getName() << " -> " << nodes[i + 1]->getName()
+                    << "  type=" << (edge ? int(edge->getPathType()) : -1)
+                    << "  cost=" << (edge ? edge->getCost(p, p->GetMoney()) : -1.0f);
+            }
             LOG_INFO("playerbots", "{}", dbg.str().c_str());
         }
     }
@@ -2661,6 +2684,17 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
                 dbg << " [" << n->getName() << " m" << n->GetMapId() << " ("
                     << n->getX() << "," << n->getY() << ")]";
             dbg << " totalDist=" << route.getTotalDistance();
+            // Projected per-leg cost (getCost): reveals whether A* priced a
+            // boat/flight/portal leg correctly or detoured around it.
+            // type legend: 1=walk 2=portal 3=transport 4=flight 5=teleport
+            //              6=staticPortal 7=flyingMount
+            for (size_t i = 0; i + 1 < nodes.size(); ++i)
+            {
+                TravelNodePath* edge = nodes[i]->getPathTo(nodes[i + 1]);
+                dbg << "\n    [" << i << "] " << nodes[i]->getName() << " -> " << nodes[i + 1]->getName()
+                    << "  type=" << (edge ? int(edge->getPathType()) : -1)
+                    << "  cost=" << (edge ? edge->getCost(p, p->GetMoney()) : -1.0f);
+            }
             LOG_INFO("playerbots", "{}", dbg.str().c_str());
         }
     }
@@ -2994,6 +3028,45 @@ void TravelNodeMap::generateTransportNodes()
     }
 }
 
+// Override the transport-leg cost with the exact ride time from the core
+// TransportTemplate keyframes (ArriveTime/DepartureTime in ms), which account
+// for accel, teleport segments and the asymmetric loop. The raw
+// path-length / moveSpeed is ~40% off (2026-09-24 Northspear: raw 160s/245s
+// vs owner-timed 114s/205s).
+void TravelNodeMap::fixTransportCosts()
+{
+    for (auto const& itr : *sObjectMgr->GetGameObjectTemplates())
+    {
+        GameObjectTemplate const* data = &itr.second;
+        if (!data || (data->type != GAMEOBJECT_TYPE_TRANSPORT && data->type != GAMEOBJECT_TYPE_MO_TRANSPORT))
+            continue;
+
+        TransportTemplate const* tt = sTransportMgr->GetTransportTemplate(itr.first);
+        if (!tt)
+            continue;
+
+        std::vector<KeyFrame const*> stops;
+        for (KeyFrame const& kf : tt->keyFrames)
+            if (kf.IsStopFrame())
+                stops.push_back(&kf);
+
+        for (size_t i = 0; i < stops.size(); ++i)
+        {
+            size_t j = (i + 1) % stops.size();
+            int32 rideMs = int32(stops[j]->ArriveTime) - int32(stops[i]->DepartureTime);
+            if (rideMs < 0)
+                rideMs += int32(tt->pathTime);
+
+            WorldPosition a(stops[i]->Node->mapid, stops[i]->Node->x, stops[i]->Node->y, stops[i]->Node->z, 0);
+            WorldPosition b(stops[j]->Node->mapid, stops[j]->Node->x, stops[j]->Node->y, stops[j]->Node->z, 0);
+            TravelNode* na = getNode(a, nullptr, 5.0f);
+            TravelNode* nb = getNode(b, nullptr, 5.0f);
+            if (na && nb && na->hasPathTo(nb))
+                na->getPathTo(nb)->setExtraCost(float(rideMs) / 1000.0f);
+        }
+    }
+}
+
 void TravelNodeMap::generateZoneMeanNodes()
 {
     // Zone means
@@ -3115,7 +3188,10 @@ void TravelNodeMap::generateTaxiPaths()
         if (endNode->fDist(ppath.back()) > 0.1f)
             ppath.push_back(*endNode->getPosition());
 
-        float totalTime = startPos.getPathLength(ppath) / (450 * 8.0f);
+        // Taxi mount speed is 450% of run speed: 4.5 * 8 y/s = 36 y/s.
+        // (The old `450 * 8.0f` priced flights ~100x too cheap, so A* chained
+        // flights around boats; observed 2026-09-24.)
+        float totalTime = startPos.getPathLength(ppath) / (450.0f / 100.0f * 8.0f);
 
         TravelNodePath travelPath(0.1f, totalTime, (uint8)TravelNodePathType::flightPath, i, true);
         travelPath.setPath(ppath);
@@ -3455,9 +3531,14 @@ void TravelNodeMap::Init()
             generateNodes();
 
         generatePaths(hasToFullGen);
+        fixTransportCosts();
         hasToGen = false;
         hasToFullGen = false;
         saveNodeStore();
+    }
+    else
+    {
+        fixTransportCosts();
     }
 
     BuildZoneIndex();

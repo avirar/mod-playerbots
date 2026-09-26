@@ -60,6 +60,35 @@ namespace
 // the final attach.
 constexpr float kTransportDockGateYards = 35.0f;
 
+// Deck position above/beside the boat's mooring origin (water level), in the
+// boat's LOCAL frame (transport offset). Most boats ride ~5y above their origin
+// with the deck centred on it; the WotLK icebreakers have a raised deck (~9.5y)
+// whose centre is ~6y forward of the origin, reached by stairs from the pier
+// (owner-captured .gps transport offsets 2026-09-24, Northspear: deck centre
+// (6.14, 0.30, 9.53) HF / (6.08, 0.25, 9.53) Menethil). Attaching at origin+5
+// on those put the bot inside the hull below the deck.
+struct TransportDeckOffset
+{
+    float x;
+    float y;
+    float z;
+};
+
+TransportDeckOffset GetTransportDeckOffset(uint32 entry)
+{
+    switch (entry)
+    {
+        case 181688:  // Ship, Icebreaker (Northspear)
+        case 190536:  // Ship, Icebreaker (Stormwind's Pride) — same hull
+            return { 6.1f, 0.28f, 9.53f };
+        case 187568:  // Turtle (Walker of Waves)
+        case 188511:  // Turtle (Green Island)
+            return { 0.0f, 0.0f, 13.7f };
+        default:
+            return { 0.0f, 0.0f, 5.0f };
+    }
+}
+
 // REJECT an unresolved / out-of-bounds Z before it reaches Player::TeleportTo. A
 // baked travel-node position can carry Z = VMAP_INVALID_HEIGHT_VALUE (-200000),
 // which UpdateAllowedPositionZ cannot re-resolve; teleporting to it makes the
@@ -3545,12 +3574,16 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
         {
             if (!ClearTransportState(bot, transport))
                 return true; // boarded meanwhile
-            // Snap to the deck surface before attaching: the boat origin is at
-            // water level (z~0) and the bot is at the pier height (z~6), so
-            // attaching as-is would make the bot ride ~1y above the deck.
-            // +5y matches the observed deck offset (Rut'Theran capture).
-            bot->UpdatePosition(bot->GetPositionX(), bot->GetPositionY(),
-                                transPos.GetPositionZ() + 5.0f, bot->GetOrientation());
+            // Snap to the deck CENTRE before attaching (the deck middle, not
+            // the boat origin or the dock node). The boat origin is at water
+            // level; the stored per-transport deck offset (local frame) is
+            // transformed to world via the boat's current position/orientation.
+            // Raised-deck boats (icebreakers/turtles) sit well above the pier;
+            // attaching at origin+5 put the bot inside the hull (2026-09-24).
+            TransportDeckOffset const deck = GetTransportDeckOffset(transport->GetEntry());
+            float deckX = deck.x, deckY = deck.y, deckZ = deck.z;
+            transport->CalculatePassengerPosition(deckX, deckY, deckZ);
+            bot->UpdatePosition(deckX, deckY, deckZ, bot->GetOrientation());
             transport->AddPassenger(bot, true);
             bot->GetMotionMaster()->Clear();
             bot->StopMoving();
@@ -3600,31 +3633,22 @@ bool MovementAction::MoveOnTransport(PlayerbotAI* botAI, Transport* transport, b
 
         lastMove.SetBoardWalk(transport->GetEntry(), nowMs);
 
-        // Board-walk target z: the DECK surface, not the boat origin. A real
-        // client boards from the deck (captured 2026-09-23, Moonspray @
-        // Rut'Theran: first on-boat packet z=5.20, aboard z~5.04 vs boat
-        // origin z~0). The server-side attach ray (GetTransportForPos)
-        // starts at (x, y, z+2) and only goes DOWN — a bot walking to the
-        // boat origin (below the deck) can never be hit by it and wades
-        // back to land. Probe the vmap from above the boat for the deck
-        // surface; fall back to +5y above the origin (the observed Moonspray
-        // deck offset) when the probe finds nothing.
-        float boardWalkZ = transPos.GetPositionZ() + 5.0f;
-        if (Map* botMap = bot->GetMap())
-        {
-            float const probe = botMap->GetHeight(transPos.GetPositionX(), transPos.GetPositionY(),
-                                                  transPos.GetPositionZ() + 10.0f, /*checkVMap=*/true,
-                                                  /*maxSearchDist=*/20.0f);
-            if (probe > transPos.GetPositionZ() && probe < transPos.GetPositionZ() + 25.0f)
-                boardWalkZ = probe;
-        }
+        // Board-walk target: the deck CENTRE (stored per-transport local
+        // offset), transformed to the boat's current world position. A real
+        // client boards onto the deck, not the boat origin (origin is at
+        // water level; the deck sits above it). The server-side attach ray
+        // (GetTransportForPos) starts at (x, y, z+2) and only goes DOWN — a
+        // bot walking to the origin (below the deck) can never be hit by it.
+        TransportDeckOffset const deck = GetTransportDeckOffset(transport->GetEntry());
+        float boardX = deck.x, boardY = deck.y, boardZ = deck.z;
+        transport->CalculatePassengerPosition(boardX, boardY, boardZ);
 
-        DoMovePoint(bot, transPos.GetPositionX(), transPos.GetPositionY(), boardWalkZ,
+        DoMovePoint(bot, boardX, boardY, boardZ,
                     /*generatePath=*/distToBoat > 30.0f, /*backwards=*/false);
         LOG_INFO("playerbots", "[DBG-TRAV] MoveOnTransport: bot {} (guid {}) walking to docked transport {} ({:.1f}y away, {}), boardWalkTarget=({:.1f},{:.1f},{:.1f})",
                  bot->GetName(), bot->GetGUID().ToString(), transport->GetEntry(), distToBoat,
                  distToBoat > 30.0f ? "approach walk" : "board walk",
-                 transPos.GetPositionX(), transPos.GetPositionY(), boardWalkZ);
+                 boardX, boardY, boardZ);
         return false;
     }
 
@@ -4153,14 +4177,20 @@ bool MovementAction::HandleSpecialMovement(TravelPath& path)
         // far point as the dock made UseTransport search boats on the far map
         // and "route walk" to a point 1955y away (observed Elune's @ Auberdine
         // 2026-09-23: dock=(-4264,-11328) map530 while the boat sat docked at
-        // (6550,938) map1 11m from the pier). When the transport point is
-        // cross-map, the front walk point is the departure dock on the bot's
-        // map — use it as the boarding location.
+        // (6550,938) map1 11m from the pier).
+        // The transport departure is the boat's DECK node (its offshore mooring
+        // origin, over open water); the bot actually waits/boards at the DOCK
+        // walk point (currentPoint) on the pier — the last dry point before the
+        // transport leg. Use the front walk point as the boarding location
+        // whenever it is on the bot's map (covers both the cross-map-arrival
+        // clip and the normal same-map dock -> deck case; observed 2026-09-24,
+        // Valgarde Northspear: using the deck put the bot in the water under
+        // the boat while it was away).
         WorldPosition dockPosition = nextPoint.point;
-        if (nextPoint.point.GetMapId() != bot->GetMapId() && currentPoint.point.GetMapId() == bot->GetMapId())
+        if (currentPoint.point.GetMapId() == bot->GetMapId())
         {
             dockPosition = currentPoint.point;
-            LOG_INFO("playerbots", "[DBG-TRAV] HandleSpecialMovement: bot {} (guid {}) nextPoint is cross-map arrival (map{}); using front walk point as dock ({:.1f},{:.1f})",
+            LOG_INFO("playerbots", "[DBG-TRAV] HandleSpecialMovement: bot {} (guid {}) transport depart is deck (map{}); using front walk point as dock ({:.1f},{:.1f})",
                      bot->GetName(), bot->GetGUID().ToString(), nextPoint.point.GetMapId(),
                      dockPosition.GetPositionX(), dockPosition.GetPositionY());
         }

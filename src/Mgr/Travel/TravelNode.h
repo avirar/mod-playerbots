@@ -167,6 +167,8 @@ public:
         extraCost = distance / speed;
     }
 
+    void setExtraCost(float extraCost1) { extraCost = extraCost1; }
+
     void setPathType(TravelNodePathType pathType1) { pathType = pathType1; }
 
     void setPathObject(uint32 pathObject1) { pathObject = pathObject1; }
@@ -788,6 +790,7 @@ public:
     void generateAreaTriggerNodes();
     void generateNodes();
     void generateTransportNodes();
+    void fixTransportCosts();
     void generateZoneMeanNodes();
 
     void generateWalkPaths();
