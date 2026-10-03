@@ -438,6 +438,15 @@ AiPlayerbot.LowMana = 15
 AiPlayerbot.MediumMana = 40
 AiPlayerbot.HighMana = 65
 
+# Per-bot-type overrides for the eat/drink usefulness gates.
+# 0 uses the matching global value above.
+# Keep the eat value at or above MediumHealth and the drink value at or above HighMana, or the
+# food strategy triggers (medium health / high mana) will fire while the action reports useless.
+AiPlayerbot.RandomBotEatHealthThreshold = 0
+AiPlayerbot.RandomBotDrinkManaThreshold = 0
+AiPlayerbot.AltBotEatHealthThreshold = 0
+AiPlayerbot.AltBotDrinkManaThreshold = 0
+
 #
 #
 ####################################################################################################

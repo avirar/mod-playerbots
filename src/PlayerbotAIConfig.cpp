@@ -130,6 +130,10 @@ bool PlayerbotAIConfig::Initialize()
     lowMana = sConfigMgr->GetOption<int32>("AiPlayerbot.LowMana", 15);
     mediumMana = sConfigMgr->GetOption<int32>("AiPlayerbot.MediumMana", 40);
     highMana = sConfigMgr->GetOption<int32>("AiPlayerbot.HighMana", 65);
+    randomBotEatHealthThreshold = sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotEatHealthThreshold", 0);
+    randomBotDrinkManaThreshold = sConfigMgr->GetOption<int32>("AiPlayerbot.RandomBotDrinkManaThreshold", 0);
+    altBotEatHealthThreshold = sConfigMgr->GetOption<int32>("AiPlayerbot.AltBotEatHealthThreshold", 0);
+    altBotDrinkManaThreshold = sConfigMgr->GetOption<int32>("AiPlayerbot.AltBotDrinkManaThreshold", 0);
     autoSaveMana = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoSaveMana", true);
     saveManaThreshold = sConfigMgr->GetOption<int32>("AiPlayerbot.SaveManaThreshold", 60);
     switch (sConfigMgr->GetOption<uint32>("AiPlayerbot.AutoGreaterBlessings", 1))

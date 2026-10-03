@@ -115,6 +115,9 @@ public:
         targetPosRecalcDistance, farDistance, healDistance, aggroDistance;
     uint32 criticalHealth, lowHealth, mediumHealth, almostFullHealth;
     uint32 lowMana, mediumMana, highMana;
+    // Per-bot-type overrides for the eat/drink usefulness gates; 0 inherits the global value above.
+    uint32 randomBotEatHealthThreshold, randomBotDrinkManaThreshold;
+    uint32 altBotEatHealthThreshold, altBotDrinkManaThreshold;
     bool autoSaveMana;
     uint32 saveManaThreshold;
     AutoPartyBuffMode autoGreaterBlessings;

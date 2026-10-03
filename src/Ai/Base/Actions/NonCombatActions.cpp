@@ -31,6 +31,21 @@ bool IsDisallowedShapeshiftForm(Player* bot)
 
     return false;
 }
+
+// Overrides for the eat/drink usefulness gates: a non-zero value for the bot's type wins over the
+// global threshold. The override is checked first so the bot-type lookups are skipped entirely
+// when no per-type value is configured.
+uint32 ResolveConsumeThreshold(uint32 randomBotValue, uint32 altBotValue, uint32 globalValue, Player* bot,
+                               PlayerbotAI* botAI)
+{
+    if (randomBotValue && sRandomPlayerbotMgr.IsRandomBot(bot))
+        return randomBotValue;
+
+    if (altBotValue && botAI->IsAltBot())
+        return altBotValue;
+
+    return globalValue;
+}
 }
 
 bool DrinkAction::Execute(Event event)
@@ -75,7 +90,10 @@ bool DrinkAction::Execute(Event event)
 bool DrinkAction::isUseful()
 {
     return UseItemAction::isUseful() && AI_VALUE2(bool, "has mana", "self target") &&
-           AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.highMana;
+           AI_VALUE2(uint8, "mana", "self target") <
+               ResolveConsumeThreshold(sPlayerbotAIConfig.randomBotDrinkManaThreshold,
+                                       sPlayerbotAIConfig.altBotDrinkManaThreshold, sPlayerbotAIConfig.highMana, bot,
+                                       botAI);
 }
 
 bool DrinkAction::isPossible()
@@ -133,7 +151,11 @@ bool EatAction::Execute(Event event)
 
 bool EatAction::isUseful()
 {
-    return UseItemAction::isUseful() && AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.mediumHealth;
+    return UseItemAction::isUseful() &&
+           AI_VALUE2(uint8, "health", "self target") <
+               ResolveConsumeThreshold(sPlayerbotAIConfig.randomBotEatHealthThreshold,
+                                       sPlayerbotAIConfig.altBotEatHealthThreshold, sPlayerbotAIConfig.mediumHealth,
+                                       bot, botAI);
 }
 
 bool EatAction::isPossible()
