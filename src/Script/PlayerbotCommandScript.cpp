@@ -7,7 +7,9 @@
 #include "BattleGroundTactics.h"
 #include "Chat.h"
 #include "GuildTaskMgr.h"
+#include "ObjectAccessor.h"
 #include "PerfMonitor.h"
+#include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
@@ -34,6 +36,8 @@ public:
 
         static ChatCommandTable playerbotsCommandTable = {
             {"bot", HandlePlayerbotCommand, SEC_PLAYER, Console::No},
+            {"exec", HandleExecCommand, SEC_GAMEMASTER, Console::Yes},
+            {"inspect", HandleInspectCommand, SEC_GAMEMASTER, Console::Yes},
             {"gtask", HandleGuildTaskCommand, SEC_GAMEMASTER, Console::Yes},
             {"pmon", HandlePerfMonCommand, SEC_GAMEMASTER, Console::Yes},
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
@@ -51,6 +55,68 @@ public:
     static bool HandlePlayerbotCommand(ChatHandler* handler, char const* args)
     {
         return PlayerbotMgr::HandlePlayerbotMgrCommand(handler, args);
+    }
+
+    // Run a bot chat/AI command inside a bot's context. Usable from the world console and SOAP,
+    // where there is no player session: the bot itself is then used as the command sender, which
+    // PlayerbotSecurity::CheckLevelFor accepts (from == bot).
+    static bool HandleExecCommand(ChatHandler* handler, char const* args)
+    {
+        std::string command;
+        PlayerbotAI* botAI = ResolveBotCommand(args, handler, command);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Player* from = handler->GetSession() ? handler->GetSession()->GetPlayer() : bot;
+        botAI->HandleCommand(CHAT_MSG_WHISPER, command, from);
+        handler->PSendSysMessage("{}: '{}' queued", bot->GetName(), command);
+        return true;
+    }
+
+    // Synchronous bot state query (state, position, tpos, movement, target, hp, strategy, action,
+    // values, travel, budget) with the result printed to the caller.
+    static bool HandleInspectCommand(ChatHandler* handler, char const* args)
+    {
+        std::string command;
+        PlayerbotAI* botAI = ResolveBotCommand(args, handler, command);
+        if (!botAI)
+            return false;
+
+        std::string const result = botAI->HandleRemoteCommand(command);
+        handler->PSendSysMessage("{}: {}", botAI->GetBot()->GetName(), result.empty() ? "<empty>" : result);
+        return true;
+    }
+
+    // Splits "<bot name> <command>" and resolves the online bot. Returns nullptr with a printed
+    // message on any problem; command receives the remainder of the input.
+    static PlayerbotAI* ResolveBotCommand(char const* args, ChatHandler* handler, std::string& command)
+    {
+        std::string const input = args ? args : "";
+        size_t const sep = input.find(' ');
+        command = sep != std::string::npos ? input.substr(sep + 1) : "";
+        if (sep == 0 || command.empty())
+        {
+            handler->PSendSysMessage("Usage: .playerbots <exec|inspect> <bot name> <command>");
+            return nullptr;
+        }
+
+        std::string const name = input.substr(0, sep);
+        Player* bot = ObjectAccessor::FindPlayerByName(name, true);
+        if (!bot)
+        {
+            handler->PSendSysMessage("No online player named '{}'", name);
+            return nullptr;
+        }
+
+        PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(bot);
+        if (!botAI)
+        {
+            handler->PSendSysMessage("'{}' is not a bot", bot->GetName());
+            return nullptr;
+        }
+
+        return botAI;
     }
 
     static bool HandleRandomPlayerbotCommand(ChatHandler* handler, char const* args)
