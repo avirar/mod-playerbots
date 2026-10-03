@@ -201,6 +201,13 @@ bool CheckMountStateAction::isUseful()
                 return false;
     }
 
+    // Do not mount (or enter a travel form) while loot is available nearby: the bot would
+    // immediately have to dismount again to loot it. This only applies while the bot is neither
+    // mounted nor shapeshifted, so dismounting and shapeshift cleanup are unaffected.
+    if (sPlayerbotAIConfig.lootPriority && !bot->IsMounted() && bot->GetShapeshiftForm() == FORM_NONE &&
+        AI_VALUE(bool, "has available loot"))
+        return false;
+
     return true;
 }
 

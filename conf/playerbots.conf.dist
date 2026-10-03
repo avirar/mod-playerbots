@@ -409,6 +409,13 @@ AiPlayerbot.SpellDistance = 28.5
 AiPlayerbot.ShootDistance = 5.0
 AiPlayerbot.HealDistance = 38.5
 AiPlayerbot.LootDistance = 15.0
+
+# Finish looting before mounting, grinding, or starting new RPG activities.
+# LootPriorityTimeout is how many seconds those blocks may last before they fail open. This keeps
+# an unreachable loot target (ledge, across water, bad path) from blocking the bot forever.
+AiPlayerbot.LootPriority = 1
+AiPlayerbot.LootPriorityTimeout = 30
+
 AiPlayerbot.FleeDistance = 5.0
 AiPlayerbot.AggroDistance = 22
 AiPlayerbot.TooCloseDistance = 5.0
