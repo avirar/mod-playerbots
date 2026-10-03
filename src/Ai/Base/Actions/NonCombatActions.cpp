@@ -131,7 +131,10 @@ bool EatAction::Execute(Event event)
     return UseItemAction::Execute(event);
 }
 
-bool EatAction::isUseful() { return UseItemAction::isUseful() && AI_VALUE2(uint8, "health", "self target") < 100; }
+bool EatAction::isUseful()
+{
+    return UseItemAction::isUseful() && AI_VALUE2(uint8, "health", "self target") < sPlayerbotAIConfig.mediumHealth;
+}
 
 bool EatAction::isPossible()
 {
