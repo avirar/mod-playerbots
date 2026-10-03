@@ -75,7 +75,7 @@ bool DrinkAction::Execute(Event event)
 bool DrinkAction::isUseful()
 {
     return UseItemAction::isUseful() && AI_VALUE2(bool, "has mana", "self target") &&
-           AI_VALUE2(uint8, "mana", "self target") < 100;
+           AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.highMana;
 }
 
 bool DrinkAction::isPossible()
