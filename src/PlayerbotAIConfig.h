@@ -385,6 +385,7 @@ public:
     bool dropObsoleteQuests;
     bool allowLearnTrainerSpells;
     bool autoPickTalents;
+    bool autoPickTalentsForPlayerBots;
     bool autoUpgradeEquip;
     int32 hunterWolfPet;
     int32 defaultPetStance;
