@@ -349,6 +349,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                     {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
+            botAI->RecordQuestAccepted(quest->GetQuestId());
             LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
         }
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
@@ -361,6 +362,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                     {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
             botAI->rpgStatistic.questRewarded++;
+            botAI->RecordQuestRewarded(quest->GetQuestId());
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
         }
     }
@@ -621,7 +623,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     if (freeSlotNum >= 2)
         return false;
 
-    auto dropSlot = [&](uint16 slot, Quest const* quest, [[maybe_unused]] char const* reason)
+    auto dropSlot = [&](uint16 slot, Quest const* quest, char const* reason)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), quest->GetQuestId());
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
@@ -635,6 +637,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
                 "Quest dropped %quest",
                 {{"%quest", ChatHelper::FormatQuest(quest)}}));
         botAI->rpgStatistic.questDropped++;
+        botAI->RecordQuestDropped(quest->GetQuestId(), reason);
     };
 
     // remove quests that not worth doing or not capable of doing
