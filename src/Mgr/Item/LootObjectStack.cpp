@@ -5,18 +5,30 @@
  */
 
 #include "LootObjectStack.h"
-
+#include "Log.h"
+#include "LootAction.h"
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Playerbots.h"
+#include "ReputationMgr.h"
 #include "Unit.h"
+#include <set>
 
 #define MAX_LOOT_OBJECT_COUNT 200
 
 constexpr uint8 MAX_LOOT_RETRY_ATTEMPTS = 5;
 constexpr std::chrono::seconds LOOT_RETRY_MIN_DELAY(1);
 constexpr std::chrono::seconds LOOT_RETRY_MAX_DELAY(16);
+
+namespace
+{
+bool IsGatheringSkill(uint32 skillId)
+{
+    return skillId == SKILL_SKINNING || skillId == SKILL_HERBALISM || skillId == SKILL_MINING ||
+           skillId == SKILL_ENGINEERING;
+}
+}
 
 LootTarget::LootTarget(ObjectGuid guid) : guid(guid), asOfTime(time(nullptr)) {}
 
@@ -43,6 +55,27 @@ void LootTargetList::shrink(time_t fromTime)
         else
             ++i;
     }
+}
+
+bool IsGameObjectHostileTo(GameObject const* go, Player const* player)
+{
+    if (!go || !player)
+        return false;
+
+    FactionTemplateEntry const* goFaction = sFactionTemplateStore.LookupEntry(go->GetUInt32Value(GAMEOBJECT_FACTION));
+    if (!goFaction)
+        return false;
+
+    FactionTemplateEntry const* playerFaction = player->GetFactionTemplateEntry();
+    if (!playerFaction)
+        return false;
+
+    // A forced reaction (e.g. a disguise) overrides the faction template in both directions,
+    // exactly like the client's ActivateToQuest check.
+    if (ReputationRank const* forcedRank = player->GetReputationMgr().GetForcedRankIfAny(goFaction))
+        return *forcedRank <= REP_HOSTILE;
+
+    return goFaction->IsHostileTo(*playerFaction);
 }
 
 LootObject::LootObject(Player* bot, ObjectGuid guid) : guid(), skillId(SKILL_NONE), reqSkillValue(0), reqItem(0)
@@ -86,6 +119,11 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
     GameObject* go = botAI->GetGameObject(lootGUID);
     if (go && go->isSpawned() && go->GetGoState() == GO_STATE_READY)
     {
+        // The client refuses to interact with hostile game objects; check live so forced
+        // reactions (e.g. disguises) that drop hostility are honoured.
+        if (IsGameObjectHostileTo(go, bot))
+            return;
+
         bool onlyHasQuestItems = true;
         bool hasAnyQuestItems = false;
         bool neededQuestItem = false;
@@ -100,7 +138,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             if (!itemId)
                 continue;
 
-            hasAnyQuestItems = true;
+            // The client only marks the game object as holding a quest item when the player
+            // actually has a quest requiring it.
+            if (bot->HasQuestForItem(itemId))
+                hasAnyQuestItems = true;
 
             if (IsNeededForQuest(bot, itemId))
             {
@@ -127,57 +168,43 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
         if (lootEntry == 0)
             return;
 
-        // Check the main loot template
-        if (LootTemplate const* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
+        // If the gameobject carries only quest items the bot has a quest for but does not need,
+        // skip it. The template walk only happens in this rare case.
+        if (!neededQuestItem && hasAnyQuestItems)
         {
-            Loot loot;
-            lootTemplate->Process(loot, LootTemplates_Gameobject, 1, bot);
-
-            for (LootItem const& item : loot.items)
+            if (LootTemplate const* lootTemplate = LootTemplates_Gameobject.GetLootFor(lootEntry))
             {
-                uint32 itemId = item.itemid;
-                if (!itemId)
-                    continue;
+                std::set<uint32> itemIds;
+                lootTemplate->CollectItemIds(itemIds);
 
-                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-                if (!proto)
-                    continue;
-
-                if (proto->Class != ITEM_CLASS_QUEST)
+                for (uint32 itemId : itemIds)
                 {
-                    onlyHasQuestItems = false;
-                    break;
-                }
-
-                // If this item references another loot table, process it
-                if (LootTemplate const* refLootTemplate = LootTemplates_Reference.GetLootFor(itemId))
-                {
-                    Loot refLoot;
-                    refLootTemplate->Process(refLoot, LootTemplates_Reference, 1, bot);
-
-                    for (LootItem const& refItem : refLoot.items)
+                    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+                    if (proto && proto->Class != ITEM_CLASS_QUEST)
                     {
-                        uint32 refItemId = refItem.itemid;
-                        if (!refItemId)
-                            continue;
-
-                        ItemTemplate const* refProto = sObjectMgr->GetItemTemplate(refItemId);
-                        if (!refProto)
-                            continue;
-
-                        if (refProto->Class != ITEM_CLASS_QUEST)
-                        {
-                            onlyHasQuestItems = false;
-                            break;
-                        }
+                        onlyHasQuestItems = false;
+                        break;
                     }
                 }
             }
+            else
+            {
+                onlyHasQuestItems = false;
+            }
+
+            if (onlyHasQuestItems)
+                return;
         }
 
-        // If gameobject has only quest items that bot doesn’t need, skip it.
-        if (!neededQuestItem && hasAnyQuestItems && onlyHasQuestItems)
-            return;
+        // The bot walks to and opens only what it would actually store. A quest item it still
+        // needs bypasses the filter; the always-loot list and the all/* strategy are handled by
+        // the value itself.
+        if (!neededQuestItem)
+        {
+            Value<bool>* useful = botAI->GetAiObjectContext()->GetValue<bool>("loot entry useful", int32(lootEntry));
+            if (!useful || !useful->Get())
+                return;
+        }
 
         // Otherwise, loot it.
         guid = lootGUID;
@@ -224,6 +251,7 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                     break;
             }
         }
+
     }
 }
 
@@ -337,7 +365,9 @@ bool LootObject::IsLootPossible(Player* bot)
     Creature* creature = botAI->GetCreature(guid);
     if (creature && creature->getDeathState() == DeathState::Corpse)
     {
-        if (!bot->isAllowedToLoot(creature) && skillId != SKILL_SKINNING)
+        // Gathering is independent of loot rights in the core: a corpse only needs to be fully
+        // looted and the bot to have the matching skill. Only normal corpse loot is gated here.
+        if (!bot->isAllowedToLoot(creature) && !IsGatheringSkill(skillId))
             return false;
     }
 
@@ -345,6 +375,10 @@ bool LootObject::IsLootPossible(Player* bot)
     // respawn time
     GameObject* go = botAI->GetGameObject(guid);
     if (go && (go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_NOT_SELECTABLE) || !go->isSpawned()))
+        return false;
+
+    // Client parity: the client cannot interact with hostile game objects.
+    if (go && IsGameObjectHostileTo(go, bot))
         return false;
 
     // Conditional objects (quest chests, goobers, ...) are gated client-side on quest state.
@@ -415,9 +449,14 @@ bool LootObject::IsLootPossible(Player* bot)
 
 bool LootObjectStack::Add(ObjectGuid guid)
 {
+    skippedLoot.shrink(time(nullptr) - SkipDuration);
+
+    if (skippedLoot.count(guid))
+        return false;
+
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
     {
-        availableLoot.shrink(time(nullptr) - 30);
+        availableLoot.shrink(time(nullptr) - SkipDuration);
     }
 
     if (availableLoot.size() >= MAX_LOOT_OBJECT_COUNT)
@@ -450,6 +489,7 @@ void LootObjectStack::Remove(ObjectGuid guid)
 void LootObjectStack::Clear()
 {
     availableLoot.clear();
+    skippedLoot.clear();
     CancelLoot(_pendingLoot);
 }
 
@@ -531,6 +571,59 @@ bool LootObjectStack::CanAttemptLoot(ObjectGuid guid) const
     return itr == availableLoot.end() || itr->IsReady();
 }
 
+void LootObjectStack::Skip(ObjectGuid guid)
+{
+    if (skippedLoot.insert(guid).second)
+        LOG_DEBUG("playerbots", "LootObjectStack::Skip: bot={} guid={} entry={} for {}s", bot->GetName(),
+                  guid.ToString(), guid.GetEntry(), SkipDuration);
+}
+
+void LootObjectStack::Unskip(ObjectGuid guid)
+{
+    LootTargetList::iterator i = skippedLoot.find(guid);
+    if (i != skippedLoot.end())
+        skippedLoot.erase(i);
+}
+
+bool LootObjectStack::IsItemStoreable(uint32 itemId)
+{
+    uint32 const cacheTime = sPlayerbotAIConfig.LootItemStoreableCacheTime;
+    uint32 const cacheMaxSize = sPlayerbotAIConfig.LootItemStoreableCacheMaxSize;
+    bool const cacheEnabled = cacheTime > 0 && cacheMaxSize > 0;
+    time_t const now = time(nullptr);
+
+    if (cacheEnabled)
+    {
+        auto itr = itemStoreableCache.find(itemId);
+        if (itr != itemStoreableCache.end() && now - itr->second.second < cacheTime)
+            return itr->second.first;
+    }
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    bool const storeable = botAI && StoreLootAction::IsLootAllowed(itemId, botAI);
+
+    if (cacheEnabled)
+    {
+        if (itemStoreableCache.size() >= cacheMaxSize)
+        {
+            for (auto i = itemStoreableCache.begin(); i != itemStoreableCache.end();)
+            {
+                if (now - i->second.second >= cacheTime)
+                    i = itemStoreableCache.erase(i);
+                else
+                    ++i;
+            }
+
+            if (itemStoreableCache.size() >= cacheMaxSize)
+                itemStoreableCache.clear();
+        }
+
+        itemStoreableCache[itemId] = std::make_pair(storeable, now);
+    }
+
+    return storeable;
+}
+
 bool LootObjectStack::CanLoot(float maxDistance)
 {
     LootObject nearest = GetNearest(maxDistance);
@@ -545,7 +638,8 @@ LootObject LootObjectStack::GetLoot(float maxDistance)
 
 LootObject LootObjectStack::GetNearest(float maxDistance)
 {
-    availableLoot.shrink(time(nullptr) - 30);
+    availableLoot.shrink(time(nullptr) - SkipDuration);
+    skippedLoot.shrink(time(nullptr) - SkipDuration);
 
     LootObject nearest;
     float nearestDistance = std::numeric_limits<float>::max();
@@ -556,6 +650,12 @@ LootObject LootObjectStack::GetNearest(float maxDistance)
 
         // Disallowed objects are never lootable, so they must not be picked as the nearest target.
         if (guid.IsGameObject() && sPlayerbotAIConfig.DisallowedGameObjects.contains(guid.GetEntry()))
+        {
+            ++i;
+            continue;
+        }
+
+        if (skippedLoot.count(guid))
         {
             ++i;
             continue;

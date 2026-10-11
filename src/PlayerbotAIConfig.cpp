@@ -103,6 +103,8 @@ bool PlayerbotAIConfig::Initialize()
     SitDelay = sConfigMgr->GetOption<int32>("Playerbots.SitDelay", 20000);
     ReturnDelay = sConfigMgr->GetOption<int32>("Playerbots.ReturnDelay", 2000);
     LootDelay = sConfigMgr->GetOption<int32>("Playerbots.LootDelay", 1000);
+    LootItemStoreableCacheTime = sConfigMgr->GetOption<uint32>("Playerbots.LootItemStoreableCacheTime", 10);
+    LootItemStoreableCacheMaxSize = sConfigMgr->GetOption<uint32>("Playerbots.LootItemStoreableCacheMaxSize", 1024);
     DisabledWithoutRealPlayerLoginDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLoginDelay", 30);
     DisabledWithoutRealPlayerLogoutDelay = sConfigMgr->GetOption<int32>("Playerbots.DisabledWithoutRealPlayerLogoutDelay", 300);
 
