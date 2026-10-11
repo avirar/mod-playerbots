@@ -119,9 +119,11 @@ public:
     void Clear();
     bool CanLoot(float maxDistance);
     LootObject GetLoot(float maxDistance = 0);
-    // Cached per bot, per item (AiPlayerbot.LootItemStoreableCache*). Targeting only - the
+    // Cached per bot, per item (Playerbots.LootItemStoreableCache*). Targeting only - the
     // autostore re-checks uncached, so a stale verdict can waste an open but never a store.
     bool IsItemStoreable(uint32 itemId);
+
+    size_t Size() const { return availableLoot.size(); }
 
     bool IsLootPending();
     void BeginLoot(ObjectGuid guid);

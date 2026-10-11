@@ -27,6 +27,7 @@
 #include "ObjectGuid.h"
 #include "PerfMonitor.h"
 #include "Player.h"
+#include "LootSampler.h"  // TEST-ONLY
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
@@ -282,6 +283,8 @@ void RandomPlayerbotMgr::LogPlayerLocation()
 
 void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
 {
+    LootSampler::Update();  // TEST-ONLY (A/B harness)
+
     if (totalPmo)
         totalPmo->finish();
 

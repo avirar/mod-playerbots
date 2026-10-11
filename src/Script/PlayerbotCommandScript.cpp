@@ -7,6 +7,7 @@
 #include "BattleGroundTactics.h"
 #include "Chat.h"
 #include "GuildTaskMgr.h"
+#include "LootSampler.h"  // TEST-ONLY
 #include "ObjectAccessor.h"
 #include "PerfMonitor.h"
 #include "PlayerbotAI.h"
@@ -38,6 +39,7 @@ public:
             {"bot", HandlePlayerbotCommand, SEC_PLAYER, Console::No},
             {"exec", HandleExecCommand, SEC_GAMEMASTER, Console::Yes},
             {"inspect", HandleInspectCommand, SEC_GAMEMASTER, Console::Yes},
+            {"lootaudit", HandleLootAuditCommand, SEC_GAMEMASTER, Console::Yes},  // TEST-ONLY
             {"gtask", HandleGuildTaskCommand, SEC_GAMEMASTER, Console::Yes},
             {"pmon", HandlePerfMonCommand, SEC_GAMEMASTER, Console::Yes},
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
@@ -55,6 +57,26 @@ public:
     static bool HandlePlayerbotCommand(ChatHandler* handler, char const* args)
     {
         return PlayerbotMgr::HandlePlayerbotMgrCommand(handler, args);
+    }
+
+    // TEST-ONLY (A/B harness): toggle the shared loot sampler -> playerbots_lootsample.log.
+    static bool HandleLootAuditCommand(ChatHandler* handler, char const* args)
+    {
+        std::string const arg = args ? args : "";
+        if (arg == "on" || arg == "1")
+        {
+            LootSampler::SetEnabled(true);
+            handler->PSendSysMessage("loot sampler enabled -> playerbots_lootsample.log");
+            return true;
+        }
+        if (arg == "off" || arg == "0")
+        {
+            LootSampler::SetEnabled(false);
+            handler->PSendSysMessage("loot sampler disabled");
+            return true;
+        }
+        handler->PSendSysMessage("usage: .playerbots lootaudit on|off");
+        return true;
     }
 
     // Run a bot chat/AI command inside the bot's context. Usable from the console and SOAP, where
