@@ -410,6 +410,12 @@ Playerbots.ShootDistance = 5.0
 Playerbots.HealDistance = 38.5
 Playerbots.LootDistance = 15.0
 
+# Finish looting before mounting, grinding, or starting new RPG activities.
+# An unreachable target is retried with an exponential backoff (1s, 2s, 4s, 8s, 16s), which keeps
+# it from blocking grinding; PrioritiseLootingTimeout caps that backoff (lower values retry it
+# again sooner), without switching the loot priority off while loot is genuinely available.
+Playerbots.PrioritiseLooting = 1
+
 # Defer a loot target the bot has not moved closer to for 5 seconds, so an unreachable target
 # (ledge, across water, bad path) cannot block the bot. Disable to keep trying every tick instead.
 Playerbots.LootWatchdog = 1
