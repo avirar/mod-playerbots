@@ -62,8 +62,10 @@ void LootSampler::Update()
     g_lastSample = now;
 
     // Deterministic 1/40 subset of the online random bots; the copy is cheap at a 5s cadence.
-    for (Player* bot : sRandomPlayerbotMgr.GetPlayers())
+    PlayerBotMap const bots = sRandomPlayerbotMgr.GetAllBots();
+    for (auto const& entry : bots)
     {
+        Player* bot = entry.second;
         if (!bot || !bot->IsInWorld() || bot->GetGUID().GetCounter() % 40 != 0)
             continue;
 
