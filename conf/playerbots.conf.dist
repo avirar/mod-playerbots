@@ -335,12 +335,12 @@ Playerbots.LootRollDisenchant = 0
 # reacts slower to inventory/quest changes (targeting only - the actual store re-checks).
 # Set to 0 to disable the cache.
 # Default: 10
-AiPlayerbot.LootItemStoreableCacheTime = 10
+Playerbots.LootItemStoreableCacheTime = 10
 
 # Upper bound on cached items per bot before stale entries are purged. 0 clears the cache as soon
 # as the bound is reached (see LootItemStoreableCacheTime).
 # Default: 1024
-AiPlayerbot.LootItemStoreableCacheMaxSize = 1024
+Playerbots.LootItemStoreableCacheMaxSize = 1024
 
 # A list of GameObject GUIDs that bots will not interact with.
 # List of default GUIDs:
