@@ -20,3 +20,14 @@ float NewRpgLootPriorityMultiplier::GetValue(Action* action)
     // needed here.
     return AI_VALUE(bool, "has available loot") ? 0.0f : 1.0f;
 }
+
+float NewRpgQuestGiverMultiplier::GetValue(Action* action)
+{
+    if (!sPlayerbotAIConfig.PrioritiseQuestGivers || !action || action->getName() != "attack anything")
+        return 1.0f;
+
+    if (!AI_VALUE(bool, "quest giver nearby"))
+        return 1.0f;
+
+    return 0.0f;
+}

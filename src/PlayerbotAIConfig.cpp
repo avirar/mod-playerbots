@@ -117,6 +117,7 @@ bool PlayerbotAIConfig::Initialize()
     PrioritiseLooting = sConfigMgr->GetOption<bool>("Playerbots.PrioritiseLooting", true);
     PrioritiseLootingTimeout = sConfigMgr->GetOption<uint32>("Playerbots.PrioritiseLootingTimeout", 30);
     LootWatchdog = sConfigMgr->GetOption<bool>("Playerbots.LootWatchdog", true);
+    PrioritiseQuestGivers = sConfigMgr->GetOption<bool>("Playerbots.PrioritiseQuestGivers", true);
     FleeDistance = sConfigMgr->GetOption<float>("Playerbots.FleeDistance", 5.0f);
     AggroDistance = sConfigMgr->GetOption<float>("Playerbots.AggroDistance", 22.0f);
     TooCloseDistance = sConfigMgr->GetOption<float>("Playerbots.TooCloseDistance", 5.0f);
@@ -127,6 +128,7 @@ bool PlayerbotAIConfig::Initialize()
     AoeRadius = sConfigMgr->GetOption<float>("Playerbots.AoeRadius", 10.0f);
     RpgDistance = sConfigMgr->GetOption<float>("Playerbots.RpgDistance", 200.0f);
     GrindDistance = sConfigMgr->GetOption<float>("Playerbots.GrindDistance", 75.0f);
+    QuestGiverSearchDistance = sConfigMgr->GetOption<float>("Playerbots.QuestGiverSearchDistance", 80.0f);
     ReactDistance = sConfigMgr->GetOption<float>("Playerbots.ReactDistance", 150.0f);
 
     CriticalHealth = sConfigMgr->GetOption<int32>("Playerbots.CriticalHealth", 25);

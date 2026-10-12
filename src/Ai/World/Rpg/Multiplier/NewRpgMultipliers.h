@@ -17,4 +17,12 @@ public:
     float GetValue(Action* action) override;
 };
 
+class NewRpgQuestGiverMultiplier : public Multiplier
+{
+public:
+    NewRpgQuestGiverMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "new rpg quest giver") {}
+
+    float GetValue(Action* action) override;
+};
+
 #endif

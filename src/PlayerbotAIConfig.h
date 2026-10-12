@@ -113,10 +113,11 @@ public:
     bool DynamicReactDelay;
     float SightDistance, SpellDistance, ReactDistance, GrindDistance, LootDistance, ShootDistance, FleeDistance,
         TooCloseDistance, MeleeDistance, FollowDistance, WhisperDistance, ContactDistance, AoeRadius, RpgDistance,
-        TargetPosRecalcDistance, FarDistance, HealDistance, AggroDistance;
+        TargetPosRecalcDistance, FarDistance, HealDistance, AggroDistance, QuestGiverSearchDistance;
     bool PrioritiseLooting;
     uint32 PrioritiseLootingTimeout;
     bool LootWatchdog;
+    bool PrioritiseQuestGivers;
     uint32 CriticalHealth, LowHealth, MediumHealth, AlmostFullHealth;
     uint32 LowMana, MediumMana, HighMana;
     bool AutoSaveMana;
