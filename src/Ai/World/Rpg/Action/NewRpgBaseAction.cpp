@@ -323,6 +323,10 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         if (!quest)
             continue;
 
+        // Dropped under log pressure: do not immediately re-accept it (accept->drop loops).
+        if (botAI->lowPriorityQuest.find(item.QuestId) != botAI->lowPriorityQuest.end())
+            continue;
+
         QuestStatus const& status = bot->GetQuestStatus(item.QuestId);
         if (status == QUEST_STATUS_NONE && bot->CanTakeQuest(quest, false) && bot->CanAddQuest(quest, false) &&
             IsQuestWorthDoing(bot, quest) && IsQuestCapableDoing(bot, quest))
@@ -727,6 +731,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
         Quest const* worstQuest = sObjectMgr->GetQuestTemplate(bot->GetQuestSlotQuestId(worstSlot));
         dropSlot(worstSlot, worstQuest, "log_pressure");
+        // Remember it so the accept menu does not instantly take it again.
+        botAI->lowPriorityQuest.insert(worstQuest->GetQuestId());
         freeSlotNum++;
     }
 
@@ -842,6 +848,7 @@ bool NewRpgBaseAction::HasQuestToAcceptOrReward(Player* bot, WorldObject* object
         Quest const* quest = sObjectMgr->GetQuestTemplate(item.QuestId);
         if (!quest)
             continue;
+
         QuestStatus const& status = bot->GetQuestStatus(item.QuestId);
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
         {
@@ -1250,9 +1257,11 @@ bool NewRpgBaseAction::RecoverToRpgArea()
     if (anchor == WorldPosition())
         return false;
 
-    LOG_DEBUG("playerbots", "[New RPG] {} recovering to anchor Map:{} X:{} Y:{} Z:{} ({:.0f} yd away)", bot->GetName(),
-              anchor.GetMapId(), anchor.GetPositionX(), anchor.GetPositionY(), anchor.GetPositionZ(),
-              bot->GetExactDist(anchor));
+    AreaTableEntry const* zoneEntry = sAreaTableStore.LookupEntry(bot->GetZoneId());
+    LOG_DEBUG("playerbots",
+              "[New RPG] {} recovering from zone {} ({}) to anchor Map:{} X:{} Y:{} Z:{} ({:.0f} yd away)",
+              bot->GetName(), bot->GetZoneId(), PlayerbotAI::GetLocalizedAreaName(zoneEntry), anchor.GetMapId(),
+              anchor.GetPositionX(), anchor.GetPositionY(), anchor.GetPositionZ(), bot->GetExactDist(anchor));
     botAI->rpgInfo.ChangeToGoCamp(anchor);
     return true;
 }
