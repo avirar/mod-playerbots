@@ -1257,6 +1257,14 @@ bool NewRpgBaseAction::RecoverToRpgArea()
     if (anchor == WorldPosition())
         return false;
 
+    // The nearest anchor being in the bot's own zone and nearby means the bot is in a serviced
+    // area (city, quest hub) whose level cache simply has no entries: recovering would only bounce
+    // it to a point at its feet. Cross-zone anchors (The Great Sea -> land) still recover.
+    if (anchor.GetMapId() == bot->GetMapId() && bot->GetExactDist(anchor) < recoverySameZoneDistance &&
+        bot->GetZoneId() == bot->GetMap()->GetZoneId(bot->GetPhaseMask(), anchor.GetPositionX(),
+                                                    anchor.GetPositionY(), anchor.GetPositionZ()))
+        return false;
+
     AreaTableEntry const* zoneEntry = sAreaTableStore.LookupEntry(bot->GetZoneId());
     LOG_DEBUG("playerbots",
               "[New RPG] {} recovering from zone {} ({}) to anchor Map:{} X:{} Y:{} Z:{} ({:.0f} yd away)",
