@@ -118,6 +118,8 @@ bool PlayerbotAIConfig::Initialize()
     PrioritiseLootingTimeout = sConfigMgr->GetOption<uint32>("Playerbots.PrioritiseLootingTimeout", 30);
     LootWatchdog = sConfigMgr->GetOption<bool>("Playerbots.LootWatchdog", true);
     PrioritiseQuestGivers = sConfigMgr->GetOption<bool>("Playerbots.PrioritiseQuestGivers", true);
+    CrossZoneQuests = sConfigMgr->GetOption<bool>("Playerbots.CrossZoneQuests", true);
+    QuestAwareTaxi = sConfigMgr->GetOption<bool>("Playerbots.QuestAwareTaxi", true);
     FleeDistance = sConfigMgr->GetOption<float>("Playerbots.FleeDistance", 5.0f);
     AggroDistance = sConfigMgr->GetOption<float>("Playerbots.AggroDistance", 22.0f);
     TooCloseDistance = sConfigMgr->GetOption<float>("Playerbots.TooCloseDistance", 5.0f);

@@ -118,6 +118,8 @@ public:
     uint32 PrioritiseLootingTimeout;
     bool LootWatchdog;
     bool PrioritiseQuestGivers;
+    bool CrossZoneQuests;
+    bool QuestAwareTaxi;
     uint32 CriticalHealth, LowHealth, MediumHealth, AlmostFullHealth;
     uint32 LowMana, MediumMana, HighMana;
     bool AutoSaveMana;
