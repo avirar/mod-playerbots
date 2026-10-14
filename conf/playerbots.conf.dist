@@ -1424,6 +1424,15 @@ Playerbots.RestrictedHealerDPSMaps = "33,34,36,43,47,48,70,90,109,129,209,229,23
 # Default: 1 (enabled)
 Playerbots.EnableNewRpgStrategy = 1
 
+# Quest-item / world interaction strategy (the "interact" family): uses quest objective items on
+# creatures, gameobjects or at locations, and walks to targets that are out of action range.
+# Default: 0 (opt-in; the replacement for the legacy quest-item helpers is validated first)
+Playerbots.InteractStrategy = 0
+
+# Scan radius (yards) for interaction targets; targets beyond action range are walked to.
+# Default: 60
+Playerbots.InteractScanDistance = 60.0
+
 # Control probability weights for RPG status of bots. Takes effect only when the status meets its premise.​
 # Sum of weights need not be 100. Set to 0 to disable the status.
 #

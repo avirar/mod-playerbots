@@ -732,6 +732,8 @@ bool PlayerbotAIConfig::Initialize()
     AutoTeleportForLevel = sConfigMgr->GetOption<bool>("Playerbots.AutoTeleportForLevel", false);
     AutoDoQuests = sConfigMgr->GetOption<bool>("Playerbots.AutoDoQuests", true);
     EnableNewRpgStrategy = sConfigMgr->GetOption<bool>("Playerbots.EnableNewRpgStrategy", true);
+    InteractStrategy = sConfigMgr->GetOption<bool>("Playerbots.InteractStrategy", false);
+    InteractScanDistance = sConfigMgr->GetOption<float>("Playerbots.InteractScanDistance", 60.0f);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("Playerbots.RpgStatusProbWeight.WanderNpc", 20);
