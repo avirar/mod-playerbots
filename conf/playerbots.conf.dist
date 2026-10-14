@@ -422,7 +422,7 @@ Playerbots.ShootDistance = 5.0
 Playerbots.HealDistance = 38.5
 Playerbots.LootDistance = 15.0
 
-# Finish looting before mounting, grinding, or starting new RPG activities.
+# Finish looting before mounting or grinding.
 # An unreachable target is retried with an exponential backoff (1s, 2s, 4s, 8s, 16s), which keeps
 # it from blocking grinding; PrioritiseLootingTimeout caps that backoff (lower values retry it
 # again sooner), without switching the loot priority off while loot is genuinely available.
@@ -439,7 +439,8 @@ Playerbots.PrioritiseLootingTimeout = 30
 # Suppress new grind targets while a quest giver with something to accept or reward is within
 # Playerbots.QuestGiverSearchDistance; without it the nearby-giver interaction the new RPG actions
 # try first stays starved behind "attack anything" and bots keep grinding next to a turn-in.
-# Food, drink and looting keep their priority.
+# Loot pickup and its chase are held back the same way, so accepting or turning in comes first.
+# Food and drink keep their priority.
 Playerbots.PrioritiseQuestGivers = 1
 
 # Search range (yards) for the new RPG quest giver interaction, and for the grind suppression above.

@@ -9,14 +9,6 @@
 
 #include "Multiplier.h"
 
-class NewRpgLootPriorityMultiplier : public Multiplier
-{
-public:
-    NewRpgLootPriorityMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "new rpg loot priority") {}
-
-    float GetValue(Action* action) override;
-};
-
 class NewRpgQuestGiverMultiplier : public Multiplier
 {
 public:
