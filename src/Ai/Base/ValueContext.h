@@ -76,6 +76,7 @@
 #include "PossibleTargetsValue.h"
 #include "PvpValues.h"
 #include "QuestValues.h"
+#include "InteractValues.h"
 #include "RTSCValues.h"
 #include "RandomBotUpdateValue.h"
 #include "RangeValues.h"
@@ -173,6 +174,7 @@ public:
 
         creators["can loot"] = &ValueContext::can_loot;
         creators["loot target"] = &ValueContext::loot_target;
+        creators["interact executor"] = &ValueContext::interact_executor;
         creators["available loot"] = &ValueContext::available_loot;
         creators["has available loot"] = &ValueContext::has_available_loot;
         creators["always loot list"] = &ValueContext::always_loot_list;
@@ -389,6 +391,7 @@ private:
     static UntypedValue* stay_time(PlayerbotAI* botAI) { return new StayTimeValue(botAI); }
 
     static UntypedValue* can_loot(PlayerbotAI* botAI) { return new CanLootValue(botAI); }
+    static UntypedValue* interact_executor(PlayerbotAI* botAI) { return new InteractExecutorValue(botAI); }
     static UntypedValue* available_loot(PlayerbotAI* botAI) { return new AvailableLootValue(botAI); }
     static UntypedValue* loot_target(PlayerbotAI* botAI) { return new LootTargetValue(botAI); }
     static UntypedValue* has_available_loot(PlayerbotAI* botAI) { return new HasAvailableLootValue(botAI); }

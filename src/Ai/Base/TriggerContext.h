@@ -15,6 +15,7 @@
 #include "HealthTriggers.h"
 #include "LfgTriggers.h"
 #include "LootTriggers.h"
+#include "InteractTriggers.h"
 #include "NamedObjectContext.h"
 #include "NewRpgStrategy.h"
 #include "NewRpgTriggers.h"
@@ -87,6 +88,8 @@ public:
         creators["almost full energy available"] = &TriggerContext::AlmostFullEnergyAvailable;
 
         creators["loot available"] = &TriggerContext::LootAvailable;
+        creators["interact target available"] = &TriggerContext::interact_target_available;
+        creators["far from interact target"] = &TriggerContext::far_from_interact_target;
         creators["no attackers"] = &TriggerContext::NoAttackers;
         creators["no target"] = &TriggerContext::NoTarget;
         creators["target in sight"] = &TriggerContext::TargetInSight;
@@ -298,6 +301,8 @@ private:
     static Trigger* return_to_pull_position(PlayerbotAI* botAI) { return new ReturnToPullPositionTrigger(botAI); }
     static Trigger* can_loot(PlayerbotAI* botAI) { return new CanLootTrigger(botAI); }
     static Trigger* far_from_loot_target(PlayerbotAI* botAI) { return new FarFromCurrentLootTrigger(botAI); }
+    static Trigger* interact_target_available(PlayerbotAI* botAI) { return new InteractTargetAvailableTrigger(botAI); }
+    static Trigger* far_from_interact_target(PlayerbotAI* botAI) { return new FarFromInteractTargetTrigger(botAI); }
     static Trigger* far_from_master(PlayerbotAI* botAI) { return new FarFromMasterTrigger(botAI); }
     static Trigger* behind_target(PlayerbotAI* botAI) { return new IsBehindTargetTrigger(botAI); }
     static Trigger* not_behind_target(PlayerbotAI* botAI) { return new IsNotBehindTargetTrigger(botAI); }

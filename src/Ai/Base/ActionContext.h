@@ -65,6 +65,7 @@
 #include "StayActions.h"
 #include "SuggestWhatToDoAction.h"
 #include "TravelAction.h"
+#include "InteractActions.h"
 #include "UseItemAction.h"
 #include "VehicleActions.h"
 #include "WaitForAttackAction.h"
@@ -146,6 +147,8 @@ public:
         creators["suggest dungeon"] = &ActionContext::suggest_dungeon;
         creators["return"] = &ActionContext::_return;
         creators["move to loot"] = &ActionContext::move_to_loot;
+        creators["interact"] = &ActionContext::interact;
+        creators["move to interact target"] = &ActionContext::move_to_interact_target;
         creators["open loot"] = &ActionContext::open_loot;
         creators["guard"] = &ActionContext::guard;
         creators["return to stay position"] = &ActionContext::return_to_stay_position;
@@ -305,6 +308,8 @@ private:
     static Action* return_to_stay_position(PlayerbotAI* botAI) { return new ReturnToStayPositionAction(botAI); }
     static Action* open_loot(PlayerbotAI* botAI) { return new OpenLootAction(botAI); }
     static Action* move_to_loot(PlayerbotAI* botAI) { return new MoveToLootAction(botAI); }
+    static Action* interact(PlayerbotAI* botAI) { return new InteractAction(botAI); }
+    static Action* move_to_interact_target(PlayerbotAI* botAI) { return new MoveToInteractTargetAction(botAI); }
     static Action* _return(PlayerbotAI* botAI) { return new ReturnAction(botAI); }
     static Action* shoot(PlayerbotAI* botAI) { return new CastShootAction(botAI); }
     static Action* melee(PlayerbotAI* botAI) { return new MeleeAction(botAI); }
