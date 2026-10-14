@@ -410,6 +410,11 @@ Playerbots.ShootDistance = 5.0
 Playerbots.HealDistance = 38.5
 Playerbots.LootDistance = 15.0
 
+# Finish looting before mounting or grinding: while loot is available or openable the bot does not
+# mount or start a new grind target. It still defends itself when attacked.
+# Default: 0 (opt-in)
+Playerbots.PrioritiseLooting = 0
+
 # Suppress new grind targets while a quest giver with something to accept or reward is within
 # Playerbots.QuestGiverSearchDistance; without it the nearby-giver interaction the new RPG actions
 # try first stays starved behind "attack anything" and bots keep grinding next to a turn-in.

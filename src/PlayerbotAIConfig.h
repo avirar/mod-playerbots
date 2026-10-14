@@ -115,6 +115,7 @@ public:
     float SightDistance, SpellDistance, ReactDistance, GrindDistance, LootDistance, ShootDistance, FleeDistance,
         TooCloseDistance, MeleeDistance, FollowDistance, WhisperDistance, ContactDistance, AoeRadius, RpgDistance,
         TargetPosRecalcDistance, FarDistance, HealDistance, AggroDistance, QuestGiverSearchDistance;
+    bool PrioritiseLooting;
     bool PrioritiseQuestGivers;
     bool CrossZoneQuests;
     bool QuestAwareTaxi;
