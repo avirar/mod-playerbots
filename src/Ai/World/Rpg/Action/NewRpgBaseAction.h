@@ -22,6 +22,14 @@ struct POIInfo
 {
     G3D::Vector2 pos;
     int32 objectiveIdx;
+    uint32 poiId{0}; // quest_poi.Id, the key for the baked Z store
+};
+
+// A resolved 3D objective/turn-in position from spawn data (quest guidp map).
+struct QuestObjectivePosition
+{
+    int32 objectiveIdx; // 0..3 NpcOrGo, QUEST_OBJECTIVES_COUNT+ for item slots, -1 turn-in
+    WorldPosition pos;
 };
 
 /// A base (composition) class for all new rpg actions
@@ -61,6 +69,12 @@ protected:
     bool AcceptQuest(Quest const* quest, ObjectGuid guid);
     bool TurnInQuest(Quest const* quest, ObjectGuid guid);
     bool OrganizeQuestLog();
+
+    // Correct 3D positions for a quest's incomplete objectives (toComplete = turn-in) from the
+    // shared quest guidp map (spawn Z): covers cave floors and tower platforms alike. Empty when
+    // the map has no entry - callers fall back to POI + baked/terrain height.
+    static bool GetQuestObjectivePositions(Player* bot, uint32 questId,
+                                           std::vector<QuestObjectivePosition>& outPositions, bool toComplete);
 
     /* STUCK / UNUSABLE AREA RECOVERY */
     WorldPosition FindRecoveryAnchor();
