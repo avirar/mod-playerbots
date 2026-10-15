@@ -7,6 +7,8 @@
 #ifndef PLAYERBOTS_NEWRPGINFO_H
 #define PLAYERBOTS_NEWRPGINFO_H
 
+#include <unordered_set>
+
 #include "Define.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -54,6 +56,24 @@ struct NewRpgInfo
         int32 objectiveIdx{0};
         WorldPosition pos{};
         uint32 lastReachPOI{0};
+        uint32 spawnSince{0};
+        ObjectGuid targetGuid{};
+        WorldPosition targetPos{};
+        uint32 lastScan{0};
+        uint32 targetSince{0};
+        // Combat pauses this engine; a large gap since the last engage restarts targetSince
+        // instead of writing off a still-valid target.
+        uint32 lastEngage{0};
+        std::unordered_map<ObjectGuid, uint32> visited;
+        uint32 lootHoldSince{0};
+        // GuidPosition raw value; 0 = none picked.
+        uint64 spawnGuid{0};
+        std::unordered_set<uint64> triedSpawns;
+        // Shared by every item-use path, so no use is re-issued while a cast is in flight.
+        uint32 lastItemUse{0};
+        ObjectGuid lastSummonAnchor{};
+        // Set when no objective has a spawn point; grind stays on to do the killing at the POI.
+        bool poiFallback{false};
     };
     // RPG_TRAVEL_FLIGHT
     struct TravelFlight
@@ -73,11 +93,23 @@ struct NewRpgInfo
     {
         ObjectGuid::LowType capturePointSpawnId{0};
     };
+    // RPG_DO_GATHER
+    struct DoGather
+    {
+        ObjectGuid::LowType nodeSpawnId{0};
+        WorldPosition nodePos{};
+        std::unordered_set<ObjectGuid::LowType> visited;
+        uint32 lastReach{0};
+        uint32 lastPassiveCheck{0};
+        ObjectGuid::LowType lastSwitchedFrom{0};
+    };
     struct Idle
     {
     };
 
     uint32 startT{0};  // start timestamp of the current status
+
+    bool grindSuppressed{false};
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
@@ -95,7 +127,8 @@ struct NewRpgInfo
         DoQuest,
         Rest,
         TravelFlight,
-        OutdoorPvP
+        OutdoorPvP,
+        DoGather
     >;
     RpgData data;
 
@@ -109,6 +142,7 @@ struct NewRpgInfo
     void ChangeToDoQuest(uint32 questId, Quest const* quest);
     void ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path);
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
+    void ChangeToDoGather();
     void ChangeToRest();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);

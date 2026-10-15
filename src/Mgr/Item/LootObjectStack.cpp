@@ -11,6 +11,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Playerbots.h"
+#include "QuestValues.h"
 #include "ReputationMgr.h"
 #include "Unit.h"
 #include <set>
@@ -281,6 +282,10 @@ bool LootObject::IsNeededForQuest(Player* bot, uint32 itemId)
 
             return true;
         }
+
+        // ItemDrops and use-reagents: needed for the quest, but named by no RequiredItemId.
+        if (IsQuestExtraItemWanted(bot, qInfo, itemId))
+            return true;
     }
 
     return false;

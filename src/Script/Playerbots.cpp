@@ -16,14 +16,17 @@
 #include "PlayerbotsDatabase.h"
 #include <mysqld_error.h>
 #include "AllMapScript.h"
+#include "GatherNodeMgr.h"
 #include "GlobalScript.h"
 #include "GuildTaskMgr.h"
+#include "NewRpgDoQuest.h"
 #include "PlayerScript.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotCommandScript.h"
 #include "PlayerbotGuildMgr.h"
 #include "PlayerbotSpellRepository.h"
 #include "PlayerbotWorldThreadProcessor.h"
+#include "QuestValues.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
 #include "ServerScript.h"
@@ -540,8 +543,23 @@ public:
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
         LOG_INFO("server.loading", " ");
 
+        if (!sPlayerbotAIConfig.Enabled)
+        {
+            LOG_INFO("server.loading", "Playerbots disabled by config - skipping bot indexes");
+            return;
+        }
+
         PlayerbotSpellRepository::Instance().Initialize();
         CheckMountStateAction::LoadPreferredMounts();
+
+        LOG_INFO("server.loading", "Loading quest objective spawn index...");
+        uint32 questIndexMSTime = getMSTime();
+        BuildQuestObjectiveSpawns();
+        NewRpgDoQuestAction::BuildCaches();
+        LOG_INFO("server.loading", ">> Loaded quest objective spawn index in {} ms",
+                 GetMSTimeDiffToNow(questIndexMSTime));
+        LOG_INFO("server.loading", "Loading gather node index...");
+        GatherNodeMgr::instance().Load();
 
         LOG_INFO("server.loading", "Playerbots World Thread Processor initialized");
     }
@@ -613,8 +631,8 @@ public:
 
 void AddPlayerbotsSecureLoginScripts();
 void AddPlayerbotsSelfBotAfkScripts();
-
 void AddSC_MagtheridonBotScripts();
+void AddSC_SerpentshrineCavernBotScripts();
 void AddSC_TempestKeepBotScripts();
 void AddSC_HyjalBotScripts();
 void AddSC_IcecrownBotScripts();
@@ -638,6 +656,7 @@ void AddPlayerbotsScripts()
     AddPlayerbotsCommandscripts();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
+    AddSC_SerpentshrineCavernBotScripts();
     AddSC_TempestKeepBotScripts();
     AddSC_HyjalBotScripts();
     AddSC_IcecrownBotScripts();
