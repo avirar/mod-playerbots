@@ -1086,6 +1086,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
     {
         botAI->lowPriorityQuest.insert(questId);
         botAI->rpgStatistic.questAbandoned++;
+        botAI->RecordQuestAbandoned(questId, "no_progression");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {} (quest budget)", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();
         return true;
@@ -1198,6 +1199,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         data.poiFallback = false;
         BroadcastHelper::BroadcastQuestUpdateComplete(botAI, bot, quest);
         botAI->rpgStatistic.questCompleted++;
+        botAI->RecordQuestCompleted(questId);
         data.lastReachPOI = 0;
         data.objectiveIdx = -1;
         data.spawnGuid = 0;
@@ -1270,6 +1272,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
         botAI->lowPriorityQuest.insert(questId);
         botAI->rpgStatistic.questAbandoned++;
+        botAI->RecordQuestAbandoned(questId, "reward_issue");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();
         return true;

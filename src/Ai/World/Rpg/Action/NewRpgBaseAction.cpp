@@ -6,6 +6,7 @@
 
 #include "NewRpgBaseAction.h"
 #include "BroadcastHelper.h"
+#include "QuestPoiZStore.h"
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -938,6 +939,15 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 continue;
 
             float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
+
+            // The baked walkable floor for this POI takes precedence over the terrain surface.
+            if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().Lookup(questId, qPoi.Id))
+            {
+                dz = baked->z;
+                LOG_DEBUG("playerbots", "[New RPG] quest {} turn-in POI {} baked z {:.1f} (conf {})",
+                          questId, qPoi.Id, dz, baked->confidence);
+            }
+
             // Indoor enders stand over terrain holes; skipping them would keep the quest out of DO_QUEST.
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 dz = bot->GetPositionZ();
@@ -946,7 +956,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
                 continue;
 
-            poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, dz});
+            poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, dz, qPoi.Id});
         }
 
         if (poiInfo.empty())
@@ -1012,6 +1022,14 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 
         float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
+        // The baked walkable floor for this POI takes precedence over the terrain surface.
+        if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().Lookup(questId, qPoi.Id))
+        {
+            dz = baked->z;
+            LOG_DEBUG("playerbots", "[New RPG] quest {} objective POI {} baked z {:.1f} (conf {})",
+                      questId, qPoi.Id, dz, baked->confidence);
+        }
+
         if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
             continue;
 
@@ -1019,7 +1037,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
             continue;
 
-        poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, dz});
+        poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, dz, qPoi.Id});
     }
 
     if (poiInfo.size() == 0)

@@ -23,6 +23,7 @@ struct POIInfo
     G3D::Vector2 pos;
     int32 objectiveIdx;
     float z{0.0f};
+    uint32 poiId{0}; // quest_poi.Id, the key for the baked Z store
 };
 
 /// A base (composition) class for all new rpg actions
