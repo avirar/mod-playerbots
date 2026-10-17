@@ -604,6 +604,10 @@ bool UseStartQuestItem::Execute(Event /*event*/)
         // looking at the other eligible items instead of stopping at the first one.
         if (UseItem(questItem, ObjectGuid::Empty, nullptr, nullptr))
         {
+            // Item-started quests bypass the giver flow, so record the accept here or the quest
+            // dump reports drops without any acceptance.
+            botAI->rpgStatistic.questAccepted++;
+            botAI->RecordQuestAccepted(qInfo->GetQuestId());
             botAI->SetNextCheckDelay(sPlayerbotAIConfig.GlobalCoolDown);
             return true;
         }

@@ -137,6 +137,12 @@ static std::unordered_map<uint32, std::unordered_map<uint32, std::vector<int32>>
 
 static std::unordered_map<uint32, std::vector<int32>> g_questEnderEntries;
 
+// Quest starters (givers), for escortee candidates and future resolution needs. Negative = GO.
+static std::unordered_map<uint32, std::vector<int32>> g_questStarterEntries;
+
+// Escort quests: quest -> the SmartAI-escorted NPC (SMART_ACTION_ESCORT_START owner).
+static std::unordered_map<uint32, uint32> g_questEscortEntries;
+
 // Above this an item objective is a world drop, with no useful spawn to walk to.
 static constexpr size_t MAX_ITEM_OBJECTIVE_SPAWNS = 500;
 
@@ -145,6 +151,18 @@ static std::unordered_map<uint32, std::unordered_set<uint32>> g_questTransformSo
 static std::unordered_map<uint32, std::array<QuestSummonAnchor, QUEST_OBJECTIVES_COUNT>> g_questSummonAnchors;
 
 static std::unordered_map<uint32, std::array<std::vector<uint32>, QUEST_OBJECTIVES_COUNT>> g_questKillSources;
+
+// Spellhit credit markers: objective entry -> trigger spells that make the source cast the credit.
+static std::unordered_map<uint32, std::array<std::vector<uint32>, QUEST_OBJECTIVES_COUNT>> g_questAbilitySpells;
+
+// Objective creature -> items whose use-spell carries the KILL_CREDIT for it (feed-style quests).
+static std::unordered_map<uint32, std::array<std::vector<uint32>, QUEST_OBJECTIVES_COUNT>> g_questCreditItems;
+
+// Objective item -> the item whose use-spell creates it, the corpse entries its spell demands,
+// and the openable container that holds the creator item (vial-style quests).
+static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationItems;
+static std::unordered_map<uint32, std::array<std::vector<int32>, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationSources;
+static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationContainers;
 
 static std::unordered_map<uint32, std::vector<QuestCraftReagent>> g_questItemReagents;
 
@@ -169,55 +187,6 @@ static uint32 GetItemSpell(uint32 itemId)
 }
 
 static uint32 GetSrcItemSpell(Quest const* quest) { return GetItemSpell(quest->GetSrcItemId()); }
-
-// SMART_EVENT_SPELLHIT (8) -> SMART_ACTION_UPDATE_TEMPLATE (36): spell -> (pre, post) entries.
-static std::unordered_map<uint32, std::vector<std::pair<uint32, uint32>>> LoadSpellTransforms()
-{
-    std::unordered_map<uint32, std::vector<std::pair<uint32, uint32>>> transforms;
-    QueryResult result = WorldDatabase.Query(
-        "SELECT entryorguid, event_param1, action_param1 FROM smart_scripts "
-        "WHERE source_type = 0 AND event_type = 8 AND action_type = 36 "
-        "AND entryorguid > 0 AND event_param1 > 0 AND action_param1 > 0");
-    if (!result)
-        return transforms;
-
-    do
-    {
-        Field* fields = result->Fetch();
-        transforms[fields[1].Get<uint32>()].emplace_back(fields[0].Get<uint32>(), fields[2].Get<uint32>());
-    } while (result->NextRow());
-
-    return transforms;
-}
-
-// target_type 19 = SMART_TARGET_CLOSEST_CREATURE, which links a summoned trigger and the NPC
-// reacting to it; either side is a creature the item has to be used next to.
-static std::unordered_map<uint32, std::vector<uint32>> LoadSmartAnchorHints(
-    std::unordered_map<uint32, std::vector<uint32>>& deathAnchors)
-{
-    std::unordered_map<uint32, std::vector<uint32>> hints;
-    QueryResult result = WorldDatabase.Query(
-        "SELECT entryorguid, target_param1, event_type FROM smart_scripts "
-        "WHERE source_type = 0 AND target_type = 19 AND entryorguid > 0 AND target_param1 > 0 "
-        "AND entryorguid <> target_param1");
-    if (!result)
-        return hints;
-
-    do
-    {
-        Field* fields = result->Fetch();
-        uint32 const owner = fields[0].Get<uint32>();
-        uint32 const target = fields[1].Get<uint32>();
-        hints[owner].push_back(target);
-        hints[target].push_back(owner);
-
-        // A reactor acting from its own death event only credits once killed.
-        if (fields[2].Get<uint32>() == SMART_EVENT_DEATH)
-            deathAnchors[target].push_back(owner);
-    } while (result->NextRow());
-
-    return hints;
-}
 
 static uint32 SpellKillCreditEntry(uint32 spellId)
 {
@@ -247,37 +216,111 @@ static uint32 SpellSummonEntry(uint32 spellId)
     return 0;
 }
 
-// action 11 = SMART_ACTION_CAST, 33 = SMART_ACTION_CALL_KILLEDMONSTER. Spells go through
-// sSpellMgr, not Spell.dbc: many of them are server-side.
-static std::unordered_map<uint32, std::vector<uint32>> LoadObjectiveKillSources()
+// Everything the quest indexes need from SmartAI, in one pass over the scripts the core already
+// validated and loaded: spell triggers, credit sources, transforms, anchors and escorts.
+struct SmartQuestIndex
 {
-    std::unordered_map<uint32, std::vector<uint32>> sources;
-    QueryResult result = WorldDatabase.Query(
-        "SELECT entryorguid, action_type, action_param1 FROM smart_scripts "
-        "WHERE source_type = 0 AND action_type IN (11, 33) AND entryorguid > 0 "
-        "AND action_param1 > 0");
-    if (!result)
-        return sources;
+    std::unordered_map<uint32, std::vector<std::pair<uint32, uint32>>> spellTransforms;  // spell -> (pre, post)
+    std::unordered_map<uint32, std::vector<uint32>> anchorHints;   // closest_target pairs, both ways
+    std::unordered_map<uint32, std::vector<uint32>> deathAnchors;  // credit entry -> reactors acting on death
+    std::unordered_map<uint32, std::vector<uint32>> killSources;   // credited entry -> creatures serving it
+    std::unordered_map<uint32, std::vector<uint32>> spellhitTriggers;  // credited entry -> trigger spells
+    std::unordered_map<uint32, uint32> escortEntries;              // quest -> escorted creature
+};
 
-    do
+static SmartQuestIndex BuildSmartQuestIndex()
+{
+    struct EscortList
     {
-        Field* fields = result->Fetch();
-        uint32 const owner = fields[0].Get<uint32>();
-        uint32 const param = fields[2].Get<uint32>();
+        uint32 quest;
+        uint32 listId;
+        uint32 owner;
+    };
 
-        uint32 wanted = 0;
-        if (fields[1].Get<uint32>() == 33)
-            wanted = param;
-        else if (uint32 credited = SpellKillCreditEntry(param))
-            wanted = credited;
-        else
-            wanted = SpellSummonEntry(param);
+    SmartQuestIndex index;
+    std::vector<EscortList> escortLists;
 
-        if (wanted && wanted != owner)
-            sources[wanted].push_back(owner);
-    } while (result->NextRow());
+    if (CreatureTemplateContainer const* creatures = sObjectMgr->GetCreatureTemplates())
+        for (auto const& [entry, tmpl] : *creatures)
+        {
+            if (tmpl.AIName != "SmartAI")
+                continue;
 
-    return sources;
+            for (SmartScriptHolder const& holder : sSmartScriptMgr->GetScript(int32(entry), SMART_SCRIPT_TYPE_CREATURE))
+            {
+                uint32 const actionType = holder.GetActionType();
+                uint32 const actionParam = holder.action.raw.param1;
+
+                if (actionType == SMART_ACTION_UPDATE_TEMPLATE && holder.GetEventType() == SMART_EVENT_SPELLHIT &&
+                    holder.event.raw.param1 && actionParam)
+                {
+                    index.spellTransforms[holder.event.raw.param1].emplace_back(entry, actionParam);
+                }
+                else if (actionType == SMART_ACTION_CAST && actionParam)
+                {
+                    uint32 const credited = SpellKillCreditEntry(actionParam);
+                    uint32 const wanted = credited ? credited : SpellSummonEntry(actionParam);
+                    if (wanted && wanted != entry)
+                        index.killSources[wanted].push_back(entry);
+
+                    // event 8 = SMART_EVENT_SPELLHIT: the trigger spell landing on the owner makes
+                    // it cast the credit spell.
+                    if (credited && holder.GetEventType() == SMART_EVENT_SPELLHIT && holder.event.raw.param1)
+                    {
+                        auto& triggers = index.spellhitTriggers[credited];
+                        if (std::find(triggers.begin(), triggers.end(), holder.event.raw.param1) == triggers.end())
+                            triggers.push_back(holder.event.raw.param1);
+                    }
+                }
+                else if (actionType == SMART_ACTION_CALL_KILLEDMONSTER && actionParam && actionParam != entry)
+                {
+                    index.killSources[actionParam].push_back(entry);
+                }
+                else if (actionType == SMART_ACTION_ESCORT_START)
+                {
+                    // Quest-accept rows bind the quest in the event, other triggers through the action.
+                    if (holder.GetEventType() == SMART_EVENT_ACCEPTED_QUEST && holder.event.raw.param1)
+                        index.escortEntries.emplace(holder.event.raw.param1, entry);
+                    if (holder.action.raw.param4)
+                        index.escortEntries.emplace(holder.action.raw.param4, entry);
+                }
+                else if (actionType == SMART_ACTION_CALL_TIMED_ACTIONLIST &&
+                         holder.GetEventType() == SMART_EVENT_ACCEPTED_QUEST && holder.event.raw.param1 && actionParam)
+                {
+                    escortLists.push_back({holder.event.raw.param1, actionParam, entry});
+                }
+
+                // target_type 19 = SMART_TARGET_CLOSEST_CREATURE links a summoned trigger and the
+                // NPC reacting to it; either side is a creature the item has to be used next to.
+                uint32 const closest =
+                    holder.GetTargetType() == SMART_TARGET_CLOSEST_CREATURE ? holder.target.raw.param1 : 0;
+                if (closest && closest != uint32(entry))
+                {
+                    index.anchorHints[entry].push_back(closest);
+                    index.anchorHints[closest].push_back(entry);
+                    if (holder.GetEventType() == SMART_EVENT_DEATH)
+                        index.deathAnchors[closest].push_back(entry);
+                }
+            }
+        }
+
+    // Timed action lists: the accept row hands control to a list whose script starts the escort;
+    // the quest binds through the caller and the escorted creature is the owner.
+    for (EscortList const& call : escortLists)
+    {
+        if (index.escortEntries.count(call.quest))
+            continue;
+
+        for (SmartScriptHolder const& holder :
+             sSmartScriptMgr->GetScript(int32(call.listId), SMART_SCRIPT_TYPE_TIMED_ACTIONLIST))
+            if (holder.GetActionType() == SMART_ACTION_ESCORT_START)
+            {
+                index.escortEntries.emplace(call.quest, call.owner);
+                break;
+            }
+    }
+
+    return index;
 }
 
 static bool SpellCraftsItem(uint32 spellId, uint32 itemId, std::vector<QuestCraftReagent>& reagents)
@@ -331,6 +374,68 @@ static std::unordered_map<uint32, uint32> LoadSpellNearCreature()
     } while (result->NextRow());
 
     return nearCreature;
+}
+
+// 31 = CONDITION_OBJECT_ENTRY_GUID on the cast target (Value1 = type id, Value2 = entry),
+// 36 = CONDITION_ALIVE; the vial-style spells demand specific corpse entries this way.
+struct SpellTargetEntries
+{
+    std::vector<uint32> entries;
+    bool requireDead{false};
+};
+
+static std::unordered_map<uint32, SpellTargetEntries> LoadSpellTargetEntries()
+{
+    std::unordered_map<uint32, SpellTargetEntries> targets;
+    QueryResult result = WorldDatabase.Query(
+        "SELECT SourceEntry, ConditionTypeOrReference, ConditionValue1, ConditionValue2, NegativeCondition "
+        "FROM conditions WHERE SourceTypeOrReferenceId = 17 AND ConditionTypeOrReference IN (31, 36)");
+    if (!result)
+        return targets;
+
+    do
+    {
+        Field* fields = result->Fetch();
+        SpellTargetEntries& target = targets[fields[0].Get<uint32>()];
+        if (fields[1].Get<uint32>() == 31)
+        {
+            if (fields[2].Get<uint32>() == uint32(TYPEID_UNIT) && fields[3].Get<uint32>() > 0)
+                target.entries.push_back(fields[3].Get<uint32>());
+        }
+        else if (fields[4].Get<uint8>())
+            target.requireDead = true;
+    } while (result->NextRow());
+
+    return targets;
+}
+
+// Items usable from the bag, split by what their use-spell does: plain spell -> items, and
+// KILL_CREDIT spells -> the creature entry they credit (feed-style quest items).
+static std::unordered_map<uint32, std::vector<uint32>> LoadItemUseSpells(
+    std::unordered_map<uint32, std::vector<uint32>>& creditItems)
+{
+    std::unordered_map<uint32, std::vector<uint32>> useSpells;
+    if (ItemTemplateContainer const* items = sObjectMgr->GetItemTemplateStore())
+        for (auto const& [entry, proto] : *items)
+            for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+            {
+                if (proto.Spells[i].SpellTrigger != ITEM_SPELLTRIGGER_ON_USE || proto.Spells[i].SpellId <= 0)
+                    continue;
+
+                uint32 const spellId = proto.Spells[i].SpellId;
+                auto& casters = useSpells[spellId];
+                if (std::find(casters.begin(), casters.end(), entry) == casters.end())
+                    casters.push_back(entry);
+
+                if (uint32 credited = SpellKillCreditEntry(spellId))
+                {
+                    auto& carriers = creditItems[credited];
+                    if (std::find(carriers.begin(), carriers.end(), entry) == carriers.end())
+                        carriers.push_back(entry);
+                }
+            }
+
+    return useSpells;
 }
 
 static void CollectWantedDrops(LootTemplateAccess const* loot, std::unordered_set<uint32> const& wanted, int32 entry,
@@ -428,6 +533,10 @@ void BuildQuestObjectiveSpawns()
     if (!g_entrySpawns.empty())
         return;
 
+    // Built unconditionally: the runtime flags gate behaviour, not data, so a config reload can
+    // enable a feature without a restart.
+    SmartQuestIndex const smartIndex = BuildSmartQuestIndex();
+
     std::unordered_map<int32, std::vector<std::pair<uint32, uint32>>> entryMap;
     std::unordered_set<uint32> questItems;
 
@@ -443,13 +552,57 @@ void BuildQuestObjectiveSpawns()
         g_questEnderEntries[questId].push_back(-int32(entry));
         entryMap[-int32(entry)];
     }
+
+    // Starters get no spawn indexing here: they are only an escortee candidate source.
+    for (auto const& [entry, questId] : *sObjectMgr->GetCreatureQuestRelationMap())
+        g_questStarterEntries[questId].push_back(int32(entry));
+
+    for (auto const& [entry, questId] : *sObjectMgr->GetGOQuestRelationMap())
+        g_questStarterEntries[questId].push_back(-int32(entry));
+
+    g_questEscortEntries = smartIndex.escortEntries;
+
+    // Quest-item linkers: player-cast credit spells carried by items, and item-spells that create
+    // objective items on demand (with the corpse entries their conditions demand).
+    std::unordered_map<uint32, std::vector<uint32>> creditSpellItems;
+    auto const itemUseSpells = LoadItemUseSpells(creditSpellItems);
+    auto const spellTargetEntries = LoadSpellTargetEntries();
+
+    std::unordered_map<uint32, std::vector<uint32>> creationItems;
+    for (auto const& [spellId, casters] : itemUseSpells)
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info)
+            continue;
+
+        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+            if (info->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM && info->Effects[e].ItemType > 0)
+            {
+                auto& creators = creationItems[info->Effects[e].ItemType];
+                creators.insert(creators.end(), casters.begin(), casters.end());
+            }
+    }
+
     for (auto const& [questId, quest] : sObjectMgr->GetQuestTemplates())
     {
         for (uint32 idx = 0; idx < QUEST_OBJECTIVES_COUNT; ++idx)
         {
             int32 const entry = quest->RequiredNpcOrGo[idx];
             if (entry && quest->RequiredNpcOrGoCount[idx])
+            {
                 entryMap[entry].emplace_back(questId, 1u << idx);
+
+                // A player-cast spell carried by an item credits this objective: index the item's
+                // droppers as objective sources and remember the item for the use step.
+                if (auto it = creditSpellItems.find(uint32(entry)); it != creditSpellItems.end())
+                {
+                    for (uint32 item : it->second)
+                    {
+                        questItems.insert(item);
+                        g_questCreditItems[questId][idx].push_back(item);
+                    }
+                }
+            }
         }
 
         uint32 const srcSpellId = GetSrcItemSpell(quest);
@@ -479,6 +632,35 @@ void BuildQuestObjectiveSpawns()
             g_questCraftReagents[questId][i] = std::move(reagents);
             g_questCraftItems[questId][i] = crafter;
         }
+
+        // An item objective that no mob drops but an item-spell creates: index the corpse entries
+        // its spell's conditions demand so the objective is served by casting there.
+        for (uint32 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        {
+            if (!quest->RequiredItemId[i] || !quest->RequiredItemCount[i])
+                continue;
+
+            auto it = creationItems.find(quest->RequiredItemId[i]);
+            if (it == creationItems.end())
+                continue;
+
+            for (uint32 creator : it->second)
+            {
+                uint32 const useSpell = GetItemSpell(creator);
+                auto const& targets = spellTargetEntries.find(useSpell);
+                if (targets == spellTargetEntries.end() || targets->second.entries.empty())
+                    continue;
+
+                g_questCreationItems[questId][i] = creator;
+                g_questCreationSources[questId][i].assign(targets->second.entries.begin(),
+                                                          targets->second.entries.end());
+
+                uint32 const flag = 1u << (QUEST_OBJECTIVES_COUNT + i);
+                for (uint32 sourceEntry : targets->second.entries)
+                    entryMap[int32(sourceEntry)].emplace_back(questId, flag);
+                break;
+            }
+        }
     }
 
     std::unordered_map<uint32, std::vector<int32>> dropSources;
@@ -507,7 +689,7 @@ void BuildQuestObjectiveSpawns()
             if (entry)
                 spawnedEntries.insert(entry);
 
-    auto const spellTransforms = LoadSpellTransforms();
+    auto const& spellTransforms = smartIndex.spellTransforms;
 
     std::unordered_map<uint32, std::vector<uint32>> focusObjects;
     if (GameObjectTemplateContainer const* gos = sObjectMgr->GetGameObjectTemplates())
@@ -515,9 +697,10 @@ void BuildQuestObjectiveSpawns()
             if (goInfo.type == GAMEOBJECT_TYPE_SPELL_FOCUS && goInfo.spellFocus.focusId)
                 focusObjects[goInfo.spellFocus.focusId].push_back(goEntry);
 
-    std::unordered_map<uint32, std::vector<uint32>> deathAnchors;
-    auto const smartAnchorHints = LoadSmartAnchorHints(deathAnchors);
-    auto const objectiveKillSources = LoadObjectiveKillSources();
+    auto const& deathAnchors = smartIndex.deathAnchors;
+    auto const& smartAnchorHints = smartIndex.anchorHints;
+    auto const& objectiveKillSources = smartIndex.killSources;
+    auto const& spellhitTriggers = smartIndex.spellhitTriggers;
     auto const spellNearCreature = LoadSpellNearCreature();
 
     for (auto const& [questId, quest] : sObjectMgr->GetQuestTemplates())
@@ -583,9 +766,13 @@ void BuildQuestObjectiveSpawns()
 
             uint32 const flag = 1u << idx;
             bool const objectiveSpawned = spawnedEntries.count(uint32(entry)) != 0;
+            // A spawned marker (non-selectable or player-immune) cannot be engaged; its kill
+            // sources serve the objective exactly as they do for an unspawned one.
+            bool const objectiveEngageable = IsEngageableCreatureEntry(uint32(entry));
+            bool const resolveCredits = !objectiveSpawned || !objectiveEngageable;
 
             std::vector<uint32> credits;
-            if (!objectiveSpawned)
+            if (resolveCredits)
             {
                 auto addCredit = [&credits, &spawnedEntries](uint32 source)
                 {
@@ -608,6 +795,10 @@ void BuildQuestObjectiveSpawns()
                 if (!credits.empty())
                     g_questKillSources[questId][idx] = credits;
             }
+
+            if (!objectiveEngageable)
+                if (auto it = spellhitTriggers.find(uint32(entry)); it != spellhitTriggers.end())
+                    g_questAbilitySpells[questId][idx] = it->second;
 
             if (!srcSpell)
                 continue;
@@ -693,6 +884,19 @@ std::vector<int32> const& GetQuestEnderEntries(uint32 questId)
     return it != g_questEnderEntries.end() ? it->second : empty;
 }
 
+std::vector<int32> const& GetQuestStarterEntries(uint32 questId)
+{
+    static std::vector<int32> const empty;
+    auto it = g_questStarterEntries.find(questId);
+    return it != g_questStarterEntries.end() ? it->second : empty;
+}
+
+uint32 GetQuestEscortEntry(uint32 questId)
+{
+    auto it = g_questEscortEntries.find(questId);
+    return it != g_questEscortEntries.end() ? it->second : 0;
+}
+
 std::unordered_set<uint32> const& GetQuestTransformSources(uint32 questId)
 {
     static std::unordered_set<uint32> const empty;
@@ -768,6 +972,56 @@ std::vector<uint32> const& GetQuestKillSources(uint32 questId, uint32 objectiveI
 
     auto it = g_questKillSources.find(questId);
     return it != g_questKillSources.end() ? it->second[objectiveIdx] : empty;
+}
+
+std::vector<uint32> const& GetQuestAbilitySpells(uint32 questId, uint32 objectiveIdx)
+{
+    static std::vector<uint32> const empty;
+    if (objectiveIdx >= QUEST_OBJECTIVES_COUNT)
+        return empty;
+
+    auto it = g_questAbilitySpells.find(questId);
+    return it != g_questAbilitySpells.end() ? it->second[objectiveIdx] : empty;
+}
+
+// A creature players cannot select or attack is a credit marker: never a destination, never a
+// scan target - its objective is served by its kill sources instead.
+bool IsEngageableCreatureEntry(uint32 entry)
+{
+    CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(entry);
+    if (!tmpl)
+        return false;
+
+    return (tmpl->unit_flags & (UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_IMMUNE_TO_PC)) == 0;
+}
+
+std::vector<uint32> const& GetQuestCreditItems(uint32 questId, uint32 objectiveIdx)
+{
+    static std::vector<uint32> const empty;
+    if (objectiveIdx >= QUEST_OBJECTIVES_COUNT)
+        return empty;
+
+    auto it = g_questCreditItems.find(questId);
+    return it != g_questCreditItems.end() ? it->second[objectiveIdx] : empty;
+}
+
+uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx)
+{
+    if (itemObjectiveIdx >= QUEST_ITEM_OBJECTIVES_COUNT)
+        return 0;
+
+    auto it = g_questCreationItems.find(questId);
+    return it != g_questCreationItems.end() ? it->second[itemObjectiveIdx] : 0;
+}
+
+std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx)
+{
+    static std::vector<int32> const empty;
+    if (itemObjectiveIdx >= QUEST_ITEM_OBJECTIVES_COUNT)
+        return empty;
+
+    auto it = g_questCreationSources.find(questId);
+    return it != g_questCreationSources.end() ? it->second[itemObjectiveIdx] : empty;
 }
 
 // Selects all questgivers for a specific level (range).

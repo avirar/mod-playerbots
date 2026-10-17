@@ -122,6 +122,10 @@ public:
     bool PrioritiseQuestGivers;
     bool CrossZoneQuests;
     bool QuestAwareTaxi;
+    bool QuestAbilityCredit;
+    bool QuestItemLinks;
+    bool TimedQuestsFirst;
+    bool QuestEscorts;
     uint32 CriticalHealth, LowHealth, MediumHealth, AlmostFullHealth;
     uint32 LowMana, MediumMana, HighMana;
     bool AutoSaveMana;

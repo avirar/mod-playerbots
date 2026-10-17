@@ -106,6 +106,12 @@ std::vector<GuidPosition> const& GetEntrySpawns(int32 entry, uint32 mapId);
 
 std::vector<int32> const& GetQuestEnderEntries(uint32 questId);
 
+// Quest givers (starters); negative entries are gameobjects.
+std::vector<int32> const& GetQuestStarterEntries(uint32 questId);
+
+// The SmartAI-escorted NPC of an escort quest, 0 when the quest has no escort start.
+uint32 GetQuestEscortEntry(uint32 questId);
+
 std::unordered_set<uint32> const& GetQuestTransformSources(uint32 questId);
 
 struct QuestSummonAnchor
@@ -120,6 +126,19 @@ struct QuestSummonAnchor
 QuestSummonAnchor GetQuestSummonAnchor(uint32 questId, uint32 objectiveIdx);
 
 std::vector<uint32> const& GetQuestKillSources(uint32 questId, uint32 objectiveIdx);
+
+std::vector<uint32> const& GetQuestAbilitySpells(uint32 questId, uint32 objectiveIdx);
+
+// Items whose use-spell carries the KILL_CREDIT for a creature objective (feed-style quests).
+std::vector<uint32> const& GetQuestCreditItems(uint32 questId, uint32 objectiveIdx);
+
+// The item whose use-spell creates a quest item objective, and the corpse entries the spell's
+// conditions demand as the cast target (vial-style quests).
+uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx);
+std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx);
+
+// False for credit markers (non-selectable / player-immune creatures): never destinations.
+bool IsEngageableCreatureEntry(uint32 entry);
 
 struct QuestCraftReagent
 {

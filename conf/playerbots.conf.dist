@@ -456,6 +456,28 @@ Playerbots.CrossZoneQuests = 1
 # Prefer flight path destinations that land near the bot's active quest objectives, turn-ins or
 # available quest givers (weighted random among the best three) instead of a fully random node.
 Playerbots.QuestAwareTaxi = 1
+
+# Serve spellhit-credit quest objectives (e.g. Blood Elf "Thirst Unending"): instead of walking to
+# the non-selectable credit marker, bots go to the creature whose SmartAI reacts to a player
+# ability (racial or learned spell) and cast that ability next to it. Adds one smart_scripts scan
+# at startup.
+Playerbots.QuestAbilityCredit = 0
+
+# Link quest objectives to player-cast item spells: objectives credited by an item's use-spell
+# (kill a dropper, loot the item, use it - e.g. "Let Them Eat Crow") and item objectives created
+# by an item's use-spell on a corpse entry taken from the spell's own conditions (e.g. the ooze
+# vials). Adds item-template and conditions scans at startup.
+Playerbots.QuestItemLinks = 0
+
+# Prefer quests with a running timer: from idle, bots go straight to an incomplete timed quest
+# (e.g. deliveries) instead of a random activity, and such quests are never culled from the log
+# while the timer still runs.
+Playerbots.TimedQuestsFirst = 0
+
+# Escort quests: bots follow the escorted NPC of the active quest within a 10 yd leash (45 yd
+# hard recall - the SAI escort invoker check fails the quest at 60 yd), stop wandering for loot
+# while on the leash, and still fight anything attacking the escorted NPC.
+Playerbots.QuestEscorts = 0
 Playerbots.FleeDistance = 5.0
 Playerbots.AggroDistance = 22
 Playerbots.TooCloseDistance = 5.0
