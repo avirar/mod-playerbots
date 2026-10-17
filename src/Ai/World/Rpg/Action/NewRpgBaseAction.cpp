@@ -7,6 +7,7 @@
 #include "NewRpgBaseAction.h"
 #include "BroadcastHelper.h"
 #include "QuestPoiZStore.h"
+#include "QuestValues.h"
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "GameObject.h"
@@ -349,6 +350,15 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->rpgStatistic.questAccepted++;
             botAI->RecordQuestAccepted(quest->GetQuestId());
+
+            // Pursue what was just accepted (e.g. the next quest in a chain) unless a live
+            // do-quest is still in progress - that one keeps the bot.
+            auto const* current = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+            bool const currentLive =
+                current && bot->GetQuestStatus(current->questId) == QUEST_STATUS_INCOMPLETE;
+            if (!currentLive)
+                botAI->rpgInfo.ChangeToDoQuest(quest->GetQuestId(), quest);
+
             LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
         }
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
@@ -607,6 +617,79 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Player* bot, Quest const* quest)
     return true;
 }
 
+uint32 NewRpgBaseAction::FindIncompleteTimedQuest(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId || botAI->lowPriorityQuest.count(questId))
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest || !quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_TIMED))
+            continue;
+
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE)
+            return questId;
+    }
+
+    return 0;
+}
+
+Creature* NewRpgBaseAction::FindEscorteeForQuest(Player* bot, uint32 questId, float range)
+{
+    if (!bot || !questId || !sPlayerbotAIConfig.QuestEscorts)
+        return nullptr;
+
+    uint32 const escortEntry = GetQuestEscortEntry(questId);
+    std::vector<uint32> entries;
+    if (escortEntry)
+        entries.push_back(escortEntry);
+
+    for (int32 entry : GetQuestStarterEntries(questId))
+        if (entry > 0)
+            entries.push_back(uint32(entry));
+
+    for (int32 entry : GetQuestEnderEntries(questId))
+        if (entry > 0)
+            entries.push_back(uint32(entry));
+
+    if (entries.empty())
+        return nullptr;
+
+    std::list<Creature*> creatures;
+    bot->GetCreatureListWithEntryInGrid(creatures, entries, range);
+
+    Creature* best = nullptr;
+    float bestDist = range;
+    for (Creature* creature : creatures)
+    {
+        if (!creature->IsInWorld() || !creature->IsAlive())
+            continue;
+
+        // Only a walking NPC is escorting; a stationary giver/ender waiting for an objective is
+        // not - the SmartAI escort entry is exempt because it keeps its data binding while paused.
+        if (creature->GetEntry() != escortEntry)
+        {
+            uint8 const motionType = creature->GetMotionMaster()->GetCurrentMovementGeneratorType();
+            bool const walks = motionType == ESCORT_MOTION_TYPE || motionType == WAYPOINT_MOTION_TYPE ||
+                               motionType == POINT_MOTION_TYPE || creature->isMoving();
+            if (!walks)
+                continue;
+        }
+
+        float const dist = bot->GetDistance(creature);
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = creature;
+        }
+    }
+
+    return best;
+}
+
 bool NewRpgBaseAction::OrganizeQuestLog()
 {
     int32 freeSlotNum = 0;
@@ -639,7 +722,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         botAI->RecordQuestDropped(quest->GetQuestId(), reason);
     };
 
-    // remove quests that not worth doing or not capable of doing
+    // Remove quests that are not worth doing or not capable of doing. A quest whose objectives
+    // are already satisfied is one walk from reward, so it stays regardless of level/type rules.
     int32 dropped = 0;
     for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
     {
@@ -648,8 +732,19 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
-        if (!IsQuestWorthDoing(bot, quest) || !IsQuestCapableDoing(bot, quest) ||
-            bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED)
+        QuestStatus const questStatus = bot->GetQuestStatus(questId);
+        if (questStatus == QUEST_STATUS_FAILED)
+        {
+            dropSlot(i, quest, "quest_failed");
+            dropped++;
+            continue;
+        }
+
+        // A satisfied quest is one walk from reward and a timed one fails by the clock: neither
+        // is culled as "not worth" while it can still be finished.
+        bool const protectedQuest =
+            questStatus == QUEST_STATUS_COMPLETE || quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_TIMED);
+        if (!protectedQuest && (!IsQuestWorthDoing(bot, quest) || !IsQuestCapableDoing(bot, quest)))
         {
             dropSlot(i, quest, "not_worth_or_capable_or_failed");
             dropped++;
@@ -698,12 +793,15 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
     // Cross-zone questing: quests from other zones are kept, so free slots only under pressure by
     // dropping the quest whose objective/turn-in is the furthest away. Class/sort quests
-    // (ZoneOrSort < 0) are never dropped.
+    // (ZoneOrSort < 0) are never dropped. A satisfied or timed quest is only dropped when nothing
+    // else is left: one is a walk from reward, the other fails by its own clock.
     freeSlotNum += dropped;
     while (freeSlotNum < 2)
     {
         uint16 worstSlot = MAX_QUEST_LOG_SIZE;
+        uint16 worstProtectedSlot = MAX_QUEST_LOG_SIZE;
         float worstDist = -1.0f;
+        float worstProtectedDist = -1.0f;
         for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
         {
             uint32 questId = bot->GetQuestSlotQuestId(i);
@@ -714,11 +812,13 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             if (quest->GetZoneOrSort() < 0)
                 continue;
 
+            bool const protectedQuest = bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE ||
+                                        quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_TIMED);
+
             // Unprogressable by the bot (no POI data): drop it first.
             float dist = std::numeric_limits<float>::max();
             std::vector<POIInfo> poiInfo;
-            if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo,
-                                              bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE))
+            if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, protectedQuest))
             {
                 for (POIInfo const& poi : poiInfo)
                 {
@@ -728,12 +828,23 @@ bool NewRpgBaseAction::OrganizeQuestLog()
                 }
             }
 
-            if (dist > worstDist)
+            if (protectedQuest)
+            {
+                if (dist > worstProtectedDist)
+                {
+                    worstProtectedDist = dist;
+                    worstProtectedSlot = i;
+                }
+            }
+            else if (dist > worstDist)
             {
                 worstDist = dist;
                 worstSlot = i;
             }
         }
+
+        if (worstSlot == MAX_QUEST_LOG_SIZE)
+            worstSlot = worstProtectedSlot;
 
         if (worstSlot == MAX_QUEST_LOG_SIZE)
             break;
@@ -1380,6 +1491,15 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_DO_QUEST:
         {
+            // A running timer beats a random log pick: finishing the timed quest first is the
+            // only way it survives.
+            if (sPlayerbotAIConfig.TimedQuestsFirst)
+                if (uint32 timedQuest = FindIncompleteTimedQuest(botAI))
+                {
+                    botAI->rpgInfo.ChangeToDoQuest(timedQuest, sObjectMgr->GetQuestTemplate(timedQuest));
+                    return true;
+                }
+
             std::vector<uint32> availableQuests;
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {

@@ -71,6 +71,14 @@ protected:
     bool EngageCastTarget(NewRpgInfo::DoQuest& data, Creature* creature, Item* item);
     bool EngageTransformTarget(NewRpgInfo::DoQuest& data, Creature* creature, Item* item);
     bool EngageGameObject(NewRpgInfo::DoQuest& data, GameObject* go);
+    bool EngageAbilityTarget(NewRpgInfo::DoQuest& data, Creature* creature, uint32 spellId);
+    bool EngageCreationTarget(NewRpgInfo::DoQuest& data, Creature* creature);
+    bool IsCreationSource(NewRpgInfo::DoQuest const& data, uint32 entry) const;
+    bool DoUseCreditItem(NewRpgInfo::DoQuest& data);
+    bool DoEscortObjective(NewRpgInfo::DoQuest& data);
+    Creature* ResolveEscortee(NewRpgInfo::DoQuest& data);
+    uint32 GetQuestAbilitySpell(NewRpgInfo::DoQuest const& data, uint32 entry) const;
+    static float QuestAbilityCastRange(uint32 spellId);
     static uint32 GetItemUseSpell(Item* item);
     static uint32 QuestItemUseGrace(uint32 spellId);
 
@@ -117,6 +125,13 @@ protected:
     // The item has to land before the mob aggroes; combat pauses this engine.
     const float summonKillAnchorRange = 30.0f;
     const float summonTriggerNearRange = 12.0f;
+    // A spawn this far above the floor or water cannot be reached on foot.
+    const float spawnFloorGap = 20.0f;
+    // Escort leash: the SAI escort invoker check fails the quest (and despawns the NPC) at 60 yd,
+    // so the bot walks back to the escort from 45 yd and sticks within 10 yd of it.
+    const float escortLeashRange = 10.0f;
+    const float escortRecallRange = 45.0f;
+    const float escortSearchRange = 100.0f;
 };
 
 #endif

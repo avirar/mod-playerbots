@@ -72,6 +72,8 @@ struct NewRpgInfo
         // Shared by every item-use path, so no use is re-issued while a cast is in flight.
         uint32 lastItemUse{0};
         ObjectGuid lastSummonAnchor{};
+        // The escorted NPC, locked once found so pauses cannot hand the leash to another.
+        ObjectGuid escortGuid{};
         // Set when no objective has a spawn point; grind stays on to do the killing at the POI.
         bool poiFallback{false};
     };
@@ -135,6 +137,8 @@ struct NewRpgInfo
     NewRpgStatus GetStatus();
     static NewRpgStatus StatusFromString(std::string const& name);
     bool HasStatusPersisted(uint32 maxDuration) { return GetMSTimeDiffToNow(startT) > maxDuration; }
+    // Keeps a live activity from expiring on the status duration alone (e.g. an escort still walking).
+    void RefreshStatusTime() { startT = getMSTime(); }
     void ChangeToGoGrind(WorldPosition pos);
     void ChangeToGoCamp(WorldPosition pos);
     void ChangeToWanderNpc();

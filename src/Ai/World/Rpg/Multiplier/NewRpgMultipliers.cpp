@@ -22,3 +22,25 @@ float NewRpgQuestGiverMultiplier::GetValue(Action* action)
 
     return AI_VALUE(bool, "quest giver nearby") ? 0.0f : 1.0f;
 }
+
+float NewRpgEscortMultiplier::GetValue(Action* action)
+{
+    if (!sPlayerbotAIConfig.QuestEscorts || !action)
+        return 1.0f;
+
+    std::string const name = action->getName();
+    if (name == "attack anything")
+    {
+        // Defending the escort outranks the leash: attacks stay available while it is attacked.
+        if (!AI_VALUE(bool, "escort npc nearby") || AI_VALUE(bool, "escort npc attacked"))
+            return 1.0f;
+
+        return 0.0f;
+    }
+
+    // A bot that chases loot off the leash risks the whole escort.
+    if (name == "move to loot" || name == "loot" || name == "open loot")
+        return AI_VALUE(bool, "escort npc nearby") ? 0.0f : 1.0f;
+
+    return 1.0f;
+}

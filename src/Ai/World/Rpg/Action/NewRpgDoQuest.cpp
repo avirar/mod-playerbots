@@ -19,6 +19,8 @@
 #include "GameObject.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "GridTerrainData.h"
+#include "IVMapMgr.h"
 #include "Item.h"
 #include "LastMovementValue.h"
 #include "LootMgr.h"
@@ -236,9 +238,21 @@ bool NewRpgDoQuestAction::SelectObjectiveSpawn(NewRpgInfo::DoQuest& data)
 
         for (int32 entry : GetQuestObjectiveEntries(data.questId, static_cast<uint32>(1 << idx)))
         {
+            // A credit marker's spawn is never a destination; its kill sources are indexed instead.
+            if (entry > 0 && !IsEngageableCreatureEntry(uint32(entry)))
+                continue;
+
             for (GuidPosition const& pos : GetEntrySpawns(entry, bot->GetMapId()))
             {
                 if (data.triedSpawns.count(pos.GetRawValue()))
+                    continue;
+
+                // Spawns floating far above every floor or water surface cannot be walked to.
+                float const floorZ =
+                    std::max(bot->GetMap()->GetHeight(pos.GetPositionX(), pos.GetPositionY(), MAX_HEIGHT),
+                             bot->GetMap()->GetWaterLevel(pos.GetPositionX(), pos.GetPositionY()));
+                if ((floorZ == INVALID_HEIGHT || floorZ == VMAP_INVALID_HEIGHT_VALUE ||
+                     pos.GetPositionZ() - floorZ > spawnFloorGap))
                     continue;
 
                 float const dist = bot->GetDistance(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
@@ -254,11 +268,10 @@ bool NewRpgDoQuestAction::SelectObjectiveSpawn(NewRpgInfo::DoQuest& data)
 
     if (!best)
     {
-        if (data.triedSpawns.empty())
-            return false;
-
+        // All candidates tried (or none): let the explore/POI fallback take over instead of
+        // re-picking the same spawns every tick.
         data.triedSpawns.clear();
-        return true;
+        return false;
     }
 
     data.spawnGuid = best->GetRawValue();
@@ -339,6 +352,10 @@ bool NewRpgDoQuestAction::IsWrittenOff(NewRpgInfo::DoQuest const& data, ObjectGu
 bool NewRpgDoQuestAction::IsValidCreatureTarget(NewRpgInfo::DoQuest const& data, Creature* creature) const
 {
     if (!creature || !creature->IsInWorld() || !creature->IsAlive())
+        return false;
+
+    // Credit markers cannot be engaged; only their kill sources are legitimate targets.
+    if (creature->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE) || creature->HasUnitFlag(UNIT_FLAG_IMMUNE_TO_PC))
         return false;
 
     if (IsWrittenOff(data, creature->GetGUID()))
@@ -427,8 +444,9 @@ WorldObject* NewRpgDoQuestAction::ScanEntryObjectives(NewRpgInfo::DoQuest const&
 
         if (entry > 0)
         {
-            // A credit marker is never spawned itself; only its kill sources are.
-            creatureEntries.push_back(uint32(entry));
+            if (IsEngageableCreatureEntry(uint32(entry)))
+                creatureEntries.push_back(uint32(entry));
+
             std::vector<uint32> const& sources = GetQuestKillSources(data.questId, uint32(idx));
             creatureEntries.insert(creatureEntries.end(), sources.begin(), sources.end());
         }
@@ -465,6 +483,9 @@ WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& d
     if (!GetQuestCraftReagents(data.questId, uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT).empty())
         craftSources = &GetQuestObjectiveEntries(data.questId, 1u << data.objectiveIdx);
 
+    std::vector<int32> const& creationSources =
+        GetQuestCreationSources(data.questId, uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT);
+
     WorldObject* nearest = nullptr;
     float nearestDist = scanRange;
     auto keepNearest = [&](WorldObject* obj)
@@ -486,7 +507,20 @@ WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& d
     for (Unit* unit : units)
     {
         Creature* creature = unit->ToCreature();
-        if (!creature || !IsValidCreatureTarget(data, creature))
+        if (!creature)
+            continue;
+
+        // A creation source is the cast-spell's own condition target; alive or corpse both work
+        // (a live one is fought into the corpse state the spell demands).
+        if (std::find(creationSources.begin(), creationSources.end(), int32(creature->GetEntry())) !=
+            creationSources.end())
+        {
+            if (!IsWrittenOff(data, creature->GetGUID()))
+                keepNearest(creature);
+            continue;
+        }
+
+        if (!IsValidCreatureTarget(data, creature))
             continue;
 
         uint32 lootId = creature->GetCreatureTemplate()->lootid;
@@ -555,7 +589,8 @@ bool NewRpgDoQuestAction::EngageTarget(NewRpgInfo::DoQuest& data)
     {
         Unit* unit = botAI->GetUnit(data.targetGuid);
         Creature* creature = unit ? unit->ToCreature() : nullptr;
-        if (!creature || !creature->IsAlive())
+        // A creation-source corpse is the cast target itself, not loot fodder.
+        if (!creature || (!creature->IsAlive() && !IsCreationSource(data, creature->GetEntry())))
         {
             if (creature)
                 AI_VALUE(LootObjectStack*, "available loot")->Add(data.targetGuid);
@@ -610,6 +645,9 @@ bool NewRpgDoQuestAction::EngageTarget(NewRpgInfo::DoQuest& data)
 
 bool NewRpgDoQuestAction::EngageCreature(NewRpgInfo::DoQuest& data, Creature* creature)
 {
+    if (IsCreationSource(data, creature->GetEntry()))
+        return EngageCreationTarget(data, creature);
+
     if (IsIncompleteObjectiveEntry(data, creature->GetEntry()))
         if (Item* castItem = GetCastQuestItem(data))
             return EngageCastTarget(data, creature, castItem);
@@ -617,6 +655,9 @@ bool NewRpgDoQuestAction::EngageCreature(NewRpgInfo::DoQuest& data, Creature* cr
     if (data.quest && GetQuestTransformSources(data.questId).count(creature->GetEntry()))
         if (Item* item = bot->GetItemByEntry(data.quest->GetSrcItemId()))
             return EngageTransformTarget(data, creature, item);
+
+    if (uint32 spellId = GetQuestAbilitySpell(data, creature->GetEntry()))
+        return EngageAbilityTarget(data, creature, spellId);
 
     if (!bot->IsValidAttackTarget(creature))
     {
@@ -829,6 +870,188 @@ bool NewRpgDoQuestAction::EngageCastTarget(NewRpgInfo::DoQuest& data, Creature* 
     LOG_DEBUG("playerbots", "[New RPG] {} used quest item {} on npc {} for quest {}", bot->GetName(), item->GetEntry(),
               creature->GetEntry(), data.questId);
     WriteOffTarget(data);
+    return true;
+}
+
+// The trigger spell this bot knows for a spellhit-credit objective the creature stands in for.
+uint32 NewRpgDoQuestAction::GetQuestAbilitySpell(NewRpgInfo::DoQuest const& data, uint32 entry) const
+{
+    if (!sPlayerbotAIConfig.QuestAbilityCredit || data.objectiveIdx < 0 ||
+        data.objectiveIdx >= QUEST_OBJECTIVES_COUNT)
+        return 0;
+
+    std::vector<uint32> const& sources = GetQuestKillSources(data.questId, uint32(data.objectiveIdx));
+    if (std::find(sources.begin(), sources.end(), entry) == sources.end())
+        return 0;
+
+    for (uint32 spell : GetQuestAbilitySpells(data.questId, uint32(data.objectiveIdx)))
+        if (bot->HasSpell(spell))
+            return spell;
+
+    return 0;
+}
+
+float NewRpgDoQuestAction::QuestAbilityCastRange(uint32 spellId)
+{
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+    if (!info)
+        return 5.0f;
+
+    float range = 5.0f;
+    for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+        if (info->Effects[e].IsEffect())
+            range = std::max(range, info->Effects[e].CalcRadius());
+
+    return range;
+}
+
+bool NewRpgDoQuestAction::EngageAbilityTarget(NewRpgInfo::DoQuest& data, Creature* creature, uint32 spellId)
+{
+    // The creature is only a spellhit victim here, so the cast outranks fighting it.
+    if (bot->GetDistance(creature) > QuestAbilityCastRange(spellId) || !bot->IsWithinLOSInMap(creature))
+    {
+        if (MoveFarTo(data.targetPos))
+            return true;
+        return MoveRandomNear(5.0f);
+    }
+
+    if (bot->IsMounted())
+    {
+        bot->Dismount();
+        return true;
+    }
+
+    if (bot->IsNonMeleeSpellCast(false))
+        return true;
+
+    if (bot->HasSpellCooldown(spellId))
+        return true;
+
+    if (data.lastItemUse && GetMSTimeDiffToNow(data.lastItemUse) < QuestItemUseGrace(spellId))
+        return true;
+
+    botAI->CastSpell(spellId, bot);
+    data.lastItemUse = getMSTime();
+    LOG_DEBUG("playerbots", "[New RPG] {} cast ability {} on {} for quest {} objective {}", bot->GetName(), spellId,
+              creature->GetEntry(), data.questId, data.objectiveIdx);
+    return true;
+}
+
+// A vial-style creation source: a live one is fought into the corpse the spell demands, a corpse
+// receives the creator item's cast.
+bool NewRpgDoQuestAction::EngageCreationTarget(NewRpgInfo::DoQuest& data, Creature* creature)
+{
+    if (creature->IsAlive())
+        return false;
+
+    uint32 const itemIdx = uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT;
+    if (Item* item = bot->GetItemByEntry(GetQuestCreationItem(data.questId, itemIdx)))
+        return EngageCastTarget(data, creature, item);
+
+    LOG_DEBUG("playerbots", "[New RPG] {} holds no creation item for quest {} objective {}", bot->GetName(),
+              data.questId, data.objectiveIdx);
+    WriteOffTarget(data);
+    return true;
+}
+
+bool NewRpgDoQuestAction::IsCreationSource(NewRpgInfo::DoQuest const& data, uint32 entry) const
+{
+    if (data.objectiveIdx < QUEST_OBJECTIVES_COUNT || !sPlayerbotAIConfig.QuestItemLinks)
+        return false;
+
+    std::vector<int32> const& sources =
+        GetQuestCreationSources(data.questId, uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT);
+    return std::find(sources.begin(), sources.end(), int32(entry)) != sources.end();
+}
+
+// Use an item whose spell carries the KILL_CREDIT for the active objective (feed-style quests).
+bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
+{
+    if (!sPlayerbotAIConfig.QuestItemLinks || data.objectiveIdx < 0 || data.objectiveIdx >= QUEST_OBJECTIVES_COUNT ||
+        IsObjectiveCompleted(data))
+        return false;
+
+    for (uint32 itemId : GetQuestCreditItems(data.questId, uint32(data.objectiveIdx)))
+    {
+        Item* item = bot->GetItemByEntry(itemId);
+        if (!item)
+            continue;
+
+        uint32 const spellId = GetItemUseSpell(item);
+        if (spellId && bot->HasSpellItemCooldown(spellId, itemId))
+            return true;
+
+        if (data.lastItemUse && GetMSTimeDiffToNow(data.lastItemUse) < QuestItemUseGrace(spellId))
+            return true;
+
+        if (bot->IsNonMeleeSpellCast(false))
+            return true;
+
+        botAI->ImbueItem(item);
+        data.lastItemUse = getMSTime();
+        LOG_DEBUG("playerbots", "[New RPG] {} used credit item {} for quest {} objective {}", bot->GetName(), itemId,
+                  data.questId, data.objectiveIdx);
+        return true;
+    }
+    return false;
+}
+
+// The escort NPC for the active quest, locked once found so pauses cannot hand the leash away.
+Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
+{
+    if (data.escortGuid)
+    {
+        if (Unit* unit = botAI->GetUnit(data.escortGuid))
+            if (Creature* creature = unit->ToCreature())
+                if (creature->IsInWorld() && creature->IsAlive())
+                    return creature;
+
+        data.escortGuid = ObjectGuid::Empty;
+    }
+
+    Creature* found = FindEscorteeForQuest(bot, data.questId, escortSearchRange);
+    if (found)
+        data.escortGuid = found->GetGUID();
+
+    return found;
+}
+
+// While an escort walks, nothing else matters: stay on the leash, let combat defend the NPC, and
+// never let a chase or a status timeout end the escort early.
+bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
+{
+    if (!sPlayerbotAIConfig.QuestEscorts || !data.quest)
+        return false;
+
+    Creature* escortee = ResolveEscortee(data);
+    if (!escortee)
+        return false;
+
+    botAI->rpgInfo.RefreshStatusTime();
+
+    WorldPosition const livePos(bot->GetMapId(), escortee->GetPositionX(), escortee->GetPositionY(),
+                                escortee->GetPositionZ());
+
+    float const dist = bot->GetDistance(escortee);
+    if (dist > escortRecallRange)
+    {
+        // The SAI escort invoker check fails the quest at 60 yd: drop whatever the bot chased
+        // and return before it trips.
+        ClearTarget(data);
+        if (MoveFarTo(livePos))
+            return true;
+        return MoveRandomNear(5.0f);
+    }
+
+    if (dist > escortLeashRange)
+    {
+        if (MoveFarTo(livePos))
+            return true;
+        return MoveRandomNear(2.0f);
+    }
+
+    // On the leash: hold with the escort. The combat engine handles its attackers, and the escort
+    // multiplier keeps loot and grind from dragging the bot away.
     return true;
 }
 
@@ -1081,6 +1304,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
     if (HoldForLoot(data))
         return false;
+
+    if (DoUseCreditItem(data))
+        return true;
+
+    if (DoEscortObjective(data))
+        return true;
 
     if (botAI->rpgInfo.HasStatusPersisted(questStayTime))
     {

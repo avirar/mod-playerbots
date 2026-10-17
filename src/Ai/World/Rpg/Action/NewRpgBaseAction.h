@@ -38,6 +38,13 @@ public:
     static ObjectGuid FindQuestGiverToInteract(PlayerbotAI* botAI, Player* bot, bool questgiverOnly = false,
                                                float distanceLimit = 0.0f);
 
+    // Incomplete timed quest from the log, lowest slot first; 0 when none waits. Low-priority
+    // entries are skipped, like the accept menu does.
+    static uint32 FindIncompleteTimedQuest(PlayerbotAI* botAI);
+    // The escort NPC for a quest: the SmartAI escort entry, quest starters and enders, accepting
+    // only NPCs that are actually walking (a stationary giver/ender is not an escort).
+    static Creature* FindEscorteeForQuest(Player* bot, uint32 questId, float range);
+
 protected:
     /* MOVEMENT RELATED */
     bool MoveFarTo(WorldPosition dest);

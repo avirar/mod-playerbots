@@ -76,6 +76,7 @@
 #include "PossibleRpgTargetsValue.h"
 #include "PossibleTargetsValue.h"
 #include "PvpValues.h"
+#include "EscortNearbyValue.h"
 #include "QuestGiverNearbyValue.h"
 #include "QuestValues.h"
 #include "RTSCValues.h"
@@ -178,6 +179,8 @@ public:
         creators["available loot"] = &ValueContext::available_loot;
         creators["has available loot"] = &ValueContext::has_available_loot;
         creators["quest giver nearby"] = &ValueContext::quest_giver_nearby;
+        creators["escort npc nearby"] = &ValueContext::escort_npc_nearby;
+        creators["escort npc attacked"] = &ValueContext::escort_npc_attacked;
         creators["nearest loot"] = &ValueContext::nearest_loot;
         creators["always loot list"] = &ValueContext::always_loot_list;
         creators["loot strategy"] = &ValueContext::loot_strategy;
@@ -398,6 +401,8 @@ private:
     static UntypedValue* loot_target(PlayerbotAI* botAI) { return new LootTargetValue(botAI); }
     static UntypedValue* has_available_loot(PlayerbotAI* botAI) { return new HasAvailableLootValue(botAI); }
     static UntypedValue* quest_giver_nearby(PlayerbotAI* botAI) { return new QuestGiverNearbyValue(botAI); }
+    static UntypedValue* escort_npc_nearby(PlayerbotAI* botAI) { return new EscortNearbyValue(botAI); }
+    static UntypedValue* escort_npc_attacked(PlayerbotAI* botAI) { return new EscortAttackedValue(botAI); }
     static UntypedValue* nearest_loot(PlayerbotAI* botAI) { return new NearestLootValue(botAI); }
     static UntypedValue* always_loot_list(PlayerbotAI* botAI) { return new AlwaysLootListValue(botAI); }
     static UntypedValue* loot_strategy(PlayerbotAI* botAI) { return new LootStrategyValue(botAI); }

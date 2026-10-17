@@ -250,8 +250,18 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     switch (status)
     {
         case RPG_IDLE:
+        {
+            // A running timer wins over every random activity: go finish the timed quest first.
+            if (sPlayerbotAIConfig.TimedQuestsFirst)
+                if (uint32 timedQuest = FindIncompleteTimedQuest(botAI))
+                {
+                    info.ChangeToDoQuest(timedQuest, sObjectMgr->GetQuestTemplate(timedQuest));
+                    return true;
+                }
+
             return RandomChangeStatus({RPG_GO_CAMP, RPG_GO_GRIND, RPG_WANDER_RANDOM, RPG_WANDER_NPC, RPG_DO_QUEST,
                                        RPG_TRAVEL_FLIGHT, RPG_REST, RPG_OUTDOOR_PVP, RPG_DO_GATHER});
+        }
 
         case RPG_GO_GRIND:
         {

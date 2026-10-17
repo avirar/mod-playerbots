@@ -17,4 +17,14 @@ public:
     float GetValue(Action* action) override;
 };
 
+// Keeps an escorting bot on its leash: no loot/gather wandering, and attacks only while the
+// escorted NPC is actually under attack.
+class NewRpgEscortMultiplier : public Multiplier
+{
+public:
+    NewRpgEscortMultiplier(PlayerbotAI* botAI) : Multiplier(botAI, "new rpg escort") {}
+
+    float GetValue(Action* action) override;
+};
+
 #endif
