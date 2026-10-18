@@ -136,6 +136,9 @@ std::vector<uint32> const& GetQuestCreditItems(uint32 questId, uint32 objectiveI
 // conditions demand as the cast target (vial-style quests).
 uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx);
 uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx);
+
+// The area trigger that completes an exploration quest, 0 when the quest has none.
+uint32 GetQuestAreaTriggerId(uint32 questId);
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx);
 
 // False for credit markers (non-selectable / player-immune creatures): never destinations.

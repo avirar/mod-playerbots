@@ -1038,6 +1038,25 @@ uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx)
     return it != g_questCreationFocus.end() ? it->second[itemObjectiveIdx] : 0;
 }
 
+uint32 GetQuestAreaTriggerId(uint32 questId)
+{
+    // ObjectMgr indexes trigger -> quest only, so read the reverse straight off the table it
+    // loads from. DoExploreObjective re-checks the trigger and the quest flag at use time.
+    static std::unordered_map<uint32, uint32> const questToTrigger = []
+    {
+        std::unordered_map<uint32, uint32> m;
+        if (QueryResult result = WorldDatabase.Query("SELECT id, quest FROM areatrigger_involvedrelation ORDER BY id"))
+            do
+            {
+                m[(*result)[1].Get<uint32>()] = (*result)[0].Get<uint32>();
+            } while (result->NextRow());
+        return m;
+    }();
+
+    auto it = questToTrigger.find(questId);
+    return it == questToTrigger.end() ? 0 : it->second;
+}
+
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx)
 {
     static std::vector<int32> const empty;

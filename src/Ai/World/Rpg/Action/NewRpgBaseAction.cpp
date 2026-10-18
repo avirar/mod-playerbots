@@ -1504,14 +1504,34 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                if (!questId || botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
                     continue;
 
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
                 {
                     availableQuests.push_back(questId);
+                    continue;
                 }
+
+                // Exploration quests have no objective counts: they complete by entering an area
+                // trigger, so the POI check alone would never queue them.
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (!quest || !quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT))
+                    continue;
+
+                QuestStatusData const& questStatus = bot->getQuestStatusMap().at(questId);
+                if (questStatus.Explored)
+                    continue;
+
+                uint32 const triggerId = GetQuestAreaTriggerId(questId);
+                AreaTrigger const* trigger = triggerId ? sObjectMgr->GetAreaTrigger(triggerId) : nullptr;
+                if (!trigger || trigger->map != bot->GetMapId())
+                    continue;
+
+                availableQuests.push_back(questId);
+                LOG_DEBUG("playerbots", "[New RPG] {} exploration quest {} uses area trigger {}", bot->GetName(),
+                          questId, triggerId);
             }
             if (availableQuests.size())
             {

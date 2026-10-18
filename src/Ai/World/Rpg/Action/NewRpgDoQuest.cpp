@@ -777,7 +777,7 @@ bool NewRpgDoQuestAction::EngageTalkTarget(NewRpgInfo::DoQuest& data, Creature* 
 void NewRpgDoQuestAction::BuildCaches()
 {
     IsCastQuest(0);
-    GetQuestAreaTrigger(0);
+    GetQuestAreaTriggerId(0);
 }
 
 bool NewRpgDoQuestAction::IsCastQuest(uint32 questId)
@@ -1288,25 +1288,6 @@ uint32 NewRpgDoQuestAction::QuestItemUseGrace(uint32 spellId)
     return std::max<uint32>(2000, (info ? info->CalcCastTime() : 0) + 1000);
 }
 
-uint32 NewRpgDoQuestAction::GetQuestAreaTrigger(uint32 questId)
-{
-    // ObjectMgr indexes trigger -> quest only, so read the reverse straight off the table it
-    // loads from. DoExploreObjective re-checks the trigger and the quest flag at use time.
-    static std::unordered_map<uint32, uint32> const questToTrigger = []
-    {
-        std::unordered_map<uint32, uint32> m;
-        if (QueryResult result = WorldDatabase.Query("SELECT id, quest FROM areatrigger_involvedrelation ORDER BY id"))
-            do
-            {
-                m[(*result)[1].Get<uint32>()] = (*result)[0].Get<uint32>();
-            } while (result->NextRow());
-        return m;
-    }();
-
-    auto it = questToTrigger.find(questId);
-    return it == questToTrigger.end() ? 0 : it->second;
-}
-
 bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
 {
     Quest const* quest = data.quest;
@@ -1318,7 +1299,7 @@ bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
     if (!q_status || q_status->Explored)
         return false;
 
-    uint32 triggerId = GetQuestAreaTrigger(data.questId);
+    uint32 triggerId = GetQuestAreaTriggerId(data.questId);
     if (!triggerId)
         return false;
 

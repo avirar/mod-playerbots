@@ -98,7 +98,6 @@ protected:
     Creature* FindCreatureAnchor(uint32 entry, float range) const;
 
     bool DoExploreObjective(NewRpgInfo::DoQuest& data);
-    static uint32 GetQuestAreaTrigger(uint32 questId);
     void WriteOffTarget(NewRpgInfo::DoQuest& data);
     bool IsWrittenOff(NewRpgInfo::DoQuest const& data, ObjectGuid guid) const;
     bool IsValidCreatureTarget(NewRpgInfo::DoQuest const& data, Creature* creature) const;
