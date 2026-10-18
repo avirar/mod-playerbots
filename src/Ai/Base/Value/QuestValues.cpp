@@ -163,6 +163,8 @@ static std::unordered_map<uint32, std::array<std::vector<uint32>, QUEST_OBJECTIV
 static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationItems;
 static std::unordered_map<uint32, std::array<std::vector<int32>, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationSources;
 static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationContainers;
+// Objective item -> the spell focus its creating use-spell demands (moonwell-style quests).
+static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationFocus;
 
 static std::unordered_map<uint32, std::vector<QuestCraftReagent>> g_questItemReagents;
 
@@ -647,6 +649,19 @@ void BuildQuestObjectiveSpawns()
             for (uint32 creator : it->second)
             {
                 uint32 const useSpell = GetItemSpell(creator);
+                SpellInfo const* useInfo = sSpellMgr->GetSpellInfo(useSpell);
+                if (!useInfo)
+                    continue;
+
+                // A focus-requiring creation spell has no corpse target: the bot must stand next
+                // to the spell focus object instead.
+                if (useInfo->RequiresSpellFocus)
+                {
+                    g_questCreationItems[questId][i] = creator;
+                    g_questCreationFocus[questId][i] = useInfo->RequiresSpellFocus;
+                    break;
+                }
+
                 auto const& targets = spellTargetEntries.find(useSpell);
                 if (targets == spellTargetEntries.end() || targets->second.entries.empty())
                     continue;
@@ -1012,6 +1027,15 @@ uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx)
 
     auto it = g_questCreationItems.find(questId);
     return it != g_questCreationItems.end() ? it->second[itemObjectiveIdx] : 0;
+}
+
+uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx)
+{
+    if (itemObjectiveIdx >= QUEST_ITEM_OBJECTIVES_COUNT)
+        return 0;
+
+    auto it = g_questCreationFocus.find(questId);
+    return it != g_questCreationFocus.end() ? it->second[itemObjectiveIdx] : 0;
 }
 
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx)

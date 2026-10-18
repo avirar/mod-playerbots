@@ -94,6 +94,7 @@ protected:
     bool DoSummonObjective(NewRpgInfo::DoQuest& data, QuestSummonAnchor const& anchor);
     WorldObject* SelectSummonAnchor(NewRpgInfo::DoQuest const& data, QuestSummonAnchor const& anchor) const;
     GameObject* FindFocusAnchor(uint32 focusId) const;
+    GameObject* FindNearestFocusAnchor(uint32 focusId, float range) const;
     Creature* FindCreatureAnchor(uint32 entry, float range) const;
 
     bool DoExploreObjective(NewRpgInfo::DoQuest& data);
@@ -121,6 +122,8 @@ protected:
     const float transformCastRange = 30.0f;
     // Past half of any spell-focus template's dist, which is the core's own casting rule.
     const float summonAnchorScanRange = 25.0f;
+    // The quest POI can sit well away from its spell focus; scan wide enough to walk over.
+    const float focusAnchorScanRange = 100.0f;
     const float summonCreatureAnchorRange = 5.0f;
     // The item has to land before the mob aggroes; combat pauses this engine.
     const float summonKillAnchorRange = 30.0f;

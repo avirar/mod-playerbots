@@ -135,6 +135,7 @@ std::vector<uint32> const& GetQuestCreditItems(uint32 questId, uint32 objectiveI
 // The item whose use-spell creates a quest item objective, and the corpse entries the spell's
 // conditions demand as the cast target (vial-style quests).
 uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx);
+uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx);
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx);
 
 // False for credit markers (non-selectable / player-immune creatures): never destinations.

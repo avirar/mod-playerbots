@@ -964,12 +964,61 @@ bool NewRpgDoQuestAction::IsCreationSource(NewRpgInfo::DoQuest const& data, uint
     return std::find(sources.begin(), sources.end(), int32(entry)) != sources.end();
 }
 
-// Use an item whose spell carries the KILL_CREDIT for the active objective (feed-style quests).
+// Use the quest's item for the active objective: a KILL_CREDIT item at a creature (feed-style),
+// or a focus-requiring creation item cast next to its spell focus (moonwell-style).
 bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
 {
-    if (!sPlayerbotAIConfig.QuestItemLinks || data.objectiveIdx < 0 || data.objectiveIdx >= QUEST_OBJECTIVES_COUNT ||
-        IsObjectiveCompleted(data))
+    if (!sPlayerbotAIConfig.QuestItemLinks || data.objectiveIdx < 0 || IsObjectiveCompleted(data))
         return false;
+
+    if (data.objectiveIdx >= QUEST_OBJECTIVES_COUNT)
+    {
+        uint32 const itemIdx = uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT;
+        uint32 const focusId = GetQuestCreationFocus(data.questId, itemIdx);
+        if (!focusId)
+            return false;
+
+        Item* item = bot->GetItemByEntry(GetQuestCreationItem(data.questId, itemIdx));
+        if (!item)
+            return false;
+
+        uint32 const spellId = GetItemUseSpell(item);
+        if (!spellId || bot->HasSpellItemCooldown(spellId, item->GetEntry()))
+            return false;
+
+        if (data.lastItemUse && GetMSTimeDiffToNow(data.lastItemUse) < QuestItemUseGrace(spellId))
+            return true;
+
+        if (bot->IsNonMeleeSpellCast(false))
+            return true;
+
+        GameObject* focus = FindNearestFocusAnchor(focusId, focusAnchorScanRange);
+        if (!focus)
+            return false;
+
+        // GameObjectFocusCheck - the rule the core casts by - accepts the caster at half the
+        // template's dist. A yard of margin so a cast that starts in range also finishes there.
+        float const useRange = std::max(float(focus->GetGOInfo()->spellFocus.dist) / 2.0f - 1.0f, 2.0f);
+        if (bot->GetDistance(focus) > useRange)
+        {
+            if (MoveWorldObjectTo(focus->GetGUID(), useRange))
+                return true;
+            return MoveRandomNear(5.0f);
+        }
+
+        if (bot->IsMounted())
+        {
+            bot->Dismount();
+            return true;
+        }
+
+        bot->SetFacingToObject(focus);
+        botAI->ImbueItem(item);
+        data.lastItemUse = getMSTime();
+        LOG_DEBUG("playerbots", "[New RPG] {} used quest item {} at spell focus {} for quest {} objective {}",
+                  bot->GetName(), item->GetEntry(), focus->GetEntry(), data.questId, data.objectiveIdx);
+        return true;
+    }
 
     for (uint32 itemId : GetQuestCreditItems(data.questId, uint32(data.objectiveIdx)))
     {
@@ -1174,24 +1223,33 @@ bool NewRpgDoQuestAction::DoSummonObjective(NewRpgInfo::DoQuest& data, QuestSumm
 
 GameObject* NewRpgDoQuestAction::FindFocusAnchor(uint32 focusId) const
 {
+    GameObject* const focus = FindNearestFocusAnchor(focusId, summonAnchorScanRange);
+    if (!focus)
+        return nullptr;
+
+    // GameObjectFocusCheck - the rule the core casts by - accepts the caster at half the
+    // template's dist. A yard of margin so a cast that starts in range also finishes there.
+    float const useRange = std::max(float(focus->GetGOInfo()->spellFocus.dist) / 2.0f - 1.0f, 2.0f);
+    return bot->GetDistance(focus) <= useRange ? focus : nullptr;
+}
+
+GameObject* NewRpgDoQuestAction::FindNearestFocusAnchor(uint32 focusId, float range) const
+{
     GameObject* found = nullptr;
     float nearest = FLT_MAX;
 
     std::list<GameObject*> gos;
-    AnyGameObjectInObjectRangeCheck goCheck(bot, summonAnchorScanRange);
+    AnyGameObjectInObjectRangeCheck goCheck(bot, range);
     Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> goSearcher(bot, gos, goCheck);
-    Cell::VisitObjects(bot, goSearcher, summonAnchorScanRange);
+    Cell::VisitObjects(bot, goSearcher, range);
     for (GameObject* go : gos)
     {
         if (!go->isSpawned() || go->GetGoType() != GAMEOBJECT_TYPE_SPELL_FOCUS ||
             go->GetGOInfo()->spellFocus.focusId != focusId)
             continue;
 
-        // GameObjectFocusCheck - the rule the core casts by - accepts the caster at half the
-        // template's dist. A yard of margin so a cast that starts in range also finishes there.
-        float const useRange = std::max(float(go->GetGOInfo()->spellFocus.dist) / 2.0f - 1.0f, 2.0f);
         float const dist = bot->GetDistance(go);
-        if (dist <= useRange && dist < nearest)
+        if (dist < nearest)
         {
             nearest = dist;
             found = go;
