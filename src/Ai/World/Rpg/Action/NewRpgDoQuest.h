@@ -90,6 +90,7 @@ protected:
     static bool IsCastQuest(uint32 questId);
 
     bool DoCraftObjective(NewRpgInfo::DoQuest& data);
+    bool DoScriptedItemObjective(NewRpgInfo::DoQuest& data);
 
     bool DoSummonObjective(NewRpgInfo::DoQuest& data, QuestSummonAnchor const& anchor);
     WorldObject* SelectSummonAnchor(NewRpgInfo::DoQuest const& data, QuestSummonAnchor const& anchor) const;
@@ -123,6 +124,8 @@ protected:
     const float summonAnchorScanRange = 25.0f;
     // The quest POI can sit well away from its spell focus; scan wide enough to walk over.
     const float focusAnchorScanRange = 100.0f;
+    // Search range for the scripted-event creature (2561-style); the picker also uses its spawn.
+    const float scriptedTargetSearchRange = 100.0f;
     const float summonCreatureAnchorRange = 5.0f;
     // The item has to land before the mob aggroes; combat pauses this engine.
     const float summonKillAnchorRange = 30.0f;

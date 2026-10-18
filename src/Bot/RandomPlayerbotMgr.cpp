@@ -3113,6 +3113,32 @@ void RandomPlayerbotMgr::AggregateQuestStats(PlayerbotAI* botAI)
     botAI->rpgStatistic = NewRpgStatistic();
 }
 
+void RandomPlayerbotMgr::SeedQuestStats(Player* bot)
+{
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return;
+
+    if (!seededQuestStats.insert(bot->GetGUID().GetRawValue()).second)
+        return;
+
+    uint32 seeded = 0;
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+
+        botAI->SeedQuestAccepted(questId);
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+            botAI->SeedQuestCompleted(questId);
+        ++seeded;
+    }
+
+    if (seeded)
+        LOG_DEBUG("playerbots", "[QuestStats] seeded {} log quests for {}", seeded, bot->GetName());
+}
+
 NewRpgStatistic RandomPlayerbotMgr::CollectQuestStats()
 {
     // Merge each bot's pending statistics on top of the last aggregation, so the report is fresh

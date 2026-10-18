@@ -6843,38 +6843,60 @@ std::set<uint32> PlayerbotAI::GetCurrentIncompleteQuestIds()
 
 void PlayerbotAI::RecordQuestAccepted(uint32 questId)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questAccepted;
+    acceptedThisSession.insert(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questAcceptedByID[questId];
 }
 
 void PlayerbotAI::RecordQuestCompleted(uint32 questId)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questCompleted;
+    completedThisSession.insert(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questCompletedByID[questId];
 }
 
 void PlayerbotAI::RecordQuestRewarded(uint32 questId)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questRewarded;
+    // A repeatable quest can be accepted again once this cycle is over.
+    acceptedThisSession.erase(questId);
+    completedThisSession.erase(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questRewardedByID[questId];
 }
 
 void PlayerbotAI::RecordQuestDropped(uint32 questId, std::string const& reason)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questDropped;
+    acceptedThisSession.erase(questId);
+    completedThisSession.erase(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         rpgStatistic.RecordDrop(questId, reason);
 }
 
 void PlayerbotAI::RecordQuestAbandoned(uint32 questId, std::string const& reason)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questAbandoned;
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
@@ -6883,10 +6905,31 @@ void PlayerbotAI::RecordQuestAbandoned(uint32 questId, std::string const& reason
 
 void PlayerbotAI::RecordQuestFailed(uint32 questId)
 {
+    if (suppressQuestStats)
+        return;
+
     std::lock_guard<std::mutex> guard(rpgStatisticMutex);
     ++rpgStatistic.questFailed;
+    acceptedThisSession.erase(questId);
+    completedThisSession.erase(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questFailedByID[questId];
+}
+
+void PlayerbotAI::SeedQuestAccepted(uint32 questId)
+{
+    if (acceptedThisSession.count(questId))
+        return;
+
+    RecordQuestAccepted(questId);
+}
+
+void PlayerbotAI::SeedQuestCompleted(uint32 questId)
+{
+    if (completedThisSession.count(questId))
+        return;
+
+    RecordQuestCompleted(questId);
 }
 
 std::string PlayerbotAI::TakeQuestDropReason()

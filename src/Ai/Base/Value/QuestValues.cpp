@@ -166,6 +166,9 @@ static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT
 // Objective item -> the spell focus its creating use-spell demands (moonwell-style quests).
 static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT>> g_questCreationFocus;
 
+// Quests whose start item completes the quest by being used on a specific (dead) creature.
+static std::unordered_map<uint32, QuestScriptedItemTarget> g_questScriptedItemTargets;
+
 static std::unordered_map<uint32, std::vector<QuestCraftReagent>> g_questItemReagents;
 
 static constexpr uint32 REAGENT_STOCK_CASTS = 5;
@@ -864,6 +867,47 @@ void BuildQuestObjectiveSpawns()
             if (!killAnchor)
                 entryMap[int32(anchor)].emplace_back(questId, flag);
         }
+
+        // Scripted event quests (no NPC/item objectives) whose start item completes them on a
+        // specific dead creature, e.g. 2561 "Druid of the Claw" (Voodoo Charm on Rageclaw).
+        if (quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT))
+        {
+            bool hasObjective = false;
+            for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                if (quest->RequiredNpcOrGo[i] && quest->RequiredNpcOrGoCount[i])
+                    hasObjective = true;
+            for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+                if (quest->RequiredItemId[i] && quest->RequiredItemCount[i])
+                    hasObjective = true;
+
+            if (!hasObjective)
+            {
+                uint32 const itemId = quest->GetSrcItemId();
+                uint32 const spellId = GetItemSpell(itemId);
+                SpellInfo const* spell = sSpellMgr->GetSpellInfo(spellId);
+                if (spell)
+                {
+                    bool completesQuest = false;
+                    for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+                        if (spell->Effects[e].Effect == SPELL_EFFECT_QUEST_COMPLETE &&
+                            uint32(spell->Effects[e].MiscValue) == questId)
+                        {
+                            completesQuest = true;
+                            break;
+                        }
+
+                    auto targetIt = spellTargetEntries.find(spellId);
+                    if (completesQuest && targetIt != spellTargetEntries.end() && !targetIt->second.entries.empty())
+                    {
+                        QuestScriptedItemTarget target;
+                        target.itemId = itemId;
+                        target.creatureEntry = targetIt->second.entries.front();
+                        target.requireDead = targetIt->second.requireDead;
+                        g_questScriptedItemTargets[questId] = target;
+                    }
+                }
+            }
+        }
     }
 
     FileSpawnPositions(entryMap);
@@ -1036,6 +1080,13 @@ uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx)
 
     auto it = g_questCreationFocus.find(questId);
     return it != g_questCreationFocus.end() ? it->second[itemObjectiveIdx] : 0;
+}
+
+QuestScriptedItemTarget const& GetQuestScriptedItemTarget(uint32 questId)
+{
+    static QuestScriptedItemTarget const empty;
+    auto it = g_questScriptedItemTargets.find(questId);
+    return it != g_questScriptedItemTargets.end() ? it->second : empty;
 }
 
 uint32 GetQuestAreaTriggerId(uint32 questId)

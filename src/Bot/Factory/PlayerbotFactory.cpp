@@ -3841,6 +3841,11 @@ void PlayerbotFactory::AddPrevQuests(uint32 questId, std::list<uint32>& questIds
 
 void PlayerbotFactory::InitQuests(std::list<uint32>& questMap, bool withRewardItem)
 {
+    // These are synthetic pre-quest rewards, not gameplay: keep them out of the quest statistics.
+    bool const previousSuppressQuestStats = botAI && botAI->suppressQuestStats;
+    if (botAI)
+        botAI->suppressQuestStats = true;
+
     for (std::list<uint32>::iterator i = questMap.begin(); i != questMap.end(); ++i)
     {
         uint32 questId = *i;
@@ -3875,6 +3880,9 @@ void PlayerbotFactory::InitQuests(std::list<uint32>& questMap, bool withRewardIt
             }
         }
     }
+
+    if (botAI)
+        botAI->suppressQuestStats = previousSuppressQuestStats;
 }
 
 void PlayerbotFactory::InitInstanceQuests()

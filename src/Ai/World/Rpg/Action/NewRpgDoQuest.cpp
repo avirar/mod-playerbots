@@ -964,6 +964,125 @@ bool NewRpgDoQuestAction::IsCreationSource(NewRpgInfo::DoQuest const& data, uint
     return std::find(sources.begin(), sources.end(), int32(entry)) != sources.end();
 }
 
+bool NewRpgDoQuestAction::DoScriptedItemObjective(NewRpgInfo::DoQuest& data)
+{
+    QuestScriptedItemTarget const& scripted = GetQuestScriptedItemTarget(data.questId);
+    if (!scripted.creatureEntry || !data.quest)
+        return false;
+
+    if (bot->GetQuestStatus(data.questId) == QUEST_STATUS_COMPLETE)
+        return false;
+
+    Item* item = bot->GetItemByEntry(scripted.itemId);
+    if (!item)
+        return false;
+
+    uint32 const spellId = GetItemUseSpell(item);
+    if (!spellId || bot->HasSpellItemCooldown(spellId, item->GetEntry()))
+        return false;
+
+    if (data.lastItemUse && GetMSTimeDiffToNow(data.lastItemUse) < QuestItemUseGrace(spellId))
+        return true;
+
+    if (bot->IsNonMeleeSpellCast(false))
+        return true;
+
+    Creature* target = nullptr;
+    float nearest = FLT_MAX;
+    std::list<Creature*> creatures;
+    bot->GetCreatureListWithEntryInGrid(creatures, scripted.creatureEntry, scriptedTargetSearchRange);
+    for (Creature* creature : creatures)
+    {
+        if (!creature->IsInWorld() || (!creature->IsAlive() && creature->getDeathState() != DeathState::Corpse))
+            continue;
+
+        float const dist = bot->GetDistance(creature);
+        if (dist < nearest)
+        {
+            nearest = dist;
+            target = creature;
+        }
+    }
+
+    if (target)
+    {
+        if (target->IsAlive())
+        {
+            data.targetGuid = target->GetGUID();
+            data.targetPos = WorldPosition(target);
+            data.targetSince = 0;
+            return EngageTarget(data);
+        }
+
+        float const castRange = INTERACTION_DISTANCE - 1.0f;
+        if (bot->GetDistance(target) <= castRange && bot->IsWithinLOSInMap(target))
+        {
+            if (bot->IsMounted())
+            {
+                bot->Dismount();
+                return true;
+            }
+
+            bot->SetFacingToObject(target);
+            botAI->ImbueItem(item, target);
+            data.lastItemUse = getMSTime();
+            LOG_DEBUG("playerbots", "[New RPG] {} used quest item {} on {} for quest {}", bot->GetName(),
+                      item->GetEntry(), target->GetEntry(), data.questId);
+            WriteOffTarget(data);
+            return true;
+        }
+
+        if (MoveFarTo(WorldPosition(target)))
+            return true;
+        return MoveRandomNear(5.0f);
+    }
+
+    WorldPosition dest;
+    for (GuidPosition const& pos : GetEntrySpawns(int32(scripted.creatureEntry), bot->GetMapId()))
+    {
+        WorldPosition candidate(pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
+        if (dest == WorldPosition() || bot->GetDistance(candidate) < bot->GetDistance(dest))
+            dest = candidate;
+    }
+
+    if (dest == WorldPosition())
+    {
+        if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(data.questId))
+        {
+            for (QuestPOI const& poi : *pois)
+            {
+                if (poi.MapId != bot->GetMapId() || poi.ObjectiveIndex != 16 || poi.points.empty())
+                    continue;
+
+                float x = 0.0f, y = 0.0f;
+                for (QuestPOIPoint const& point : poi.points)
+                {
+                    x += point.x;
+                    y += point.y;
+                }
+                x /= float(poi.points.size());
+                y /= float(poi.points.size());
+                float z = std::max(bot->GetMap()->GetHeight(x, y, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(x, y));
+                if (z == INVALID_HEIGHT || z == VMAP_INVALID_HEIGHT_VALUE)
+                    z = bot->GetPositionZ();
+                dest = WorldPosition(bot->GetMapId(), x, y, z);
+                break;
+            }
+        }
+    }
+
+    if (dest == WorldPosition())
+        return false;
+
+    if (bot->GetDistance(dest) > 10.0f)
+    {
+        if (MoveFarTo(dest))
+            return true;
+        return MoveRandomNear(10.0f);
+    }
+    return MoveRandomNear(5.0f);
+}
+
 // Use the quest's item for the active objective: a KILL_CREDIT item at a creature (feed-style),
 // or a focus-requiring creation item cast next to its spell focus (moonwell-style).
 bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
@@ -1345,6 +1464,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
         return false;
 
     if (DoUseCreditItem(data))
+        return true;
+
+    if (DoScriptedItemObjective(data))
         return true;
 
     if (DoEscortObjective(data))

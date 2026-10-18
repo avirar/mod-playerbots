@@ -127,6 +127,7 @@ public:
     void PrintQuestTotals(NewRpgStatistic const& stats);
     NewRpgStatistic CollectQuestStats();
     void AggregateQuestStats(PlayerbotAI* botAI);
+    void SeedQuestStats(Player* bot);
     void PrintQuestStats();
     void ExportQuestStatsToJson();
     double GetBuyMultiplier(Player* bot);
@@ -228,6 +229,8 @@ private:
     bool _isBotInitializing = true;
     bool _isBotLogging = true;
     NewRpgStatistic rpgStasticTotal;
+    // Characters whose initial quest log has been counted for this server run.
+    std::unordered_set<uint64> seededQuestStats;
     CachedEvent* FindEvent(uint32 bot, std::string const& event);
     uint32 GetEventValue(uint32 bot, std::string const& event);
     std::string GetEventData(uint32 bot, std::string const& event);

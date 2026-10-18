@@ -1510,6 +1510,31 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                     continue;
                 }
 
+                QuestScriptedItemTarget const& scripted = GetQuestScriptedItemTarget(questId);
+                if (scripted.creatureEntry)
+                {
+                    bool available = !GetEntrySpawns(int32(scripted.creatureEntry), bot->GetMapId()).empty();
+                    if (!available)
+                    {
+                        if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(questId))
+                            for (QuestPOI const& poi : *pois)
+                                if (poi.MapId == bot->GetMapId() && poi.ObjectiveIndex == 16 &&
+                                    !poi.points.empty())
+                                {
+                                    available = true;
+                                    break;
+                                }
+                    }
+
+                    if (available)
+                    {
+                        availableQuests.push_back(questId);
+                        LOG_DEBUG("playerbots", "[New RPG] {} scripted quest {} targets creature {}",
+                                  bot->GetName(), questId, scripted.creatureEntry);
+                        continue;
+                    }
+                }
+
                 // Exploration quests have no objective counts: they complete by entering an area
                 // trigger, so the POI check alone would never queue them.
                 Quest const* quest = sObjectMgr->GetQuestTemplate(questId);

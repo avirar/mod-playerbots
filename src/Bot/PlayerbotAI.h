@@ -637,9 +637,16 @@ public:
     void RecordQuestDropped(uint32 questId, std::string const& reason);
     void RecordQuestAbandoned(uint32 questId, std::string const& reason);
     void RecordQuestFailed(uint32 questId);
+    void SeedQuestAccepted(uint32 questId);
+    void SeedQuestCompleted(uint32 questId);
     // Set by a drop site, consumed by the OnPlayerQuestAbandon hook.
     std::string pendingQuestDropReason;
     std::string TakeQuestDropReason();
+    // Per-session dedup for seeding; quest events only count once until rewarded/dropped.
+    std::unordered_set<uint32> acceptedThisSession;
+    std::unordered_set<uint32> completedThisSession;
+    // Synthetic factory quest rewards must not enter the gameplay statistics.
+    bool suppressQuestStats = false;
     std::unordered_set<uint32> lowPriorityQuest;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;

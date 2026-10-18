@@ -137,6 +137,15 @@ std::vector<uint32> const& GetQuestCreditItems(uint32 questId, uint32 objectiveI
 uint32 GetQuestCreationItem(uint32 questId, uint32 itemObjectiveIdx);
 uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx);
 
+// A scripted quest whose start item completes it when used on a specific creature (2561-style).
+struct QuestScriptedItemTarget
+{
+    uint32 itemId{0};
+    uint32 creatureEntry{0};
+    bool requireDead{false};
+};
+QuestScriptedItemTarget const& GetQuestScriptedItemTarget(uint32 questId);
+
 // The area trigger that completes an exploration quest, 0 when the quest has none.
 uint32 GetQuestAreaTriggerId(uint32 questId);
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx);
