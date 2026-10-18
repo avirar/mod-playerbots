@@ -636,6 +636,10 @@ public:
     void RecordQuestRewarded(uint32 questId);
     void RecordQuestDropped(uint32 questId, std::string const& reason);
     void RecordQuestAbandoned(uint32 questId, std::string const& reason);
+    void RecordQuestFailed(uint32 questId);
+    // Set by a drop site, consumed by the OnPlayerQuestAbandon hook.
+    std::string pendingQuestDropReason;
+    std::string TakeQuestDropReason();
     std::unordered_set<uint32> lowPriorityQuest;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;

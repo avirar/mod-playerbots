@@ -162,12 +162,14 @@ struct NewRpgStatistic
     uint32 questAbandoned{0};
     uint32 questRewarded{0};
     uint32 questDropped{0};
+    uint32 questFailed{0};
 
     std::map<uint32, uint32> questAcceptedByID;
     std::map<uint32, uint32> questCompletedByID;
     std::map<uint32, uint32> questAbandonedByID;
     std::map<uint32, uint32> questRewardedByID;
     std::map<uint32, uint32> questDroppedByID;
+    std::map<uint32, uint32> questFailedByID;
 
     std::map<std::string, uint32> questDropReasons;
     std::map<std::string, uint32> questAbandonReasons;
@@ -200,6 +202,7 @@ struct NewRpgStatistic
         this->questAbandoned += other.questAbandoned;
         this->questRewarded += other.questRewarded;
         this->questDropped += other.questDropped;
+        this->questFailed += other.questFailed;
 
         for (auto const& [questId, count] : other.questAcceptedByID)
             this->questAcceptedByID[questId] += count;
@@ -211,6 +214,8 @@ struct NewRpgStatistic
             this->questRewardedByID[questId] += count;
         for (auto const& [questId, count] : other.questDroppedByID)
             this->questDroppedByID[questId] += count;
+        for (auto const& [questId, count] : other.questFailedByID)
+            this->questFailedByID[questId] += count;
         for (auto const& [reason, count] : other.questDropReasons)
             this->questDropReasons[reason] += count;
         for (auto const& [reason, count] : other.questAbandonReasons)

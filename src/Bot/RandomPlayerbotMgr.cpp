@@ -2978,11 +2978,19 @@ void RandomPlayerbotMgr::PrintStats()
         zoneCount[bot->GetZoneId()]++;
 
         if (sPlayerbotAIConfig.EnableNewRpgStrategy)
-        {
             rpgStatusCount[botAI->rpgInfo.GetStatus()]++;
-            std::lock_guard<std::mutex> guard(botAI->rpgStatisticMutex);
-            rpgStasticTotal += botAI->rpgStatistic;
-            botAI->rpgStatistic = NewRpgStatistic();
+    }
+
+    if (sPlayerbotAIConfig.EnableNewRpgStrategy)
+    {
+        // Quest stats cover every bot (random, alt and self), so all of them are aggregated.
+        for (auto const& [guid, base] : sPlayerbotsMgr.GetAllPlayerbotsAI())
+        {
+            if (!base || !base->IsBotAI())
+                continue;
+
+            if (PlayerbotAI* botAI = dynamic_cast<PlayerbotAI*>(base))
+                AggregateQuestStats(botAI);
         }
     }
 
@@ -3095,35 +3103,49 @@ void RandomPlayerbotMgr::PrintStats()
     LOG_INFO("playerbots", "    Non-combat: {}, Combat: {}, Dead: {}", engine_noncombat, engine_combat, engine_dead);
 }
 
+void RandomPlayerbotMgr::AggregateQuestStats(PlayerbotAI* botAI)
+{
+    if (!botAI)
+        return;
+
+    std::lock_guard<std::mutex> guard(botAI->rpgStatisticMutex);
+    rpgStasticTotal += botAI->rpgStatistic;
+    botAI->rpgStatistic = NewRpgStatistic();
+}
+
 NewRpgStatistic RandomPlayerbotMgr::CollectQuestStats()
 {
     // Merge each bot's pending statistics on top of the last aggregation, so the report is fresh
-    // even when PrintStats has not run yet.
+    // even when PrintStats has not run yet. Covers random, alt and self bots.
     NewRpgStatistic total = rpgStasticTotal;
-    for (PlayerBotMap::iterator i = playerBots.begin(); i != playerBots.end(); ++i)
+    for (auto const& [guid, base] : sPlayerbotsMgr.GetAllPlayerbotsAI())
     {
-        PlayerbotAI* botAI = GET_PLAYERBOT_AI(i->second);
-        if (!botAI)
+        if (!base || !base->IsBotAI())
             continue;
 
-        std::lock_guard<std::mutex> guard(botAI->rpgStatisticMutex);
-        total += botAI->rpgStatistic;
+        if (PlayerbotAI* botAI = dynamic_cast<PlayerbotAI*>(base))
+        {
+            std::lock_guard<std::mutex> guard(botAI->rpgStatisticMutex);
+            total += botAI->rpgStatistic;
+        }
     }
     return total;
 }
 
 void RandomPlayerbotMgr::PrintQuestTotals(NewRpgStatistic const& stats)
 {
-    LOG_INFO("playerbots", "Bots total quests:");
-    LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}, Dropped: {}, Abandoned: {}",
-             stats.questAccepted, stats.questCompleted, stats.questRewarded, stats.questDropped,
+    LOG_INFO("playerbots", "Bots total quests (all bots):");
+    LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}, Failed: {}, Dropped: {}, Abandoned: {}",
+             stats.questAccepted, stats.questCompleted, stats.questRewarded, stats.questFailed, stats.questDropped,
              stats.questAbandoned);
 
     if (stats.questAccepted > 0)
     {
-        LOG_INFO("playerbots", "    Completed: {:.2f}%, Rewarded: {:.2f}%, Dropped: {:.2f}%, Abandoned: {:.2f}%",
+        LOG_INFO("playerbots",
+                 "    Completed: {:.2f}%, Rewarded: {:.2f}%, Failed: {:.2f}%, Dropped: {:.2f}%, Abandoned: {:.2f}%",
                  stats.questCompleted * 100.0f / stats.questAccepted,
                  stats.questRewarded * 100.0f / stats.questAccepted,
+                 stats.questFailed * 100.0f / stats.questAccepted,
                  stats.questDropped * 100.0f / stats.questAccepted,
                  stats.questAbandoned * 100.0f / stats.questAccepted);
     }
@@ -3245,6 +3267,7 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
         uint32 rewarded{0};
         uint32 dropped{0};
         uint32 abandoned{0};
+        uint32 failed{0};
         std::map<std::string, uint32> dropReasons;
         std::map<std::string, uint32> abandonReasons;
 
@@ -3261,6 +3284,8 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
     for (auto const& [questId, count] : total.questDroppedByID)
         questIds.insert(questId);
     for (auto const& [questId, count] : total.questAbandonedByID)
+        questIds.insert(questId);
+    for (auto const& [questId, count] : total.questFailedByID)
         questIds.insert(questId);
 
     auto countFor = [](std::map<uint32, uint32> const& counts, uint32 questId) -> uint32
@@ -3279,6 +3304,7 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
         row.rewarded = countFor(total.questRewardedByID, questId);
         row.dropped = countFor(total.questDroppedByID, questId);
         row.abandoned = countFor(total.questAbandonedByID, questId);
+        row.failed = countFor(total.questFailedByID, questId);
 
         auto dropReasonsIt = total.questDropReasonsByID.find(questId);
         if (dropReasonsIt != total.questDropReasonsByID.end())
@@ -3307,7 +3333,8 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
     out << "    \"completed\": " << total.questCompleted << ",\n";
     out << "    \"rewarded\": " << total.questRewarded << ",\n";
     out << "    \"dropped\": " << total.questDropped << ",\n";
-    out << "    \"abandoned\": " << total.questAbandoned << "\n";
+    out << "    \"abandoned\": " << total.questAbandoned << ",\n";
+    out << "    \"failed\": " << total.questFailed << "\n";
     out << "  },\n";
     out << "  \"dropReasons\": " << reasonsJson(total.questDropReasons) << ",\n";
     out << "  \"abandonReasons\": " << reasonsJson(total.questAbandonReasons) << ",\n";
@@ -3326,6 +3353,7 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
         out << "      \"rewarded\": " << row.rewarded << ",\n";
         out << "      \"dropped\": " << row.dropped << ",\n";
         out << "      \"abandoned\": " << row.abandoned << ",\n";
+        out << "      \"failed\": " << row.failed << ",\n";
         out << "      \"dropReasons\": " << reasonsJson(row.dropReasons) << ",\n";
         out << "      \"abandonReasons\": " << reasonsJson(row.abandonReasons) << "\n";
         out << "    }" << (i + 1 < rows.size() ? "," : "") << "\n";

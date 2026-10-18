@@ -126,6 +126,7 @@ public:
     void PrintStats();
     void PrintQuestTotals(NewRpgStatistic const& stats);
     NewRpgStatistic CollectQuestStats();
+    void AggregateQuestStats(PlayerbotAI* botAI);
     void PrintQuestStats();
     void ExportQuestStatsToJson();
     double GetBuyMultiplier(Player* bot);

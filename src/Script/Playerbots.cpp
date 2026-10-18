@@ -144,7 +144,12 @@ public:
         PLAYERHOOK_CAN_PLAYER_USE_CHANNEL_CHAT,
         PLAYERHOOK_ON_GIVE_EXP,
         PLAYERHOOK_ON_BEFORE_TELEPORT,
-        PLAYERHOOK_ON_PLAYER_ENTER_COMBAT
+        PLAYERHOOK_ON_PLAYER_ENTER_COMBAT,
+        PLAYERHOOK_ON_PLAYER_QUEST_ACCEPT,
+        PLAYERHOOK_ON_BEFORE_QUEST_COMPLETE,
+        PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
+        PLAYERHOOK_ON_QUEST_ABANDON,
+        PLAYERHOOK_ON_QUEST_FAILED
     }) {}
 
     void OnPlayerLogin(Player* player) override
@@ -177,6 +182,11 @@ public:
 
     void OnPlayerBeforeLogout(Player* player) override
     {
+        // Flush quest counters before the bot AI is destroyed, so alt/self bot statistics
+        // survive logout (random bots are also merged by the periodic stats run).
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            sRandomPlayerbotMgr.AggregateQuestStats(botAI);
+
         if (PlayerbotMgr* playerbotMgr = GET_PLAYERBOT_MGR(player))
         {
             PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
@@ -191,6 +201,39 @@ public:
     void OnPlayerCreatureKillCredit(Player* player, Creature* killed) override
     {
         GuildTaskMgr::instance().CheckKillTask(player, killed);
+    }
+
+    void OnPlayerQuestAccept(Player* player, Quest const* quest) override
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            botAI->RecordQuestAccepted(quest->GetQuestId());
+    }
+
+    bool OnPlayerBeforeQuestComplete(Player* player, uint32 questId) override
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            if (player->GetQuestStatus(questId) != QUEST_STATUS_COMPLETE)
+                botAI->RecordQuestCompleted(questId);
+
+        return true;
+    }
+
+    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            botAI->RecordQuestRewarded(quest->GetQuestId());
+    }
+
+    void OnPlayerQuestAbandon(Player* player, uint32 questId) override
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            botAI->RecordQuestDropped(questId, botAI->TakeQuestDropReason());
+    }
+
+    void OnPlayerQuestFailed(Player* player, uint32 questId) override
+    {
+        if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+            botAI->RecordQuestFailed(questId);
     }
 
     void OnPlayerBeforePetitionSign(Player* player, ObjectGuid /*petitionGuid*/, bool& alreadySignedByAccount) override

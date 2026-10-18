@@ -1353,7 +1353,6 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
     if (botAI->rpgInfo.HasStatusPersisted(questStayTime))
     {
         botAI->lowPriorityQuest.insert(questId);
-        botAI->rpgStatistic.questAbandoned++;
         botAI->RecordQuestAbandoned(questId, "no_progression");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {} (quest budget)", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();
@@ -1466,8 +1465,6 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         // "attack anything" outranks this action and would interrupt the turn-in walk.
         data.poiFallback = false;
         BroadcastHelper::BroadcastQuestUpdateComplete(botAI, bot, quest);
-        botAI->rpgStatistic.questCompleted++;
-        botAI->RecordQuestCompleted(questId);
         data.lastReachPOI = 0;
         data.objectiveIdx = -1;
         data.spawnGuid = 0;
@@ -1539,7 +1536,6 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
         // e.g. Can not reward quest to gameobjects
         /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
         botAI->lowPriorityQuest.insert(questId);
-        botAI->rpgStatistic.questAbandoned++;
         botAI->RecordQuestAbandoned(questId, "reward_issue");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();

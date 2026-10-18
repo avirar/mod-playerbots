@@ -9,6 +9,24 @@
 #include "Event.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#include "QuestPackets.h"
+#include "WorldPacket.h"
+
+namespace
+{
+// All removals go through the core handler so the quest-abandon hook observes them.
+void RemoveQuestAtSlot(Player* bot, PlayerbotAI* botAI, uint16 slot, uint32 questId, char const* reason)
+{
+    botAI->pendingQuestDropReason = reason;
+    WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
+    packet << uint8(slot);
+    WorldPackets::Quest::QuestLogRemoveQuest removeQuest(std::move(packet));
+    removeQuest.Read();
+    bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
+    botAI->pendingQuestDropReason.clear();
+    bot->RemoveRewardedQuest(questId);
+}
+}  // namespace
 
 bool DropQuestAction::Execute(Event event)
 {
@@ -22,6 +40,7 @@ bool DropQuestAction::Execute(Event event)
     uint32 entry = handler.extractQuestId(link);
 
     // remove all quest entries for 'entry' from quest log
+    uint16 foundSlot = MAX_QUEST_LOG_SIZE;
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 logQuest = bot->GetQuestSlotQuestId(slot);
@@ -32,10 +51,7 @@ bool DropQuestAction::Execute(Event event)
 
         if (logQuest == entry || link.find(quest->GetTitle()) != std::string::npos)
         {
-            bot->SetQuestSlot(slot, 0);
-
-            // we ignore unequippable quest items in this case, its' still be equipped
-            bot->TakeQuestSourceItem(logQuest, false);
+            foundSlot = slot;
             entry = logQuest;
             break;
         }
@@ -44,8 +60,15 @@ bool DropQuestAction::Execute(Event event)
     if (!entry)
         return false;
 
-    bot->RemoveRewardedQuest(entry);
-    bot->RemoveActiveQuest(entry, false);
+    if (foundSlot < MAX_QUEST_LOG_SIZE)
+    {
+        RemoveQuestAtSlot(bot, botAI, foundSlot, entry, "manual_drop");
+    }
+    else
+    {
+        bot->RemoveRewardedQuest(entry);
+        bot->RemoveActiveQuest(entry, false);
+    }
 
     if (botAI->HasStrategy("debug quest", BotState::BOT_STATE_NON_COMBAT) || botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
     {
@@ -118,12 +141,7 @@ bool CleanQuestLogAction::Execute(Event event)
                     {{"%title", quest->GetTitle()}}));
 
             // Remove quest
-            botAI->rpgStatistic.questDropped++;
-            botAI->RecordQuestDropped(questId, "manual_drop");
-            bot->SetQuestSlot(slot, 0);
-            bot->TakeQuestSourceItem(questId, false);
-            bot->SetQuestStatus(questId, QUEST_STATUS_NONE);
-            bot->RemoveRewardedQuest(questId);
+            RemoveQuestAtSlot(bot, botAI, slot, questId, "trivial");
 
             if (botAI->HasStrategy("debug rpg", BotState::BOT_STATE_COMBAT))
             {
@@ -213,13 +231,7 @@ void CleanQuestLogAction::DropQuestType(uint8& numQuest, uint8 wantNum, bool isG
             continue;
 
         // Drop quest.
-        bot->SetQuestSlot(slot, 0);
-
-        // We ignore unequippable quest items in this case, its' still be equipped
-        bot->TakeQuestSourceItem(questId, false);
-
-        bot->SetQuestStatus(questId, QUEST_STATUS_NONE);
-        bot->RemoveRewardedQuest(questId);
+        RemoveQuestAtSlot(bot, botAI, slot, questId, "clean_log");
 
         numQuest--;
 

@@ -122,6 +122,8 @@ public:
     PlayerbotAI* GetPlayerbotAI(Player* player);
     PlayerbotMgr* GetPlayerbotMgr(Player* player);
 
+    std::unordered_map<ObjectGuid, PlayerbotAIBase*> const& GetAllPlayerbotsAI() const { return _playerbotsAIMap; }
+
 private:
     PlayerbotsMgr() = default;
     ~PlayerbotsMgr() = default;

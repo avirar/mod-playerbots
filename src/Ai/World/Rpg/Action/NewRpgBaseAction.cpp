@@ -348,8 +348,6 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                     "Quest accepted %quest",
                     {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
-            botAI->rpgStatistic.questAccepted++;
-            botAI->RecordQuestAccepted(quest->GetQuestId());
 
             // Pursue what was just accepted (e.g. the next quest in a chain) unless a live
             // do-quest is still in progress - that one keeps the bot.
@@ -370,8 +368,6 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
                     "Quest rewarded %quest",
                     {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
-            botAI->rpgStatistic.questRewarded++;
-            botAI->RecordQuestRewarded(quest->GetQuestId());
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
         }
     }
@@ -708,18 +704,18 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     auto dropSlot = [&](uint16 slot, Quest const* quest, char const* reason)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), quest->GetQuestId());
+        botAI->pendingQuestDropReason = reason;
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)slot;
         WorldPackets::Quest::QuestLogRemoveQuest removeQuest(std::move(packet));
         removeQuest.Read();
         bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
+        botAI->pendingQuestDropReason.clear();
         if (botAI->GetMaster())
             botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
                 "new_rpg_quest_dropped",
                 "Quest dropped %quest",
                 {{"%quest", ChatHelper::FormatQuest(quest)}}));
-        botAI->rpgStatistic.questDropped++;
-        botAI->RecordQuestDropped(quest->GetQuestId(), reason);
     };
 
     // Remove quests that are not worth doing or not capable of doing. A quest whose objectives
