@@ -34,6 +34,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "QuestDef.h"
+#include "QuestPoiZStore.h"
 #include "Random.h"
 #include "SharedDefines.h"
 #include "SpellAuraDefines.h"
@@ -1111,6 +1112,15 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
         if (bot->IsNonMeleeSpellCast(false))
             return true;
 
+        // The item-objective POI is the entrance to the interior (e.g. the Gorishi Hive); use it
+        // before looking for the focus object deep inside.
+        if (data.pos != WorldPosition() && bot->GetDistance(data.pos) > 10.0f)
+        {
+            if (MoveFarTo(data.pos))
+                return true;
+            return MoveRandomNear(5.0f);
+        }
+
         GameObject* focus = FindNearestFocusAnchor(focusId, focusAnchorScanRange);
         if (!focus)
             return false;
@@ -1436,6 +1446,55 @@ bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
         LOG_DEBUG("playerbots", "[New RPG] {} fired area trigger {} for quest {}", bot->GetName(), triggerId,
                   data.questId);
         return true;
+    }
+
+    // The trigger is often inside a mine/catacomb: approach the baked walkable floor point for
+    // the quest's exploration POI first, then the trigger itself.
+    uint32 explorationPoiId = 0;
+    if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(data.questId))
+    {
+        for (QuestPOI const& poi : *pois)
+        {
+            if (poi.MapId != bot->GetMapId() || poi.points.empty())
+                continue;
+
+            if (poi.ObjectiveIndex == 16)
+            {
+                explorationPoiId = poi.Id;
+                break;
+            }
+            if (poi.ObjectiveIndex == 0 && !explorationPoiId)
+                explorationPoiId = poi.Id;
+        }
+    }
+
+    float bx = 0.0f, by = 0.0f, bz = 0.0f;
+    if (explorationPoiId && QuestPoiZStore::Instance().FindNearestWalkablePoint(
+                                data.questId, explorationPoiId, bot->GetMapId(), at->x, at->y, bx, by, bz))
+    {
+        WorldPosition const approach(bot->GetMapId(), bx, by, bz);
+        if (bot->GetDistance(approach) > 8.0f)
+        {
+            LOG_DEBUG("playerbots",
+                      "[New RPG] {} approaching exploration trigger {} via baked point ({:.0f}, {:.0f}, {:.0f})",
+                      bot->GetName(), triggerId, bx, by, bz);
+            if (MoveFarTo(approach))
+                return true;
+            return MoveRandomNear(5.0f);
+        }
+    }
+
+    // Water triggers (The Forgotten Pools and similar) sit below the surface: swim straight at
+    // the trigger point when it is close and visible, reusing the underwater loot approach.
+    bool const triggerInWater =
+        bot->GetMap()->IsInWater(bot->GetPhaseMask(), at->x, at->y, at->z, 2.0f) ||
+        bot->GetMap()->IsUnderWater(bot->GetPhaseMask(), at->x, at->y, at->z, 2.0f);
+    if (triggerInWater && bot->GetDistance(at->x, at->y, at->z) < 150.0f &&
+        bot->IsWithinLOS(at->x, at->y, at->z))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} swimming to exploration trigger {} for quest {}", bot->GetName(),
+                  triggerId, data.questId);
+        return MoveTo(bot->GetMapId(), at->x, at->y, at->z, false, false, false, true);
     }
 
     WorldPosition pos(at->map, at->x, at->y, at->z);

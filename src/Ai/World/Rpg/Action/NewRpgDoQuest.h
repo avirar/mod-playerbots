@@ -123,7 +123,8 @@ protected:
     // Past half of any spell-focus template's dist, which is the core's own casting rule.
     const float summonAnchorScanRange = 25.0f;
     // The quest POI can sit well away from its spell focus; scan wide enough to walk over.
-    const float focusAnchorScanRange = 100.0f;
+    // The focus object can sit deep inside a cave/hive (3883: ~127 yd from the entrance POI).
+    const float focusAnchorScanRange = 200.0f;
     // Search range for the scripted-event creature (2561-style); the picker also uses its spawn.
     const float scriptedTargetSearchRange = 100.0f;
     const float summonCreatureAnchorRange = 5.0f;

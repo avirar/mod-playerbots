@@ -8,6 +8,7 @@
 #define PLAYERBOTS_QUESTPOIZSTORE_H
 
 #include "Define.h"
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -20,6 +21,10 @@ struct QuestPoiZCandidate
     uint8 confidence{0};
     std::string evidence;
     bool navmeshOk{true};
+    uint16 pointIdx{0};
+    uint16 mapId{0};
+    // Baked walkable sample points (x, y, z) for this POI point.
+    std::vector<std::array<float, 3>> walkablePoints;
 };
 
 // Baked walkable Z candidates for quest POIs (`playerbots_quest_poi_z`), generated offline by
@@ -37,6 +42,11 @@ public:
 
     // All ranked candidates (rank order) - reserved for the attempt-variation runtime.
     std::vector<QuestPoiZCandidate> const* LookupAll(uint32 questId, uint32 poiId) const;
+
+    // Nearest baked walkable sample point for a quest POI, used to approach interiors/mines
+    // (exploration triggers, hive/focus objects). False when no sample exists on mapId.
+    bool FindNearestWalkablePoint(uint32 questId, uint32 poiId, uint32 mapId, float x, float y,
+                                  float& outX, float& outY, float& outZ) const;
 
 private:
     static uint64_t Key(uint32 questId, uint32 poiId) { return (uint64_t(questId) << 32) | uint64_t(poiId); }
