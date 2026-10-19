@@ -1012,7 +1012,9 @@ bool NewRpgDoQuestAction::DoScriptedItemObjective(NewRpgInfo::DoQuest& data)
             data.targetGuid = target->GetGUID();
             data.targetPos = WorldPosition(target);
             data.targetSince = 0;
-            return EngageTarget(data);
+            if (EngageTarget(data))
+                return true;
+            return IsMovementPending();
         }
 
         float const castRange = INTERACTION_DISTANCE - 1.0f;
@@ -1034,6 +1036,8 @@ bool NewRpgDoQuestAction::DoScriptedItemObjective(NewRpgInfo::DoQuest& data)
         }
 
         if (MoveFarTo(WorldPosition(target)))
+            return true;
+        if (IsMovementPending())
             return true;
         return MoveRandomNear(5.0f);
     }
@@ -1063,6 +1067,15 @@ bool NewRpgDoQuestAction::DoScriptedItemObjective(NewRpgInfo::DoQuest& data)
                 }
                 x /= float(poi.points.size());
                 y /= float(poi.points.size());
+
+                float bx = 0.0f, by = 0.0f, bz = 0.0f;
+                if (QuestPoiZStore::Instance().FindNearestWalkablePoint(data.questId, poi.Id, bot->GetMapId(), x, y,
+                                                                       bx, by, bz))
+                {
+                    dest = WorldPosition(bot->GetMapId(), bx, by, bz);
+                    break;
+                }
+
                 float z = std::max(bot->GetMap()->GetHeight(x, y, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(x, y));
                 if (z == INVALID_HEIGHT || z == VMAP_INVALID_HEIGHT_VALUE)
                     z = bot->GetPositionZ();
@@ -1079,9 +1092,13 @@ bool NewRpgDoQuestAction::DoScriptedItemObjective(NewRpgInfo::DoQuest& data)
     {
         if (MoveFarTo(dest))
             return true;
+        if (IsMovementPending())
+            return true;
         return MoveRandomNear(10.0f);
     }
-    return MoveRandomNear(5.0f);
+    if (MoveRandomNear(5.0f))
+        return true;
+    return IsMovementPending();
 }
 
 // Use the quest's item for the active objective: a KILL_CREDIT item at a creature (feed-style),
@@ -1137,6 +1154,8 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
                       bot->GetName(), focusId, data.questId, focusSpawnDist);
             if (MoveFarTo(focusSpawn))
                 return true;
+            if (IsMovementPending())
+                return true;
             return MoveRandomNear(5.0f);
         }
 
@@ -1147,6 +1166,8 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
             if (data.pos != WorldPosition() && bot->GetDistance(data.pos) > 10.0f)
             {
                 if (MoveFarTo(data.pos))
+                    return true;
+                if (IsMovementPending())
                     return true;
                 return MoveRandomNear(5.0f);
             }
@@ -1159,6 +1180,8 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
         if (bot->GetDistance(focus) > useRange)
         {
             if (MoveWorldObjectTo(focus->GetGUID(), useRange))
+                return true;
+            if (IsMovementPending())
                 return true;
             return MoveRandomNear(5.0f);
         }
@@ -1508,6 +1531,8 @@ bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
                       bot->GetName(), triggerId, bx, by, bz);
             if (MoveFarTo(approach))
                 return true;
+            if (IsMovementPending())
+                return true;
             return MoveRandomNear(5.0f);
         }
     }
@@ -1522,7 +1547,9 @@ bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} swimming to exploration trigger {} for quest {}", bot->GetName(),
                   triggerId, data.questId);
-        return MoveTo(bot->GetMapId(), at->x, at->y, at->z, false, false, false, true);
+        if (MoveTo(bot->GetMapId(), at->x, at->y, at->z, false, false, false, true))
+            return true;
+        return IsMovementPending();
     }
 
     WorldPosition pos(at->map, at->x, at->y, at->z);
@@ -1530,9 +1557,13 @@ bool NewRpgDoQuestAction::DoExploreObjective(NewRpgInfo::DoQuest& data)
     {
         if (MoveFarTo(pos))
             return true;
+        if (IsMovementPending())
+            return true;
         return MoveRandomNear(10.0f);
     }
-    return MoveRandomNear(5.0f);
+    if (MoveRandomNear(5.0f))
+        return true;
+    return IsMovementPending();
 }
 
 bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)

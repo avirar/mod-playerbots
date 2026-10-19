@@ -916,6 +916,7 @@ void BuildQuestObjectiveSpawns()
                         target.creatureEntry = targetIt->second.entries.front();
                         target.requireDead = targetIt->second.requireDead;
                         g_questScriptedItemTargets[questId] = target;
+                        entryMap[int32(target.creatureEntry)];
                     }
                 }
             }

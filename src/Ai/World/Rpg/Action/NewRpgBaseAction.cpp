@@ -297,6 +297,11 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
     return false;
 }
 
+bool NewRpgBaseAction::IsMovementPending()
+{
+    return bot->isMoving() || IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL);
+}
+
 bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 {
     AI_VALUE(LastMovement&, "last movement")
