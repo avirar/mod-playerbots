@@ -1112,18 +1112,46 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
         if (bot->IsNonMeleeSpellCast(false))
             return true;
 
-        // The item-objective POI is the entrance to the interior (e.g. the Gorishi Hive); use it
-        // before looking for the focus object deep inside.
-        if (data.pos != WorldPosition() && bot->GetDistance(data.pos) > 10.0f)
+        // Focus objects can be deep inside a cave or hive. Their spawns are indexed statically,
+        // so travel to the nearest one instead of relying on the bot's loaded visibility.
+        WorldPosition focusSpawn;
+        float focusSpawnDist = FLT_MAX;
+        for (uint32 goEntry : GetFocusObjectEntries(focusId))
         {
-            if (MoveFarTo(data.pos))
+            for (GuidPosition const& pos : GetEntrySpawns(-int32(goEntry), bot->GetMapId()))
+            {
+                WorldPosition const candidate(pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(),
+                                              pos.GetPositionZ());
+                float const dist = bot->GetDistance(candidate);
+                if (dist < focusSpawnDist)
+                {
+                    focusSpawnDist = dist;
+                    focusSpawn = candidate;
+                }
+            }
+        }
+
+        if (focusSpawn != WorldPosition() && focusSpawnDist > INTERACTION_DISTANCE)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} heading to focus spawn {} for quest {} ({:.0f} yd)",
+                      bot->GetName(), focusId, data.questId, focusSpawnDist);
+            if (MoveFarTo(focusSpawn))
                 return true;
             return MoveRandomNear(5.0f);
         }
 
         GameObject* focus = FindNearestFocusAnchor(focusId, focusAnchorScanRange);
         if (!focus)
+        {
+            // Last resort when no indexed spawn exists: the item-objective POI.
+            if (data.pos != WorldPosition() && bot->GetDistance(data.pos) > 10.0f)
+            {
+                if (MoveFarTo(data.pos))
+                    return true;
+                return MoveRandomNear(5.0f);
+            }
             return false;
+        }
 
         // GameObjectFocusCheck - the rule the core casts by - accepts the caster at half the
         // template's dist. A yard of margin so a cast that starts in range also finishes there.

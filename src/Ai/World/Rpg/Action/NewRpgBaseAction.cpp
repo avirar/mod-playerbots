@@ -1048,7 +1048,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
             // The baked walkable floor for this POI takes precedence over the terrain surface.
-            if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().Lookup(questId, qPoi.Id))
+            if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().LookupNearestZ(questId, qPoi.Id, bot->GetPositionZ()))
             {
                 dz = baked->z;
                 LOG_DEBUG("playerbots", "[New RPG] quest {} turn-in POI {} baked z {:.1f} (conf {})",
@@ -1130,7 +1130,7 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
         float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
         // The baked walkable floor for this POI takes precedence over the terrain surface.
-        if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().Lookup(questId, qPoi.Id))
+        if (QuestPoiZCandidate const* baked = QuestPoiZStore::Instance().LookupNearestZ(questId, qPoi.Id, bot->GetPositionZ()))
         {
             dz = baked->z;
             LOG_DEBUG("playerbots", "[New RPG] quest {} objective POI {} baked z {:.1f} (conf {})",

@@ -148,6 +148,9 @@ QuestScriptedItemTarget const& GetQuestScriptedItemTarget(uint32 questId);
 
 // The area trigger that completes an exploration quest, 0 when the quest has none.
 uint32 GetQuestAreaTriggerId(uint32 questId);
+
+// Spell-focus gameobject entries for a focus id (e.g. 463 -> Gorishi Hive Hatchery).
+std::vector<uint32> const& GetFocusObjectEntries(uint32 focusId);
 std::vector<int32> const& GetQuestCreationSources(uint32 questId, uint32 itemObjectiveIdx);
 
 // False for credit markers (non-selectable / player-immune creatures): never destinations.

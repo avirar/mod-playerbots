@@ -169,6 +169,9 @@ static std::unordered_map<uint32, std::array<uint32, QUEST_ITEM_OBJECTIVES_COUNT
 // Quests whose start item completes the quest by being used on a specific (dead) creature.
 static std::unordered_map<uint32, QuestScriptedItemTarget> g_questScriptedItemTargets;
 
+// Spell-focus id -> gameobject entries (used to walk to focus objects inside interiors).
+static std::unordered_map<uint32, std::vector<uint32>> g_focusObjectEntries;
+
 static std::unordered_map<uint32, std::vector<QuestCraftReagent>> g_questItemReagents;
 
 static constexpr uint32 REAGENT_STOCK_CASTS = 5;
@@ -715,6 +718,15 @@ void BuildQuestObjectiveSpawns()
             if (goInfo.type == GAMEOBJECT_TYPE_SPELL_FOCUS && goInfo.spellFocus.focusId)
                 focusObjects[goInfo.spellFocus.focusId].push_back(goEntry);
 
+    // File the focus object spawns as well, so interiors can be approached without relying on
+    // the bot's loaded visibility (3883 Gorishi Hive, 921 Shadowglen Moonwell, ...).
+    for (auto const& [focusId, entries] : focusObjects)
+    {
+        g_focusObjectEntries[focusId] = entries;
+        for (uint32 goEntry : entries)
+            entryMap[-int32(goEntry)];
+    }
+
     auto const& deathAnchors = smartIndex.deathAnchors;
     auto const& smartAnchorHints = smartIndex.anchorHints;
     auto const& objectiveKillSources = smartIndex.killSources;
@@ -1080,6 +1092,13 @@ uint32 GetQuestCreationFocus(uint32 questId, uint32 itemObjectiveIdx)
 
     auto it = g_questCreationFocus.find(questId);
     return it != g_questCreationFocus.end() ? it->second[itemObjectiveIdx] : 0;
+}
+
+std::vector<uint32> const& GetFocusObjectEntries(uint32 focusId)
+{
+    static std::vector<uint32> const empty;
+    auto it = g_focusObjectEntries.find(focusId);
+    return it != g_focusObjectEntries.end() ? it->second : empty;
 }
 
 QuestScriptedItemTarget const& GetQuestScriptedItemTarget(uint32 questId)

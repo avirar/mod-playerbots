@@ -40,6 +40,9 @@ public:
     // Best (lowest rank) baked candidate for a quest_poi row, or nullptr when unmapped.
     QuestPoiZCandidate const* Lookup(uint32 questId, uint32 poiId) const;
 
+    // Candidate whose Z is closest to referenceZ (different floors of the same POI).
+    QuestPoiZCandidate const* LookupNearestZ(uint32 questId, uint32 poiId, float referenceZ) const;
+
     // All ranked candidates (rank order) - reserved for the attempt-variation runtime.
     std::vector<QuestPoiZCandidate> const* LookupAll(uint32 questId, uint32 poiId) const;
 

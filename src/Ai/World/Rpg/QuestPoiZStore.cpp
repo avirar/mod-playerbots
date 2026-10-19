@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 
 QuestPoiZStore& QuestPoiZStore::Instance()
@@ -92,6 +93,25 @@ QuestPoiZCandidate const* QuestPoiZStore::Lookup(uint32 questId, uint32 poiId) c
         return nullptr;
 
     return &itr->second.front();
+}
+
+QuestPoiZCandidate const* QuestPoiZStore::LookupNearestZ(uint32 questId, uint32 poiId, float referenceZ) const
+{
+    auto itr = candidates.find(Key(questId, poiId));
+    if (itr == candidates.end() || itr->second.empty())
+        return nullptr;
+
+    QuestPoiZCandidate const* best = nullptr;
+    for (QuestPoiZCandidate const& candidate : itr->second)
+    {
+        if (!candidate.navmeshOk)
+            continue;
+
+        if (!best || std::fabs(candidate.z - referenceZ) < std::fabs(best->z - referenceZ))
+            best = &candidate;
+    }
+
+    return best ? best : &itr->second.front();
 }
 
 std::vector<QuestPoiZCandidate> const* QuestPoiZStore::LookupAll(uint32 questId, uint32 poiId) const
