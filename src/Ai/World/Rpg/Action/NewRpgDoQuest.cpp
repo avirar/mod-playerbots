@@ -35,6 +35,7 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "QuestDef.h"
+#include "QuestPackets.h"
 #include "QuestPoiZStore.h"
 #include "Random.h"
 #include "SharedDefines.h"
@@ -1236,6 +1237,9 @@ Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
             if (Creature* creature = unit->ToCreature())
                 if (creature->IsInWorld() && creature->IsAlive())
                 {
+                    rpg.escortLostSince = 0;
+                    if (rpg.escortQuestId != data.questId)
+                        rpg.escortFailures = 0;
                     rpg.lastEscortPos = WorldPosition(creature);
                     rpg.escortQuestId = data.questId;
                     rpg.escortStarted = true;
@@ -1247,6 +1251,9 @@ Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
         if (Creature* creature = ObjectAccessor::GetCreatureOrPetOrVehicle(*bot, rpg.escortGuid))
             if (creature->IsInWorld() && creature->IsAlive())
             {
+                rpg.escortLostSince = 0;
+                if (rpg.escortQuestId != data.questId)
+                    rpg.escortFailures = 0;
                 rpg.lastEscortPos = WorldPosition(creature);
                 rpg.escortQuestId = data.questId;
                 rpg.escortStarted = true;
@@ -1260,6 +1267,9 @@ Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
     Creature* found = FindEscorteeForQuest(bot, data.questId, range);
     if (found)
     {
+        rpg.escortLostSince = 0;
+        if (rpg.escortQuestId != data.questId)
+            rpg.escortFailures = 0;
         rpg.escortGuid = found->GetGUID();
         rpg.lastEscortPos = WorldPosition(found);
         rpg.escortQuestId = data.questId;
@@ -1279,40 +1289,115 @@ Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
 
 // While an escort walks, nothing else matters: stay on the leash, let combat defend the NPC, and
 // never let a chase or a status timeout end the escort early.
+namespace
+{
+// How long a dangling escort leash is followed before the escort instance is declared lost, and
+// how many lost instances are tolerated before the quest is abandoned for good.
+constexpr uint32 escortLostGiveUpMs = 20 * IN_MILLISECONDS;
+constexpr uint8 escortMaxFailures = 3;
+}
+
 bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
 {
+    NewRpgInfo& rpg = botAI->rpgInfo;
+    bool const held = rpg.escortStarted && rpg.escortQuestId == data.questId;
+
     if (!sPlayerbotAIConfig.QuestEscorts || !data.quest)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} unavailable (config={}, quest={})", bot->GetName(),
                   data.questId, sPlayerbotAIConfig.QuestEscorts, data.quest != nullptr);
+        if (held)
+            botAI->ClearEscortState(data.questId);
         return false;
     }
 
+    uint32 const escortEntry = GetQuestEscortEntry(data.questId);
+    uint32 const summonEntry = GetQuestSummonedEscortEntry(data.questId);
+    if (!escortEntry && !summonEntry && !HasScriptedEscortObjective(data.quest))
+    {
+        if (held)
+            botAI->ClearEscortState(data.questId);
+        return false;
+    }
+
+    ObjectGuid const boundGuid = rpg.escortGuid;
     Creature* escortee = ResolveEscortee(data);
     if (!escortee)
     {
-        NewRpgInfo& rpg = botAI->rpgInfo;
         LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: no escortee (started {}, entry {}, last={},{},{})",
-                  bot->GetName(), data.questId, rpg.escortStarted, GetQuestEscortEntry(data.questId),
-                  rpg.lastEscortPos.GetPositionX(), rpg.lastEscortPos.GetPositionY(),
-                  rpg.lastEscortPos.GetPositionZ());
+                  bot->GetName(), data.questId, rpg.escortStarted, escortEntry, rpg.lastEscortPos.GetPositionX(),
+                  rpg.lastEscortPos.GetPositionY(), rpg.lastEscortPos.GetPositionZ());
 
         if (rpg.escortStarted && rpg.escortQuestId == data.questId)
         {
-            if (rpg.lastEscortPos != WorldPosition())
+            // The escort instance is not (yet) resolvable: walk its last known position for a
+            // while, then declare it lost. Source-spell summons are accept-time only, so a lost
+            // escort means abandoning the quest and re-accepting (which re-summons a fresh
+            // escort); bounded retries keep a persistently failing escort from looping forever.
+            if (!rpg.escortLostSince)
+                rpg.escortLostSince = getMSTime();
+
+            if (GetMSTimeDiffToNow(rpg.escortLostSince) < escortLostGiveUpMs)
             {
-                if (MoveFarTo(rpg.lastEscortPos))
-                    return true;
-                if (IsMovementPending())
-                    return true;
-                return MoveRandomNear(5.0f);
+                if (rpg.lastEscortPos != WorldPosition())
+                {
+                    if (MoveFarTo(rpg.lastEscortPos))
+                        return true;
+                    if (IsMovementPending())
+                        return true;
+                    return MoveRandomNear(5.0f);
+                }
+                return true;
             }
+
+            uint8 const failures = rpg.escortFailures + 1;
+            botAI->ClearEscortState(data.questId);
+            rpg.escortFailures = failures;
+
+            if (rpg.escortFailures >= escortMaxFailures)
+            {
+                botAI->lowPriorityQuest.insert(data.questId);
+                botAI->RecordQuestAbandoned(data.questId, "escort_lost");
+                LOG_DEBUG("playerbots", "[New RPG] {} gave up escort quest {} after {} lost escorts",
+                          bot->GetName(), data.questId, rpg.escortFailures);
+                botAI->rpgInfo.ChangeToIdle();
+                return true;
+            }
+
+            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            {
+                if (bot->GetQuestSlotQuestId(slot) != data.questId)
+                    continue;
+
+                botAI->pendingQuestDropReason = "escort_lost";
+                WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
+                packet << uint8(slot);
+                WorldPackets::Quest::QuestLogRemoveQuest removeQuest(std::move(packet));
+                removeQuest.Read();
+                bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
+                botAI->pendingQuestDropReason.clear();
+                bot->RemoveRewardedQuest(data.questId);
+                LOG_DEBUG("playerbots", "[New RPG] {} dropped escort quest {} to re-accept and re-summon",
+                          bot->GetName(), data.questId);
+                break;
+            }
+
+            ClearTarget(data);
+            botAI->rpgInfo.ChangeToIdle();
             return true;
         }
 
-        uint32 const escortEntry = GetQuestEscortEntry(data.questId);
         if (!escortEntry)
+        {
+            if (summonEntry)
+            {
+                // The escort is summoned by the quest's source spell at accept; give a fresh
+                // summon a moment to spawn and start walking instead of busy-looping.
+                botAI->SetNextCheckDelay(750);
+                return true;
+            }
             return false;
+        }
 
         WorldPosition dest;
         for (GuidPosition const& pos : GetEntrySpawns(int32(escortEntry), bot->GetMapId()))
@@ -1341,6 +1426,13 @@ bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
     botAI->rpgInfo.escortStarted = true;
     botAI->rpgInfo.escortQuestId = data.questId;
     botAI->rpgInfo.RefreshStatusTime();
+
+    if (summonEntry && boundGuid != escortee->GetGUID())
+    {
+        // Fresh summon bind: the escort AI settles right after IsSummonedBy (guardian follow-slot
+        // removal, walk start); let it take its first steps before the bot chases it.
+        botAI->SetNextCheckDelay(750);
+    }
 
     WorldPosition const livePos(bot->GetMapId(), escortee->GetPositionX(), escortee->GetPositionY(),
                                 escortee->GetPositionZ());
@@ -1740,10 +1832,12 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
     if (DoEscortObjective(data))
         return true;
 
-    if (uint32 const escortEntry = GetQuestEscortEntry(questId))
+    // Escort quests have no spawns/POI of their own: the objective is the live escort NPC. Never
+    // let a missed resolution turn into a "gave up" that rotates DoQuest away mid-escort.
+    if (GetQuestEscortEntry(questId) || GetQuestSummonedEscortEntry(questId) ||
+        HasScriptedEscortObjective(data.quest))
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} unresolved (entry {}); keeping DoQuest", bot->GetName(),
-                  questId, escortEntry);
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} unresolved; keeping DoQuest", bot->GetName(), questId);
         return true;
     }
 

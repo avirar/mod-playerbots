@@ -2690,7 +2690,13 @@ bool MoveToLootAction::Execute(Event /*event*/)
         return MoveTo(bot->GetMapId(), x, y, z, false, false, false, true);
     }
 
-    return MoveNear(target, sPlayerbotAIConfig.ContactDistance);
+    // Game objects are looted from interaction range; walking to the object's centre would
+    // clip through shelves and walls. Corpses can still be approached closely.
+    float approachDistance = sPlayerbotAIConfig.ContactDistance;
+    if (GameObject* go = botAI->GetGameObject(loot.guid))
+        approachDistance = std::max(1.0f, go->GetInteractionDistance() - 1.0f);
+
+    return MoveNear(target, approachDistance);
 }
 
 bool MoveOutOfEnemyContactAction::Execute(Event /*event*/)

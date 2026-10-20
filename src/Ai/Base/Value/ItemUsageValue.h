@@ -13,6 +13,7 @@
 class Item;
 class Player;
 class PlayerbotAI;
+class Quest;
 
 struct ItemTemplate;
 struct ParsedItemUsage
@@ -46,6 +47,11 @@ public:
     }
 
     ItemUsage Calculate() override;
+
+    // Quest-credit items (e.g. Chilled Serpent Mucus) carry a "Have <item>" aura and credit an
+    // invisible "<item> KC Bunny" creature/gameobject objective; they are not RequiredItemId
+    // entries, so the regular HasQuestForItem/RequiredItem checks miss them.
+    static bool IsQuestCreditItem(Player* player, Quest const* quest, ItemTemplate const* proto);
 
 protected:
     ItemUsage QueryItemUsageForEquip(ItemTemplate const* proto, int32 randomPropertyId = 0);

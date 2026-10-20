@@ -201,6 +201,16 @@ void QueryNpcAction::DumpNpc(Creature* npc)
                    {"%canSee", QnpcBool(bot->CanSeeOrDetect(npc))}}));
 
     NewRpgInfo& rpg = botAI->rpgInfo;
+    if (auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&rpg.data))
+        tell(QnpcText("qnpc_do_quest",
+                      "QNPC live doQuest: id=%id status=%status objective=%objective target=%target",
+                      {{"%id", std::to_string(doQuest->questId)},
+                       {"%status", std::to_string(uint32(bot->GetQuestStatus(doQuest->questId)))},
+                       {"%objective", std::to_string(doQuest->objectiveIdx)},
+                       {"%target", doQuest->targetGuid ? doQuest->targetGuid.ToString() : "none"}}));
+    else
+        tell(QnpcText("qnpc_do_quest_none", "QNPC live doQuest: none", {}));
+
     tell(QnpcText("qnpc_escort_state",
                   "QNPC escort state: quest=%quest guid=%guid started=%started last=%x,%y,%z map=%map",
                   {{"%quest", std::to_string(rpg.escortQuestId)},

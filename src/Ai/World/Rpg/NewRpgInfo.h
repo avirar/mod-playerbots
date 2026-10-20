@@ -117,6 +117,10 @@ struct NewRpgInfo
     WorldPosition lastEscortPos{};
     bool escortStarted{false};
     uint32 escortQuestId{0};
+    // Loss tracking: how long the leash has been dangling without a resolvable escort, and how
+    // many escort instances were lost for the current quest (bounded retries before abandoning).
+    uint32 escortLostSince{0};
+    uint8 escortFailures{0};
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};

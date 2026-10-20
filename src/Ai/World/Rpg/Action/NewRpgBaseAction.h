@@ -41,9 +41,17 @@ public:
     // Incomplete timed quest from the log, lowest slot first; 0 when none waits. Low-priority
     // entries are skipped, like the accept menu does.
     static uint32 FindIncompleteTimedQuest(PlayerbotAI* botAI);
-    // The escort NPC for a quest: the SmartAI escort entry, quest starters and enders, accepting
-    // only NPCs that are actually walking (a stationary giver/ender is not an escort).
+    // The escort NPC for a quest: the SmartAI escort entry, the quest's source-spell summon
+    // entry, quest starters and enders, accepting only NPCs that are actually walking (a
+    // stationary giver/ender is not an escort).
     static Creature* FindEscorteeForQuest(Player* bot, uint32 questId, float range);
+    // A scripted/event quest with no NPC/GO or item objectives: its C++ npc_escortAI escort is
+    // not discoverable from the SmartAI index, so it is found by motion type near the bot.
+    static bool HasScriptedEscortObjective(Quest const* quest);
+    // Escort creature summoned at accept time: the core casts the quest's source spell on the
+    // accepting player and a SPELL_EFFECT_SUMMON effect names the entry (e.g. Khadgar's Servant
+    // for City of Light). 0 when the quest summons no known creature.
+    static uint32 GetQuestSummonedEscortEntry(uint32 questId);
 
 protected:
     /* MOVEMENT RELATED */

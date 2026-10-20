@@ -17,6 +17,7 @@
 #include "IVMapMgr.h"
 #include "GameGraveyard.h"
 #include "DBCStores.h"
+#include "NearestNpcsValue.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -37,6 +38,8 @@
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
@@ -118,6 +121,11 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     else if (++botAI->rpgInfo.stuckAttempts >= 5 && GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= stuckTime)
     {
+        // An active escort leash must not be cut: teleporting away strands the escort NPC
+        // (summoned escorts fail when the escorted player strays) and fails the quest.
+        if (botAI->rpgInfo.escortStarted && botAI->rpgInfo.escortGuid)
+            return false;
+
         // No meaningful progress toward dest for `stuckTime`: fall
         // back to teleporting directly so the bot can get on with
         // its RPG objective instead of oscillating indefinitely.
@@ -355,11 +363,18 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
 
             // Pursue what was just accepted (e.g. the next quest in a chain) unless a live
-            // do-quest is still in progress - that one keeps the bot.
+            // do-quest is still in progress - that one keeps the bot. Exception: escort quests
+            // are bound to the accepter the moment they are accepted (the source spell summons
+            // the escort for that player), so an accepted escort always takes over unless the
+            // bot is already escorting.
             auto const* current = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
             bool const currentLive =
                 current && bot->GetQuestStatus(current->questId) == QUEST_STATUS_INCOMPLETE;
-            if (!currentLive)
+            bool const acceptedIsEscort =
+                GetQuestEscortEntry(quest->GetQuestId()) || GetQuestSummonedEscortEntry(quest->GetQuestId());
+            bool const currentIsHeldEscort = current && botAI->rpgInfo.escortStarted &&
+                                             botAI->rpgInfo.escortQuestId == current->questId;
+            if (!currentLive || (acceptedIsEscort && !currentIsHeldEscort))
                 botAI->rpgInfo.ChangeToDoQuest(quest->GetQuestId(), quest);
 
             LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
@@ -638,15 +653,66 @@ uint32 NewRpgBaseAction::FindIncompleteTimedQuest(PlayerbotAI* botAI)
     return 0;
 }
 
+bool NewRpgBaseAction::HasScriptedEscortObjective(Quest const* quest)
+{
+    if (!quest || !quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT))
+        return false;
+
+    // Exploration quests have an area trigger and are handled by DoExploreObjective.
+    if (GetQuestAreaTriggerId(quest->GetQuestId()))
+        return false;
+
+    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        if (quest->RequiredNpcOrGo[i] && quest->RequiredNpcOrGoCount[i])
+            return false;
+
+    for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+        if (quest->RequiredItemId[i] && quest->RequiredItemCount[i])
+            return false;
+
+    return true;
+}
+
+// The escort creature for quests whose escort is summoned at accept time: the core casts the
+// quest's source spell on the accepting player, and a SPELL_EFFECT_SUMMON effect names the
+// creature entry (e.g. Khadgar's Servant for City of Light). 0 when the quest summons nothing.
+uint32 NewRpgBaseAction::GetQuestSummonedEscortEntry(uint32 questId)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+        return 0;
+
+    SpellInfo const* srcSpell = sSpellMgr->GetSpellInfo(quest->GetSrcSpell());
+    if (!srcSpell)
+        return 0;
+
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (srcSpell->Effects[i].Effect != SPELL_EFFECT_SUMMON)
+            continue;
+
+        uint32 const entry = uint32(srcSpell->Effects[i].MiscValue);
+        if (entry && sObjectMgr->GetCreatureTemplate(entry))
+            return entry;
+    }
+
+    return 0;
+}
+
 Creature* NewRpgBaseAction::FindEscorteeForQuest(Player* bot, uint32 questId, float range)
 {
     if (!bot || !questId || !sPlayerbotAIConfig.QuestEscorts)
         return nullptr;
 
     uint32 const escortEntry = GetQuestEscortEntry(questId);
+    // Source-spell summons are per-player instances; only the bot's own summon is its escort.
+    // Following another player's summon ends at that player's quest credit.
+    uint32 const summonEntry = GetQuestSummonedEscortEntry(questId);
     std::vector<uint32> entries;
     if (escortEntry)
         entries.push_back(escortEntry);
+    if (summonEntry)
+        entries.push_back(summonEntry);
 
     for (int32 entry : GetQuestStarterEntries(questId))
         if (entry > 0)
@@ -656,29 +722,75 @@ Creature* NewRpgBaseAction::FindEscorteeForQuest(Player* bot, uint32 questId, fl
         if (entry > 0)
             entries.push_back(uint32(entry));
 
-    if (entries.empty())
-        return nullptr;
-
-    std::list<Creature*> creatures;
-    bot->GetCreatureListWithEntryInGrid(creatures, entries, range);
-
     Creature* best = nullptr;
     float bestDist = range;
-    for (Creature* creature : creatures)
+
+    if (!entries.empty())
     {
-        if (!creature->IsInWorld() || !creature->IsAlive())
+        std::list<Creature*> creatures;
+        bot->GetCreatureListWithEntryInGrid(creatures, entries, range);
+
+        for (Creature* creature : creatures)
+        {
+            if (!creature->IsInWorld() || !creature->IsAlive())
+                continue;
+
+            if (creature->GetEntry() == summonEntry && creature->GetSummonerGUID() != bot->GetGUID())
+                continue;
+
+            // Only a walking NPC is escorting; a stationary giver/ender waiting for an objective
+            // is not - the SmartAI escort entry is exempt because it keeps its data binding while
+            // paused.
+            if (creature->GetEntry() != escortEntry)
+            {
+                uint8 const motionType = creature->GetMotionMaster()->GetCurrentMovementGeneratorType();
+                bool const walks = motionType == ESCORT_MOTION_TYPE || motionType == WAYPOINT_MOTION_TYPE ||
+                                   motionType == POINT_MOTION_TYPE || creature->isMoving();
+                if (!walks)
+                    continue;
+            }
+
+            float const dist = bot->GetDistance(creature);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = creature;
+            }
+        }
+    }
+
+    if (best || escortEntry || summonEntry)
+        return best;
+
+    // Scripted C++ escorts (npc_escortAI) are not in the SmartAI index. For a special/event
+    // quest without NPC/GO/item objectives, find the escort by its escort motion nearby.
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!HasScriptedEscortObjective(quest))
+        return nullptr;
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return nullptr;
+
+    NearestNpcsValue nearby(botAI, range);
+    for (ObjectGuid guid : nearby.Get())
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        Creature* creature = unit ? unit->ToCreature() : nullptr;
+        if (!creature || !creature->IsInWorld() || !creature->IsAlive())
             continue;
 
-        // Only a walking NPC is escorting; a stationary giver/ender waiting for an objective is
-        // not - the SmartAI escort entry is exempt because it keeps its data binding while paused.
-        if (creature->GetEntry() != escortEntry)
-        {
-            uint8 const motionType = creature->GetMotionMaster()->GetCurrentMovementGeneratorType();
-            bool const walks = motionType == ESCORT_MOTION_TYPE || motionType == WAYPOINT_MOTION_TYPE ||
-                               motionType == POINT_MOTION_TYPE || creature->isMoving();
-            if (!walks)
-                continue;
-        }
+        if (std::find(entries.begin(), entries.end(), uint32(creature->GetEntry())) != entries.end())
+            continue;
+
+        // Only C++ scripted escorts need this fallback; SmartAI entries are already indexed.
+        CreatureTemplate const* info = creature->GetCreatureTemplate();
+        if (!info || sObjectMgr->GetScriptName(info->ScriptID).empty())
+            continue;
+
+        uint8 const motionType = creature->GetMotionMaster()->GetCurrentMovementGeneratorType();
+        if (motionType != ESCORT_MOTION_TYPE)
+            continue;
 
         float const dist = bot->GetDistance(creature);
         if (dist < bestDist)
@@ -1414,6 +1526,12 @@ bool NewRpgBaseAction::RecoverToRpgArea()
 
 bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus)
 {
+    // An active escort leash owns the bot until the quest credits: never rotate away from the
+    // escorted quest, or the escort NPC loses its escorted player.
+    if (botAI->rpgInfo.escortStarted && botAI->rpgInfo.escortQuestId &&
+        bot->GetQuestStatus(botAI->rpgInfo.escortQuestId) == QUEST_STATUS_INCOMPLETE)
+        return false;
+
     // The bot is somewhere RPG progression cannot continue (e.g. swept out into The Great Sea):
     // walk/swim back to the nearest regular anchor instead of idling or resting there.
     if (SelectRandomGrindPos(bot) == WorldPosition() && SelectRandomCampPos(bot) == WorldPosition())
@@ -1548,9 +1666,17 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                     continue;
                 }
 
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (HasScriptedEscortObjective(quest) && FindEscorteeForQuest(bot, questId, 100.0f))
+                {
+                    availableQuests.push_back(questId);
+                    LOG_DEBUG("playerbots", "[New RPG] {} scripted escort quest {} found near bot", bot->GetName(),
+                              questId);
+                    continue;
+                }
+
                 // Exploration quests have no objective counts: they complete by entering an area
                 // trigger, so the POI check alone would never queue them.
-                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
                 if (!quest || !quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_EXPLORATION_OR_EVENT))
                     continue;
 
@@ -1665,6 +1791,10 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                 }
 
                 if (GetQuestEscortEntry(questId))
+                    return true;
+
+                Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+                if (HasScriptedEscortObjective(quest) && FindEscorteeForQuest(bot, questId, 100.0f))
                     return true;
             }
             return false;

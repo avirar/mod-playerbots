@@ -7,6 +7,7 @@
 #include "ItemUsageValue.h"
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "GameObject.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "LootObjectStack.h"
@@ -22,6 +23,46 @@
 #include <unordered_set>
 
 static bool IsRoguePoison(ItemTemplate const* proto);
+
+// Quest-credit items (e.g. Chilled Serpent Mucus) carry a "Have <item>" aura and credit an
+// invisible "<item> KC Bunny" objective; they are not RequiredItemId entries, so the regular
+// HasQuestForItem/RequiredItem checks miss them.
+bool ItemUsageValue::IsQuestCreditItem(Player* player, Quest const* quest, ItemTemplate const* proto)
+{
+    if (!player || !quest || !proto || proto->Name1.empty())
+        return false;
+
+    if (player->GetQuestStatus(quest->GetQuestId()) != QUEST_STATUS_INCOMPLETE)
+        return false;
+
+    auto const& statusMap = player->getQuestStatusMap();
+    auto statusIt = statusMap.find(quest->GetQuestId());
+    if (statusIt == statusMap.end())
+        return false;
+
+    std::string const& itemName = proto->Name1;
+    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        int32 const entry = quest->RequiredNpcOrGo[i];
+        uint32 const required = quest->RequiredNpcOrGoCount[i];
+        if (entry <= 0 || !required || statusIt->second.CreatureOrGOCount[i] >= required)
+            continue;
+
+        std::string npcName;
+        if (CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(uint32(entry)))
+            npcName = info->Name;
+        else if (GameObjectTemplate const* info = sObjectMgr->GetGameObjectTemplate(uint32(entry)))
+            npcName = info->name;
+        else
+            continue;
+
+        if (npcName.size() > itemName.size() && npcName.compare(0, itemName.size(), itemName) == 0 &&
+            npcName.ends_with(" KC Bunny"))
+            return true;
+    }
+
+    return false;
+}
 
 ItemUsage ItemUsageValue::Calculate()
 {
@@ -596,6 +637,9 @@ bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* pr
                 return true; // Item is directly required for a quest
             }
         }
+
+        if (IsQuestCreditItem(player, quest, proto))
+            return true;
 
         // Check if the item has spells that create a required quest item
         for (uint8 i = 0; i < MAX_ITEM_SPELLS; i++)

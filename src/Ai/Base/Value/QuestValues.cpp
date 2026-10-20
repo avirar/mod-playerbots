@@ -143,12 +143,6 @@ static std::unordered_map<uint32, std::vector<int32>> g_questStarterEntries;
 // Escort quests: quest -> the SmartAI-escorted NPC (SMART_ACTION_ESCORT_START owner).
 static std::unordered_map<uint32, uint32> g_questEscortEntries;
 
-// Scripted C++ escorts that are not discoverable from SmartAI. 10211 "City of Light" is
-// Khadgar's Servant (19685), an npc_escortAI whose starter/ender is A'dal, not the servant.
-static std::unordered_map<uint32, uint32> const g_scriptedEscortEntries = {
-    {10211, 19685},
-};
-
 // Above this an item objective is a world drop, with no useful spawn to walk to.
 static constexpr size_t MAX_ITEM_OBJECTIVE_SPAWNS = 500;
 
@@ -575,8 +569,6 @@ void BuildQuestObjectiveSpawns()
         g_questStarterEntries[questId].push_back(-int32(entry));
 
     g_questEscortEntries = smartIndex.escortEntries;
-    for (auto const& [questId, entry] : g_scriptedEscortEntries)
-        g_questEscortEntries[questId] = entry;
     for (auto const& escort : g_questEscortEntries)
         if (escort.second)
             entryMap[int32(escort.second)];

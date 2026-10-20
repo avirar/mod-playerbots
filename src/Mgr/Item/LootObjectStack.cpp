@@ -6,6 +6,7 @@
 
 #include "LootObjectStack.h"
 #include "Log.h"
+#include "ItemUsageValue.h"
 #include "LootAction.h"
 #include "LootMgr.h"
 #include "Object.h"
@@ -282,6 +283,12 @@ bool LootObject::IsNeededForQuest(Player* bot, uint32 itemId)
 
             return true;
         }
+
+        // Quest-credit items (e.g. Chilled Serpent Mucus) credit a "<item> KC Bunny" objective
+        // rather than being RequiredItemId entries.
+        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId))
+            if (ItemUsageValue::IsQuestCreditItem(bot, qInfo, proto))
+                return true;
 
         // ItemDrops and use-reagents: needed for the quest, but named by no RequiredItemId.
         if (IsQuestExtraItemWanted(bot, qInfo, itemId))

@@ -5357,8 +5357,19 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     else if (command == "quests")
     {
         std::ostringstream out;
+        out << "bot=" << bot->GetName() << " guid=" << bot->GetGUID().ToString() << "\n";
         out << "rpg: quest=" << rpgInfo.escortQuestId << " started=" << rpgInfo.escortStarted
             << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none") << "\n";
+
+        if (auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&rpgInfo.data))
+            out << "doQuest: id=" << doQuest->questId
+                << " status=" << uint32(bot->GetQuestStatus(doQuest->questId))
+                << " objective=" << doQuest->objectiveIdx << " pos=" << doQuest->pos.GetPositionX() << ","
+                << doQuest->pos.GetPositionY() << "," << doQuest->pos.GetPositionZ()
+                << " map=" << doQuest->pos.GetMapId()
+                << " target=" << (doQuest->targetGuid ? doQuest->targetGuid.ToString() : "none") << "\n";
+        else
+            out << "doQuest: none\n";
 
         for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
         {
@@ -5380,6 +5391,12 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
             << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none")
             << " last=" << rpgInfo.lastEscortPos.GetPositionX() << "," << rpgInfo.lastEscortPos.GetPositionY()
             << "," << rpgInfo.lastEscortPos.GetPositionZ() << " map=" << rpgInfo.lastEscortPos.GetMapId();
+
+        if (auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&rpgInfo.data))
+            out << " doQuest=" << doQuest->questId << " status=" << uint32(bot->GetQuestStatus(doQuest->questId))
+                << " objective=" << doQuest->objectiveIdx
+                << " target=" << (doQuest->targetGuid ? doQuest->targetGuid.ToString() : "none");
+
         return out.str();
     }
     else if (command == "position")
@@ -6963,6 +6980,7 @@ void PlayerbotAI::ClearEscortState(uint32 questId)
     rpgInfo.lastEscortPos = WorldPosition();
     rpgInfo.escortStarted = false;
     rpgInfo.escortQuestId = 0;
+    rpgInfo.escortLostSince = 0;
 }
 
 void PlayerbotAI::SeedQuestAccepted(uint32 questId)
