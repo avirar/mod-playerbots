@@ -637,6 +637,7 @@ public:
     void RecordQuestDropped(uint32 questId, std::string const& reason);
     void RecordQuestAbandoned(uint32 questId, std::string const& reason);
     void RecordQuestFailed(uint32 questId);
+    void ClearEscortState(uint32 questId);
     void SeedQuestAccepted(uint32 questId);
     void SeedQuestCompleted(uint32 questId);
     // Set by a drop site, consumed by the OnPlayerQuestAbandon hook.

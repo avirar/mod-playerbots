@@ -131,6 +131,15 @@ bool CheckMountStateAction::Execute(Event /*event*/)
     bool inBattleground = bot->InBattleground();
     bool const noRealMaster = (!master || master == bot);
 
+    // Do not remount while the escorted NPC is fighting: the escort needs the bot on foot and
+    // the mount would make Unit::Attack() reject every assist.
+    bool escortInCombat = false;
+    if (botAI->rpgInfo.escortStarted && botAI->rpgInfo.escortGuid)
+    {
+        if (Unit* escort = botAI->GetUnit(botAI->rpgInfo.escortGuid))
+            escortInCombat = escort->IsInCombat();
+    }
+
     // If there is a master and bot not in BG, follow master's mount state regardless of group leader
     if (!noRealMaster && !inBattleground)
     {
@@ -148,7 +157,7 @@ bool CheckMountStateAction::Execute(Event /*event*/)
 
     // No real master (random bot or SelfBot) OR bot in BG
     if ((noRealMaster || inBattleground) && !bot->IsMounted() &&
-        noAttackers && shouldMount && !bot->IsInCombat())
+        noAttackers && !escortInCombat && shouldMount && !bot->IsInCombat())
     {
         // Don't mount for a leg that ends in a dismount.
         if (auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data))

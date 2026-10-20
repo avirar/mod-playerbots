@@ -72,8 +72,8 @@ struct NewRpgInfo
         // Shared by every item-use path, so no use is re-issued while a cast is in flight.
         uint32 lastItemUse{0};
         ObjectGuid lastSummonAnchor{};
-        // The escorted NPC, locked once found so pauses cannot hand the leash to another.
-        ObjectGuid escortGuid{};
+        // Escort state lives on NewRpgInfo, not here: ChangeToDoQuest/ChangeToIdle/rpg do quest
+        // must not lose the live NPC, so the bot can reacquire it instead of walking to its spawn.
         // Set when no objective has a spawn point; grind stays on to do the killing at the POI.
         bool poiFallback{false};
     };
@@ -112,6 +112,11 @@ struct NewRpgInfo
     uint32 startT{0};  // start timestamp of the current status
 
     bool grindSuppressed{false};
+
+    ObjectGuid escortGuid{};
+    WorldPosition lastEscortPos{};
+    bool escortStarted{false};
+    uint32 escortQuestId{0};
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};

@@ -147,6 +147,7 @@ public:
         creators["calc"] = &ChatTriggerContext::calc;
         creators["qi"] = &ChatTriggerContext::qi;
         creators["qgo"] = &ChatTriggerContext::qgo;
+        creators["qnpc"] = &ChatTriggerContext::qnpc;
         creators["wipe"] = &ChatTriggerContext::wipe;
         creators["tame"] = &ChatTriggerContext::tame;
         creators["glyphs"] = &ChatTriggerContext::glyphs; // Added for custom Glyphs
@@ -281,6 +282,7 @@ private:
     static Trigger* calc(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "calc"); }
     static Trigger* qi(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qi"); }
     static Trigger* qgo(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qgo"); }
+    static Trigger* qnpc(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qnpc"); }
     static Trigger* wipe(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "wipe"); }
     static Trigger* tame(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "tame"); }
     static Trigger* glyphs(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "glyphs"); } // Added for custom Glyphs

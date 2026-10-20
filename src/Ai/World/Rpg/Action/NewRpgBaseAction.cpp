@@ -1540,6 +1540,14 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                     }
                 }
 
+                if (uint32 const escortEntry = GetQuestEscortEntry(questId))
+                {
+                    availableQuests.push_back(questId);
+                    LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} targets creature {}", bot->GetName(),
+                              questId, escortEntry);
+                    continue;
+                }
+
                 // Exploration quests have no objective counts: they complete by entering an area
                 // trigger, so the POI check alone would never queue them.
                 Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
@@ -1655,6 +1663,9 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                 {
                     return true;
                 }
+
+                if (GetQuestEscortEntry(questId))
+                    return true;
             }
             return false;
         }

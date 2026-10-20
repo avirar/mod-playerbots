@@ -27,6 +27,7 @@
 #include "LootObjectStack.h"
 #include "NearestGameObjects.h"
 #include "NewRpgInfo.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
@@ -696,7 +697,7 @@ bool NewRpgDoQuestAction::EngageCreature(NewRpgInfo::DoQuest& data, Creature* cr
         }
     }
 
-    if (dist > engageRange || !bot->IsWithinLOSInMap(creature))
+    if (!bot->IsWithinMeleeRange(creature) || !bot->IsWithinLOSInMap(creature))
     {
         if (MoveFarTo(data.targetPos))
             return true;
@@ -1228,19 +1229,50 @@ bool NewRpgDoQuestAction::DoUseCreditItem(NewRpgInfo::DoQuest& data)
 // The escort NPC for the active quest, locked once found so pauses cannot hand the leash away.
 Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
 {
-    if (data.escortGuid)
+    NewRpgInfo& rpg = botAI->rpgInfo;
+    if (rpg.escortGuid)
     {
-        if (Unit* unit = botAI->GetUnit(data.escortGuid))
+        if (Unit* unit = botAI->GetUnit(rpg.escortGuid))
             if (Creature* creature = unit->ToCreature())
                 if (creature->IsInWorld() && creature->IsAlive())
+                {
+                    rpg.lastEscortPos = WorldPosition(creature);
+                    rpg.escortQuestId = data.questId;
+                    rpg.escortStarted = true;
+                    LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: guid {} live at {} yd", bot->GetName(),
+                              data.questId, rpg.escortGuid.ToString(), bot->GetDistance(creature));
                     return creature;
+                }
 
-        data.escortGuid = ObjectGuid::Empty;
+        if (Creature* creature = ObjectAccessor::GetCreatureOrPetOrVehicle(*bot, rpg.escortGuid))
+            if (creature->IsInWorld() && creature->IsAlive())
+            {
+                rpg.lastEscortPos = WorldPosition(creature);
+                rpg.escortQuestId = data.questId;
+                rpg.escortStarted = true;
+                LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: guid {} found by accessor at {} yd",
+                          bot->GetName(), data.questId, rpg.escortGuid.ToString(), bot->GetDistance(creature));
+                return creature;
+            }
     }
 
-    Creature* found = FindEscorteeForQuest(bot, data.questId, escortSearchRange);
+    float const range = rpg.escortStarted && rpg.escortQuestId == data.questId ? 1000.0f : escortSearchRange;
+    Creature* found = FindEscorteeForQuest(bot, data.questId, range);
     if (found)
-        data.escortGuid = found->GetGUID();
+    {
+        rpg.escortGuid = found->GetGUID();
+        rpg.lastEscortPos = WorldPosition(found);
+        rpg.escortQuestId = data.questId;
+        rpg.escortStarted = true;
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: reacquired {} at {} yd (range {})", bot->GetName(),
+                  data.questId, found->GetGUID().ToString(), bot->GetDistance(found), range);
+    }
+    else
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: no live escort (guid {}, started {}, entry {}, range {})",
+                  bot->GetName(), data.questId, rpg.escortGuid.ToString(), rpg.escortStarted,
+                  GetQuestEscortEntry(data.questId), range);
+    }
 
     return found;
 }
@@ -1250,18 +1282,75 @@ Creature* NewRpgDoQuestAction::ResolveEscortee(NewRpgInfo::DoQuest& data)
 bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
 {
     if (!sPlayerbotAIConfig.QuestEscorts || !data.quest)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} unavailable (config={}, quest={})", bot->GetName(),
+                  data.questId, sPlayerbotAIConfig.QuestEscorts, data.quest != nullptr);
         return false;
+    }
 
     Creature* escortee = ResolveEscortee(data);
     if (!escortee)
-        return false;
+    {
+        NewRpgInfo& rpg = botAI->rpgInfo;
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: no escortee (started {}, entry {}, last={},{},{})",
+                  bot->GetName(), data.questId, rpg.escortStarted, GetQuestEscortEntry(data.questId),
+                  rpg.lastEscortPos.GetPositionX(), rpg.lastEscortPos.GetPositionY(),
+                  rpg.lastEscortPos.GetPositionZ());
 
+        if (rpg.escortStarted && rpg.escortQuestId == data.questId)
+        {
+            if (rpg.lastEscortPos != WorldPosition())
+            {
+                if (MoveFarTo(rpg.lastEscortPos))
+                    return true;
+                if (IsMovementPending())
+                    return true;
+                return MoveRandomNear(5.0f);
+            }
+            return true;
+        }
+
+        uint32 const escortEntry = GetQuestEscortEntry(data.questId);
+        if (!escortEntry)
+            return false;
+
+        WorldPosition dest;
+        for (GuidPosition const& pos : GetEntrySpawns(int32(escortEntry), bot->GetMapId()))
+        {
+            WorldPosition const candidate(pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ());
+            if (dest == WorldPosition() || bot->GetDistance(candidate) < bot->GetDistance(dest))
+                dest = candidate;
+        }
+
+        if (dest == WorldPosition())
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: no spawn for entry {}; waiting", bot->GetName(),
+                      data.questId, escortEntry);
+            return true;
+        }
+
+        if (MoveFarTo(dest))
+            return true;
+        if (IsMovementPending())
+            return true;
+        return MoveRandomNear(5.0f);
+    }
+
+    botAI->rpgInfo.escortGuid = escortee->GetGUID();
+    botAI->rpgInfo.lastEscortPos = WorldPosition(escortee);
+    botAI->rpgInfo.escortStarted = true;
+    botAI->rpgInfo.escortQuestId = data.questId;
     botAI->rpgInfo.RefreshStatusTime();
 
     WorldPosition const livePos(bot->GetMapId(), escortee->GetPositionX(), escortee->GetPositionY(),
                                 escortee->GetPositionZ());
 
     float const dist = bot->GetDistance(escortee);
+    LOG_DEBUG("playerbots",
+              "[New RPG] {} escort quest {}: following {} at {} yd (standState {}, motion {}, moving {})",
+              bot->GetName(), data.questId, escortee->GetGUID().ToString(), dist,
+              uint32(escortee->GetByteValue(UNIT_FIELD_BYTES_1, 0)),
+              uint32(escortee->GetMotionMaster()->GetCurrentMovementGeneratorType()), escortee->isMoving());
     if (dist > escortRecallRange)
     {
         // The SAI escort invoker check fails the quest at 60 yd: drop whatever the bot chased
@@ -1279,8 +1368,69 @@ bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
         return MoveRandomNear(2.0f);
     }
 
-    // On the leash: hold with the escort. The combat engine handles its attackers, and the escort
-    // multiplier keeps loot and grind from dragging the bot away.
+    if (escortee->IsInCombat())
+    {
+        auto valid = [&](Unit* unit)
+        {
+            return unit && unit != bot && unit != escortee && unit->IsInWorld() && unit->IsAlive() &&
+                   bot->IsInMap(unit) && bot->InSamePhase(unit) && !unit->IsFriendlyTo(bot) &&
+                   !unit->IsFriendlyTo(escortee) && bot->CanSeeOrDetect(unit) && bot->IsWithinLOSInMap(unit);
+        };
+
+        Unit* victim = escortee->GetVictim();
+        if (!valid(victim))
+        {
+            float best = escortRecallRange;
+            for (Unit* attacker : escortee->getAttackers())
+            {
+                if (!valid(attacker))
+                    continue;
+
+                float const attackerDist = bot->GetDistance(attacker);
+                if (attackerDist <= best)
+                {
+                    best = attackerDist;
+                    victim = attacker;
+                }
+            }
+        }
+
+        if (valid(victim))
+        {
+            if (bot->GetDistance(victim) > escortRecallRange)
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: attacker {} is {} yd away; staying on leash",
+                          bot->GetName(), data.questId, victim->GetGUID().ToString(), bot->GetDistance(victim));
+                return MoveFarTo(livePos) || IsMovementPending() || MoveRandomNear(2.0f);
+            }
+
+            if (bot->IsMounted())
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: dismounting to assist", bot->GetName(),
+                          data.questId);
+                bot->Dismount();
+            }
+
+            data.targetGuid = victim->GetGUID();
+            data.targetPos = WorldPosition(victim);
+            data.targetSince = 0;
+            LOG_DEBUG("playerbots", "[New RPG] {} escort quest {}: engaging attacker {} ({}) at {} yd",
+                      bot->GetName(), data.questId, victim->GetGUID().ToString(), victim->GetEntry(),
+                      bot->GetDistance(victim));
+            if (EngageTarget(data))
+                return true;
+            return true;
+        }
+
+        LOG_DEBUG("playerbots",
+                  "[New RPG] {} escort quest {}: no valid attacker (victim {}, attackers {}, inCombat {})",
+                  bot->GetName(), data.questId,
+                  escortee->GetVictim() ? escortee->GetVictim()->GetGUID().ToString() : "none",
+                  escortee->getAttackers().size(), escortee->IsInCombat());
+    }
+
+    // On the leash: hold with the escort. The escort multiplier keeps loot and grind from
+    // dragging the bot away.
     return true;
 }
 
@@ -1589,6 +1739,13 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
     if (DoEscortObjective(data))
         return true;
+
+    if (uint32 const escortEntry = GetQuestEscortEntry(questId))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} escort quest {} unresolved (entry {}); keeping DoQuest", bot->GetName(),
+                  questId, escortEntry);
+        return true;
+    }
 
     if (botAI->rpgInfo.HasStatusPersisted(questStayTime))
     {

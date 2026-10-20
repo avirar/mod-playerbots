@@ -5354,6 +5354,34 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
                 return "unknown";
         }
     }
+    else if (command == "quests")
+    {
+        std::ostringstream out;
+        out << "rpg: quest=" << rpgInfo.escortQuestId << " started=" << rpgInfo.escortStarted
+            << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none") << "\n";
+
+        for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            uint32 const questId = bot->GetQuestSlotQuestId(slot);
+            if (!questId)
+                continue;
+
+            Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+            out << slot << " " << questId << " " << (quest ? quest->GetTitle() : "?") << " status="
+                << uint32(bot->GetQuestStatus(questId)) << "\n";
+        }
+
+        return out.str();
+    }
+    else if (command == "rpg")
+    {
+        std::ostringstream out;
+        out << "escortQuest=" << rpgInfo.escortQuestId << " started=" << rpgInfo.escortStarted
+            << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none")
+            << " last=" << rpgInfo.lastEscortPos.GetPositionX() << "," << rpgInfo.lastEscortPos.GetPositionY()
+            << "," << rpgInfo.lastEscortPos.GetPositionZ() << " map=" << rpgInfo.lastEscortPos.GetMapId();
+        return out.str();
+    }
     else if (command == "position")
     {
         std::ostringstream out;
@@ -6855,6 +6883,8 @@ void PlayerbotAI::RecordQuestAccepted(uint32 questId)
 
 void PlayerbotAI::RecordQuestCompleted(uint32 questId)
 {
+    ClearEscortState(questId);
+
     if (suppressQuestStats)
         return;
 
@@ -6867,6 +6897,8 @@ void PlayerbotAI::RecordQuestCompleted(uint32 questId)
 
 void PlayerbotAI::RecordQuestRewarded(uint32 questId)
 {
+    ClearEscortState(questId);
+
     if (suppressQuestStats)
         return;
 
@@ -6881,6 +6913,8 @@ void PlayerbotAI::RecordQuestRewarded(uint32 questId)
 
 void PlayerbotAI::RecordQuestDropped(uint32 questId, std::string const& reason)
 {
+    ClearEscortState(questId);
+
     if (suppressQuestStats)
         return;
 
@@ -6894,6 +6928,8 @@ void PlayerbotAI::RecordQuestDropped(uint32 questId, std::string const& reason)
 
 void PlayerbotAI::RecordQuestAbandoned(uint32 questId, std::string const& reason)
 {
+    ClearEscortState(questId);
+
     if (suppressQuestStats)
         return;
 
@@ -6905,6 +6941,8 @@ void PlayerbotAI::RecordQuestAbandoned(uint32 questId, std::string const& reason
 
 void PlayerbotAI::RecordQuestFailed(uint32 questId)
 {
+    ClearEscortState(questId);
+
     if (suppressQuestStats)
         return;
 
@@ -6914,6 +6952,17 @@ void PlayerbotAI::RecordQuestFailed(uint32 questId)
     completedThisSession.erase(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questFailedByID[questId];
+}
+
+void PlayerbotAI::ClearEscortState(uint32 questId)
+{
+    if (rpgInfo.escortQuestId != questId)
+        return;
+
+    rpgInfo.escortGuid = ObjectGuid::Empty;
+    rpgInfo.lastEscortPos = WorldPosition();
+    rpgInfo.escortStarted = false;
+    rpgInfo.escortQuestId = 0;
 }
 
 void PlayerbotAI::SeedQuestAccepted(uint32 questId)
