@@ -140,6 +140,11 @@ bool CheckMountStateAction::Execute(Event /*event*/)
             escortInCombat = escort->IsInCombat();
     }
 
+    // Never mount while a spell cast is in flight: mounting interrupts it, and remounting against
+    // a dismounting action (e.g. a quest item cast at a corpse) loops mount/dismount.
+    if (bot->IsNonMeleeSpellCast(false))
+        shouldMount = false;
+
     // If there is a master and bot not in BG, follow master's mount state regardless of group leader
     if (!noRealMaster && !inBattleground)
     {

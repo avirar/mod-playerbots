@@ -29,6 +29,7 @@
 #include "MapMgr.h"
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
+#include "NewRpgDoQuest.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -40,6 +41,7 @@
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
+#include "QuestValues.h"
 #include "RBAC.h"
 #include "RaceMgr.h"
 #include "RandomPlayerbotMgr.h"
@@ -51,6 +53,7 @@
 #include "SocialMgr.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
+#include "Timer.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateTime.h"
@@ -5396,6 +5399,74 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
             out << " doQuest=" << doQuest->questId << " status=" << uint32(bot->GetQuestStatus(doQuest->questId))
                 << " objective=" << doQuest->objectiveIdx
                 << " target=" << (doQuest->targetGuid ? doQuest->targetGuid.ToString() : "none");
+
+        return out.str();
+    }
+    else if (command == "doquest")
+    {
+        std::ostringstream out;
+        auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&rpgInfo.data);
+        if (!doQuest)
+            return "doQuest: none\n";
+
+        uint32 const questId = doQuest->questId;
+        out << "doQuest: id=" << questId << " status=" << uint32(bot->GetQuestStatus(questId))
+            << " objective=" << doQuest->objectiveIdx << "\n";
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (quest && doQuest->objectiveIdx >= QUEST_OBJECTIVES_COUNT)
+        {
+            uint32 const itemIdx = uint32(doQuest->objectiveIdx) - QUEST_OBJECTIVES_COUNT;
+            auto const statusIt = bot->getQuestStatusMap().find(questId);
+            uint32 const have = statusIt != bot->getQuestStatusMap().end() ? statusIt->second.ItemCount[itemIdx] : 0;
+            uint32 const creationItem = GetQuestCreationItem(questId, itemIdx);
+            Item* item = creationItem ? bot->GetItemByEntry(creationItem) : nullptr;
+            uint32 spellId = 0;
+            if (item)
+                for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+                    if (item->GetTemplate()->Spells[i].SpellId > 0)
+                    {
+                        spellId = item->GetTemplate()->Spells[i].SpellId;
+                        break;
+                    }
+
+            out << "item objective: have=" << have << "/" << quest->RequiredItemCount[itemIdx]
+                << " item=" << quest->RequiredItemId[itemIdx] << "\n";
+            out << "creation item=" << creationItem
+                << " count=" << (creationItem ? bot->GetItemCount(creationItem, false) : 0) << " spell=" << spellId
+                << " cooldown=" << (spellId && bot->HasSpellItemCooldown(spellId, creationItem) ? "yes" : "no")
+                << "\n";
+        }
+
+        out << "target=" << (doQuest->targetGuid ? doQuest->targetGuid.ToString() : "none")
+            << " targetAge=" << (doQuest->targetSince ? GetMSTimeDiffToNow(doQuest->targetSince) : 0)
+            << "ms lastItemUse=" << (doQuest->lastItemUse ? GetMSTimeDiffToNow(doQuest->lastItemUse) : 0)
+            << "ms pos=" << doQuest->pos.GetPositionX() << "," << doQuest->pos.GetPositionY() << ","
+            << doQuest->pos.GetPositionZ() << "\n";
+
+        if (doQuest->targetGuid)
+            if (Unit* unit = ObjectAccessor::GetUnit(*bot, doQuest->targetGuid))
+                out << "target unit: entry=" << unit->GetEntry() << (unit->IsAlive() ? " alive" : " corpse")
+                    << " dist=" << uint32(bot->GetDistance(unit)) << "\n";
+
+        out << "mounted=" << (bot->IsMounted() ? "yes" : "no") << " moving=" << (bot->isMoving() ? "yes" : "no")
+            << " casting=" << (bot->IsNonMeleeSpellCast(false) ? "yes" : "no") << "\n";
+
+        LootObject lootTarget = GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
+        out << "lootTarget=" << (lootTarget.IsEmpty() ? std::string("none") : lootTarget.guid.ToString())
+            << " lootHold=" << (doQuest->lootHoldSince ? GetMSTimeDiffToNow(doQuest->lootHoldSince) : 0) << "ms\n";
+
+        auto const candidates = NewRpgDoQuestAction::CollectItemObjectiveDebug(bot, questId);
+        out << "candidates=" << candidates.size() << "\n";
+        for (auto const& candidate : candidates)
+            out << "  " << candidate.entry << " " << candidate.guid.ToString()
+                << (candidate.alive ? " alive" : " corpse") << " dist=" << uint32(candidate.dist)
+                << (candidate.writtenOff ? " writtenOff(" + std::to_string(candidate.writtenOffAge) + "ms)" : "")
+                << (candidate.chosen ? " CHOSEN" : "") << "\n";
+
+        out << "writeoffs=" << doQuest->visited.size() << "\n";
+        for (auto const& [guid, ts] : doQuest->visited)
+            out << "  " << guid.ToString() << " age=" << GetMSTimeDiffToNow(ts) << "ms\n";
 
         return out.str();
     }

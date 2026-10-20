@@ -47,6 +47,23 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
+namespace
+{
+// AnyUnitInObjectRangeCheck (GridNotifiers) accepts living units only; the item-objective scan
+// must also see castable corpses, since jars/vials are cast on the corpse a kill leaves behind.
+class UnitOrCorpseInObjectRangeCheck
+{
+public:
+    UnitOrCorpseInObjectRangeCheck(WorldObject const* obj, float range) : i_obj(obj), i_range(range) {}
+
+    bool operator()(Unit* unit) const { return i_obj->IsWithinDistInMap(unit, i_range); }
+
+private:
+    WorldObject const* i_obj;
+    float i_range;
+};
+}  // namespace
+
 bool StartRpgDoQuestAction::Execute(Event event)
 {
     Player* owner = event.getOwner();
@@ -346,13 +363,14 @@ bool NewRpgDoQuestAction::IsIncompleteObjectiveEntry(NewRpgInfo::DoQuest const& 
     return false;
 }
 
-bool NewRpgDoQuestAction::IsWrittenOff(NewRpgInfo::DoQuest const& data, ObjectGuid guid) const
+bool NewRpgDoQuestAction::IsWrittenOffFor(NewRpgInfo::DoQuest const& data, ObjectGuid guid)
 {
-    auto it = data.visited.find(guid);
+    auto const it = data.visited.find(guid);
     return it != data.visited.end() && GetMSTimeDiffToNow(it->second) < writeOffTime;
 }
 
-bool NewRpgDoQuestAction::IsValidCreatureTarget(NewRpgInfo::DoQuest const& data, Creature* creature) const
+bool NewRpgDoQuestAction::IsValidCreatureTarget(Player* bot, NewRpgInfo::DoQuest const& data,
+                                                Creature* creature)
 {
     if (!creature || !creature->IsInWorld() || !creature->IsAlive())
         return false;
@@ -361,7 +379,7 @@ bool NewRpgDoQuestAction::IsValidCreatureTarget(NewRpgInfo::DoQuest const& data,
     if (creature->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE) || creature->HasUnitFlag(UNIT_FLAG_IMMUNE_TO_PC))
         return false;
 
-    if (IsWrittenOff(data, creature->GetGUID()))
+    if (IsWrittenOffFor(data, creature->GetGUID()))
         return false;
 
     if (creature->hasLootRecipient() && !creature->isTappedBy(bot))
@@ -370,7 +388,7 @@ bool NewRpgDoQuestAction::IsValidCreatureTarget(NewRpgInfo::DoQuest const& data,
     return true;
 }
 
-bool NewRpgDoQuestAction::IsValidGoTarget(NewRpgInfo::DoQuest const& data, GameObject* go) const
+bool NewRpgDoQuestAction::IsValidGoTarget(NewRpgInfo::DoQuest const& data, GameObject* go)
 {
     if (!go || !go->IsInWorld() || !go->isSpawned())
         return false;
@@ -378,13 +396,13 @@ bool NewRpgDoQuestAction::IsValidGoTarget(NewRpgInfo::DoQuest const& data, GameO
     if (go->GetGoState() != GO_STATE_READY)
         return false;
 
-    if (IsWrittenOff(data, go->GetGUID()))
+    if (IsWrittenOffFor(data, go->GetGUID()))
         return false;
 
     return true;
 }
 
-bool NewRpgDoQuestAction::HasNeededQuestItem(GameObject* go) const
+bool NewRpgDoQuestAction::HasNeededQuestItem(Player* bot, GameObject* go)
 {
     GameObjectQuestItemList const* items = sObjectMgr->GetGameObjectQuestItemList(go->GetEntry());
     if (!items)
@@ -407,7 +425,11 @@ bool NewRpgDoQuestAction::HoldForLoot(NewRpgInfo::DoQuest& data)
     }
 
     if (!data.lootHoldSince)
+    {
         data.lootHoldSince = getMSTime();
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} holding for loot {} ({} ms budget)", bot->GetName(), data.questId,
+                  AI_VALUE(LootObject, "loot target").guid.ToString(), lootHoldTime);
+    }
 
     return GetMSTimeDiffToNow(data.lootHoldSince) < lootHoldTime;
 }
@@ -464,7 +486,7 @@ WorldObject* NewRpgDoQuestAction::ScanEntryObjectives(NewRpgInfo::DoQuest const&
         std::list<Creature*> creatures;
         bot->GetCreatureListWithEntryInGrid(creatures, creatureEntries, scanRange);
         for (Creature* creature : creatures)
-            if (IsValidCreatureTarget(data, creature))
+            if (IsValidCreatureTarget(bot, data, creature))
                 keepNearest(creature);
     }
 
@@ -481,6 +503,12 @@ WorldObject* NewRpgDoQuestAction::ScanEntryObjectives(NewRpgInfo::DoQuest const&
 }
 
 WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& data, float scanRange) const
+{
+    return ScanItemObjectiveFor(bot, data, scanRange);
+}
+
+WorldObject* NewRpgDoQuestAction::ScanItemObjectiveFor(Player* bot, NewRpgInfo::DoQuest const& data, float scanRange,
+                                                       std::vector<ItemObjectiveCandidate>* debugOut)
 {
     std::vector<int32> const* craftSources = nullptr;
     if (!GetQuestCraftReagents(data.questId, uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT).empty())
@@ -501,12 +529,19 @@ WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& d
         }
     };
 
+    // Castable corpses are time-limited (a corpse despawns, a live mob does not): they outrank
+    // every other candidate so a jar/cast target is never skipped in favour of a live mob.
+    Creature* nearestCorpse = nullptr;
+    float nearestCorpseDist = scanRange;
+
     std::unordered_set<uint32> const& transformSources = GetQuestTransformSources(data.questId);
     std::unordered_map<uint32, bool> questLoot;
     std::list<Unit*> units;
-    Acore::AnyUnitInObjectRangeCheck check(bot, scanRange);
-    Acore::UnitListSearcher<Acore::AnyUnitInObjectRangeCheck> searcher(bot, units, check);
+    UnitOrCorpseInObjectRangeCheck check(bot, scanRange);
+    Acore::UnitListSearcher<UnitOrCorpseInObjectRangeCheck> searcher(bot, units, check);
     Cell::VisitObjects(bot, searcher, scanRange);
+    uint32 creationSeen = 0;
+    uint32 corpseSeen = 0;
     for (Unit* unit : units)
     {
         Creature* creature = unit->ToCreature();
@@ -518,12 +553,44 @@ WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& d
         if (std::find(creationSources.begin(), creationSources.end(), int32(creature->GetEntry())) !=
             creationSources.end())
         {
-            if (!IsWrittenOff(data, creature->GetGUID()))
-                keepNearest(creature);
+            ++creationSeen;
+            float const dist = bot->GetDistance(creature);
+            bool const alive = creature->IsAlive();
+            // A written-off GUID only disqualifies living targets: a corpse that still exists was
+            // either never cast (e.g. written off by the engage timeout while alive) or is the
+            // corpse of the fill cast currently in flight (the in-flight guard holds, and the
+            // corpse is destroyed when the fill lands).
+            bool const writtenOff = IsWrittenOffFor(data, creature->GetGUID());
+
+            if (debugOut)
+            {
+                uint32 age = 0;
+                if (auto const it = data.visited.find(creature->GetGUID()); it != data.visited.end())
+                    age = GetMSTimeDiffToNow(it->second);
+                debugOut->push_back({creature->GetGUID(), creature->GetEntry(), alive, writtenOff, age, false, dist});
+            }
+
+            if (writtenOff && alive)
+                continue;
+
+            if (!alive)
+            {
+                ++corpseSeen;
+                if (dist < nearestCorpseDist)
+                {
+                    nearestCorpseDist = dist;
+                    nearestCorpse = creature;
+                }
+            }
+            else if (dist < nearestDist)
+            {
+                nearestDist = dist;
+                nearest = creature;
+            }
             continue;
         }
 
-        if (!IsValidCreatureTarget(data, creature))
+        if (!IsValidCreatureTarget(bot, data, creature))
             continue;
 
         uint32 lootId = creature->GetCreatureTemplate()->lootid;
@@ -550,10 +617,36 @@ WorldObject* NewRpgDoQuestAction::ScanItemObjective(NewRpgInfo::DoQuest const& d
     Acore::GameObjectListSearcher<AnyGameObjectInObjectRangeCheck> goSearcher(bot, gos, goCheck);
     Cell::VisitObjects(bot, goSearcher, scanRange);
     for (GameObject* go : gos)
-        if (IsValidGoTarget(data, go) && HasNeededQuestItem(go))
+        if (IsValidGoTarget(data, go) && HasNeededQuestItem(bot, go))
             keepNearest(go);
 
-    return nearest;
+    WorldObject* chosen = nearestCorpse ? static_cast<WorldObject*>(nearestCorpse) : nearest;
+    if (debugOut && chosen)
+        for (auto& candidate : *debugOut)
+            candidate.chosen = candidate.guid == chosen->GetGUID();
+
+    LOG_DEBUG("playerbots",
+              "[New RPG] {} q{} obj{} scan: {} creation candidates ({} corpses), chosen {} at {:.1f} yd",
+              bot->GetName(), data.questId, data.objectiveIdx, creationSeen, corpseSeen,
+              chosen ? chosen->GetGUID().ToString() : "none", chosen ? bot->GetDistance(chosen) : 0.0f);
+
+    return chosen;
+}
+
+// 'inspect doquest': run the same scan the action uses and report every candidate.
+std::vector<ItemObjectiveCandidate> NewRpgDoQuestAction::CollectItemObjectiveDebug(Player* bot, uint32 questId)
+{
+    std::vector<ItemObjectiveCandidate> out;
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+    if (!botAI)
+        return out;
+
+    auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+    if (!doQuest || doQuest->questId != questId || doQuest->objectiveIdx < QUEST_OBJECTIVES_COUNT)
+        return out;
+
+    ScanItemObjectiveFor(bot, *doQuest, sPlayerbotAIConfig.SightDistance, &out);
+    return out;
 }
 
 bool NewRpgDoQuestAction::ScanForObjectiveTarget(NewRpgInfo::DoQuest& data, float maxDist)
@@ -565,7 +658,11 @@ bool NewRpgDoQuestAction::ScanForObjectiveTarget(NewRpgInfo::DoQuest& data, floa
     WorldObject* target = data.objectiveIdx < QUEST_OBJECTIVES_COUNT ? ScanEntryObjectives(data, scanRange)
                                                                      : ScanItemObjective(data, scanRange);
     if (!target)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} scan: nothing in range", bot->GetName(), data.questId,
+                  data.objectiveIdx);
         return false;
+    }
 
     data.targetGuid = target->GetGUID();
     data.targetPos =
@@ -601,8 +698,13 @@ bool NewRpgDoQuestAction::EngageTarget(NewRpgInfo::DoQuest& data)
             return true;
         }
 
-        if (creature->hasLootRecipient() && !creature->isTappedBy(bot))
+        // Creation sources are tap-independent: the jar/cast credit does not require loot rights,
+        // so tagged corpses (and tagged live mobs fought into corpses) remain valid targets.
+        if (!IsCreationSource(data, creature->GetEntry()) &&
+            creature->hasLootRecipient() && !creature->isTappedBy(bot))
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} target {} tapped by another player", bot->GetName(),
+                      data.questId, data.objectiveIdx, creature->GetGUID().ToString());
             WriteOffTarget(data);
             return true;
         }
@@ -855,18 +957,32 @@ bool NewRpgDoQuestAction::EngageCastTarget(NewRpgInfo::DoQuest& data, Creature* 
     {
         if (MoveFarTo(data.targetPos))
             return true;
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} cannot path to cast target {}; wandering", bot->GetName(),
+                  data.questId, data.objectiveIdx, creature->GetGUID().ToString());
         return MoveRandomNear(5.0f);
-    }
-
-    if (bot->IsMounted())
-    {
-        bot->Dismount();
-        return true;
     }
 
     uint32 const spellId = GetItemUseSpell(item);
     if (spellId && bot->HasSpellItemCooldown(spellId, item->GetEntry()))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} item {} on cooldown", bot->GetName(), data.questId,
+                  data.objectiveIdx, item->GetEntry());
         return true;
+    }
+
+    // A multi-second fill cast in flight would be interrupted by starting another cast; hold
+    // until it lands before casting on the next corpse.
+    if (bot->IsNonMeleeSpellCast(false))
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} holding cast target {} for the in-flight cast",
+                  bot->GetName(), data.questId, data.objectiveIdx, creature->GetGUID().ToString());
+        return true;
+    }
+
+    // Dismount and cast in the same tick: dismounting is a local aura removal, and splitting it
+    // from the cast opens a window where CheckMountState remounts and kills the fill cast.
+    if (bot->IsMounted())
+        bot->Dismount();
 
     bot->SetFacingToObject(creature);
     botAI->ImbueItem(item, creature);
@@ -941,11 +1057,38 @@ bool NewRpgDoQuestAction::EngageAbilityTarget(NewRpgInfo::DoQuest& data, Creatur
 }
 
 // A vial-style creation source: a live one is fought into the corpse the spell demands, a corpse
-// receives the creator item's cast.
+// receives the creator item's cast. Loot always precedes the cast - the item use destroys the
+// corpse, so any loot still on it would be lost.
 bool NewRpgDoQuestAction::EngageCreationTarget(NewRpgInfo::DoQuest& data, Creature* creature)
 {
     if (creature->IsAlive())
-        return false;
+    {
+        // An in-flight fill cast must not be interrupted by switching to combat; the kill can
+        // wait for it to land.
+        if (bot->IsNonMeleeSpellCast(false))
+            return true;
+
+        // Fight the living source into the corpse state the creation spell demands: issue the
+        // attack order and let the combat engine handle closing in.
+        if (creature->GetExactDist(data.targetPos) > 10.0f)
+            data.targetPos = WorldPosition(bot->GetMapId(), creature->GetPositionX(), creature->GetPositionY(),
+                                           creature->GetPositionZ());
+
+        return botAI->DoSpecificAction("new rpg attack quest target", Event(), true);
+    }
+
+    // Loot first, but never deadlock: the cast destroys the corpse, so wait while the loot
+    // pipeline is still working on it (an open window, or it is the active loot target and still
+    // holds loot). A corpse the pipeline skipped (e.g. full bags) no longer blocks the jar.
+    LootObject lootTarget = AI_VALUE(LootObject, "loot target");
+    bool const pipelineOnCorpse = (!lootTarget.IsEmpty() && lootTarget.guid == creature->GetGUID()) ||
+                                  bot->GetLootGUID() == creature->GetGUID();
+    if (pipelineOnCorpse && !creature->loot.isLooted())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} q{} obj{} corpse {} waiting for the loot pipeline",
+                  bot->GetName(), data.questId, data.objectiveIdx, creature->GetGUID().ToString());
+        return true;
+    }
 
     uint32 const itemIdx = uint32(data.objectiveIdx) - QUEST_OBJECTIVES_COUNT;
     if (Item* item = bot->GetItemByEntry(GetQuestCreationItem(data.questId, itemIdx)))

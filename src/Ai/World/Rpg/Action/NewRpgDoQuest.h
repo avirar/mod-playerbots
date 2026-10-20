@@ -21,6 +21,18 @@ struct QuestStatusData;
 
 constexpr float NEW_RPG_ENGAGE_RANGE = 30.0f;
 
+// One candidate the item-objective scan considered, for 'inspect doquest' diagnostics.
+struct ItemObjectiveCandidate
+{
+    ObjectGuid guid;
+    uint32 entry{0};
+    bool alive{false};
+    bool writtenOff{false};
+    uint32 writtenOffAge{0};
+    bool chosen{false};
+    float dist{0.0f};
+};
+
 class StartRpgDoQuestAction : public Action
 {
 public:
@@ -47,6 +59,12 @@ public:
     // Warm the static caches at load: IsCastQuest runs a blocking query.
     static void BuildCaches();
 
+    // 'inspect doquest' diagnostics: run the live item-objective scan and report every candidate
+    // with the reason it is or is not the current target.
+    static std::vector<ItemObjectiveCandidate> CollectItemObjectiveDebug(Player* bot, uint32 questId);
+    static WorldObject* ScanItemObjectiveFor(Player* bot, NewRpgInfo::DoQuest const& data, float scanRange,
+                                             std::vector<ItemObjectiveCandidate>* debugOut = nullptr);
+
 protected:
     bool DoIncompleteQuest(NewRpgInfo::DoQuest& data);
     bool DoCompletedQuest(NewRpgInfo::DoQuest& data);
@@ -65,6 +83,8 @@ protected:
     bool ScanForObjectiveTarget(NewRpgInfo::DoQuest& data, float maxDist);
     WorldObject* ScanEntryObjectives(NewRpgInfo::DoQuest const& data, float scanRange) const;
     WorldObject* ScanItemObjective(NewRpgInfo::DoQuest const& data, float scanRange) const;
+
+    static bool IsWrittenOffFor(NewRpgInfo::DoQuest const& data, ObjectGuid guid);
     bool EngageTarget(NewRpgInfo::DoQuest& data);
     bool EngageCreature(NewRpgInfo::DoQuest& data, Creature* creature);
     bool EngageTalkTarget(NewRpgInfo::DoQuest& data, Creature* creature);
@@ -100,18 +120,17 @@ protected:
 
     bool DoExploreObjective(NewRpgInfo::DoQuest& data);
     void WriteOffTarget(NewRpgInfo::DoQuest& data);
-    bool IsWrittenOff(NewRpgInfo::DoQuest const& data, ObjectGuid guid) const;
-    bool IsValidCreatureTarget(NewRpgInfo::DoQuest const& data, Creature* creature) const;
-    bool IsValidGoTarget(NewRpgInfo::DoQuest const& data, GameObject* go) const;
-    bool HasNeededQuestItem(GameObject* go) const;
+    static bool IsValidCreatureTarget(Player* bot, NewRpgInfo::DoQuest const& data, Creature* creature);
+    static bool IsValidGoTarget(NewRpgInfo::DoQuest const& data, GameObject* go);
+    static bool HasNeededQuestItem(Player* bot, GameObject* go);
     bool HoldForLoot(NewRpgInfo::DoQuest& data);
 
     const uint32 lootHoldTime = 15 * IN_MILLISECONDS;
-    const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
+    static constexpr uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
     // The questgiver search covers 80 yd every tick, so an ender that has not taken the quest by
     // now is not there.
     const uint32 enderWaitTime = 30 * IN_MILLISECONDS;
-    const uint32 writeOffTime = poiStayTime;
+    static constexpr uint32 writeOffTime = poiStayTime;
     // Whole-quest budget: the spawn rotation never gives up on its own.
     const uint32 questStayTime = 30 * MINUTE * IN_MILLISECONDS;
     const uint32 scanInterval = 2 * IN_MILLISECONDS;
