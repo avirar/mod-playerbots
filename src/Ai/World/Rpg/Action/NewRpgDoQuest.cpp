@@ -1499,7 +1499,7 @@ bool NewRpgDoQuestAction::DoEscortObjective(NewRpgInfo::DoQuest& data)
 
             if (rpg.escortFailures >= escortMaxFailures)
             {
-                botAI->lowPriorityQuest.insert(data.questId);
+                botAI->AddLowPriorityQuest(data.questId);
                 botAI->RecordQuestAbandoned(data.questId, "escort_lost");
                 LOG_DEBUG("playerbots", "[New RPG] {} gave up escort quest {} after {} lost escorts",
                           bot->GetName(), data.questId, rpg.escortFailures);
@@ -1986,7 +1986,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
     if (botAI->rpgInfo.HasStatusPersisted(questStayTime))
     {
-        botAI->lowPriorityQuest.insert(questId);
+        botAI->AddLowPriorityQuest(questId);
         botAI->RecordQuestAbandoned(questId, "no_progression");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {} (quest budget)", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();
@@ -2091,6 +2091,9 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
     uint32 questId = data.questId;
     Quest const* quest = data.quest;
 
+    LOG_DEBUG("playerbots", "[New RPG] {} quest {} turn-in flow (objective {}, pos {})", bot->GetName(), questId,
+              data.objectiveIdx, data.pos != WorldPosition() ? "set" : "none");
+
     if (data.objectiveIdx != -1)
     {
         // The turn-in walk would outrun the random "add all loot" trigger.
@@ -2169,7 +2172,7 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
     {
         // e.g. Can not reward quest to gameobjects
         /// @TODO: It may be better to make lowPriorityQuest a global set shared by all bots (or saved in db)
-        botAI->lowPriorityQuest.insert(questId);
+        botAI->AddLowPriorityQuest(questId);
         botAI->RecordQuestAbandoned(questId, "reward_issue");
         LOG_DEBUG("playerbots", "[New RPG] {} marked as abandoned quest {}", bot->GetName(), questId);
         botAI->rpgInfo.ChangeToIdle();

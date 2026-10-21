@@ -1599,7 +1599,22 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
         uint32 teleport = GetEventValue(botId, "teleport");
         if (!teleport)
         {
-            LOG_DEBUG("playerbots", "Bot #{} <{}>: teleport for level and refresh", botId, bot->GetName());
+            uint32 questLog = 0;
+            uint32 completeQuests = 0;
+            for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+            {
+                uint32 const questId = bot->GetQuestSlotQuestId(slot);
+                if (!questId)
+                    continue;
+
+                ++questLog;
+                if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+                    ++completeQuests;
+            }
+
+            LOG_DEBUG("playerbots",
+                      "Bot #{} <{}>: teleport for level and refresh (quest log {}, complete {})", botId,
+                      bot->GetName(), questLog, completeQuests);
             Refresh(bot);
             RandomTeleportForLevel(bot);
             uint32 time = urand(sPlayerbotAIConfig.MinRandomBotTeleportInterval,

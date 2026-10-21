@@ -648,7 +648,12 @@ public:
     std::unordered_set<uint32> completedThisSession;
     // Synthetic factory quest rewards must not enter the gameplay statistics.
     bool suppressQuestStats = false;
-    std::unordered_set<uint32> lowPriorityQuest;
+    // Quests the bot should not re-accept right now (log pressure / budget / escort failures).
+    // Expires, so a location problem does not blacklist a quest for the whole session.
+    void AddLowPriorityQuest(uint32 questId, uint32 durationMs = 30 * 60 * 1000);
+    bool IsLowPriorityQuest(uint32 questId);
+    size_t LowPriorityQuestCount();
+    std::unordered_map<uint32, uint32> lowPriorityQuestUntil;  // questId -> expiry time (ms)
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;
 

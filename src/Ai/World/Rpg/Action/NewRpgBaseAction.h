@@ -54,6 +54,10 @@ public:
     static uint32 GetQuestSummonedEscortEntry(uint32 questId);
 
 protected:
+    // Throttle for quest-flow diagnostics (accept/pick decisions): one line per interval per action.
+    bool QuestFlowDiagDue(uint32 interval = 10 * IN_MILLISECONDS);
+    uint32 lastQuestFlowDiag{0};
+
     /* MOVEMENT RELATED */
     bool MoveFarTo(WorldPosition dest);
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
@@ -65,6 +69,9 @@ protected:
     ObjectGuid ChooseNpcOrGameObjectToInteract(bool questgiverOnly = false, float distanceLimit = 0.0f);
     static bool HasQuestToAcceptOrReward(Player* bot, WorldObject* object);
     bool InteractWithNpcOrGameObjectForQuest(ObjectGuid guid);
+    // Acceptance must match what the progress system can navigate on this map; otherwise the
+    // accept becomes instant log_pressure fodder or a permanently stuck log entry.
+    bool IsQuestAcceptableHere(uint32 questId);
     static bool CanInteractWithQuestGiver(Player* bot, Object* questGiver);
     bool IsWithinInteractionDist(Object* object);
     uint32 BestRewardIndex(Quest const* quest);

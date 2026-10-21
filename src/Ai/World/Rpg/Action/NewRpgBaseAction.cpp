@@ -320,6 +320,48 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
 
 /// @TODO: Fix redundant code
 /// Quest related method refer to TalkToQuestGiverAction.h
+// What the progress system can actually navigate on this map: POIs, indexed objectives, escorts,
+// scripted targets or area triggers. Distance is a travel problem, not an eligibility problem.
+bool NewRpgBaseAction::IsQuestAcceptableHere(uint32 questId)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+        return false;
+
+    if (GetQuestEscortEntry(questId) || GetQuestSummonedEscortEntry(questId))
+        return true;
+
+    if (GetQuestScriptedItemTarget(questId).creatureEntry)
+        return true;
+
+    if (uint32 triggerId = GetQuestAreaTriggerId(questId))
+        if (AreaTrigger const* trigger = sObjectMgr->GetAreaTrigger(triggerId))
+            if (trigger->map == bot->GetMapId())
+                return true;
+
+    if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(questId))
+        for (QuestPOI const& poi : *pois)
+            if (poi.MapId == bot->GetMapId() && !poi.points.empty())
+                return true;
+
+    for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+    {
+        int32 const entry = quest->RequiredNpcOrGo[i];
+        if (!entry || !quest->RequiredNpcOrGoCount[i])
+            continue;
+
+        if (!GetEntrySpawns(entry, bot->GetMapId()).empty())
+            return true;
+    }
+
+    if (sPlayerbotAIConfig.CrossZoneQuests)
+        if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(questId))
+            if (!pois->empty())
+                return true;
+
+    return false;
+}
+
 bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
 {
     WorldObject* object = ObjectAccessor::GetWorldObject(*bot, guid);
@@ -337,8 +379,15 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
     bot->PrepareQuestMenu(guid);
     QuestMenu const& menu = bot->PlayerTalkClass->GetQuestMenu();
     if (menu.Empty())
-        return true;
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} interact {}: empty quest menu", bot->GetName(), object->GetEntry());
+        return false;
+    }
 
+    LOG_DEBUG("playerbots", "[New RPG] {} interact {} (menu {})", bot->GetName(), object->GetEntry(),
+              menu.GetMenuItemCount());
+
+    bool didSomething = false;
     for (uint8 idx = 0; idx < menu.GetMenuItemCount(); idx++)
     {
         QuestMenuItem const& item = menu.GetItem(idx);
@@ -347,14 +396,46 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             continue;
 
         // Dropped under log pressure: do not immediately re-accept it (accept->drop loops).
-        if (botAI->lowPriorityQuest.find(item.QuestId) != botAI->lowPriorityQuest.end())
+        if (botAI->IsLowPriorityQuest(item.QuestId))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} quest giver {}: skip quest {} (low priority)", bot->GetName(),
+                      object->GetEntry(), item.QuestId);
             continue;
+        }
 
         QuestStatus const& status = bot->GetQuestStatus(item.QuestId);
+        if (status == QUEST_STATUS_NONE)
+        {
+            char const* reject = nullptr;
+            if (!bot->CanTakeQuest(quest, false))
+                reject = "cannot_take";
+            else if (!bot->CanAddQuest(quest, false))
+                reject = "cannot_add";
+            else if (!IsQuestWorthDoing(bot, quest))
+                reject = "not_worth";
+            else if (!IsQuestCapableDoing(bot, quest))
+                reject = "not_capable";
+
+            if (reject)
+                LOG_DEBUG("playerbots", "[New RPG] {} quest giver {}: reject quest {} ({}): {}", bot->GetName(),
+                          object->GetEntry(), quest->GetQuestId(), quest->GetTitle(), reject);
+        }
+        else if (status == QUEST_STATUS_COMPLETE && !bot->CanRewardQuest(quest, 0, false))
+            LOG_DEBUG("playerbots", "[New RPG] {} quest ender {}: cannot reward quest {} ({})", bot->GetName(),
+                      object->GetEntry(), quest->GetQuestId(), quest->GetTitle());
         if (status == QUEST_STATUS_NONE && bot->CanTakeQuest(quest, false) && bot->CanAddQuest(quest, false) &&
             IsQuestWorthDoing(bot, quest) && IsQuestCapableDoing(bot, quest))
         {
+            if (!IsQuestAcceptableHere(quest->GetQuestId()))
+            {
+                LOG_DEBUG("playerbots",
+                          "[New RPG] {} quest giver {}: skip quest {} (no navigable objectives on map {})",
+                          bot->GetName(), object->GetEntry(), quest->GetQuestId(), bot->GetMapId());
+                continue;
+            }
+
             AcceptQuest(quest, guid);
+            didSomething = true;
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
                     "new_rpg_quest_accepted",
@@ -382,6 +463,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
         if (status == QUEST_STATUS_COMPLETE && bot->CanRewardQuest(quest, 0, false))
         {
             TurnInQuest(quest, guid);
+            didSomething = true;
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
                     "new_rpg_quest_rewarded",
@@ -391,7 +473,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
         }
     }
-    return true;
+    return didSomething;
 }
 
 bool NewRpgBaseAction::CanInteractWithQuestGiver(Player* bot, Object* questGiver)
@@ -639,7 +721,7 @@ uint32 NewRpgBaseAction::FindIncompleteTimedQuest(PlayerbotAI* botAI)
     for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
     {
         uint32 const questId = bot->GetQuestSlotQuestId(slot);
-        if (!questId || botAI->lowPriorityQuest.count(questId))
+        if (!questId || botAI->IsLowPriorityQuest(questId))
             continue;
 
         Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
@@ -913,6 +995,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
     {
         uint16 worstSlot = MAX_QUEST_LOG_SIZE;
         uint16 worstProtectedSlot = MAX_QUEST_LOG_SIZE;
+        uint16 worstUnreachableSlot = MAX_QUEST_LOG_SIZE;
         float worstDist = -1.0f;
         float worstProtectedDist = -1.0f;
         for (uint16 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
@@ -928,21 +1011,34 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             bool const protectedQuest = bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE ||
                                         quest->HasSpecialFlag(QUEST_SPECIAL_FLAGS_TIMED);
 
-            // Unprogressable by the bot (no POI data): drop it first.
+            // Rank by the real distance to the quest's own POIs on this map. Quests without any
+            // current-map POI are unreachable and rank first; otherwise the genuinely farthest
+            // wins (the old 1500 yd POI cap made everything beyond it tie as "infinite", so a
+            // quest 59 yd over the cap could beat one 10,000 yd away).
             float dist = std::numeric_limits<float>::max();
-            std::vector<POIInfo> poiInfo;
-            if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, protectedQuest))
-            {
-                for (POIInfo const& poi : poiInfo)
+            if (QuestPOIVector const* pois = sObjectMgr->GetQuestPOIVector(questId))
+                for (QuestPOI const& poi : *pois)
                 {
-                    float d = bot->GetDistance2d(poi.pos.x, poi.pos.y);
-                    if (d < dist)
-                        dist = d;
+                    if (poi.MapId != bot->GetMapId())
+                        continue;
+                    // Turn-ins rank by their ender POI; in-progress quests by their objectives.
+                    if (protectedQuest && poi.ObjectiveIndex != -1)
+                        continue;
+
+                    for (QuestPOIPoint const& point : poi.points)
+                        dist = std::min(dist, bot->GetDistance2d(point.x, point.y));
                 }
-            }
 
             if (protectedQuest)
             {
+                if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE &&
+                    dist == std::numeric_limits<float>::max() && worstUnreachableSlot == MAX_QUEST_LOG_SIZE)
+                {
+                    // A complete quest whose ender is not on this map can never be turned in from
+                    // here: free the slot instead of holding it forever.
+                    worstUnreachableSlot = i;
+                }
+
                 if (dist > worstProtectedDist)
                 {
                     worstProtectedDist = dist;
@@ -957,7 +1053,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         }
 
         if (worstSlot == MAX_QUEST_LOG_SIZE)
-            worstSlot = worstProtectedSlot;
+            worstSlot = worstUnreachableSlot != MAX_QUEST_LOG_SIZE ? worstUnreachableSlot : worstProtectedSlot;
 
         if (worstSlot == MAX_QUEST_LOG_SIZE)
             break;
@@ -965,10 +1061,19 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         Quest const* worstQuest = sObjectMgr->GetQuestTemplate(bot->GetQuestSlotQuestId(worstSlot));
         dropSlot(worstSlot, worstQuest, "log_pressure");
         // Remember it so the accept menu does not instantly take it again.
-        botAI->lowPriorityQuest.insert(worstQuest->GetQuestId());
+        botAI->AddLowPriorityQuest(worstQuest->GetQuestId());
         freeSlotNum++;
     }
 
+    return true;
+}
+
+bool NewRpgBaseAction::QuestFlowDiagDue(uint32 interval)
+{
+    if (lastQuestFlowDiag && GetMSTimeDiffToNow(lastQuestFlowDiag) < interval)
+        return false;
+
+    lastQuestFlowDiag = getMSTime();
     return true;
 }
 
@@ -983,11 +1088,26 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
 
         if (bot->CanInteractWithQuestGiver(object))
         {
-            InteractWithNpcOrGameObjectForQuest(npcOrGo);
-            ForceToWait(5000);
-            return true;
+            if (InteractWithNpcOrGameObjectForQuest(npcOrGo))
+            {
+                ForceToWait(5000);
+                return true;
+            }
+            // Interacted but accepted/rewarded nothing (blacklisted menu, empty menu): let the
+            // active do-quest continue instead of standing here.
+            return false;
         }
         return MoveWorldObjectTo(npcOrGo);
+    }
+
+    if (QuestFlowDiagDue())
+    {
+        GuidVector const targets =
+            botAI->GetAiObjectContext()->GetValue<GuidVector>("possible new rpg targets")->Get();
+        GuidVector const gameObjects =
+            botAI->GetAiObjectContext()->GetValue<GuidVector>("possible new rpg game objects")->Get();
+        LOG_DEBUG("playerbots", "[New RPG] {} no giver to accept/reward (targets {}, gos {}, range {:.0f})",
+                  bot->GetName(), targets.size(), gameObjects.size(), sPlayerbotAIConfig.QuestGiverSearchDistance);
     }
     return false;
 }
@@ -1075,11 +1195,18 @@ bool NewRpgBaseAction::HasQuestToAcceptOrReward(Player* bot, WorldObject* object
     if (menu.Empty())
         return false;
 
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
+
     for (uint8 idx = 0; idx < menu.GetMenuItemCount(); idx++)
     {
         QuestMenuItem const& item = menu.GetItem(idx);
         Quest const* quest = sObjectMgr->GetQuestTemplate(item.QuestId);
         if (!quest)
+            continue;
+
+        // The interaction skips blacklisted quests; picking the giver for them causes an
+        // interact/no-op loop at the same NPC.
+        if (botAI && botAI->IsLowPriorityQuest(item.QuestId))
             continue;
 
         QuestStatus const& status = bot->GetQuestStatus(item.QuestId);
@@ -1093,6 +1220,9 @@ bool NewRpgBaseAction::HasQuestToAcceptOrReward(Player* bot, WorldObject* object
         QuestMenuItem const& item = menu.GetItem(idx);
         Quest const* quest = sObjectMgr->GetQuestTemplate(item.QuestId);
         if (!quest)
+            continue;
+
+        if (botAI && botAI->IsLowPriorityQuest(item.QuestId))
             continue;
 
         QuestStatus const& status = bot->GetQuestStatus(item.QuestId);
@@ -1159,9 +1289,8 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
                 dy += point.y * weights[i];
             }
 
-            if (bot->GetDistance2d(dx, dy) >= 1500.0f)
-                continue;
-
+            // Turn-ins are not distance-gated: a completed quest's ender is a turn-in job even on
+            // the far side of the map/zone. Only a different map is out of reach.
             float dz = std::max(bot->GetMap()->GetHeight(dx, dy, MAX_HEIGHT), bot->GetMap()->GetWaterLevel(dx, dy));
 
             // The baked walkable floor for this POI takes precedence over the terrain surface.
@@ -1175,10 +1304,6 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
             // Indoor enders stand over terrain holes; skipping them would keep the quest out of DO_QUEST.
             if (dz == INVALID_HEIGHT || dz == VMAP_INVALID_HEIGHT_VALUE)
                 dz = bot->GetPositionZ();
-
-            if (!sPlayerbotAIConfig.CrossZoneQuests &&
-                bot->GetZoneId() != bot->GetMap()->GetZoneId(bot->GetPhaseMask(), dx, dy, dz))
-                continue;
 
             poiInfo.push_back({{dx, dy}, qPoi.ObjectiveIndex, dz, qPoi.Id});
         }
@@ -1610,6 +1735,10 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_DO_QUEST:
         {
+            uint32 logQuests = 0;
+            uint32 lowPrioQuests = 0;
+            uint32 completeQuests = 0;
+
             // A running timer beats a random log pick: finishing the timed quest first is the
             // only way it survives.
             if (sPlayerbotAIConfig.TimedQuestsFirst)
@@ -1623,8 +1752,16 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (!questId || botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                if (!questId)
                     continue;
+                ++logQuests;
+                if (botAI->IsLowPriorityQuest(questId))
+                {
+                    ++lowPrioQuests;
+                    continue;
+                }
+                if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+                    ++completeQuests;
 
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
@@ -1693,12 +1830,24 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                 LOG_DEBUG("playerbots", "[New RPG] {} exploration quest {} uses area trigger {}", bot->GetName(),
                           questId, triggerId);
             }
-            if (availableQuests.size())
+            if (availableQuests.empty())
+            {
+                if (QuestFlowDiagDue())
+                    LOG_DEBUG("playerbots",
+                              "[New RPG] {} doquest pick: none (log {}, complete {}, lowPriority {})",
+                              bot->GetName(), logQuests, completeQuests, lowPrioQuests);
+                return false;
+            }
+
             {
                 uint32 questId = availableQuests[urand(0, availableQuests.size() - 1)];
                 Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
                 if (quest)
                 {
+                    LOG_DEBUG("playerbots",
+                              "[New RPG] {} doquest pick: quest {} status {} ({} available, {} log, {} complete)",
+                              bot->GetName(), questId, uint32(bot->GetQuestStatus(questId)),
+                              availableQuests.size(), logQuests, completeQuests);
                     botAI->rpgInfo.ChangeToDoQuest(questId, quest);
                     return true;
                 }
@@ -1777,12 +1926,19 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_DO_QUEST:
         {
-            std::vector<uint32> availableQuests;
+            uint32 logQuests = 0;
+            uint32 lowPrioQuests = 0;
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
-                if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                if (!questId)
                     continue;
+                ++logQuests;
+                if (botAI->IsLowPriorityQuest(questId))
+                {
+                    ++lowPrioQuests;
+                    continue;
+                }
 
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
@@ -1797,6 +1953,10 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                 if (HasScriptedEscortObjective(quest) && FindEscorteeForQuest(bot, questId, 100.0f))
                     return true;
             }
+
+            if (QuestFlowDiagDue())
+                LOG_DEBUG("playerbots", "[New RPG] {} doquest status: unavailable (log {}, lowPriority {})",
+                          bot->GetName(), logQuests, lowPrioQuests);
             return false;
         }
         case RPG_DO_GATHER:

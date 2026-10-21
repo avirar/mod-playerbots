@@ -1102,6 +1102,9 @@ std::vector<std::string> PlayerbotHolder::HandlePlayerbotCommand(char const* arg
         if (GET_PLAYERBOT_AI(master))
         {
             messages.push_back("SelfBot is now deactivated.");
+            // The self-bot's last spline would otherwise keep running with no AI left to stop it.
+            master->GetMotionMaster()->Clear();
+            master->StopMoving();
             delete GET_PLAYERBOT_AI(master);
 
             if (master->isTaxiCheater())

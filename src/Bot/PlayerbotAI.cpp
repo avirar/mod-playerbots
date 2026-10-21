@@ -1545,6 +1545,12 @@ void PlayerbotAI::ChangeEngine(BotState type)
 
 void PlayerbotAI::ChangeEngineOnCombat()
 {
+    // Combat takes over movement: the travel spline issued by the non-combat engine (do-quest,
+    // grind, travel) would otherwise keep dragging the bot past the mobs attacking it.
+    bot->StopMovingOnCurrentPos();
+    bot->GetMotionMaster()->Clear();
+    bot->StopMoving();
+
     if (HasStrategy("wait for attack", BOT_STATE_COMBAT))
         aiObjectContext->GetValue<time_t>("combat start time")->Set(time(nullptr));
 
@@ -5341,6 +5347,27 @@ void PlayerbotAI::_fillGearScoreData(Player* player, Item* item, std::vector<uin
     }
 }
 
+namespace
+{
+char const* RpgStatusName(NewRpgStatus status)
+{
+    switch (status)
+    {
+        case RPG_IDLE: return "idle";
+        case RPG_GO_GRIND: return "go_grind";
+        case RPG_GO_CAMP: return "go_camp";
+        case RPG_WANDER_RANDOM: return "wander_random";
+        case RPG_WANDER_NPC: return "wander_npc";
+        case RPG_DO_QUEST: return "do_quest";
+        case RPG_TRAVEL_FLIGHT: return "travel_flight";
+        case RPG_REST: return "rest";
+        case RPG_OUTDOOR_PVP: return "outdoor_pvp";
+        case RPG_DO_GATHER: return "do_gather";
+        default: return "?";
+    }
+}
+}  // namespace
+
 std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 {
     if (command == "state")
@@ -5361,6 +5388,8 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     {
         std::ostringstream out;
         out << "bot=" << bot->GetName() << " guid=" << bot->GetGUID().ToString() << "\n";
+        out << "rpgStatus=" << RpgStatusName(rpgInfo.GetStatus()) << " lowPriority=" << LowPriorityQuestCount()
+            << "\n";
         out << "rpg: quest=" << rpgInfo.escortQuestId << " started=" << rpgInfo.escortStarted
             << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none") << "\n";
 
@@ -5390,7 +5419,8 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     else if (command == "rpg")
     {
         std::ostringstream out;
-        out << "escortQuest=" << rpgInfo.escortQuestId << " started=" << rpgInfo.escortStarted
+        out << "status=" << RpgStatusName(rpgInfo.GetStatus()) << " escortQuest=" << rpgInfo.escortQuestId
+            << " started=" << rpgInfo.escortStarted
             << " guid=" << (rpgInfo.escortGuid ? rpgInfo.escortGuid.ToString() : "none")
             << " last=" << rpgInfo.lastEscortPos.GetPositionX() << "," << rpgInfo.lastEscortPos.GetPositionY()
             << "," << rpgInfo.lastEscortPos.GetPositionZ() << " map=" << rpgInfo.lastEscortPos.GetMapId();
@@ -7040,6 +7070,32 @@ void PlayerbotAI::RecordQuestFailed(uint32 questId)
     completedThisSession.erase(questId);
     if (sPlayerbotAIConfig.CollectDetailedQuestStats)
         ++rpgStatistic.questFailedByID[questId];
+}
+
+void PlayerbotAI::AddLowPriorityQuest(uint32 questId, uint32 durationMs)
+{
+    lowPriorityQuestUntil[questId] = getMSTime() + durationMs;
+}
+
+bool PlayerbotAI::IsLowPriorityQuest(uint32 questId)
+{
+    auto it = lowPriorityQuestUntil.find(questId);
+    if (it == lowPriorityQuestUntil.end())
+        return false;
+
+    if (int32(it->second - getMSTime()) > 0)
+        return true;
+
+    lowPriorityQuestUntil.erase(it);
+    return false;
+}
+
+size_t PlayerbotAI::LowPriorityQuestCount()
+{
+    for (auto it = lowPriorityQuestUntil.begin(); it != lowPriorityQuestUntil.end();)
+        it = int32(it->second - getMSTime()) > 0 ? std::next(it) : lowPriorityQuestUntil.erase(it);
+
+    return lowPriorityQuestUntil.size();
 }
 
 void PlayerbotAI::ClearEscortState(uint32 questId)

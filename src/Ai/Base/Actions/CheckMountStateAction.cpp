@@ -295,7 +295,10 @@ bool CheckMountStateAction::Mount()
 void CheckMountStateAction::Dismount()
 {
     if (bot->isMoving())
+    {
+        bot->GetMotionMaster()->Clear();
         bot->StopMoving();
+    }
 
     WorldPacket emptyPacket;
     bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
