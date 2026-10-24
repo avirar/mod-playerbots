@@ -21,6 +21,7 @@ public:
         creators["unlock items"] = &ChatTriggerContext::unlock_items;
         creators["unlock traded item"] = &ChatTriggerContext::unlock_traded_item;
         creators["quests"] = &ChatTriggerContext::quests;
+        creators["qgo"] = &ChatTriggerContext::qgo;
         creators["stats"] = &ChatTriggerContext::stats;
         creators["leave"] = &ChatTriggerContext::leave;
         creators["rep"] = &ChatTriggerContext::reputation;
@@ -159,6 +160,7 @@ public:
 
 private:
     static Trigger* open_items(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "open items"); }
+    static Trigger* qgo(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qgo"); }
     static Trigger* unlock_items(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "unlock items"); }
     static Trigger* unlock_traded_item(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "unlock traded item"); }
     static Trigger* ra(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "ra"); }

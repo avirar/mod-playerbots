@@ -8,6 +8,7 @@
 #define PLAYERBOTS_CHATACTIONCONTEXT_H
 
 #include "AddLootAction.h"
+#include "QueryGameObjectAction.h"
 #include "AttackAction.h"
 #include "BankAction.h"
 #include "BuffAction.h"
@@ -102,6 +103,7 @@ public:
         creators["range"] = &ChatActionContext::range;
         creators["stats"] = &ChatActionContext::stats;
         creators["quests"] = &ChatActionContext::quests;
+        creators["query game object"] = &ChatActionContext::query_game_object;
         creators["leave"] = &ChatActionContext::leave;
         creators["reputation"] = &ChatActionContext::reputation;
         creators["tell pvp stats"] = &ChatActionContext::tell_pvp_stats;
@@ -216,6 +218,7 @@ public:
 
 private:
     static Action* open_items(PlayerbotAI* botAI) { return new OpenItemAction(botAI); }
+    static Action* query_game_object(PlayerbotAI* botAI) { return new QueryGameObjectAction(botAI); }
     static Action* unlock_items(PlayerbotAI* botAI) { return new UnlockItemAction(botAI); }
     static Action* unlock_traded_item(PlayerbotAI* botAI) { return new UnlockTradedItemAction(botAI); }
     static Action* range(PlayerbotAI* botAI) { return new RangeAction(botAI); }

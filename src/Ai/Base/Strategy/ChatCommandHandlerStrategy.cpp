@@ -44,6 +44,7 @@ void ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*>& trigger
     triggers.push_back(new TriggerNode("t", { NextAction("trade", relevance) }));
     triggers.push_back(new TriggerNode("nt", { NextAction("trade", relevance) }));
     triggers.push_back(new TriggerNode("s", { NextAction("sell", relevance) }));
+    triggers.push_back(new TriggerNode("qgo", { NextAction("query game object", relevance) }));
     triggers.push_back(new TriggerNode("b", { NextAction("buy", relevance) }));
     triggers.push_back(new TriggerNode("r", { NextAction("reward", relevance) }));
     triggers.push_back(new TriggerNode("attack", { NextAction("attack my target", relevance) }));
