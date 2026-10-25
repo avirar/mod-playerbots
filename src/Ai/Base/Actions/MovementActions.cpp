@@ -2621,7 +2621,7 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
     if (tryColumn(bx, by))
         return true;
 
-    for (float const distance : {5.0f, 10.0f, 15.0f, 20.0f})
+    for (float const distance : {5.0f, 10.0f, 15.0f, 20.0f, 30.0f, 40.0f})
     {
         for (uint8 i = 0; i < 8; ++i)
         {
@@ -2659,7 +2659,7 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         }
         botAI->diveAscendIssueMs = 0;
         botAI->diveAscendProgressMs = 0;
-        botAI->diveAscendGiveUpMs = 0;
+        botAI->diveAscendStartMs = 0;
         botAI->diveAscendLastZ = 0;
         botAI->diveAscendRetries = 0;
         return true;
@@ -2668,6 +2668,7 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
     if (!botAI->diveSurfacing)
     {
         botAI->diveSurfacing = true;
+        botAI->diveAscendStartMs = now;
         bool const withLOS = FindSurfacePoint();
         botAI->diveAscendLastZ = bot->GetPositionZ();
         botAI->diveAscendProgressMs = now;
@@ -2677,7 +2678,10 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
     }
 
     float const z = bot->GetPositionZ();
-    if (z > botAI->diveAscendLastZ + 0.3f)
+
+    // Robust progress accounting: only a real climb (1.5 yd) resets the stall budget. Small
+    // surface bobs used to reset it every tick, defeating the give-up path and drowning the bot.
+    if (z > botAI->diveAscendLastZ + 1.5f)
     {
         botAI->diveAscendLastZ = z;
         botAI->diveAscendProgressMs = now;
@@ -2688,51 +2692,57 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         botAI->diveAscendProgressMs = now;
     }
 
-    // No rise for 2s: slide toward the surface column to clear the obstruction, then re-sample.
-    constexpr uint32 diveAscentStallMs = 2000;
-    if (now - botAI->diveAscendProgressMs >= diveAscentStallMs)
-    {
-        if (botAI->diveAscendRetries < 2)
-        {
-            ++botAI->diveAscendRetries;
-            botAI->diveAscendProgressMs = now;
-            botAI->diveAscendLastZ = z;
+    // After long enough, stop respecting line of sight: drowning is certain, clipping is not.
+    constexpr uint32 diveMaxAscentMs = 20000;
+    bool const blind = now - botAI->diveAscendStartMs >= diveMaxAscentMs;
 
-            float const dx = botAI->diveSurfaceX - bot->GetPositionX();
-            float const dy = botAI->diveSurfaceY - bot->GetPositionY();
-            float const len = std::sqrt(dx * dx + dy * dy);
-            if (len > 0.5f)
-            {
-                float const step = std::min(4.0f, len);
-                LOG_DEBUG("playerbots", "swim-trace {}: ascent stalled, sidestep {:.0f} yd", bot->GetName(), step);
-                UpdateMovementState();
-                DoMovePoint(bot, bot->GetPositionX() + dx / len * step, bot->GetPositionY() + dy / len * step, z,
-                            false, false);
-                return true;
-            }
+    // Column stalled (8s without a real climb): leave it sideways (perpendicular, alternating),
+    // then re-sample a different column. Crawling toward the blocked column only wedged deeper.
+    constexpr uint32 diveColumnStallMs = 8000;
+    if (!blind && now - botAI->diveAscendProgressMs >= diveColumnStallMs)
+    {
+        botAI->diveAscendProgressMs = now;
+        botAI->diveAscendLastZ = z;
+        ++botAI->diveAscendRetries;
+
+        float const dx = botAI->diveSurfaceX - bot->GetPositionX();
+        float const dy = botAI->diveSurfaceY - bot->GetPositionY();
+        float const len = std::sqrt(dx * dx + dy * dy);
+        if (len > 0.5f)
+        {
+            float const side = (botAI->diveAscendRetries % 2) ? 4.0f : -4.0f;
+            float const px = -dy / len * side;
+            float const py = dx / len * side;
+            LOG_DEBUG("playerbots", "swim-trace {}: ascent stalled, sidestep {:.0f} yd sideways", bot->GetName(),
+                      std::abs(side));
+            UpdateMovementState();
+            DoMovePoint(bot, bot->GetPositionX() + px, bot->GetPositionY() + py, z, false, false);
+            return true;
         }
 
-        // Still blocked: stop forcing movement and let the loot watchdog defer the dive.
-        LOG_DEBUG("playerbots", "swim-trace {}: ascent blocked, giving up for now", bot->GetName());
-        botAI->diveSurfacing = false;
-        botAI->diveAscendGiveUpMs = now;
-        return false;
+        FindSurfacePoint();
+        return true;
     }
 
-    // Re-issue only when needed: the plain MoveTo duplicate guard made the ascent a no-op while
-    // combat/grind splines kept winning, but re-forcing every tick can push through WMO walls,
-    // so issue on a stopped mover or once a second, after re-validating the clear column.
+    // Staged ascent: climb toward the clear column in short steps and re-check every issue.
+    float const stepZ = blind ? botAI->diveSurfaceZ : std::min(botAI->diveSurfaceZ, z + 8.0f);
     bool const needIssue = !bot->isMoving() || now - botAI->diveAscendIssueMs >= 1000;
     if (needIssue)
     {
-        if (!bot->IsWithinLOS(botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ))
+        if (!blind && !bot->IsWithinLOS(botAI->diveSurfaceX, botAI->diveSurfaceY, stepZ))
         {
             if (FindSurfacePoint())
                 LOG_DEBUG("playerbots", "swim-trace {}: surface column obstructed, re-sampled", bot->GetName());
         }
 
+        if (blind && !botAI->diveAscendRetries)
+        {
+            ++botAI->diveAscendRetries;
+            LOG_DEBUG("playerbots", "swim-trace {}: ascent still blocked, blind ascent", bot->GetName());
+        }
+
         UpdateMovementState();
-        DoMovePoint(bot, botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, false, false);
+        DoMovePoint(bot, botAI->diveSurfaceX, botAI->diveSurfaceY, stepZ, false, false);
         botAI->diveAscendIssueMs = now;
     }
 
