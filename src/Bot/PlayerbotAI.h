@@ -24,6 +24,7 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
+#include <cstdint>
 #include <stack>
 #include <unordered_set>
 
@@ -636,7 +637,7 @@ public:
     uint32 diveAscendStartMs = 0;
     float diveAscendLastZ = 0;
     uint8 diveAscendRetries = 0;
-    int32 diveAirMs = 0;
+    int32 diveAirMs = INT32_MAX;
     bool diveSurfacing = false;
     bool diveHoldSurface = false;
     uint32 diveSurfaceMap = 0;
