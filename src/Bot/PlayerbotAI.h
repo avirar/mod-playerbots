@@ -633,7 +633,7 @@ public:
     uint32 diveIdleSince = 0;
     uint32 diveAscendIssueMs = 0;
     uint32 diveAscendProgressMs = 0;
-    uint32 diveAscendGiveUpMs = 0;
+    uint32 diveAscendStartMs = 0;
     float diveAscendLastZ = 0;
     uint8 diveAscendRetries = 0;
     int32 diveAirMs = 0;
