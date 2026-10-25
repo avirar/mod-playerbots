@@ -54,9 +54,8 @@ bool CanLootTrigger::IsActive() { return AI_VALUE(bool, "can loot"); }
 
 bool UnderwaterSafetyTrigger::IsActive()
 {
-    // Fast path for dry bots: the overwhelming majority of evaluations. Only bots currently
-    // under water, or carrying dive state from a recent dive, need the air math below.
-    if (!bot->IsUnderWater() && !botAI->diveSubmergedSince && botAI->diveAirMs == 0 &&
+    // Fast path for dry bots that have never tracked a dive (INT32_MAX = full/untracked).
+    if (!bot->IsUnderWater() && !botAI->diveSubmergedSince && botAI->diveAirMs == INT32_MAX &&
         !botAI->diveSurfacing && !botAI->diveHoldSurface)
     {
         return false;
@@ -69,7 +68,7 @@ bool UnderwaterSafetyTrigger::IsActive()
     uint32 const now = getMSTime();
     uint32 elapsed = 0;
     if (botAI->diveLastTickMs)
-        elapsed = std::min<uint32>(now - botAI->diveLastTickMs, 1000);
+        elapsed = now - botAI->diveLastTickMs;  // ticks can be 1-3 s out of combat; never cap
     botAI->diveLastTickMs = now;
 
     // WaterBreath.Timer is already in milliseconds and the core consumes it raw.
@@ -78,11 +77,12 @@ bool UnderwaterSafetyTrigger::IsActive()
 
     if (bot->IsUnderWater())
     {
-        if (!botAI->diveSubmergedSince)
-        {
-            botAI->diveSubmergedSince = now;
+        // Clamp the carried value instead of resetting it: a brief surface dip must not refill
+        // the model while the core's breath timer is still nearly empty.
+        if (botAI->diveAirMs > maxAir)
             botAI->diveAirMs = maxAir;
-        }
+        if (!botAI->diveSubmergedSince)
+            botAI->diveSubmergedSince = now;
         botAI->diveAirMs -= int32(elapsed);
 
         // Surface with a quarter of the breath left (15s floor): "low air" has to fire on every
@@ -114,7 +114,11 @@ bool UnderwaterSafetyTrigger::IsActive()
 
     // At the surface / on land: air regenerates at the mirror timer's 10x rate.
     botAI->diveSubmergedSince = 0;
-    botAI->diveSurfacing = false;
+    if (botAI->diveSurfacing)
+    {
+        botAI->diveSurfacing = false;
+        botAI->diveHoldSurface = true;
+    }
     botAI->diveIdleSince = 0;
     if (botAI->diveAirMs < maxAir)
         botAI->diveAirMs = std::min(maxAir, botAI->diveAirMs + int32(10 * elapsed));
@@ -125,9 +129,9 @@ bool UnderwaterSafetyTrigger::IsActive()
                   float(botAI->diveAirMs) / IN_MILLISECONDS);
     }
 
-    // Fully dry: drop the air model so the dry fast path applies again.
+    // Fully dry: mark the air model untracked so the dry fast path applies again.
     if (!bot->IsInWater())
-        botAI->diveAirMs = 0;
+        botAI->diveAirMs = INT32_MAX;
 
     return false;
 }
