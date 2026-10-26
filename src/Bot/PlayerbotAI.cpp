@@ -558,6 +558,26 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     if (!bot->GetMap())
         return; // instances are created and destroyed on demand
 
+    // A dead bot must not keep dive state: the corpse timer would otherwise drain the air model
+    // across the whole death and the next dive would start at negative air.
+    if (!bot->IsAlive() && diveAirMs != INT32_MAX)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: died with dive air {:.0f}s, submerged {:.0f}s", bot->GetName(),
+                  float(diveAirMs) / IN_MILLISECONDS,
+                  diveSubmergedSince ? float(getMSTime() - diveSubmergedSince) / IN_MILLISECONDS : 0.0f);
+        diveAirMs = INT32_MAX;
+        diveSubmergedSince = 0;
+        diveLastTickMs = 0;
+        diveIdleSince = 0;
+        diveSurfacing = false;
+        diveHoldSurface = false;
+        diveAscendIssueMs = 0;
+        diveAscendProgressMs = 0;
+        diveAscendStartMs = 0;
+        diveAscendLastZ = 0;
+        diveAscendRetries = 0;
+    }
+
     // kinda expensive call to make on every single updateAI, do we really need this information?
     std::string const mapString = WorldPosition(bot).isOverworld() ? std::to_string(bot->GetMapId()) : "I";
     PerfMonitorOperation* pmo =
