@@ -560,21 +560,29 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
         return; // instances are created and destroyed on demand
 
     // TEMP DIAGNOSTIC (WMO/void clipping): sample full movement/geometry state near water at
-    // 250ms so a repro can be reconstructed frame by frame. Remove with the other probes.
-    if (bot->IsInWater() || bot->IsUnderWater() || diveSurfacing || diveHoldSurface)
+    // 250ms so a repro can be reconstructed frame by frame. Keep sampling for 30s after the
+    // bot leaves water so a clip into the void is captured instead of ending at the waterline.
+    uint32 const debugNowMs = getMSTime();
+    bool const debugInWater = bot->IsInWater() || bot->IsUnderWater();
+    if (debugInWater)
+        debugWaterSeenMs = debugNowMs;
+    bool const debugRecentWater = debugWaterSeenMs && debugNowMs - debugWaterSeenMs < 30000;
+    if (debugInWater || diveSurfacing || diveHoldSurface || debugRecentWater)
     {
-        uint32 const nowMs = getMSTime();
-        if (!debugSampleMs || nowMs - debugSampleMs >= 250)
+        if (!debugSampleMs || debugNowMs - debugSampleMs >= 250)
         {
-            debugSampleMs = nowMs;
+            debugSampleMs = debugNowMs;
             Map* map = bot->GetMap();
             float const px = bot->GetPositionX();
             float const py = bot->GetPositionY();
             float const pz = bot->GetPositionZ();
             uint32 const phase = bot->GetPhaseMask();
             float const terrain = map->GetHeight(phase, px, py, MAX_HEIGHT, true);
+            float const terrainNoVmap = map->GetHeight(phase, px, py, MAX_HEIGHT, false);
             float const minHeight = map->GetMinHeight(px, py);
             float const waterLevel = map->GetWaterLevel(px, py);
+            float const groundBelow = map->GetHeight(phase, px, py, pz + 0.5f, true, 5.0f);
+            auto const liquid = map->GetLiquidData(phase, px, py, pz, bot->GetCollisionHeight(), {});
             LootObject loot = GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
             Engine* engine = GetCurrentEngine();
             LOG_DEBUG("playerbots",
@@ -587,17 +595,43 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
                       bot->isMoving() ? 1 : 0, bot->IsFlying() ? 1 : 0,
                       uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()),
                       engine ? engine->GetLastAction() : "-", float(diveAirMs) / IN_MILLISECONDS,
-                      diveSubmergedSince ? (nowMs - diveSubmergedSince) / IN_MILLISECONDS : 0, diveHoldSurface ? 1 : 0,
-                      diveSurfacing ? 1 : 0, uint32(diveAscendRetries), loot.guid.ToString(),
-                      terrain, minHeight, waterLevel, pz - terrain);
+                      diveSubmergedSince ? (debugNowMs - diveSubmergedSince) / IN_MILLISECONDS : 0,
+                      diveHoldSurface ? 1 : 0, diveSurfacing ? 1 : 0, uint32(diveAscendRetries),
+                      loot.guid.ToString(), terrain, minHeight, waterLevel, pz - terrain);
+
+            LOG_DEBUG("playerbots",
+                      "avio-flags pos=({:.2f},{:.2f},{:.2f}) liquidLevel={:.2f} liquidDepth={:.2f} liquidStatus={} "
+                      "falling={} swimFlag={} flyFlag={} groundBelow={:.2f} terrainNoVmap={:.2f}",
+                      px, py, pz, liquid.Level, liquid.DepthLevel, uint32(liquid.Status),
+                      bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0,
+                      bot->HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING) ? 1 : 0,
+                      bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) ? 1 : 0, groundBelow, terrainNoVmap);
+
+            if (debugInWater != debugWasInWater)
+            {
+                LOG_DEBUG("playerbots",
+                          "avio-water {} water={} pos=({:.2f},{:.2f},{:.2f}) liquidLevel={:.2f} liquidDepth={:.2f} "
+                          "liquidStatus={} inWater={} underWater={} swimFlag={} falling={}",
+                          bot->GetName(), debugInWater ? 1 : 0, px, py, pz, liquid.Level, liquid.DepthLevel,
+                          uint32(liquid.Status), bot->IsInWater() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                          bot->HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING) ? 1 : 0,
+                          bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0);
+                debugWasInWater = debugInWater;
+            }
 
             bool const belowMin = minHeight > -1000.0f && pz < minHeight - 2.0f;
             bool const belowTerrain = terrain > -1000.0f && !bot->IsInWater() && pz < terrain - 2.0f;
-            if (belowMin || belowTerrain)
-                LOG_DEBUG("playerbots", "SUSPECT {} below geometry: belowMin={} belowTerrain={} z={:.2f} terrain={:.2f} "
-                                        "minHeight={:.2f} inWater={}",
-                          bot->GetName(), belowMin ? 1 : 0, belowTerrain ? 1 : 0, pz, terrain, minHeight,
-                          bot->IsInWater() ? 1 : 0);
+            bool const belowTerrainNoVmap = terrainNoVmap > -1000.0f && pz < terrainNoVmap - 0.5f;
+            bool const belowWaterSurface = waterLevel > -1000.0f && pz < waterLevel - 1.0f &&
+                                           !bot->IsInWater() && !bot->IsUnderWater();
+            if (belowMin || belowTerrain || belowTerrainNoVmap || belowWaterSurface)
+                LOG_DEBUG("playerbots",
+                          "SUSPECT {} below geometry: belowMin={} belowTerrain={} belowTerrainNoVmap={} "
+                          "belowWaterSurface={} z={:.2f} terrain={:.2f} terrainNoVmap={:.2f} minHeight={:.2f} "
+                          "water={:.2f} liquidLevel={:.2f} liquidDepth={:.2f} liquidStatus={} inWater={}",
+                          bot->GetName(), belowMin ? 1 : 0, belowTerrain ? 1 : 0, belowTerrainNoVmap ? 1 : 0,
+                          belowWaterSurface ? 1 : 0, pz, terrain, terrainNoVmap, minHeight, waterLevel, liquid.Level,
+                          liquid.DepthLevel, uint32(liquid.Status), bot->IsInWater() ? 1 : 0);
         }
     }
 
@@ -605,7 +639,13 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     // across the whole death and the next dive would start at negative air.
     if (!bot->IsAlive() && diveAirMs != INT32_MAX)
     {
-        LOG_DEBUG("playerbots", "swim-trace {}: died with dive air {:.0f}s, submerged {:.0f}s", bot->GetName(),
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: died at ({:.2f},{:.2f},{:.2f}) terrain={:.2f} water={:.2f} with dive air "
+                  "{:.0f}s, submerged {:.0f}s",
+                  bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                  bot->GetMap()->GetHeight(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(), MAX_HEIGHT,
+                                           true),
+                  bot->GetMap()->GetWaterLevel(bot->GetPositionX(), bot->GetPositionY()),
                   float(diveAirMs) / IN_MILLISECONDS,
                   diveSubmergedSince ? float(getMSTime() - diveSubmergedSince) / IN_MILLISECONDS : 0.0f);
         diveAirMs = INT32_MAX;

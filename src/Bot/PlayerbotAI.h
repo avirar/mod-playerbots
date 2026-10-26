@@ -638,8 +638,11 @@ public:
     float diveAscendLastZ = 0;
     uint8 diveAscendRetries = 0;
 
-    // TEMP DIAGNOSTIC (WMO/void clipping): throttled state sampler timestamp.
+    // TEMP DIAGNOSTIC (WMO/void clipping): throttled state sampler timestamp and the last
+    // time the bot was seen in water (keeps sampling through the void fall).
     uint32 debugSampleMs = 0;
+    uint32 debugWaterSeenMs = 0;
+    bool debugWasInWater = false;
     int32 diveAirMs = INT32_MAX;
     bool diveSurfacing = false;
     bool diveHoldSurface = false;

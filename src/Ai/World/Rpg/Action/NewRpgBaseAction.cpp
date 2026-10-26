@@ -100,6 +100,15 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 
     // stuck check
     float disToDest = bot->GetDistance(dest);
+    // TEMP DIAGNOSTIC: far RPG travel uses exact point moves (see the MoveTo calls below);
+    // log the destination and state so underwater/void crossings can be attributed.
+    LOG_DEBUG("playerbots",
+              "rpg-move {} dest=({:.2f},{:.2f},{:.2f},{}) bot=({:.2f},{:.2f},{:.2f}) dis={:.2f} "
+              "inWater={} under={} swimming={} falling={} pathFinderDis={:.1f}",
+              bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId(),
+              bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), disToDest, bot->IsInWater() ? 1 : 0,
+              bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0,
+              bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0, pathFinderDis);
     // Require a meaningful improvement (5yd) to reset the stuck counter.
     // The old 1yd threshold was small enough that bots oscillating back
     // and forth around an obstacle would keep "making progress" forever
@@ -132,6 +141,9 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     float dis = bot->GetExactDist(dest);
     if (dis < pathFinderDis)
     {
+        LOG_DEBUG("playerbots", "rpg-move {} short exact move dest=({:.2f},{:.2f},{:.2f}) dis={:.2f} los={}",
+                  bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dis,
+                  bot->IsWithinLOS(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) ? 1 : 0);
         return MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), false, false,
                       false, true);
     }
@@ -162,6 +174,14 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             // INCOMPLETE) the endpoint can land right under the bot;
             // fall through to cone sampling in that case.
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
+            LOG_DEBUG("playerbots",
+                      "rpg-path {} dest=({:.2f},{:.2f},{:.2f}) type=0x{:x} canReach={} end=({:.2f},{:.2f},{:.2f}) "
+                      "endDist={:.2f} dis={:.2f} endLos={} endTerrain={:.2f} botUnder={} botSwim={}",
+                      bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), uint32(type),
+                      canReach ? 1 : 0, endPos.x, endPos.y, endPos.z, endDistToDest, disToDest,
+                      bot->IsWithinLOS(endPos.x, endPos.y, endPos.z) ? 1 : 0,
+                      bot->GetMap()->GetHeight(bot->GetPhaseMask(), endPos.x, endPos.y, MAX_HEIGHT, true),
+                      bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0);
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
@@ -206,6 +226,10 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     if (found)
     {
+        LOG_DEBUG("playerbots",
+                  "rpg-path {} cone endpoint=({:.2f},{:.2f},{:.2f}) dis={:.2f} los={} under={} swim={}",
+                  bot->GetName(), rx, ry, rz, disToDest, bot->IsWithinLOS(rx, ry, rz) ? 1 : 0,
+                  bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0);
         return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
     }
     return false;

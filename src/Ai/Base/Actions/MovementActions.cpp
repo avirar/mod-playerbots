@@ -188,6 +188,13 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     bool disableMoveSplinePath =
         sPlayerbotAIConfig.DisableMoveSplinePath >= 2 ||
         (sPlayerbotAIConfig.DisableMoveSplinePath == 1 && bot->InBattleground());
+    // TEMP DIAGNOSTIC: record which MoveTo branch will run and why.
+    LOG_DEBUG("playerbots",
+              "move-route {} action={} exact={} generatePath={} disableSplinePath={} swimming={} flying={} "
+              "inWater={} under={} z={:.2f}",
+              bot->GetName(), getName(), exact_waypoint ? 1 : 0, generatePath ? 1 : 0,
+              disableMoveSplinePath ? 1 : 0, bot->isSwimming() ? 1 : 0, bot->IsFlying() ? 1 : 0,
+              bot->IsInWater() ? 1 : 0, bot->IsUnderWater() ? 1 : 0, bot->GetPositionZ());
     if (Vehicle* vehicle = bot->GetVehicle())
     {
         VehicleSeatEntry const* seat = vehicle->GetSeatForPassenger(bot);
@@ -1699,9 +1706,45 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     Movement::PointsArray result = gen.GetPath();
     float min_length = gen.getPathLength();
     int typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE;
+
+    // TEMP DIAGNOSTIC: dump the waypoints the pathfinder returns, with the terrain under each,
+    // so a path that dives into the void is visible instead of only its final destination.
+    auto logPath = [&](char const* stage, Movement::PointsArray const& points, float modZ, uint32 pathType)
+    {
+        if (!bot || bot->GetName() != "Avio")
+            return;
+
+        LOG_DEBUG("playerbots",
+                  "path-probe {} stage={} from=({:.2f},{:.2f},{:.2f}) req=({:.2f},{:.2f},{:.2f}) modZ={:.2f} "
+                  "type=0x{:x} points={}",
+                  bot->GetName(), stage, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), x, y, z, modZ,
+                  pathType, points.size());
+
+        Map* map = bot->GetMap();
+        uint32 const phase = bot->GetPhaseMask();
+        size_t const count = std::min<size_t>(points.size(), 16);
+        for (size_t i = 0; i < count; ++i)
+        {
+            float const px = points[i].x;
+            float const py = points[i].y;
+            float const pz = points[i].z;
+            float const terrain = map->GetHeight(phase, px, py, MAX_HEIGHT, false);
+            LOG_DEBUG("playerbots", "path-probe {} point[{}]=({:.2f},{:.2f},{:.2f}) terrain={:.2f} below={}",
+                      bot->GetName(), i, px, py, pz, terrain, terrain > -1000.0f && pz < terrain - 0.5f ? 1 : 0);
+        }
+        if (points.size() > count)
+            LOG_DEBUG("playerbots", "path-probe {} last=({:.2f},{:.2f},{:.2f}) ({} points omitted)", bot->GetName(),
+                      points.back().x, points.back().y, points.back().z, points.size() - count);
+    };
+
+    if (bot->GetName() == "Avio")
+        LOG_DEBUG("playerbots", "path-probe {} initial type=0x{:x} len={:.2f} tempZ={:.2f} reqZ={:.2f}",
+                  bot->GetName(), uint32(gen.GetPathType()), min_length, tempZ, z);
+
     if ((gen.GetPathType() & typeOk) && abs(tempZ - z) < 0.5f)
     {
         modified_z = tempZ;
+        logPath("initial-ok", result, modified_z, uint32(gen.GetPathType()));
         return result;
     }
     // Start searching
@@ -2876,8 +2919,56 @@ bool MoveToLootAction::Execute(Event /*event*/)
         float const x = bot->GetPositionX() - dx * scale;
         float const y = bot->GetPositionY() - dy * scale;
         float const z = bot->GetPositionZ() - dz * scale;
+        bool const los = bot->IsWithinLOS(x, y, z);
 
-        if (!bot->IsWithinLOS(x, y, z))
+        // TEMP DIAGNOSTIC: dump the planned swim segment and its worst terrain clearance so a
+        // path that tunnels through the seabed is obvious before the move is issued.
+        if (bot->GetName() == "Avio")
+        {
+            Map* map = bot->GetMap();
+            uint32 const phase = bot->GetPhaseMask();
+            float const sx = bot->GetPositionX();
+            float const sy = bot->GetPositionY();
+            float const sz = bot->GetPositionZ();
+            float const sdx = x - sx;
+            float const sdy = y - sy;
+            float const sdz = z - sz;
+            float const sdist = std::sqrt(sdx * sdx + sdy * sdy + sdz * sdz);
+            int const steps = std::max(1, int(std::ceil(sdist)));
+            float worstClearance = 1.0e9f;
+            float worstAt = 0.0f;
+            float worstZ = 0.0f;
+            float worstTerrain = 0.0f;
+            for (int i = 0; i <= steps; ++i)
+            {
+                float const t = float(i) / float(steps);
+                float const qx = sx + sdx * t;
+                float const qy = sy + sdy * t;
+                float const qz = sz + sdz * t;
+                float const terrain = map->GetHeight(phase, qx, qy, MAX_HEIGHT, false);
+                if (terrain <= -1000.0f)
+                    continue;
+
+                float const clearance = qz - terrain;
+                if (clearance < worstClearance)
+                {
+                    worstClearance = clearance;
+                    worstAt = sdist * t;
+                    worstZ = qz;
+                    worstTerrain = terrain;
+                }
+            }
+
+            LOG_DEBUG("playerbots",
+                      "swim-plan {} target={} dist={:.2f} range={:.2f} bot=({:.2f},{:.2f},{:.2f}) "
+                      "targetPos=({:.2f},{:.2f},{:.2f}) point=({:.2f},{:.2f},{:.2f}) los={} "
+                      "worstClearance={:.2f} atDist={:.2f} segZ={:.2f} terrain={:.2f}",
+                      bot->GetName(), loot.guid.ToString(), dist, range, sx, sy, sz, target->GetPositionX(),
+                      target->GetPositionY(), target->GetPositionZ(), x, y, z, los ? 1 : 0, worstClearance, worstAt,
+                      worstZ, worstTerrain);
+        }
+
+        if (!los)
         {
             LOG_DEBUG("playerbots", "swim-trace {}: no LOS to swim point {:.1f} {:.1f} {:.1f}", bot->GetName(), x, y, z);
             return false;
@@ -2889,8 +2980,23 @@ bool MoveToLootAction::Execute(Event /*event*/)
         return MoveTo(bot->GetMapId(), x, y, z, false, false, false, true);
     }
 
-    LOG_DEBUG("playerbots", "swim-trace {}: land approach (not in water) MoveNear {}", bot->GetName(),
-              loot.guid.ToString());
+    {
+        float const px = bot->GetPositionX();
+        float const py = bot->GetPositionY();
+        float const pz = bot->GetPositionZ();
+        auto const liquid = bot->GetMap()->GetLiquidData(bot->GetPhaseMask(), px, py, pz, collisionHeight, {});
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: land approach (not in water) MoveNear {} IsInWater={} IsUnderWater={} "
+                  "mapInWater={} mapUnderWater={} liquidStatus={} liquidLevel={:.2f} liquidDepth={:.2f} "
+                  "bot=({:.2f},{:.2f},{:.2f}) target=({:.2f},{:.2f},{:.2f}) falling={} swimFlag={}",
+                  bot->GetName(), loot.guid.ToString(), bot->IsInWater() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                  bot->GetMap()->IsInWater(bot->GetPhaseMask(), px, py, pz, collisionHeight) ? 1 : 0,
+                  bot->GetMap()->IsUnderWater(bot->GetPhaseMask(), px, py, pz, collisionHeight) ? 1 : 0,
+                  uint32(liquid.Status), liquid.Level, liquid.DepthLevel, px, py, pz, target->GetPositionX(),
+                  target->GetPositionY(), target->GetPositionZ(),
+                  bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0,
+                  bot->HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING) ? 1 : 0);
+    }
     return MoveNear(target, sPlayerbotAIConfig.ContactDistance);
 }
 
