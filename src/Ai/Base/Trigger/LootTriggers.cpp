@@ -8,6 +8,7 @@
 #include <algorithm>
 
 #include "LootObjectStack.h"
+#include "Map.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 
@@ -120,17 +121,32 @@ bool UnderwaterSafetyTrigger::IsActive()
         botAI->diveHoldSurface = true;
     }
     botAI->diveIdleSince = 0;
+    // Cap the surface regen per AI tick: the core updates the breath timer continuously, but the
+    // bot only samples on AI ticks. A slow tick spanning both underwater and surface time must not
+    // refill the model faster than the bot actually surfaced.
+    uint32 const regenElapsed = std::min<uint32>(elapsed, 3000);
     if (botAI->diveAirMs < maxAir)
-        botAI->diveAirMs = std::min(maxAir, botAI->diveAirMs + int32(10 * elapsed));
-    if (botAI->diveHoldSurface && (botAI->diveAirMs >= maxAir / 2 || !bot->IsInWater()))
+        botAI->diveAirMs = std::min(maxAir, botAI->diveAirMs + int32(10 * regenElapsed));
+
+    // "Dry" means genuinely out of the water, not merely the surface band where the engine
+    // reports IN_WATER while IsInWater() is false. Resetting the air model or dropping the hold
+    // there makes a surfaced bot re-dive with a still-low core breath timer.
+    auto const liquid = bot->GetMap()->GetLiquidData(bot->GetPhaseMask(), bot->GetPositionX(),
+                                                     bot->GetPositionY(), bot->GetPositionZ(),
+                                                     bot->GetCollisionHeight(), {});
+    bool const onDryLand = !bot->IsInWater() && !bot->IsUnderWater() &&
+                           (liquid.Level <= INVALID_HEIGHT || bot->GetPositionZ() >= liquid.Level + 0.5f);
+
+    if (botAI->diveHoldSurface && (botAI->diveAirMs >= maxAir / 2 || onDryLand))
     {
         botAI->diveHoldSurface = false;
-        LOG_DEBUG("playerbots", "swim-trace {}: hold released (air {:.0f}s)", bot->GetName(),
-                  float(botAI->diveAirMs) / IN_MILLISECONDS);
+        LOG_DEBUG("playerbots", "swim-trace {}: hold released (air {:.0f}s, dry={})", bot->GetName(),
+                  float(botAI->diveAirMs) / IN_MILLISECONDS, onDryLand ? 1 : 0);
     }
 
-    // Fully dry: mark the air model untracked so the dry fast path applies again.
-    if (!bot->IsInWater())
+    // Only a genuinely dry bot has a full breath bar again; the surface band must keep carrying
+    // the real deficit into the next dive.
+    if (onDryLand)
         botAI->diveAirMs = INT32_MAX;
 
     return false;
