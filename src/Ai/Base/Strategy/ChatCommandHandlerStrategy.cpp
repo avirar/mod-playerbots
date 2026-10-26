@@ -154,6 +154,7 @@ ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* botAI) : Pas
     supported.push_back("go");
     supported.push_back("debug");
     supported.push_back("cdebug");
+    supported.push_back("nav3d");
     supported.push_back("cs");
     supported.push_back("wts");
     supported.push_back("hire");

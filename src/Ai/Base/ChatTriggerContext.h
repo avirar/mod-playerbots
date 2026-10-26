@@ -127,6 +127,7 @@ public:
         creators["rebuff"] = &ChatTriggerContext::rebuff;
         creators["debug"] = &ChatTriggerContext::debug;
         creators["cdebug"] = &ChatTriggerContext::cdebug;
+        creators["nav3d"] = &ChatTriggerContext::nav3d;
         creators["cs"] = &ChatTriggerContext::cs;
         creators["wts"] = &ChatTriggerContext::wts;
         // creators["hire"] = &ChatTriggerContext::hire;  // Not correctly implemented at this time, would cause crash and other issues.
@@ -172,6 +173,7 @@ private:
     static Trigger* cs(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "cs"); }
     static Trigger* debug(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "debug"); }
     static Trigger* cdebug(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "cdebug"); }
+    static Trigger* nav3d(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "nav3d"); }
     static Trigger* go(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "go"); }
     static Trigger* outfit(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "outfit"); }
     static Trigger* mail(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "mail"); }

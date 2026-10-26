@@ -8,6 +8,8 @@
 #include "Chat.h"
 #include "ChatCommandTags.h"
 #include "GuildTaskMgr.h"
+#include "MapMgr.h"
+#include "Nav3DManager.h"
 #include "PerfMonitor.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
@@ -39,6 +41,9 @@ public:
             {"exec", HandleExecCommand, SEC_GAMEMASTER, Console::Yes},
             {"inspect", HandleInspectCommand, SEC_GAMEMASTER, Console::Yes},
             {"gtask", HandleGuildTaskCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3d", HandleNav3DCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dmap", HandleNav3DMapCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dteleport", HandleNav3DTeleportCommand, SEC_GAMEMASTER, Console::Yes},
             {"pmon", HandlePerfMonCommand, SEC_GAMEMASTER, Console::Yes},
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
             {"debug", playerbotsDebugCommandTable},
@@ -103,6 +108,102 @@ public:
 
         std::string const result = botAI->HandleRemoteCommand(std::string(command));
         handler->PSendSysMessage("{}: {}", target.GetName(), result.empty() ? "<empty>" : result);
+        return true;
+    }
+
+    static bool HandleNav3DCommand(ChatHandler* handler, PlayerIdentifier target, float x, float y, float z)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        if (!bot->GetMap())
+        {
+            handler->SendErrorMessage("{} has no map", target.GetName());
+            return false;
+        }
+
+        Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+        Position const goal(x, y, z);
+        Movement::PointsArray path;
+        Nav3DResult result;
+        bool const found =
+            Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path, result);
+
+        handler->PSendSysMessage(
+            "nav3d {}: found={} direct={} partial={} reversed={} nodes={} expanded={} ms={} len={:.1f} "
+            "best={:.1f} bestPos=({:.2f},{:.2f},{:.2f}) points={}",
+            target.GetName(), found ? 1 : 0, result.Direct ? 1 : 0, result.Partial ? 1 : 0,
+            result.Reversed ? 1 : 0, result.Nodes, result.Expanded, result.ElapsedMs, result.Length,
+            result.BestDistance, result.BestX, result.BestY, result.BestZ, path.size());
+        LOG_INFO("playerbots",
+                 "nav3d {} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) found={} direct={} partial={} "
+                 "reversed={} nodes={} expanded={} ms={} len={:.1f} best={:.1f} "
+                 "bestPos=({:.2f},{:.2f},{:.2f}) points={}",
+                 target.GetName(), start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), x, y, z,
+                 found ? 1 : 0, result.Direct ? 1 : 0, result.Partial ? 1 : 0, result.Reversed ? 1 : 0,
+                 result.Nodes, result.Expanded, result.ElapsedMs, result.Length, result.BestDistance, result.BestX,
+                 result.BestY, result.BestZ, path.size());
+        for (size_t i = 0; i < path.size(); ++i)
+            LOG_INFO("playerbots", "nav3d {} point[{}] = ({:.2f},{:.2f},{:.2f})", target.GetName(), i, path[i].x,
+                     path[i].y, path[i].z);
+        return true;
+    }
+
+    static bool HandleNav3DMapCommand(ChatHandler* handler, uint32 mapId, float sx, float sy, float sz, float gx,
+                                      float gy, float gz)
+    {
+        Map* map = sMapMgr->FindMap(mapId, 0);
+        if (!map)
+        {
+            handler->SendErrorMessage("Map {} is not loaded", mapId);
+            return false;
+        }
+
+        Position const start(sx, sy, sz);
+        Position const goal(gx, gy, gz);
+        Movement::PointsArray path;
+        Nav3DResult result;
+        bool const found = Nav3DManager::Instance().FindPath(map, PHASEMASK_NORMAL, start, goal, path, result);
+
+        handler->PSendSysMessage(
+            "nav3dmap {}: found={} direct={} partial={} reversed={} nodes={} expanded={} ms={} len={:.1f} "
+            "best={:.1f} bestPos=({:.2f},{:.2f},{:.2f}) points={}",
+            mapId, found ? 1 : 0, result.Direct ? 1 : 0, result.Partial ? 1 : 0, result.Reversed ? 1 : 0,
+            result.Nodes, result.Expanded, result.ElapsedMs, result.Length, result.BestDistance, result.BestX,
+            result.BestY, result.BestZ, path.size());
+        LOG_INFO("playerbots",
+                 "nav3dmap {} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) found={} direct={} partial={} "
+                 "reversed={} nodes={} expanded={} ms={} len={:.1f} best={:.1f} "
+                 "bestPos=({:.2f},{:.2f},{:.2f}) points={}",
+                 mapId, sx, sy, sz, gx, gy, gz, found ? 1 : 0, result.Direct ? 1 : 0, result.Partial ? 1 : 0,
+                 result.Reversed ? 1 : 0, result.Nodes, result.Expanded, result.ElapsedMs, result.Length,
+                 result.BestDistance, result.BestX, result.BestY, result.BestZ, path.size());
+        for (size_t i = 0; i < path.size(); ++i)
+            LOG_INFO("playerbots", "nav3dmap {} point[{}] = ({:.2f},{:.2f},{:.2f})", mapId, i, path[i].x, path[i].y,
+                     path[i].z);
+        return true;
+    }
+
+    static bool HandleNav3DTeleportCommand(ChatHandler* handler, PlayerIdentifier target, uint32 mapId, float x,
+                                           float y, float z)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        if (!bot->TeleportTo(mapId, x, y, z, bot->GetOrientation()))
+        {
+            handler->SendErrorMessage("nav3dteleport {} failed", target.GetName());
+            return false;
+        }
+
+        handler->PSendSysMessage("nav3dteleport {} -> map {} ({:.2f},{:.2f},{:.2f})", target.GetName(), mapId, x, y,
+                                 z);
+        LOG_INFO("playerbots", "nav3dteleport {} -> map {} ({:.2f},{:.2f},{:.2f})", target.GetName(), mapId, x, y,
+                 z);
         return true;
     }
 

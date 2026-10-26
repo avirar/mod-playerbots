@@ -39,6 +39,7 @@
 #include "ListQuestsActions.h"
 #include "ListSpellsAction.h"
 #include "LogLevelAction.h"
+#include "Nav3DTestAction.h"
 #include "LootRollAction.h"
 #include "LootStrategyAction.h"
 #include "MailAction.h"
@@ -186,6 +187,7 @@ public:
         creators["go"] = &ChatActionContext::go;
         creators["debug"] = &ChatActionContext::debug;
         creators["cdebug"] = &ChatActionContext::debug;
+        creators["nav3d"] = &ChatActionContext::nav3d;
         creators["cs"] = &ChatActionContext::cs;
         creators["wts"] = &ChatActionContext::wts;
         creators["hire"] = &ChatActionContext::hire;
@@ -228,6 +230,7 @@ private:
     static Action* wts(PlayerbotAI* botAI) { return new WtsAction(botAI); }
     static Action* cs(PlayerbotAI* botAI) { return new CustomStrategyEditAction(botAI); }
     static Action* debug(PlayerbotAI* botAI) { return new DebugAction(botAI); }
+    static Action* nav3d(PlayerbotAI* botAI) { return new Nav3DTestAction(botAI); }
     static Action* mail(PlayerbotAI* botAI) { return new MailAction(botAI); }
     static Action* go(PlayerbotAI* botAI) { return new GoAction(botAI); }
     static Action* sendmail(PlayerbotAI* botAI) { return new SendMailAction(botAI); }
