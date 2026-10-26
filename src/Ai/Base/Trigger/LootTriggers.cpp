@@ -76,6 +76,12 @@ bool UnderwaterSafetyTrigger::IsActive()
     int32 const maxAir = int32(sWorld->getIntConfig(CONFIG_WATER_BREATH_TIMER))
                          * bot->GetTotalAuraMultiplier(SPELL_AURA_MOD_WATER_BREATHING);
 
+    // The core mirror timer is authoritative. The local model can drift ahead of it after an
+    // emergency surface/dive cycle; a 0% bar must never hide behind a positive model value.
+    int32 const coreAir = bot->GetMirrorTimer(BREATH_TIMER);
+    if (coreAir >= 0 && coreAir < maxAir && coreAir < botAI->diveAirMs)
+        botAI->diveAirMs = coreAir;
+
     if (bot->IsUnderWater())
     {
         // Clamp the carried value instead of resetting it: a brief surface dip must not refill

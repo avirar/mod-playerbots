@@ -14,6 +14,7 @@
 #include "Event.h"
 #include "ForceRebuff.h"
 #include "Item.h"
+#include "MoveSplineInitArgs.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
@@ -638,16 +639,19 @@ public:
     float diveAscendLastZ = 0;
     uint8 diveAscendRetries = 0;
 
-    // TEMP DIAGNOSTIC (WMO/void clipping): throttled state sampler timestamp and the last
-    // time the bot was seen in water (keeps sampling through the void fall).
-    uint32 debugSampleMs = 0;
-    uint32 debugWaterSeenMs = 0;
-    bool debugWasInWater = false;
     int32 diveAirMs = INT32_MAX;
     bool diveSurfacing = false;
     bool diveHoldSurface = false;
-    uint32 diveSurfaceMap = 0;
     float diveSurfaceX = 0, diveSurfaceY = 0, diveSurfaceZ = 0;
+
+    // 3D escape path used when the direct surface column has no line of sight
+    // (tunnel/cave). Cached until the bot surfaces, changes map, or stalls.
+    bool nav3dEscapeActive = false;
+    uint32 nav3dEscapeMap = 0;
+    size_t nav3dEscapeIndex = 0;
+    uint32 nav3dEscapeProgressMs = 0;
+    float nav3dEscapeLastX = 0, nav3dEscapeLastY = 0, nav3dEscapeLastZ = 0;
+    Movement::PointsArray nav3dEscapePath;
     NewRpgStatistic rpgStatistic;
     std::unordered_set<uint32> countedQuestCompletions;
     void RecordQuestAccepted(uint32 questId);

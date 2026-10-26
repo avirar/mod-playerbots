@@ -41,7 +41,11 @@ namespace
 
 bool Nav3DTestAction::Execute(Event event)
 {
-    std::string const text = event.getParam();
+    std::string text = event.getParam();
+    bool const fly = text.rfind("fly ", 0) == 0;
+    if (fly)
+        text.erase(0, 4);
+
     std::istringstream input(text);
 
     std::vector<Position> points;
@@ -53,7 +57,7 @@ bool Nav3DTestAction::Execute(Event event)
 
     if (points.empty())
     {
-        botAI->TellMasterNoFacing("Usage: nav3d <goalX> <goalY> <goalZ> [viaX viaY viaZ ...]");
+        botAI->TellMasterNoFacing("Usage: nav3d [fly] <goalX> <goalY> <goalZ> [viaX viaY viaZ ...]");
         return true;
     }
 
@@ -171,9 +175,10 @@ bool Nav3DTestAction::Execute(Event event)
         path.clear();
 
     std::ostringstream summary;
-    summary << "nav3d " << (found ? "found" : "failed") << " legs=" << (route.size() - 1)
-            << " direct=" << (result.Direct ? 1 : 0) << " partial=" << (result.Partial ? 1 : 0)
-            << " reversed=" << (result.Reversed ? 1 : 0) << " nodes=" << result.Nodes
+    summary << "nav3d " << (found ? "found" : "failed") << " fly=" << (fly ? 1 : 0)
+            << " legs=" << (route.size() - 1) << " direct=" << (result.Direct ? 1 : 0)
+            << " partial=" << (result.Partial ? 1 : 0) << " reversed=" << (result.Reversed ? 1 : 0)
+            << " nodes=" << result.Nodes
             << " expanded=" << result.Expanded << " ms=" << result.ElapsedMs << " len=" << result.Length
             << " best=" << result.BestDistance << " points=" << path.size();
 
@@ -186,8 +191,14 @@ bool Nav3DTestAction::Execute(Event event)
         return true;
     }
 
+    if (!Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
+    {
+        botAI->TellMasterNoFacing("nav3d path blocked by clearance");
+        return true;
+    }
+
     bot->StopMoving();
-    bot->GetMotionMaster()->MoveSplinePath(&path);
+    bot->GetMotionMaster()->MoveSplinePath(&path, fly ? FORCED_MOVEMENT_FLY : FORCED_MOVEMENT_NONE);
 
     // Freeze the AI while the one-shot debug spline plays out; the movement generator still runs.
     uint32 delay = uint32(result.Length * 250.0f);

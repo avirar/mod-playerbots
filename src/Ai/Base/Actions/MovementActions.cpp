@@ -15,6 +15,7 @@
 #include "MotionMaster.h"
 #include "MoveSplineInitArgs.h"
 #include "MovementGenerator.h"
+#include "Nav3DManager.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
 #include "PathGenerator.h"
@@ -170,10 +171,19 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
                             bool exact_waypoint, MovementPriority priority, bool lessDelay, bool backwards)
 {
     UpdateMovementState();
-    LogMoveProbe(exact_waypoint ? "MoveTo-exact" : "MoveTo-path", x, y, z);
+
+    // The descent/ascent watchdog owns movement. Letting a normal mover run here replaces the
+    // point movement with a chase and is how a low-air bot kept fighting underwater until it
+    // drowned. The ascent itself uses DoMovePoint directly.
+    if (botAI->diveSurfacing)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: surfacing blocked move to ({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), x, y, z);
+        return false;
+    }
 
     // While holding at the surface after an emergency ascent, allow attacks/actions but never
-    // let a mover take the bot back under water. The dive ascent itself uses DoMovePoint directly.
+    // let a mover take the bot back under water.
     if (botAI->diveHoldSurface && botAI->diveSurfaceZ > -1000.0f && z < botAI->diveSurfaceZ - 1.0f)
     {
         LOG_DEBUG("playerbots", "swim-trace {}: surface hold blocked move to z {:.2f} (surface {:.2f})",
@@ -214,13 +224,6 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     bool disableMoveSplinePath =
         sPlayerbotAIConfig.DisableMoveSplinePath >= 2 ||
         (sPlayerbotAIConfig.DisableMoveSplinePath == 1 && bot->InBattleground());
-    // TEMP DIAGNOSTIC: record which MoveTo branch will run and why.
-    LOG_DEBUG("playerbots",
-              "move-route {} action={} exact={} generatePath={} disableSplinePath={} swimming={} flying={} "
-              "inWater={} under={} z={:.2f}",
-              bot->GetName(), getName(), exact_waypoint ? 1 : 0, generatePath ? 1 : 0,
-              disableMoveSplinePath ? 1 : 0, bot->isSwimming() ? 1 : 0, bot->IsFlying() ? 1 : 0,
-              bot->IsInWater() ? 1 : 0, bot->IsUnderWater() ? 1 : 0, bot->GetPositionZ());
     if (Vehicle* vehicle = bot->GetVehicle())
     {
         VehicleSeatEntry const* seat = vehicle->GetSeatForPassenger(bot);
@@ -948,6 +951,11 @@ bool MovementAction::IsWaitingForLastMove(MovementPriority priority)
 
 bool MovementAction::IsMovingAllowed()
 {
+    // An emergency ascent owns the movement generator until the bot reaches air. Combat may
+    // still face and attack from here, but chasing would drag a low-air bot back down.
+    if (botAI->diveSurfacing || botAI->diveHoldSurface)
+        return false;
+
     return botAI->CanMove();
 }
 
@@ -1733,44 +1741,9 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     float min_length = gen.getPathLength();
     int typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE;
 
-    // TEMP DIAGNOSTIC: dump the waypoints the pathfinder returns, with the terrain under each,
-    // so a path that dives into the void is visible instead of only its final destination.
-    auto logPath = [&](char const* stage, Movement::PointsArray const& points, float modZ, uint32 pathType)
-    {
-        if (!bot || bot->GetName() != "Avio")
-            return;
-
-        LOG_DEBUG("playerbots",
-                  "path-probe {} stage={} from=({:.2f},{:.2f},{:.2f}) req=({:.2f},{:.2f},{:.2f}) modZ={:.2f} "
-                  "type=0x{:x} points={}",
-                  bot->GetName(), stage, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), x, y, z, modZ,
-                  pathType, points.size());
-
-        Map* map = bot->GetMap();
-        uint32 const phase = bot->GetPhaseMask();
-        size_t const count = std::min<size_t>(points.size(), 16);
-        for (size_t i = 0; i < count; ++i)
-        {
-            float const px = points[i].x;
-            float const py = points[i].y;
-            float const pz = points[i].z;
-            float const terrain = map->GetHeight(phase, px, py, MAX_HEIGHT, false);
-            LOG_DEBUG("playerbots", "path-probe {} point[{}]=({:.2f},{:.2f},{:.2f}) terrain={:.2f} below={}",
-                      bot->GetName(), i, px, py, pz, terrain, terrain > -1000.0f && pz < terrain - 0.5f ? 1 : 0);
-        }
-        if (points.size() > count)
-            LOG_DEBUG("playerbots", "path-probe {} last=({:.2f},{:.2f},{:.2f}) ({} points omitted)", bot->GetName(),
-                      points.back().x, points.back().y, points.back().z, points.size() - count);
-    };
-
-    if (bot->GetName() == "Avio")
-        LOG_DEBUG("playerbots", "path-probe {} initial type=0x{:x} len={:.2f} tempZ={:.2f} reqZ={:.2f}",
-                  bot->GetName(), uint32(gen.GetPathType()), min_length, tempZ, z);
-
     if ((gen.GetPathType() & typeOk) && abs(tempZ - z) < 0.5f)
     {
         modified_z = tempZ;
-        logPath("initial-ok", result, modified_z, uint32(gen.GetPathType()));
         return result;
     }
     // Start searching
@@ -1826,29 +1799,8 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     return result;
 }
 
-void MovementAction::LogMoveProbe(char const* kind, float x, float y, float z)
-{
-    if (!bot || !bot->GetMap())
-        return;
-
-    Map* map = bot->GetMap();
-    uint32 const phase = bot->GetPhaseMask();
-    float const terrain = map->GetHeight(phase, x, y, MAX_HEIGHT, true);
-    float const minHeight = map->GetMinHeight(x, y);
-    float const waterLevel = map->GetWaterLevel(x, y);
-    LOG_DEBUG("playerbots",
-              "move-probe {} kind={} action={} map={} from=({:.2f},{:.2f},{:.2f}) to=({:.2f},{:.2f},{:.2f}) "
-              "terrainDest={:.2f} minDest={:.2f} waterDest={:.2f} inWaterBot={} underBot={} los={}",
-              bot->GetName(), kind, getName(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
-              bot->GetPositionZ(), x, y, z, terrain, minHeight, waterLevel, bot->IsInWater() ? 1 : 0,
-              bot->IsUnderWater() ? 1 : 0, bot->IsWithinLOS(x, y, z) ? 1 : 0);
-}
-
 void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards)
 {
-    if (unit == bot)
-        LogMoveProbe("DoMovePoint", x, y, z);
-
     if (!unit)
         return;
 
@@ -2695,14 +2647,15 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
 
     auto tryColumn = [&](float x, float y)
     {
-        float const level = map->GetWaterLevel(x, y);
+        LiquidData const liquid = map->GetLiquidData(bot->GetPhaseMask(), x, y, bz + 2.0f,
+                                                     bot->GetCollisionHeight(), {});
+        float const level = liquid.Level;
         if (level == INVALID_HEIGHT || level == VMAP_INVALID_HEIGHT_VALUE || level <= bz)
             return false;
 
         if (!bot->IsWithinLOS(x, y, level))
             return false;
 
-        botAI->diveSurfaceMap = bot->GetMapId();
         botAI->diveSurfaceX = x;
         botAI->diveSurfaceY = y;
         // Float exactly at the water level: anything above it reads as "not in water",
@@ -2725,10 +2678,11 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
     }
 
     // Enclosed cave: go straight up to the water level and let the movement watchdog bound it.
-    botAI->diveSurfaceMap = bot->GetMapId();
     botAI->diveSurfaceX = bx;
     botAI->diveSurfaceY = by;
-    float const blindLevel = map->GetWaterLevel(bx, by);
+    LiquidData const blindLiquid = map->GetLiquidData(bot->GetPhaseMask(), bx, by, bz + 2.0f,
+                                                      bot->GetCollisionHeight(), {});
+    float const blindLevel = blindLiquid.Level;
     botAI->diveSurfaceZ = (blindLevel == INVALID_HEIGHT || blindLevel == VMAP_INVALID_HEIGHT_VALUE) ? bz + 10.0f
                                                                                                   : blindLevel;
     return false;
@@ -2745,6 +2699,7 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
 
     if (!bot->IsUnderWater())
     {
+        ClearNav3DEscape();
         if (botAI->diveSurfacing)
         {
             LOG_DEBUG("playerbots", "swim-trace {}: surfaced, holding for air {:.0f}s", bot->GetName(),
@@ -2771,8 +2726,10 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         if (dry)
             return true;
 
-        if (bot->GetPositionZ() < botAI->diveSurfaceZ - 1.0f)
-            bot->StopMoving();
+        // Float in the surface band without re-issuing movement every second: a point move that
+        // restarts continuously interrupts casts. Only climb back when the bot has sunk.
+        if (bot->GetPositionZ() >= botAI->diveSurfaceZ - 1.0f)
+            return false;
 
         if (!bot->isMoving() || now - botAI->diveAscendIssueMs >= 1000)
         {
@@ -2797,6 +2754,17 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         botAI->diveAscendRetries = 0;
         LOG_DEBUG("playerbots", "swim-trace {}: surfacing to {:.1f} {:.1f} {:.1f} ({})", bot->GetName(),
                   botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, withLOS ? "los" : "blind");
+
+        // A blocked column in a tunnel/cave is the case the old blind ascent could not solve.
+        // Ask the volumetric pathfinder for a route to the nearest breathable cell.
+        if (!withLOS)
+            TryNav3DEscape();
+    }
+
+    if (botAI->nav3dEscapeActive)
+    {
+        if (FollowNav3DEscape(now))
+            return true;
     }
 
     float const z = bot->GetPositionZ();
@@ -2826,6 +2794,11 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         botAI->diveAscendProgressMs = now;
         botAI->diveAscendLastZ = z;
         ++botAI->diveAscendRetries;
+
+        // The LOS column can pass through a terrain roof even though the swim spline cannot.
+        // Once the vertical climb stalls, try the volumetric route before the blind sidestep.
+        if (TryNav3DEscape())
+            return true;
 
         float const dx = botAI->diveSurfaceX - bot->GetPositionX();
         float const dy = botAI->diveSurfaceY - bot->GetPositionY();
@@ -2869,6 +2842,106 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
     }
 
     return true;
+}
+
+bool SurfaceFromDiveAction::TryNav3DEscape()
+{
+    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Movement::PointsArray path;
+    Nav3DResult result;
+    if (!Nav3DManager::Instance().FindPathToSurface(bot->GetMap(), bot->GetPhaseMask(), start, path, result) ||
+        path.size() < 2 || !Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: no nav3d surface path (nodes {}, ms {}, best {:.1f})",
+                  bot->GetName(), result.Nodes, result.ElapsedMs, result.BestDistance);
+        return false;
+    }
+
+    botAI->nav3dEscapePath = path;
+    botAI->nav3dEscapeIndex = 1;
+    botAI->nav3dEscapeActive = true;
+    botAI->nav3dEscapeMap = bot->GetMapId();
+    botAI->nav3dEscapeProgressMs = getMSTime();
+    botAI->nav3dEscapeLastX = bot->GetPositionX();
+    botAI->nav3dEscapeLastY = bot->GetPositionY();
+    botAI->nav3dEscapeLastZ = bot->GetPositionZ();
+
+    G3D::Vector3 const& end = path.back();
+    botAI->diveSurfaceX = end.x;
+    botAI->diveSurfaceY = end.y;
+    botAI->diveSurfaceZ = end.z;
+
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: nav3d surface path points={} len={:.1f} nodes={} ms={} end=({:.1f},{:.1f},{:.1f})",
+              bot->GetName(), path.size(), result.Length, result.Nodes, result.ElapsedMs, end.x, end.y, end.z);
+    return true;
+}
+
+bool SurfaceFromDiveAction::FollowNav3DEscape(uint32 now)
+{
+    if (botAI->nav3dEscapeMap != bot->GetMapId() ||
+        botAI->nav3dEscapeIndex >= botAI->nav3dEscapePath.size())
+    {
+        ClearNav3DEscape();
+        return false;
+    }
+
+    float const px = bot->GetPositionX();
+    float const py = bot->GetPositionY();
+    float const pz = bot->GetPositionZ();
+    float const movedX = px - botAI->nav3dEscapeLastX;
+    float const movedY = py - botAI->nav3dEscapeLastY;
+    float const movedZ = pz - botAI->nav3dEscapeLastZ;
+    if (movedX * movedX + movedY * movedY + movedZ * movedZ > 1.5f * 1.5f)
+    {
+        botAI->nav3dEscapeLastX = px;
+        botAI->nav3dEscapeLastY = py;
+        botAI->nav3dEscapeLastZ = pz;
+        botAI->nav3dEscapeProgressMs = now;
+    }
+    else if (now - botAI->nav3dEscapeProgressMs >= 8000)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: nav3d surface path stalled", bot->GetName());
+        ClearNav3DEscape();
+        return false;
+    }
+
+    G3D::Vector3 const& target = botAI->nav3dEscapePath[botAI->nav3dEscapeIndex];
+    float const dx = target.x - px;
+    float const dy = target.y - py;
+    float const dz = target.z - pz;
+    if (dx * dx + dy * dy + dz * dz <= 2.0f * 2.0f)
+    {
+        ++botAI->nav3dEscapeIndex;
+        botAI->nav3dEscapeProgressMs = now;
+        botAI->nav3dEscapeLastX = px;
+        botAI->nav3dEscapeLastY = py;
+        botAI->nav3dEscapeLastZ = pz;
+        return true;
+    }
+
+    if (!bot->isMoving() || now - botAI->diveAscendIssueMs >= 1000)
+    {
+        UpdateMovementState();
+        DoMovePoint(bot, target.x, target.y, target.z, false, false);
+        botAI->diveAscendIssueMs = now;
+        LOG_DEBUG("playerbots", "swim-trace {}: nav3d surface point {}/{} ({:.1f},{:.1f},{:.1f})", bot->GetName(),
+                  botAI->nav3dEscapeIndex, botAI->nav3dEscapePath.size(), target.x, target.y, target.z);
+    }
+
+    return true;
+}
+
+void SurfaceFromDiveAction::ClearNav3DEscape()
+{
+    botAI->nav3dEscapeActive = false;
+    botAI->nav3dEscapeIndex = 0;
+    botAI->nav3dEscapePath.clear();
+    botAI->nav3dEscapeMap = 0;
+    botAI->nav3dEscapeProgressMs = 0;
 }
 
 // A direct swim is a pathless spline, so it must be checked as a segment, not just at the
@@ -3096,54 +3169,33 @@ bool MoveToLootAction::Execute(Event /*event*/)
         bool const pathClear = IsSwimPathClear(x, y, z, worstClearance, terrainChecked);
         bool const los = bot->IsWithinLOS(x, y, z);
 
-        // TEMP DIAGNOSTIC: dump the planned swim segment and its worst terrain clearance so a
-        // path that tunnels through the seabed is obvious before the move is issued.
-        if (bot->GetName() == "Avio")
+        if (!pathClear || !los)
         {
-            float const sx = bot->GetPositionX();
-            float const sy = bot->GetPositionY();
-            float const sz = bot->GetPositionZ();
-            float const sdx = x - sx;
-            float const sdy = y - sy;
-            float const sdz = z - sz;
-            float const sdist = std::sqrt(sdx * sdx + sdy * sdy + sdz * sdz);
-            int const steps = std::max(1, int(std::ceil(sdist)));
-            float sampleWorst = 1.0e9f;
-            float worstAt = 0.0f;
-            float worstZ = 0.0f;
-            float worstTerrain = 0.0f;
-            for (int i = 0; i <= steps; ++i)
+            // The direct segment is blocked, but a wreck hold or tunnel room can still be
+            // reachable through the volumetric mesh. Try that before dropping the target.
+            if (sPlayerbotAIConfig.Nav3DEnabled && sPlayerbotAIConfig.Nav3DLazy)
             {
-                float const t = float(i) / float(steps);
-                float const qx = sx + sdx * t;
-                float const qy = sy + sdy * t;
-                float const qz = sz + sdz * t;
-                float const terrain = map->GetHeight(phase, qx, qy, MAX_HEIGHT, false);
-                if (terrain <= -1000.0f)
-                    continue;
-
-                float const clearance = qz - terrain;
-                if (clearance < sampleWorst)
+                Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                Position const goal(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
+                Movement::PointsArray path;
+                Nav3DResult result;
+                if (Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                                       result) &&
+                    path.size() >= 2 &&
+                    Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
                 {
-                    sampleWorst = clearance;
-                    worstAt = sdist * t;
-                    worstZ = qz;
-                    worstTerrain = terrain;
+                    bot->StopMoving();
+                    bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_NONE);
+                    botAI->SetNextCheckDelay(uint32(std::max(30000.0f, result.Length * 250.0f)));
+                    LOG_DEBUG("playerbots", "swim-trace {}: nav3d loot path target={} points={} len={:.1f} ms={}",
+                              bot->GetName(), loot.guid.ToString(), path.size(), result.Length, result.ElapsedMs);
+                    lootWatchGuid = loot.guid;
+                    lootWatchDistance = distance;
+                    lootWatchMs = nowMs;
+                    return true;
                 }
             }
 
-            LOG_DEBUG("playerbots",
-                      "swim-plan {} target={} dist={:.2f} range={:.2f} bot=({:.2f},{:.2f},{:.2f}) "
-                      "targetPos=({:.2f},{:.2f},{:.2f}) point=({:.2f},{:.2f},{:.2f}) los={} pathClear={} "
-                      "worstClearance={:.2f} terrainChecked={} sampleWorst={:.2f} atDist={:.2f} segZ={:.2f} "
-                      "terrain={:.2f}",
-                      bot->GetName(), loot.guid.ToString(), dist, range, sx, sy, sz, target->GetPositionX(),
-                      target->GetPositionY(), target->GetPositionZ(), x, y, z, los ? 1 : 0, pathClear ? 1 : 0,
-                      worstClearance, terrainChecked ? 1 : 0, sampleWorst, worstAt, worstZ, worstTerrain);
-        }
-
-        if (!pathClear || !los)
-        {
             LOG_DEBUG("playerbots",
                       "swim-trace {}: refusing direct swim to ({:.1f},{:.1f},{:.1f}) los={} pathClear={} "
                       "worstClearance={:.2f} terrainChecked={} target={}",

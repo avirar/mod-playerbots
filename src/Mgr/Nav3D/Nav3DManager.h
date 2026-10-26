@@ -39,6 +39,9 @@ public:
 
     bool FindPath(Map* map, uint32 phase, Position const& start, Position const& goal,
                   Movement::PointsArray& path, Nav3DResult& result);
+    bool FindPathToSurface(Map* map, uint32 phase, Position const& start, Movement::PointsArray& path,
+                           Nav3DResult& result);
+    bool IsPathClear(Map* map, uint32 phase, Movement::PointsArray const& path, float radius = 0.5f) const;
 
 private:
     Nav3DManager() = default;

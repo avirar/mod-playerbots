@@ -10,11 +10,15 @@
 #include "GuildTaskMgr.h"
 #include "MapMgr.h"
 #include "Nav3DManager.h"
+#include "ObjectMgr.h"
 #include "PerfMonitor.h"
+#include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+#include "QuestDef.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "Timer.h"
 
 using namespace Acore::ChatCommands;
 
@@ -42,8 +46,15 @@ public:
             {"inspect", HandleInspectCommand, SEC_GAMEMASTER, Console::Yes},
             {"gtask", HandleGuildTaskCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3d", HandleNav3DCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dmove", HandleNav3DMoveCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dmap", HandleNav3DMapCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dteleport", HandleNav3DTeleportCommand, SEC_GAMEMASTER, Console::Yes},
+            {"addquest", HandleAddQuestCommand, SEC_GAMEMASTER, Console::Yes},
+            {"completequest", HandleCompleteQuestCommand, SEC_GAMEMASTER, Console::Yes},
+            {"surface", HandleSurfaceCommand, SEC_GAMEMASTER, Console::Yes},
+            {"savebot", HandleSaveBotCommand, SEC_GAMEMASTER, Console::Yes},
+            {"revive", HandleReviveCommand, SEC_GAMEMASTER, Console::Yes},
+            {"abandonquest", HandleAbandonQuestCommand, SEC_GAMEMASTER, Console::Yes},
             {"pmon", HandlePerfMonCommand, SEC_GAMEMASTER, Console::Yes},
             {"rndbot", HandleRandomPlayerbotCommand, SEC_GAMEMASTER, Console::Yes},
             {"debug", playerbotsDebugCommandTable},
@@ -151,6 +162,28 @@ public:
         return true;
     }
 
+    // Test-only: run the nav3d chat action directly, bypassing the chat command security queue
+    // so a random bot (no master) can exercise the movement path.
+    static bool HandleNav3DMoveCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        std::string const param = std::string(command);
+        if (param.empty())
+        {
+            handler->SendErrorMessage("Usage: nav3dmove <bot> [fly] <x> <y> <z> [viaX viaY viaZ ...]");
+            return false;
+        }
+
+        Event event("nav3d", param, botAI->GetBot());
+        bool const started = botAI->DoSpecificAction("nav3d", event, false);
+        handler->PSendSysMessage("nav3dmove {} started={}", target.GetName(), started);
+        LOG_INFO("playerbots", "nav3dmove {} started={} param={}", target.GetName(), started, param);
+        return started;
+    }
+
     static bool HandleNav3DMapCommand(ChatHandler* handler, uint32 mapId, float sx, float sy, float sz, float gx,
                                       float gy, float gz)
     {
@@ -205,6 +238,151 @@ public:
         LOG_INFO("playerbots", "nav3dteleport {} -> map {} ({:.2f},{:.2f},{:.2f})", target.GetName(), mapId, x, y,
                  z);
         return true;
+    }
+
+    static bool HandleAddQuestCommand(ChatHandler* handler, PlayerIdentifier target, uint32 questId)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+        {
+            handler->SendErrorMessage("Unknown quest {}", questId);
+            return false;
+        }
+
+        if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
+        {
+            handler->PSendSysMessage("{} already has quest {} (status {})", target.GetName(), questId,
+                                     uint32(bot->GetQuestStatus(questId)));
+            return true;
+        }
+
+        if (!bot->CanAddQuest(quest, true))
+        {
+            handler->SendErrorMessage("{} cannot add quest {} (level/prev/race/faction)", target.GetName(), questId);
+            return false;
+        }
+
+        bot->AddQuest(quest, nullptr);
+        handler->PSendSysMessage("addquest {} {} status={}", target.GetName(), questId,
+                                 uint32(bot->GetQuestStatus(questId)));
+        LOG_INFO("playerbots", "addquest {} {} status={}", target.GetName(), questId,
+                 uint32(bot->GetQuestStatus(questId)));
+        return true;
+    }
+
+    static bool HandleCompleteQuestCommand(ChatHandler* handler, PlayerIdentifier target, uint32 questId)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+        {
+            handler->SendErrorMessage("Unknown quest {}", questId);
+            return false;
+        }
+
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_NONE)
+        {
+            handler->SendErrorMessage("{} does not have quest {}", target.GetName(), questId);
+            return false;
+        }
+
+        bot->CompleteQuest(questId);
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+            bot->RewardQuest(quest, 0, bot, false);
+
+        handler->PSendSysMessage("completequest {} {} status={}", target.GetName(), questId,
+                                 uint32(bot->GetQuestStatus(questId)));
+        LOG_INFO("playerbots", "completequest {} {} status={}", target.GetName(), questId,
+                 uint32(bot->GetQuestStatus(questId)));
+        return true;
+    }
+
+    static bool HandleSurfaceCommand(ChatHandler* handler, PlayerIdentifier target)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        if (!bot->IsUnderWater())
+        {
+            handler->SendErrorMessage("{} is not underwater", target.GetName());
+            return false;
+        }
+
+        botAI->diveAirMs = 15000;
+        botAI->diveSubmergedSince = getMSTime();
+        bool const started = botAI->DoSpecificAction("surface from dive", Event(), false);
+        handler->PSendSysMessage("surface {} started={} air={}s underwater={}", target.GetName(), started,
+                                 botAI->diveAirMs / IN_MILLISECONDS, bot->IsUnderWater() ? 1 : 0);
+        LOG_INFO("playerbots", "surface {} started={} air={}s", target.GetName(), started,
+                 botAI->diveAirMs / IN_MILLISECONDS);
+        return started;
+    }
+
+    static bool HandleSaveBotCommand(ChatHandler* handler, PlayerIdentifier target)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        bot->SaveToDB(false, false);
+        handler->PSendSysMessage("savebot {} saved", target.GetName());
+        LOG_INFO("playerbots", "savebot {}", target.GetName());
+        return true;
+    }
+
+    static bool HandleAbandonQuestCommand(ChatHandler* handler, PlayerIdentifier target, uint32 questId)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_NONE)
+        {
+            handler->SendErrorMessage("{} does not have quest {}", target.GetName(), questId);
+            return false;
+        }
+
+        bot->AbandonQuest(questId);
+        handler->PSendSysMessage("abandonquest {} {} status={}", target.GetName(), questId,
+                                 uint32(bot->GetQuestStatus(questId)));
+        LOG_INFO("playerbots", "abandonquest {} {} status={}", target.GetName(), questId,
+                 uint32(bot->GetQuestStatus(questId)));
+        return true;
+    }
+
+    static bool HandleReviveCommand(ChatHandler* handler, PlayerIdentifier target)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        if (!bot->IsAlive())
+        {
+            botAI->ChangeStrategy("-dead", BOT_STATE_NON_COMBAT);
+            bot->ResurrectPlayer(1.0f);
+            bot->SpawnCorpseBones();
+            bot->SetHealth(bot->GetMaxHealth());
+        }
+
+        handler->PSendSysMessage("revive {} alive={} hp={}", target.GetName(), bot->IsAlive() ? 1 : 0,
+                                 bot->GetHealth());
+        LOG_INFO("playerbots", "revive {} alive={} hp={}", target.GetName(), bot->IsAlive() ? 1 : 0,
+                 bot->GetHealth());
+        return bot->IsAlive();
     }
 
     static bool HandleRandomPlayerbotCommand(ChatHandler* handler, char const* args)

@@ -80,9 +80,6 @@ protected:
     // Raw point move without path generation; subclasses use it for direct swim/ascend moves.
     void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
 
-    // TEMP DIAGNOSTIC (WMO/void clipping): log destination geometry for every issued move.
-    void LogMoveProbe(char const* kind, float x, float y, float z);
-
 private:
     // float SearchBestGroundZForPath(float x, float y, float z, bool generatePath, float range = 20.0f, bool
     // normal_only = false, float step = 8.0f);
@@ -240,6 +237,9 @@ public:
 
 private:
     bool FindSurfacePoint();
+    bool TryNav3DEscape();
+    bool FollowNav3DEscape(uint32 now);
+    void ClearNav3DEscape();
 };
 
 class MoveOutOfEnemyContactAction : public MovementAction
