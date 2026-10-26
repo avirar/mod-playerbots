@@ -171,6 +171,32 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
 {
     UpdateMovementState();
     LogMoveProbe(exact_waypoint ? "MoveTo-exact" : "MoveTo-path", x, y, z);
+
+    // While holding at the surface after an emergency ascent, allow attacks/actions but never
+    // let a mover take the bot back under water. The dive ascent itself uses DoMovePoint directly.
+    if (botAI->diveHoldSurface && botAI->diveSurfaceZ > -1000.0f && z < botAI->diveSurfaceZ - 1.0f)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: surface hold blocked move to z {:.2f} (surface {:.2f})",
+                  bot->GetName(), z, botAI->diveSurfaceZ);
+        return false;
+    }
+
+    // Exact (pathless) swims are what tunnel through seabed ridges. Check the actual movement
+    // segment before issuing one. Short moves are exempt so normal combat positioning still works.
+    if (exact_waypoint && (bot->IsUnderWater() || bot->isSwimming()) && bot->GetExactDist(x, y, z) > 5.0f)
+    {
+        float worstClearance = 1.0e9f;
+        bool terrainChecked = false;
+        if (!IsSwimPathClear(x, y, z, worstClearance, terrainChecked))
+        {
+            LOG_DEBUG("playerbots",
+                      "swim-trace {}: refusing pathless swim move to ({:.1f},{:.1f},{:.1f}) "
+                      "worstClearance={:.2f} terrainChecked={} action={}",
+                      bot->GetName(), x, y, z, worstClearance, terrainChecked ? 1 : 0, getName());
+            return false;
+        }
+    }
+
     if (!IsMovingAllowed())
     {
         return false;
@@ -2710,7 +2736,7 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
 
 bool SurfaceFromDiveAction::isUseful()
 {
-    return bot->IsAlive() && (bot->IsUnderWater() || botAI->diveSurfacing);
+    return bot->IsAlive() && (bot->IsUnderWater() || botAI->diveSurfacing || botAI->diveHoldSurface);
 }
 
 bool SurfaceFromDiveAction::Execute(Event /*event*/)
@@ -2731,7 +2757,34 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         botAI->diveAscendStartMs = 0;
         botAI->diveAscendLastZ = 0;
         botAI->diveAscendRetries = 0;
-        return true;
+
+        if (!botAI->diveHoldSurface)
+            return true;
+
+        // Keep the bot in the surface band while the breath timer refills. If it is stable,
+        // return false so combat/actions can run; MoveTo refuses any move below the surface
+        // while this hold is active.
+        auto const liquid = bot->GetMap()->GetLiquidData(bot->GetPhaseMask(), bot->GetPositionX(),
+                                                         bot->GetPositionY(), bot->GetPositionZ(),
+                                                         bot->GetCollisionHeight(), {});
+        bool const dry = liquid.Level <= INVALID_HEIGHT || bot->GetPositionZ() >= liquid.Level + 0.5f;
+        if (dry)
+            return true;
+
+        if (bot->GetPositionZ() < botAI->diveSurfaceZ - 1.0f)
+            bot->StopMoving();
+
+        if (!bot->isMoving() || now - botAI->diveAscendIssueMs >= 1000)
+        {
+            UpdateMovementState();
+            DoMovePoint(bot, botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, false, false);
+            botAI->diveAscendIssueMs = now;
+            LOG_DEBUG("playerbots", "swim-trace {}: holding at surface ({:.1f}), air {:.0f}s", bot->GetName(),
+                      bot->GetPositionZ(), float(botAI->diveAirMs) / IN_MILLISECONDS);
+            return true;
+        }
+
+        return false;
     }
 
     if (!botAI->diveSurfacing)
@@ -2816,6 +2869,107 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
     }
 
     return true;
+}
+
+// A direct swim is a pathless spline, so it must be checked as a segment, not just at the
+// destination. The high-ray IsWithinLOS() used by the caller is raised by collision height and
+// can pass while the actual spline is under the seabed. Sample the movement Z instead, and cast a
+// low ray from the first point that clears the floor (a bot looting a floor-level object is often
+// already slightly inside the floor and has to be allowed to climb out).
+//
+// The terrain sampling is skipped when the bot is well below the terrain (underwater cave or WMO
+// hollow); there the low ray is the only geometry test, so a cave ceiling is not treated as a
+// floor. A small embedding (the normal floor-level looting state) is still sampled.
+bool MovementAction::IsSwimPathClear(float x, float y, float z, float& worstClearance,
+                                     bool& terrainChecked) const
+{
+    worstClearance = 1.0e9f;
+    terrainChecked = false;
+
+    Map* map = bot->GetMap();
+    if (!map)
+        return false;
+
+    uint32 const phase = bot->GetPhaseMask();
+    float const sx = bot->GetPositionX();
+    float const sy = bot->GetPositionY();
+    float const sz = bot->GetPositionZ();
+    float const dx = x - sx;
+    float const dy = y - sy;
+    float const dz = z - sz;
+    float const dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < 0.01f)
+        return false;
+
+    float const terrainAtBot = map->GetHeight(phase, sx, sy, MAX_HEIGHT, false);
+    bool const nearTerrain = terrainAtBot <= -1000.0f || sz >= terrainAtBot - 2.5f;
+    terrainChecked = nearTerrain;
+
+    float rayX = sx;
+    float rayY = sy;
+    float rayZ = sz;
+
+    if (nearTerrain)
+    {
+        bool foundFloor = false;
+        // Cap the number of floor samples on long moves (the RPG travel guard can see 300+ yd
+        // segments); 32 samples is enough to catch a seabed ridge without a per-yard sweep.
+        float const step = std::max(1.0f, dist / 32.0f);
+        int const steps = std::max(1, int(std::ceil(dist / step)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            float const t = dist * (float(i) / float(steps));
+            float const qx = sx + dx * (t / dist);
+            float const qy = sy + dy * (t / dist);
+            float const qz = sz + dz * (t / dist);
+            float const terrain = map->GetHeight(phase, qx, qy, MAX_HEIGHT, false);
+            if (terrain <= -1000.0f)
+            {
+                if (!foundFloor)
+                {
+                    foundFloor = true;
+                    rayX = qx;
+                    rayY = qy;
+                    rayZ = qz;
+                }
+                continue;
+            }
+
+            float const clearance = qz - terrain;
+            worstClearance = std::min(worstClearance, clearance);
+            if (!foundFloor)
+            {
+                // Still climbing out of the start embedding. The first point with clearance
+                // becomes the low-ray origin; everything after it must stay clear.
+                if (clearance >= 0.5f)
+                {
+                    foundFloor = true;
+                    rayX = qx;
+                    rayY = qy;
+                    rayZ = qz;
+                }
+                continue;
+            }
+
+            if (clearance < 0.5f)
+                return false;
+        }
+
+        if (!foundFloor)
+            return false;
+    }
+    else
+    {
+        // Cave / WMO hollow / already under the floor: start the low ray a little ahead so a
+        // start embedded in a wall is not automatically fatal, then test the rest of the path.
+        float const skip = std::min(2.0f, dist * 0.5f);
+        rayX = sx + dx * (skip / dist);
+        rayY = sy + dy * (skip / dist);
+        rayZ = sz + dz * (skip / dist);
+    }
+
+    return map->isInLineOfSight(rayX, rayY, rayZ, x, y, z, phase, LINEOFSIGHT_ALL_CHECKS,
+                                VMAP::ModelIgnoreFlags::Nothing);
 }
 
 bool MoveToLootAction::Execute(Event /*event*/)
@@ -2918,15 +3072,34 @@ bool MoveToLootAction::Execute(Event /*event*/)
         float const scale = (dist - range) / dist;
         float const x = bot->GetPositionX() - dx * scale;
         float const y = bot->GetPositionY() - dy * scale;
-        float const z = bot->GetPositionZ() - dz * scale;
+        float z = bot->GetPositionZ() - dz * scale;
+
+        Map* map = bot->GetMap();
+        uint32 const phase = bot->GetPhaseMask();
+
+        // Keep the standoff point above the local floor. Use the floor just below the point
+        // (WMO-aware) so an underwater cave's ceiling is not mistaken for a floor. If the point
+        // is already inside a floor, the segment/low-ray checks below refuse the move instead of
+        // letting a pathless spline tunnel through it.
+        float const floorZ = map->GetHeight(phase, x, y, z + 0.5f, true, 5.0f);
+        if (floorZ > -1000.0f)
+            z = std::max(z, floorZ + 0.75f);
+
+        float const terrainAtBot = map->GetHeight(phase, bot->GetPositionX(), bot->GetPositionY(), MAX_HEIGHT, false);
+        bool const nearTerrain = terrainAtBot <= -1000.0f || bot->GetPositionZ() >= terrainAtBot - 2.5f;
+        float const terrainAtPoint = map->GetHeight(phase, x, y, MAX_HEIGHT, false);
+        if (nearTerrain && terrainAtPoint > -1000.0f)
+            z = std::max(z, terrainAtPoint + 0.75f);
+
+        float worstClearance = 1.0e9f;
+        bool terrainChecked = false;
+        bool const pathClear = IsSwimPathClear(x, y, z, worstClearance, terrainChecked);
         bool const los = bot->IsWithinLOS(x, y, z);
 
         // TEMP DIAGNOSTIC: dump the planned swim segment and its worst terrain clearance so a
         // path that tunnels through the seabed is obvious before the move is issued.
         if (bot->GetName() == "Avio")
         {
-            Map* map = bot->GetMap();
-            uint32 const phase = bot->GetPhaseMask();
             float const sx = bot->GetPositionX();
             float const sy = bot->GetPositionY();
             float const sz = bot->GetPositionZ();
@@ -2935,7 +3108,7 @@ bool MoveToLootAction::Execute(Event /*event*/)
             float const sdz = z - sz;
             float const sdist = std::sqrt(sdx * sdx + sdy * sdy + sdz * sdz);
             int const steps = std::max(1, int(std::ceil(sdist)));
-            float worstClearance = 1.0e9f;
+            float sampleWorst = 1.0e9f;
             float worstAt = 0.0f;
             float worstZ = 0.0f;
             float worstTerrain = 0.0f;
@@ -2950,9 +3123,9 @@ bool MoveToLootAction::Execute(Event /*event*/)
                     continue;
 
                 float const clearance = qz - terrain;
-                if (clearance < worstClearance)
+                if (clearance < sampleWorst)
                 {
-                    worstClearance = clearance;
+                    sampleWorst = clearance;
                     worstAt = sdist * t;
                     worstZ = qz;
                     worstTerrain = terrain;
@@ -2961,16 +3134,25 @@ bool MoveToLootAction::Execute(Event /*event*/)
 
             LOG_DEBUG("playerbots",
                       "swim-plan {} target={} dist={:.2f} range={:.2f} bot=({:.2f},{:.2f},{:.2f}) "
-                      "targetPos=({:.2f},{:.2f},{:.2f}) point=({:.2f},{:.2f},{:.2f}) los={} "
-                      "worstClearance={:.2f} atDist={:.2f} segZ={:.2f} terrain={:.2f}",
+                      "targetPos=({:.2f},{:.2f},{:.2f}) point=({:.2f},{:.2f},{:.2f}) los={} pathClear={} "
+                      "worstClearance={:.2f} terrainChecked={} sampleWorst={:.2f} atDist={:.2f} segZ={:.2f} "
+                      "terrain={:.2f}",
                       bot->GetName(), loot.guid.ToString(), dist, range, sx, sy, sz, target->GetPositionX(),
-                      target->GetPositionY(), target->GetPositionZ(), x, y, z, los ? 1 : 0, worstClearance, worstAt,
-                      worstZ, worstTerrain);
+                      target->GetPositionY(), target->GetPositionZ(), x, y, z, los ? 1 : 0, pathClear ? 1 : 0,
+                      worstClearance, terrainChecked ? 1 : 0, sampleWorst, worstAt, worstZ, worstTerrain);
         }
 
-        if (!los)
+        if (!pathClear || !los)
         {
-            LOG_DEBUG("playerbots", "swim-trace {}: no LOS to swim point {:.1f} {:.1f} {:.1f}", bot->GetName(), x, y, z);
+            LOG_DEBUG("playerbots",
+                      "swim-trace {}: refusing direct swim to ({:.1f},{:.1f},{:.1f}) los={} pathClear={} "
+                      "worstClearance={:.2f} terrainChecked={} target={}",
+                      bot->GetName(), x, y, z, los ? 1 : 0, pathClear ? 1 : 0, worstClearance,
+                      terrainChecked ? 1 : 0, loot.guid.ToString());
+            availableLoot->DeferLoot(loot.guid);
+            if (AI_VALUE(LootObject, "loot target").guid == loot.guid)
+                context->GetValue<LootObject>("loot target")->Set(LootObject());
+            lootWatchGuid.Clear();
             return false;
         }
 

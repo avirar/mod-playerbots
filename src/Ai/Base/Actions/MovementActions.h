@@ -41,6 +41,9 @@ protected:
                 MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool MoveNear(WorldObject* target, float distance = sPlayerbotAIConfig.ContactDistance,
                   MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    // Pathless swims must be checked as a segment, not just at the destination. Returns false
+    // when the sampled segment is too close to the floor or the low ray is obstructed.
+    bool IsSwimPathClear(float x, float y, float z, float& worstClearance, bool& terrainChecked) const;
     float GetFollowAngle();
     bool Follow(Unit* target, float distance = sPlayerbotAIConfig.FollowDistance);
     bool Follow(Unit* target, float distance, float angle);
