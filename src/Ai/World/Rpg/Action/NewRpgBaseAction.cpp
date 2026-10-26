@@ -139,7 +139,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
 
     float dis = bot->GetExactDist(dest);
-    if (dis < pathFinderDis)
+    if (dis < pathFinderDis && !bot->IsUnderWater() && !bot->isSwimming())
     {
         LOG_DEBUG("playerbots", "rpg-move {} short exact move dest=({:.2f},{:.2f},{:.2f}) dis={:.2f} los={}",
                   bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dis,
@@ -182,6 +182,34 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
                       bot->IsWithinLOS(endPos.x, endPos.y, endPos.z) ? 1 : 0,
                       bot->GetMap()->GetHeight(bot->GetPhaseMask(), endPos.x, endPos.y, MAX_HEIGHT, true),
                       bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0);
+
+            // While swimming, an exact move to the true endpoint is pathless and can tunnel
+            // through the seabed. Follow the mmap path in short chunks instead; MoveTo's swim
+            // guard checks each chunk before it is issued.
+            if (bot->IsUnderWater() || bot->isSwimming())
+            {
+                Movement::PointsArray const& points = path.GetPath();
+                for (G3D::Vector3 const& point : points)
+                {
+                    float const dx = point.x - bot->GetPositionX();
+                    float const dy = point.y - bot->GetPositionY();
+                    float const dz = point.z - bot->GetPositionZ();
+                    float const d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (d <= 1.0f)
+                        continue;
+
+                    float const chunk = std::min(20.0f, d);
+                    float const t = chunk / d;
+                    float const cx = bot->GetPositionX() + dx * t;
+                    float const cy = bot->GetPositionY() + dy * t;
+                    float const cz = bot->GetPositionZ() + dz * t;
+                    LOG_DEBUG("playerbots",
+                              "rpg-path {} swimming chunk next=({:.2f},{:.2f},{:.2f}) d={:.2f} chunk={:.2f}",
+                              bot->GetName(), point.x, point.y, point.z, d, chunk);
+                    return MoveTo(bot->GetMapId(), cx, cy, cz, false, false, false, true);
+                }
+            }
+
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
