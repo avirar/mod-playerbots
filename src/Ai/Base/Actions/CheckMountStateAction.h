@@ -52,6 +52,7 @@ private:
     static std::unordered_map<uint32, PreferredMountCache> mountCache;
     float CalculateDismountDistance() const;
     float CalculateMountDistance() const;
+    bool CanDismountSafely() const;
     void Dismount();
     void ClearStaleFlightFlags();
     bool ShouldFollowMasterMountState(Player* master, bool noAttackers, bool shouldMount) const;

@@ -237,6 +237,9 @@ public:
 
 private:
     bool FindSurfacePoint();
+    bool TryNav3DEscape();
+    bool FollowNav3DEscape(uint32 now);
+    void ClearNav3DEscape();
 };
 
 class MoveOutOfEnemyContactAction : public MovementAction

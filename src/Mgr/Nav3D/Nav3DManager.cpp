@@ -27,15 +27,25 @@ namespace
     constexpr float kMaxCellSize = 4.0f;
     constexpr float kXYPad = 20.0f;
     constexpr float kZPad = 15.0f;
-    constexpr int32 kMaxCellsPerAxis = 512;
+    // The grid is sparse (A* only visits reachable cells), so a wider coordinate bound costs
+    // nothing until it is searched. Uldis is ~263 yd in Y and ~171 yd down; at 0.5-yd detail
+    // cells that no longer fits in 512.
+    constexpr int32 kMaxCellsPerAxis = 2048;
     constexpr float kSurfaceMargin = 0.5f;
-    constexpr float kFloorMargin = 0.25f;
-    constexpr uint32 kHardMaxNodes = 500000;
-    constexpr uint32 kHardMaxTimeMs = 5000;
+    constexpr float kFloorMargin = 0.25f;  // navigability: keep tight tunnel cells connected
+    constexpr float kCapsuleFloorClearance = 0.5f;  // final body clearance
+    constexpr uint32 kHardMaxNodes = 2000000;
+    constexpr uint32 kHardMaxTimeMs = 10000;
     constexpr uint32 kTimeCheckMask = 0x7F;
     constexpr float kDuplicateEpsilon = 0.05f;
     constexpr float kPartialAcceptDistance = 5.0f;  // interaction range
     constexpr float kEarlyPartialDistance = 2.0f;   // stop as soon as a chest is in reach
+    // A lazy 3D route this dense is a sign the search wandered through a huge open volume.
+    // Reject it before the O(n^2) smoothing and capsule pass can stall the map thread.
+    constexpr size_t kMaxPathPoints = 2000;
+    // Bound the smoothing candidate scan: a full O(n^2) pass over a long cell chain can block
+    // the map thread for minutes. Chunked smoothing still removes most cell stair-stepping.
+    constexpr size_t kMaxSmoothSkip = 64;
 
     struct GridNode
     {
@@ -170,6 +180,46 @@ namespace
                                     VMAP::ModelIgnoreFlags::Nothing);
     }
 
+    // A swimmer has a body. The planner's single ray can pass while the model clips a wall or
+    // floor, so validate the final path with a short capsule: terrain/floor clearance plus
+    // offset rays at the player radius.
+    bool SegmentClear(Map* map, uint32 phase, G3D::Vector3 const& from, G3D::Vector3 const& to,
+                      float radius)
+    {
+        float const distance = Distance(from, to);
+        int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
+
+        static G3D::Vector3 const offsets[] = {
+            {0.5f, 0.0f, 0.0f},   {-0.5f, 0.0f, 0.0f},  {0.0f, 0.5f, 0.0f},
+            {0.0f, -0.5f, 0.0f},  {0.3535f, 0.3535f, 0.0f}, {-0.3535f, 0.3535f, 0.0f},
+            {0.3535f, -0.3535f, 0.0f}, {-0.3535f, -0.3535f, 0.0f},
+            {0.0f, 0.0f, 1.0f},   {0.0f, 0.0f, -1.0f}};
+
+        for (int i = 0; i <= steps; ++i)
+        {
+            float const t = float(i) / float(steps);
+            G3D::Vector3 const point = from + (to - from) * t;
+
+            // floorZ is terrain- and WMO-aware and ignores an outdoor surface above a cave
+            // hollow, so a swimmer below the seabed's outside terrain is not treated as
+            // embedded in it.
+            PositionFullTerrainStatus status;
+            map->GetFullTerrainStatusForPosition(phase, point.x, point.y, point.z, 1.0f, status, {});
+            if (status.floorZ > INVALID_HEIGHT && point.z - status.floorZ < kCapsuleFloorClearance)
+                return false;
+
+            for (G3D::Vector3 const& offset : offsets)
+            {
+                G3D::Vector3 const probe = point + offset * (radius / 0.5f);
+                if (!map->isInLineOfSight(point.x, point.y, point.z, probe.x, probe.y, probe.z, phase,
+                                          LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     bool IsNavigable(Grid const& grid, GridNode const& node, NodeState& state)
     {
         if (state.Nav != 0)
@@ -243,6 +293,97 @@ namespace
         }
 
         return false;
+    }
+
+    bool BuildPath(Grid const& grid, std::unordered_map<GridNode, NodeState, GridNodeHash> const& states,
+                   GridNode const& startNode, GridNode const& goalNode, Position const& start,
+                   Position const& goal, bool partial, Movement::PointsArray& path, Nav3DResult& result)
+    {
+        Movement::PointsArray raw;
+        GridNode current = goalNode;
+        while (true)
+        {
+            Position const center = grid.Center(current);
+            raw.push_back({center.GetPositionX(), center.GetPositionY(), center.GetPositionZ()});
+
+            if (current == startNode)
+                break;
+
+            auto const it = states.find(current);
+            if (it == states.end() || !it->second.HasParent)
+                return false;
+
+            current = it->second.Parent;
+        }
+        std::reverse(raw.begin(), raw.end());
+
+        Movement::PointsArray points;
+        auto const appendUnique = [&points](G3D::Vector3 const& point)
+        {
+            if (points.empty() || Distance(points.back(), point) > kDuplicateEpsilon)
+                points.push_back(point);
+        };
+
+        appendUnique({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
+        for (G3D::Vector3 const& point : raw)
+            appendUnique(point);
+
+        if (partial)
+        {
+            Position const partialCenter = grid.Center(goalNode);
+            appendUnique({partialCenter.GetPositionX(), partialCenter.GetPositionY(), partialCenter.GetPositionZ()});
+        }
+        else
+        {
+            appendUnique({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
+        }
+
+        if (points.size() > kMaxPathPoints)
+            return false;
+
+        // Smooth with a single ray per candidate: the capsule test is far too expensive to run
+        // inside the O(n^2) candidate scan. The smoothed path is validated once below; if the
+        // swimmer's body still clips, fall back to the raw cell chain, which hugs the A* route.
+        path.clear();
+        path.push_back(points.front());
+        size_t index = 0;
+        while (index + 1 < points.size())
+        {
+            size_t best = index + 1;
+            size_t const last = points.size() - 1;
+            size_t const maxCandidate = std::min(last, index + kMaxSmoothSkip);
+            for (size_t candidate = maxCandidate; candidate > index + 1; --candidate)
+            {
+                if (LineClear(grid.MapPtr, grid.Phase, points[index], points[candidate]))
+                {
+                    best = candidate;
+                    break;
+                }
+            }
+
+            path.push_back(points[best]);
+            index = best;
+        }
+
+        bool capsuleClear = path.size() >= 2;
+        for (size_t i = 1; capsuleClear && i < path.size(); ++i)
+            capsuleClear = SegmentClear(grid.MapPtr, grid.Phase, path[i - 1], path[i], 0.5f);
+
+        if (!capsuleClear)
+            path = points;
+
+        if (path.size() < 2)
+        {
+            path.clear();
+            path.push_back({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
+            path.push_back({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
+        }
+
+        result.Length = 0.0f;
+        for (size_t i = 1; i < path.size(); ++i)
+            result.Length += Distance(path[i - 1], path[i]);
+
+        return true;
     }
 }
 
@@ -349,7 +490,8 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         !FindNearestNavigable(grid, goal, goalNode, states))
         return false;
 
-    if (LineClear(map, phase, start, goal))
+    if (SegmentClear(map, phase, {start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()},
+                     {goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()}, 0.5f))
     {
         path.push_back({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
         path.push_back({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
@@ -485,74 +627,165 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     if (!found)
         return false;
 
-    Movement::PointsArray raw;
-    GridNode current = goalNode;
-    while (true)
-    {
-        Position const center = grid.Center(current);
-        raw.push_back({center.GetPositionX(), center.GetPositionY(), center.GetPositionZ()});
-
-        if (current == startNode)
-            break;
-
-        auto const it = states.find(current);
-        if (it == states.end() || !it->second.HasParent)
-            return false;
-
-        current = it->second.Parent;
-    }
-    std::reverse(raw.begin(), raw.end());
-
-    Movement::PointsArray points;
-    auto const appendUnique = [&points](G3D::Vector3 const& point)
-    {
-        if (points.empty() || Distance(points.back(), point) > kDuplicateEpsilon)
-            points.push_back(point);
-    };
-
-    appendUnique({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
-    for (G3D::Vector3 const& point : raw)
-        appendUnique(point);
-
-    if (result.Partial)
-    {
-        Position const partial = grid.Center(goalNode);
-        appendUnique({partial.GetPositionX(), partial.GetPositionY(), partial.GetPositionZ()});
-    }
-    else
-    {
-        appendUnique({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
-    }
-
-    path.push_back(points.front());
-    size_t index = 0;
-    while (index + 1 < points.size())
-    {
-        size_t best = index + 1;
-        for (size_t candidate = points.size() - 1; candidate > index + 1; --candidate)
-        {
-            if (LineClear(map, phase, points[index], points[candidate]))
-            {
-                best = candidate;
-                break;
-            }
-        }
-
-        path.push_back(points[best]);
-        index = best;
-    }
-
-    if (path.size() < 2)
-    {
-        path.clear();
-        path.push_back({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
-        path.push_back({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
-    }
-
-    result.Length = 0.0f;
-    for (size_t i = 1; i < path.size(); ++i)
-        result.Length += Distance(path[i - 1], path[i]);
+    if (!BuildPath(grid, states, startNode, goalNode, start, goal, result.Partial, path, result))
+        return false;
 
     result.Found = true;
+    return true;
+}
+
+bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& start,
+                                     Movement::PointsArray& path, Nav3DResult& result)
+{
+    result = {};
+    path.clear();
+
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+        return false;
+
+    bool const openWater = IsOpenWaterArea(map, phase, start);
+    bool const detailGrid = !openWater && NeedsDetailGrid(map, phase, start);
+    float const detailCellSize = std::clamp(sPlayerbotAIConfig.Nav3DCellSize, kMinCellSize, kMaxCellSize);
+    float const cellSize = detailGrid ? detailCellSize : std::min(kMaxCellSize, detailCellSize * 2.0f);
+    result.CellSize = cellSize;
+
+    Grid grid;
+    grid.MapPtr = map;
+    grid.Phase = phase;
+    grid.Cell = cellSize;
+
+    constexpr float kSurfaceRadiusXY = 120.0f;
+    constexpr float kSurfaceRadiusZ = 100.0f;
+    grid.MinX = start.GetPositionX() - kSurfaceRadiusXY;
+    grid.MinY = start.GetPositionY() - kSurfaceRadiusXY;
+    grid.MinZ = start.GetPositionZ() - kSurfaceRadiusZ;
+    grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusXY / cellSize))));
+    grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusXY / cellSize))));
+    grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusZ / cellSize))));
+
+    float const startLevel = map->GetWaterLevel(start.GetPositionX(), start.GetPositionY());
+    bool const startInWater = map->IsUnderWater(phase, start.GetPositionX(), start.GetPositionY(),
+                                                start.GetPositionZ(), 1.0f) ||
+                              map->IsInWater(phase, start.GetPositionX(), start.GetPositionY(),
+                                             start.GetPositionZ(), 1.0f) ||
+                              (startLevel > INVALID_HEIGHT && start.GetPositionZ() <= startLevel + kSurfaceMargin);
+    grid.RestrictSky = startInWater;
+
+    uint32 const maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
+    uint32 const maxTimeMs =
+        std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
+
+    std::unordered_map<GridNode, NodeState, GridNodeHash> states;
+    states.reserve(4096);
+
+    GridNode startNode;
+    if (!FindNearestNavigable(grid, start, startNode, states))
+        return false;
+
+    NodeState& startState = states[startNode];
+    startState.G = 0.0f;
+    startState.F = 0.0f;
+    startState.HasParent = false;
+
+    std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open;
+    open.push({0.0f, startNode});
+
+    constexpr float kSurfaceCheckHeight = 2.0f;
+    uint32 const startedMs = getMSTime();
+    uint32 expanded = 0;
+    bool found = false;
+    GridNode surfaceNode{};
+
+    while (!open.empty())
+    {
+        if ((expanded & kTimeCheckMask) == 0 && getMSTime() - startedMs >= maxTimeMs)
+            break;
+
+        QueueNode const current = open.top();
+        open.pop();
+
+        NodeState& currentState = states[current.Node];
+        if (currentState.Closed)
+            continue;
+
+        currentState.Closed = true;
+        ++expanded;
+
+        Position const currentCenter = grid.Center(current.Node);
+        LiquidData const liquid = map->GetLiquidData(phase, currentCenter.GetPositionX(),
+                                                     currentCenter.GetPositionY(),
+                                                     currentCenter.GetPositionZ() + 0.5f,
+                                                     kSurfaceCheckHeight, {});
+        bool const atSurface =
+            liquid.Level > INVALID_HEIGHT
+                ? currentCenter.GetPositionZ() >= liquid.Level - 0.5f
+                : !map->IsUnderWater(phase, currentCenter.GetPositionX(), currentCenter.GetPositionY(),
+                                     currentCenter.GetPositionZ(), kSurfaceCheckHeight);
+        if (atSurface)
+        {
+            found = true;
+            surfaceNode = current.Node;
+            break;
+        }
+
+        if (expanded >= maxNodes)
+            break;
+
+        static GridNode const offsets[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+                                           {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (GridNode const& offset : offsets)
+        {
+            GridNode const neighbor{current.Node.X + offset.X, current.Node.Y + offset.Y,
+                                    current.Node.Z + offset.Z};
+            if (!grid.Contains(neighbor))
+                continue;
+
+            NodeState& neighborState = states[neighbor];
+            if (neighborState.Closed)
+                continue;
+
+            if (!IsNavigable(grid, neighbor, neighborState))
+                continue;
+
+            Position const neighborCenter = grid.Center(neighbor);
+            if (!LineClear(map, phase, currentCenter, neighborCenter))
+                continue;
+
+            float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
+            if (tentative >= neighborState.G)
+                continue;
+
+            neighborState.G = tentative;
+            neighborState.Parent = current.Node;
+            neighborState.HasParent = true;
+            neighborState.F = tentative;
+            open.push({tentative, neighbor});
+        }
+    }
+
+    result.Nodes = uint32(states.size());
+    result.Expanded = expanded;
+    result.ElapsedMs = getMSTime() - startedMs;
+
+    if (!found)
+        return false;
+
+    Position const surface = grid.Center(surfaceNode);
+    if (!BuildPath(grid, states, startNode, surfaceNode, start, surface, false, path, result))
+        return false;
+
+    result.Found = true;
+    return true;
+}
+
+bool Nav3DManager::IsPathClear(Map* map, uint32 phase, Movement::PointsArray const& path, float radius) const
+{
+    if (!map || path.size() < 2)
+        return false;
+
+    for (size_t i = 1; i < path.size(); ++i)
+        if (!SegmentClear(map, phase, path[i - 1], path[i], radius))
+            return false;
+
     return true;
 }
