@@ -71,6 +71,16 @@ bool Nav3DTestAction::Execute(Event event)
     if (!bot || !bot->GetMap())
         return false;
 
+    // Test-only: a forced fly spline does not disable the player's gravity by itself. Put the
+    // bot on a real flying mount so the mount aura supplies the fly flags.
+    if (fly)
+    {
+        bot->SetSkill(SKILL_RIDING, 4, 300, 300);
+        if (bot->IsMounted())
+            bot->Dismount();
+        bot->CastSpell(bot, 34068, true);  // Swift Nether Drake
+    }
+
     Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     Position const goal = points.front();
 
