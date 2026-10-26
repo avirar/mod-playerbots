@@ -368,6 +368,22 @@ Playerbots.DisableMoveSplinePath = 0
 # Default: 3
 Playerbots.MaxMovementSearchTime = 3
 
+# Nav3D volumetric navigation (experimental; swimming and WMO-interior air).
+# When disabled, all movement uses the existing 2D mmap / straight-spline behaviour.
+Playerbots.Nav3D.Enabled = 0
+# Build a local graph on demand (P0b) instead of loading .n3t tiles.
+Playerbots.Nav3D.Lazy = 0
+# Enable liquid-volume cells. When off, only dry WMO/cave cells are navigable.
+Playerbots.Nav3D.Swim = 1
+# Grid cell size in yards. WMO interiors use this size; open water uses twice it.
+Playerbots.Nav3D.CellSize = 1.0
+# Areas where the coarse (2x) grid is safe: open water without WMO tunnels. CSV of area ids.
+# Empty = rely on the WMO-floor heuristic only.
+Playerbots.Nav3D.OpenWaterAreas =
+# A* limits; keep these bounded on map threads.
+Playerbots.Nav3D.MaxNodes = 20000
+Playerbots.Nav3D.MaxSearchTimeMs = 50
+
 # Action expiration time
 Playerbots.ExpireActionTime = 5000
 
