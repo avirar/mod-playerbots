@@ -44,6 +44,9 @@ protected:
     // Pathless swims must be checked as a segment, not just at the destination. Returns false
     // when the sampled segment is too close to the floor or the low ray is obstructed.
     bool IsSwimPathClear(float x, float y, float z, float& worstClearance, bool& terrainChecked) const;
+    // Generic local fallback when the 2D path is missing/blocked inside a WMO or water
+    // volume. Used by combat reach/chase, loot, and RPG/travel callers.
+    bool TryNav3DMove(float x, float y, float z, MovementPriority priority, char const* reason);
     float GetFollowAngle();
     bool Follow(Unit* target, float distance = sPlayerbotAIConfig.FollowDistance);
     bool Follow(Unit* target, float distance, float angle);
