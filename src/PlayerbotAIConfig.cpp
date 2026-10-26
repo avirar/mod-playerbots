@@ -17,6 +17,7 @@
 #include "RandomPlayerbotMgr.h"
 #include "Talentspec.h"
 #include "TravelMgr.h"
+#include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <sstream>
@@ -92,6 +93,17 @@ bool PlayerbotAIConfig::Initialize()
     MaxWaitForMove = sConfigMgr->GetOption<int32>("Playerbots.MaxWaitForMove", 5000);
     DisableMoveSplinePath = sConfigMgr->GetOption<int32>("Playerbots.DisableMoveSplinePath", 0);
     MaxMovementSearchTime = sConfigMgr->GetOption<int32>("Playerbots.MaxMovementSearchTime", 3);
+    Nav3DEnabled = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Enabled", false);
+    Nav3DLazy = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Lazy", false);
+    Nav3DSwim = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Swim", true);
+    Nav3DCellSize = sConfigMgr->GetOption<float>("Playerbots.Nav3D.CellSize", 1.0f);
+    Nav3DMaxNodes = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxNodes", 20000);
+    Nav3DMaxSearchTimeMs = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxSearchTimeMs", 50);
+    Nav3DOpenWaterAreas.clear();
+    LoadList<std::vector<uint32>>(
+        sConfigMgr->GetOption<std::string>("Playerbots.Nav3D.OpenWaterAreas", ""), Nav3DOpenWaterAreas);
+    Nav3DOpenWaterAreas.erase(
+        std::remove(Nav3DOpenWaterAreas.begin(), Nav3DOpenWaterAreas.end(), 0), Nav3DOpenWaterAreas.end());
     ExpireActionTime = sConfigMgr->GetOption<int32>("Playerbots.ExpireActionTime", 5000);
     DispelAuraDuration = sConfigMgr->GetOption<int32>("Playerbots.DispelAuraDuration", 700);
     ReactDelay = sConfigMgr->GetOption<int32>("Playerbots.ReactDelay", 100);
