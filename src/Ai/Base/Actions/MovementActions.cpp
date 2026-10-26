@@ -170,6 +170,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
                             bool exact_waypoint, MovementPriority priority, bool lessDelay, bool backwards)
 {
     UpdateMovementState();
+    LogMoveProbe(exact_waypoint ? "MoveTo-exact" : "MoveTo-path", x, y, z);
     if (!IsMovingAllowed())
     {
         return false;
@@ -1756,8 +1757,29 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     return result;
 }
 
+void MovementAction::LogMoveProbe(char const* kind, float x, float y, float z)
+{
+    if (!bot || !bot->GetMap())
+        return;
+
+    Map* map = bot->GetMap();
+    uint32 const phase = bot->GetPhaseMask();
+    float const terrain = map->GetHeight(phase, x, y, MAX_HEIGHT, true);
+    float const minHeight = map->GetMinHeight(x, y);
+    float const waterLevel = map->GetWaterLevel(x, y);
+    LOG_DEBUG("playerbots",
+              "move-probe {} kind={} action={} map={} from=({:.2f},{:.2f},{:.2f}) to=({:.2f},{:.2f},{:.2f}) "
+              "terrainDest={:.2f} minDest={:.2f} waterDest={:.2f} inWaterBot={} underBot={} los={}",
+              bot->GetName(), kind, getName(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+              bot->GetPositionZ(), x, y, z, terrain, minHeight, waterLevel, bot->IsInWater() ? 1 : 0,
+              bot->IsUnderWater() ? 1 : 0, bot->IsWithinLOS(x, y, z) ? 1 : 0);
+}
+
 void MovementAction::DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards)
 {
+    if (unit == bot)
+        LogMoveProbe("DoMovePoint", x, y, z);
+
     if (!unit)
         return;
 

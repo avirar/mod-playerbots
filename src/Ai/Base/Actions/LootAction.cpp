@@ -39,7 +39,23 @@ bool LootAction::Execute(Event /*event*/)
     }
 
     context->GetValue<LootObject>("loot target")->Set(lootObject);
-    LOG_DEBUG("playerbots", "swim-trace {}: loot target set to {}", bot->GetName(), lootObject.guid.ToString());
+    // TEMP DIAGNOSTIC: log target geometry so targets inside/below the terrain are obvious.
+    if (WorldObject* obj = lootObject.GetWorldObject(bot))
+    {
+        Map* map = bot->GetMap();
+        float const terrain =
+            map->GetHeight(bot->GetPhaseMask(), obj->GetPositionX(), obj->GetPositionY(), MAX_HEIGHT, true);
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: loot target set to {} entry {} at ({:.2f},{:.2f},{:.2f}) terrain={:.2f} "
+                  "terrainDelta={:.2f} water={:.2f} inWaterTarget={}",
+                  bot->GetName(), lootObject.guid.ToString(), obj->GetEntry(), obj->GetPositionX(),
+                  obj->GetPositionY(), obj->GetPositionZ(), terrain, obj->GetPositionZ() - terrain,
+                  map->GetWaterLevel(obj->GetPositionX(), obj->GetPositionY()),
+                  map->IsInWater(bot->GetPhaseMask(), obj->GetPositionX(), obj->GetPositionY(), obj->GetPositionZ(),
+                                 bot->GetCollisionHeight())
+                      ? 1
+                      : 0);
+    }
     return true;
 }
 

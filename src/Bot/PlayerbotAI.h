@@ -637,6 +637,9 @@ public:
     uint32 diveAscendStartMs = 0;
     float diveAscendLastZ = 0;
     uint8 diveAscendRetries = 0;
+
+    // TEMP DIAGNOSTIC (WMO/void clipping): throttled state sampler timestamp.
+    uint32 debugSampleMs = 0;
     int32 diveAirMs = INT32_MAX;
     bool diveSurfacing = false;
     bool diveHoldSurface = false;

@@ -559,6 +559,50 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
     if (!bot->GetMap())
         return; // instances are created and destroyed on demand
 
+    // TEMP DIAGNOSTIC (WMO/void clipping): sample full movement/geometry state near water at
+    // 250ms so a repro can be reconstructed frame by frame. Remove with the other probes.
+    if (bot->IsInWater() || bot->IsUnderWater() || diveSurfacing || diveHoldSurface)
+    {
+        uint32 const nowMs = getMSTime();
+        if (!debugSampleMs || nowMs - debugSampleMs >= 250)
+        {
+            debugSampleMs = nowMs;
+            Map* map = bot->GetMap();
+            float const px = bot->GetPositionX();
+            float const py = bot->GetPositionY();
+            float const pz = bot->GetPositionZ();
+            uint32 const phase = bot->GetPhaseMask();
+            float const terrain = map->GetHeight(phase, px, py, MAX_HEIGHT, true);
+            float const minHeight = map->GetMinHeight(px, py);
+            float const waterLevel = map->GetWaterLevel(px, py);
+            LootObject loot = GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
+            LootObjectStack* stack = GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get();
+            Engine* engine = GetCurrentEngine();
+            LOG_DEBUG("playerbots",
+                      "avio-sample pos=({:.2f},{:.2f},{:.2f}) o={:.2f} map={} inWater={} underWater={} swimming={} "
+                      "mounted={} moving={} flying={} motion={} action={} air={:.0f}s submerged={} hold={} "
+                      "surfacing={} ascendRetries={} loot={} stack={} terrain={:.2f} minHeight={:.2f} water={:.2f} "
+                      "terrainBelow={:.2f}",
+                      px, py, pz, bot->GetOrientation(), bot->GetMapId(), bot->IsInWater() ? 1 : 0,
+                      bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0, bot->IsMounted() ? 1 : 0,
+                      bot->isMoving() ? 1 : 0, bot->IsFlying() ? 1 : 0,
+                      uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()),
+                      engine ? engine->GetLastAction() : "-", float(diveAirMs) / IN_MILLISECONDS,
+                      diveSubmergedSince ? (nowMs - diveSubmergedSince) / IN_MILLISECONDS : 0, diveHoldSurface ? 1 : 0,
+                      diveSurfacing ? 1 : 0, uint32(diveAscendRetries), loot.guid.ToString(), stack ? stack->Size() : 0,
+                      terrain, minHeight, waterLevel, pz - terrain);
+
+            bool const belowMin = minHeight > -1000.0f && pz < minHeight - 2.0f;
+            bool const belowTerrain = terrain > -1000.0f && !bot->IsInWater() && pz < terrain - 2.0f;
+            if (belowMin || belowTerrain)
+                LOG_DEBUG("playerbots", "SUSPECT {} below geometry: belowMin={} belowTerrain={} z={:.2f} terrain={:.2f} "
+                                        "minHeight={:.2f} inWater={}",
+                          bot->GetName(), belowMin ? 1 : 0, belowTerrain ? 1 : 0, pz, terrain, minHeight,
+                          bot->IsInWater() ? 1 : 0);
+        }
+    }
+
+
     // A dead bot must not keep dive state: the corpse timer would otherwise drain the air model
     // across the whole death and the next dive would start at negative air.
     if (!bot->IsAlive() && diveAirMs != INT32_MAX)
