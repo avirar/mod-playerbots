@@ -576,12 +576,11 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
             float const minHeight = map->GetMinHeight(px, py);
             float const waterLevel = map->GetWaterLevel(px, py);
             LootObject loot = GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
-            LootObjectStack* stack = GetAiObjectContext()->GetValue<LootObjectStack*>("available loot")->Get();
             Engine* engine = GetCurrentEngine();
             LOG_DEBUG("playerbots",
                       "avio-sample pos=({:.2f},{:.2f},{:.2f}) o={:.2f} map={} inWater={} underWater={} swimming={} "
                       "mounted={} moving={} flying={} motion={} action={} air={:.0f}s submerged={} hold={} "
-                      "surfacing={} ascendRetries={} loot={} stack={} terrain={:.2f} minHeight={:.2f} water={:.2f} "
+                      "surfacing={} ascendRetries={} loot={} terrain={:.2f} minHeight={:.2f} water={:.2f} "
                       "terrainBelow={:.2f}",
                       px, py, pz, bot->GetOrientation(), bot->GetMapId(), bot->IsInWater() ? 1 : 0,
                       bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0, bot->IsMounted() ? 1 : 0,
@@ -589,7 +588,7 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
                       uint32(bot->GetMotionMaster()->GetCurrentMovementGeneratorType()),
                       engine ? engine->GetLastAction() : "-", float(diveAirMs) / IN_MILLISECONDS,
                       diveSubmergedSince ? (nowMs - diveSubmergedSince) / IN_MILLISECONDS : 0, diveHoldSurface ? 1 : 0,
-                      diveSurfacing ? 1 : 0, uint32(diveAscendRetries), loot.guid.ToString(), stack ? stack->Size() : 0,
+                      diveSurfacing ? 1 : 0, uint32(diveAscendRetries), loot.guid.ToString(),
                       terrain, minHeight, waterLevel, pz - terrain);
 
             bool const belowMin = minHeight > -1000.0f && pz < minHeight - 2.0f;
@@ -601,7 +600,6 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
                           bot->IsInWater() ? 1 : 0);
         }
     }
-
 
     // A dead bot must not keep dive state: the corpse timer would otherwise drain the air model
     // across the whole death and the next dive would start at negative air.
