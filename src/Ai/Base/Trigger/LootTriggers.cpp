@@ -68,7 +68,7 @@ bool UnderwaterSafetyTrigger::IsActive()
     uint32 const now = getMSTime();
     uint32 elapsed = 0;
     if (botAI->diveLastTickMs)
-        elapsed = now - botAI->diveLastTickMs;  // ticks can be 1-3 s out of combat; never cap
+        elapsed = std::min<uint32>(now - botAI->diveLastTickMs, 10000);  // ticks can be 1-3 s
     botAI->diveLastTickMs = now;
 
     // WaterBreath.Timer is already in milliseconds and the core consumes it raw.
@@ -83,7 +83,7 @@ bool UnderwaterSafetyTrigger::IsActive()
             botAI->diveAirMs = maxAir;
         if (!botAI->diveSubmergedSince)
             botAI->diveSubmergedSince = now;
-        botAI->diveAirMs -= int32(elapsed);
+        botAI->diveAirMs = std::max<int32>(0, botAI->diveAirMs - int32(elapsed));
 
         // Surface with a quarter of the breath left (15s floor): "low air" has to fire on every
         // realm config, including long-breath ones like WaterBreathTimer = 180000 (ms).

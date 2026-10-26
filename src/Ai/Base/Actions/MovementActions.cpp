@@ -2614,7 +2614,9 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
         botAI->diveSurfaceMap = bot->GetMapId();
         botAI->diveSurfaceX = x;
         botAI->diveSurfaceY = y;
-        botAI->diveSurfaceZ = level + 0.5f;
+        // Float exactly at the water level: anything above it reads as "not in water",
+        // which released the surface hold instantly and let move-to-loot re-dive on low air.
+        botAI->diveSurfaceZ = level;
         return true;
     };
 
@@ -2631,11 +2633,13 @@ bool SurfaceFromDiveAction::FindSurfacePoint()
         }
     }
 
-    // Enclosed cave: go straight up and let the movement watchdog bound it.
+    // Enclosed cave: go straight up to the water level and let the movement watchdog bound it.
     botAI->diveSurfaceMap = bot->GetMapId();
     botAI->diveSurfaceX = bx;
     botAI->diveSurfaceY = by;
-    botAI->diveSurfaceZ = std::max(bz, map->GetWaterLevel(bx, by)) + 1.0f;
+    float const blindLevel = map->GetWaterLevel(bx, by);
+    botAI->diveSurfaceZ = (blindLevel == INVALID_HEIGHT || blindLevel == VMAP_INVALID_HEIGHT_VALUE) ? bz + 10.0f
+                                                                                                  : blindLevel;
     return false;
 }
 
