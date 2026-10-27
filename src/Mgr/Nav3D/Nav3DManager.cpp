@@ -354,11 +354,21 @@ namespace
         return true;
     }
 
+    bool TileLineClearLive(Nav3DTile const* tile, Map* map, uint32 phase, G3D::Vector3 const& from,
+                           G3D::Vector3 const& to)
+    {
+        if (!TileLineClear(tile, from, to, kTileBodyRadius))
+            return false;
+        if (tile->Header().Flags & Nav3D::FlagLiveLos)
+            return LineClear(map, phase, from, to);
+        return true;
+    }
+
     bool GridLineClear(Grid const& grid, Map* map, uint32 phase, G3D::Vector3 const& from,
                        G3D::Vector3 const& to)
     {
         if (grid.Tile)
-            return TileLineClear(grid.Tile, from, to, kTileBodyRadius);
+            return TileLineClearLive(grid.Tile, map, phase, from, to);
         return LineClear(map, phase, from, to) && SolidTileLineClear(grid, from, to);
     }
 
@@ -368,7 +378,7 @@ namespace
         G3D::Vector3 const fromPoint{from.GetPositionX(), from.GetPositionY(), from.GetPositionZ()};
         G3D::Vector3 const toPoint{to.GetPositionX(), to.GetPositionY(), to.GetPositionZ()};
         if (grid.Tile)
-            return TileLineClear(grid.Tile, fromPoint, toPoint, kTileBodyRadius);
+            return TileLineClearLive(grid.Tile, map, phase, fromPoint, toPoint);
         return LineClear(map, phase, fromPoint, toPoint) && SolidTileLineClear(grid, fromPoint, toPoint);
     }
 
@@ -620,7 +630,7 @@ namespace
         if (grid.Tile)
         {
             for (size_t i = 1; capsuleClear && i < path.size(); ++i)
-                capsuleClear = TileLineClear(grid.Tile, path[i - 1], path[i], kTileBodyRadius);
+                capsuleClear = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, path[i - 1], path[i]);
         }
         else
         {
@@ -640,7 +650,7 @@ namespace
         {
             pathSafe = path.size() >= 2;
             for (size_t i = 1; pathSafe && i < path.size(); ++i)
-                pathSafe = TileLineClear(grid.Tile, path[i - 1], path[i], kTileBodyRadius);
+                pathSafe = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, path[i - 1], path[i]);
         }
         else
             pathSafe = PathFloorSafe(grid.MapPtr, grid.Phase, path, kHardFloorClearance) &&
@@ -654,7 +664,7 @@ namespace
             {
                 rawSafe = points.size() >= 2;
                 for (size_t i = 1; rawSafe && i < points.size(); ++i)
-                    rawSafe = TileLineClear(grid.Tile, points[i - 1], points[i], kTileBodyRadius);
+                    rawSafe = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, points[i - 1], points[i]);
             }
             else
                 rawSafe = PathFloorSafe(grid.MapPtr, grid.Phase, points, kHardFloorClearance) &&
@@ -894,7 +904,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
 
     G3D::Vector3 const startPoint{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
     G3D::Vector3 const goalPoint{goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()};
-    bool const directClear = tile ? TileLineClear(tile, startPoint, goalPoint, kTileBodyRadius)
+    bool const directClear = tile ? TileLineClearLive(tile, map, phase, startPoint, goalPoint)
                                   : SegmentClear(map, phase, startPoint, goalPoint, 0.5f);
     if (directClear)
     {
