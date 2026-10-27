@@ -3312,7 +3312,7 @@ bool MoveToLootAction::Execute(Event /*event*/)
         {
             // The direct segment is blocked, but a wreck hold or tunnel room can still be
             // reachable through the volumetric mesh. Try that before dropping the target.
-            if (sPlayerbotAIConfig.Nav3DEnabled && sPlayerbotAIConfig.Nav3DLazy)
+            if (sPlayerbotAIConfig.Nav3DEnabled)
             {
                 Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
                 Position const goal(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());

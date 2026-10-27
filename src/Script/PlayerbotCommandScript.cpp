@@ -18,7 +18,12 @@
 #include "QuestDef.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "StringFormat.h"
+#include "World.h"
 #include "Timer.h"
+
+#include <filesystem>
+#include <sstream>
 
 using namespace Acore::ChatCommands;
 
@@ -49,6 +54,8 @@ public:
             {"nav3dmove", HandleNav3DMoveCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dmap", HandleNav3DMapCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dteleport", HandleNav3DTeleportCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dbake", HandleNav3DBakeCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dtile", HandleNav3DTileCommand, SEC_GAMEMASTER, Console::Yes},
             {"addquest", HandleAddQuestCommand, SEC_GAMEMASTER, Console::Yes},
             {"completequest", HandleCompleteQuestCommand, SEC_GAMEMASTER, Console::Yes},
             {"surface", HandleSurfaceCommand, SEC_GAMEMASTER, Console::Yes},
@@ -216,6 +223,133 @@ public:
         for (size_t i = 0; i < path.size(); ++i)
             LOG_INFO("playerbots", "nav3dmap {} point[{}] = ({:.2f},{:.2f},{:.2f})", mapId, i, path[i].x, path[i].y,
                      path[i].z);
+        return true;
+    }
+
+    static bool HandleNav3DTileCommand(ChatHandler* handler, PlayerIdentifier target, float x, float y,
+                                       float z, Optional<float> radiusArg)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Map* map = bot->GetMap();
+        if (!map)
+        {
+            handler->SendErrorMessage("nav3dtile {} has no map", target.GetName());
+            return false;
+        }
+
+        constexpr float gridSize = 533.3333f;
+        uint16 const tileX = uint16(std::max<int32>(0, int32(std::floor(32.0f - x / gridSize))));
+        uint16 const tileY = uint16(std::max<int32>(0, int32(std::floor(32.0f - y / gridSize))));
+        std::shared_ptr<Nav3DTile> tile = Nav3DManager::Instance().GetTile(map->GetId(), tileX, tileY,
+                                                                          Nav3D::MediumWater);
+        if (!tile)
+        {
+            handler->SendErrorMessage("nav3dtile no tile for map {} tile {}:{}", map->GetId(), tileX, tileY);
+            return false;
+        }
+
+        Nav3DTileHeader const& header = tile->Header();
+        float const radius = radiusArg.value_or(0.5f);
+        bool const navigable = tile->IsNavigable(x, y, z, radius);
+        uint8 const clearance = tile->GetClearance(x, y, z);
+        handler->PSendSysMessage(
+            "nav3dtile map {} tile {}:{} origin=({:.2f},{:.2f},{:.2f}) size={}x{}x{} cell={:.2f} "
+            "point=({:.2f},{:.2f},{:.2f}) radius={:.2f} navigable={} clearance={}",
+            map->GetId(), tileX, tileY, header.OriginX, header.OriginY, header.OriginZ, header.SizeX,
+            header.SizeY, header.SizeZ, header.CellSize, x, y, z, radius, navigable ? 1 : 0, clearance);
+        LOG_INFO("playerbots",
+                 "nav3dtile map {} tile {}:{} origin=({:.2f},{:.2f},{:.2f}) size={}x{}x{} cell={:.2f} "
+                 "point=({:.2f},{:.2f},{:.2f}) radius={:.2f} navigable={} clearance={}",
+                 map->GetId(), tileX, tileY, header.OriginX, header.OriginY, header.OriginZ, header.SizeX,
+                 header.SizeY, header.SizeZ, header.CellSize, x, y, z, radius, navigable ? 1 : 0, clearance);
+        return true;
+    }
+
+    static bool HandleNav3DBakeCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        std::istringstream in{std::string(command)};
+        uint32 tileX = 0;
+        uint32 tileY = 0;
+        float cellSize = 1.0f;
+        float waterLevel = 0.0f;
+        float minZ = -150.0f;
+        float boundsMinX = 0.0f;
+        float boundsMaxX = 0.0f;
+        float boundsMinY = 0.0f;
+        float boundsMaxY = 0.0f;
+        if (!(in >> tileX >> tileY))
+        {
+            handler->SendErrorMessage(
+                "Usage: nav3dbake <bot> <tileX> <tileY> [cellSize] [waterLevel] [minZ] "
+                "[minX maxX minY maxY]");
+            return false;
+        }
+        in >> cellSize;
+        if (!in)
+            cellSize = 1.0f;
+        in.clear();
+        in >> waterLevel;
+        if (!in)
+            waterLevel = 0.0f;
+        in.clear();
+        in >> minZ;
+        if (!in)
+            minZ = waterLevel - 150.0f;
+
+        in.clear();
+        if (!(in >> boundsMinX >> boundsMaxX >> boundsMinY >> boundsMaxY))
+            boundsMinX = boundsMaxX = boundsMinY = boundsMaxY = 0.0f;
+
+        Player* bot = botAI->GetBot();
+        Map* map = bot->GetMap();
+        if (!map)
+        {
+            handler->SendErrorMessage("nav3dbake {} has no map", target.GetName());
+            return false;
+        }
+
+        std::string dataPath = sWorld ? sWorld->GetDataPath() : std::string();
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+        dataPath += sPlayerbotAIConfig.Nav3DDataPath;
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+
+        std::string const relative =
+            Acore::StringFormat("map{:04}/{}_{}_water.n3t", map->GetId(), tileX, tileY);
+        std::filesystem::path const outputPath = std::filesystem::path(dataPath) / relative;
+        std::error_code ec;
+        std::filesystem::create_directories(outputPath.parent_path(), ec);
+        if (ec)
+        {
+            handler->SendErrorMessage("nav3dbake cannot create {}: {}", outputPath.parent_path().string(),
+                                      ec.message());
+            return false;
+        }
+
+        std::string error;
+        bool const baked = Nav3DManager::Instance().BakeWaterTile(
+            map, bot->GetPhaseMask(), uint16(tileX), uint16(tileY), cellSize, waterLevel, minZ,
+            boundsMinX, boundsMaxX, boundsMinY, boundsMaxY, outputPath.string(), error);
+        if (!baked)
+        {
+            handler->SendErrorMessage("nav3dbake failed: {}", error);
+            LOG_ERROR("playerbots", "nav3dbake failed map {} tile {}:{}: {}", map->GetId(), tileX, tileY,
+                      error);
+            return false;
+        }
+
+        Nav3DManager::Instance().ClearTileCache();
+        handler->PSendSysMessage("nav3dbake {} map {} tile {}:{} -> {}", target.GetName(), map->GetId(),
+                                 tileX, tileY, outputPath.string());
         return true;
     }
 

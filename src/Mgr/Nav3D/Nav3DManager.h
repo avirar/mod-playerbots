@@ -54,11 +54,21 @@ public:
     std::shared_ptr<Nav3DTile> GetTile(uint32 mapId, uint16 tileX, uint16 tileY, uint8 medium);
     void ClearTileCache();
 
+    // Live-Map bake for WMO/dynamic interiors that the static VMAP extractor does not
+    // reproduce. Writes a single water tile; intended for a one-time GM command.
+    bool BakeWaterTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
+                       float waterLevel, float minZ, float boundsMinX, float boundsMaxX,
+                       float boundsMinY, float boundsMaxY, std::string const& outputPath,
+                       std::string& error);
+
 private:
     Nav3DManager() = default;
 
     bool FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
-                          Movement::PointsArray& path, Nav3DResult& result);
+                          Movement::PointsArray& path, Nav3DResult& result,
+                          Nav3DTile const* tile = nullptr);
+    bool FindPathTile(Map* map, uint32 phase, Position const& start, Position const& goal,
+                      Movement::PointsArray& path, Nav3DResult& result);
 
     struct TileCacheEntry
     {

@@ -18,14 +18,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
-#include <fstream>
 #include <limits>
 #include <queue>
 #include <unordered_map>
 #include <vector>
-
-#include <zlib.h>
 
 namespace
 {
@@ -40,6 +36,7 @@ namespace
     constexpr float kSurfaceMargin = 0.5f;
     constexpr float kFloorMargin = 0.25f;  // navigability: keep tight tunnel cells connected
     constexpr float kCapsuleFloorClearance = 0.5f;  // final body clearance
+    constexpr float kTileBodyRadius = 0.5f;  // tile clearance gate (0.25-yd units: 2)
     constexpr float kHardFloorClearance = -0.05f;  // final path may touch the floor, not pass it
     constexpr uint32 kNeighborsCardinal = 6;
     constexpr uint32 kNeighborsEdge = 18;
@@ -56,26 +53,6 @@ namespace
     // Bound the smoothing candidate scan: a full O(n^2) pass over a long cell chain can block
     // the map thread for minutes. Chunked smoothing still removes most cell stair-stepping.
     constexpr size_t kMaxSmoothSkip = 64;
-    constexpr uint32 kMaxTilePayload = 1024u * 1024u * 1024u;
-
-    template <typename T>
-    void AppendPod(std::vector<uint8>& out, T const& value)
-    {
-        size_t const offset = out.size();
-        out.resize(offset + sizeof(T));
-        std::memcpy(out.data() + offset, &value, sizeof(T));
-    }
-
-    template <typename T>
-    bool ReadPod(std::vector<uint8> const& in, size_t& offset, T& value)
-    {
-        if (offset + sizeof(T) > in.size())
-            return false;
-        std::memcpy(&value, in.data() + offset, sizeof(T));
-        offset += sizeof(T);
-        return true;
-    }
-
     struct GridNode
     {
         int32 X = 0;
@@ -136,6 +113,7 @@ namespace
         float MinY = 0.0f;
         float MinZ = 0.0f;
         bool RestrictSky = false;
+        Nav3DTile const* Tile = nullptr;
         int32 SizeX = 0;
         int32 SizeY = 0;
         int32 SizeZ = 0;
@@ -291,6 +269,42 @@ namespace
                                     VMAP::ModelIgnoreFlags::Nothing);
     }
 
+    bool TileLineClear(Nav3DTile const* tile, G3D::Vector3 const& from, G3D::Vector3 const& to,
+                       float radius)
+    {
+        if (!tile)
+            return false;
+
+        float const distance = Distance(from, to);
+        int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            G3D::Vector3 const point = from + (to - from) * (float(i) / float(steps));
+            if (!tile->IsNavigable(point.x, point.y, point.z, radius))
+                return false;
+        }
+        return true;
+    }
+
+    bool GridLineClear(Grid const& grid, Map* map, uint32 phase, G3D::Vector3 const& from,
+                       G3D::Vector3 const& to)
+    {
+        if (grid.Tile)
+            return TileLineClear(grid.Tile, from, to, kTileBodyRadius);
+        return LineClear(map, phase, from, to);
+    }
+
+    bool GridLineClear(Grid const& grid, Map* map, uint32 phase, Position const& from,
+                       Position const& to)
+    {
+        if (grid.Tile)
+            return TileLineClear(grid.Tile,
+                                 {from.GetPositionX(), from.GetPositionY(), from.GetPositionZ()},
+                                 {to.GetPositionX(), to.GetPositionY(), to.GetPositionZ()},
+                                 kTileBodyRadius);
+        return LineClear(map, phase, from, to);
+    }
+
     bool PathCenterLineSafe(Map* map, uint32 phase, Movement::PointsArray const& path)
     {
         for (size_t i = 1; i < path.size(); ++i)
@@ -369,6 +383,14 @@ namespace
             return state.Nav > 0;
 
         Position const center = grid.Center(node);
+        if (grid.Tile)
+        {
+            bool const navigable = grid.Tile->IsNavigable(center.GetPositionX(), center.GetPositionY(),
+                                                          center.GetPositionZ(), kTileBodyRadius);
+            state.Nav = navigable ? 1 : -1;
+            return navigable;
+        }
+
         float const x = center.GetPositionX();
         float const y = center.GetPositionY();
         float const z = center.GetPositionZ();
@@ -510,7 +532,7 @@ namespace
             size_t const maxCandidate = std::min(last, index + kMaxSmoothSkip);
             for (size_t candidate = maxCandidate; candidate > index + 1; --candidate)
             {
-                if (LineClear(grid.MapPtr, grid.Phase, points[index], points[candidate]))
+                if (GridLineClear(grid, grid.MapPtr, grid.Phase, points[index], points[candidate]))
                 {
                     best = candidate;
                     break;
@@ -522,8 +544,16 @@ namespace
         }
 
         bool capsuleClear = path.size() >= 2;
-        for (size_t i = 1; capsuleClear && i < path.size(); ++i)
-            capsuleClear = SegmentClear(grid.MapPtr, grid.Phase, path[i - 1], path[i], 0.5f);
+        if (grid.Tile)
+        {
+            for (size_t i = 1; capsuleClear && i < path.size(); ++i)
+                capsuleClear = TileLineClear(grid.Tile, path[i - 1], path[i], kTileBodyRadius);
+        }
+        else
+        {
+            for (size_t i = 1; capsuleClear && i < path.size(); ++i)
+                capsuleClear = SegmentClear(grid.MapPtr, grid.Phase, path[i - 1], path[i], 0.5f);
+        }
 
         if (!capsuleClear)
             path = points;
@@ -532,14 +562,32 @@ namespace
 
         // The capsule is advisory for a hull window, but the floor and centreline are not.
         // A path that dives below the seabed or passes through a wall must never be followed.
-        bool const pathSafe =
-            PathFloorSafe(grid.MapPtr, grid.Phase, path, kHardFloorClearance) &&
-            PathCenterLineSafe(grid.MapPtr, grid.Phase, path);
+        bool pathSafe = false;
+        if (grid.Tile)
+        {
+            pathSafe = path.size() >= 2;
+            for (size_t i = 1; pathSafe && i < path.size(); ++i)
+                pathSafe = TileLineClear(grid.Tile, path[i - 1], path[i], kTileBodyRadius);
+        }
+        else
+            pathSafe = PathFloorSafe(grid.MapPtr, grid.Phase, path, kHardFloorClearance) &&
+                       PathCenterLineSafe(grid.MapPtr, grid.Phase, path);
+
         if (!pathSafe)
         {
             RemoveCollinear(points);
-            if (!PathFloorSafe(grid.MapPtr, grid.Phase, points, kHardFloorClearance) ||
-                !PathCenterLineSafe(grid.MapPtr, grid.Phase, points))
+            bool rawSafe = false;
+            if (grid.Tile)
+            {
+                rawSafe = points.size() >= 2;
+                for (size_t i = 1; rawSafe && i < points.size(); ++i)
+                    rawSafe = TileLineClear(grid.Tile, points[i - 1], points[i], kTileBodyRadius);
+            }
+            else
+                rawSafe = PathFloorSafe(grid.MapPtr, grid.Phase, points, kHardFloorClearance) &&
+                          PathCenterLineSafe(grid.MapPtr, grid.Phase, points);
+
+            if (!rawSafe)
             {
                 LOG_DEBUG("playerbots",
                           "nav3d path rejected: floor or centreline unsafe (path={}, raw={})",
@@ -567,14 +615,72 @@ Nav3DManager& Nav3DManager::Instance()
     return instance;
 }
 
+bool Nav3DManager::FindPathTile(Map* map, uint32 phase, Position const& start, Position const& goal,
+                                Movement::PointsArray& path, Nav3DResult& result)
+{
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
+        return false;
+
+    constexpr float gridSize = 533.3333f;
+    uint16 const tileX =
+        uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionX() / gridSize))));
+    uint16 const tileY =
+        uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionY() / gridSize))));
+    std::shared_ptr<Nav3DTile> tile = GetTile(map->GetId(), tileX, tileY, Nav3D::MediumWater);
+    if (!tile)
+        return false;
+
+    Nav3DTileHeader const& header = tile->Header();
+    if (!(header.Flags & Nav3D::FlagHasSolid))
+        return false;  // live-baked tiles without solid data fall back to lazy
+    if (header.GeneratorVersion < 3)
+        return false;  // v1/v2 clearance was distance-to-water, not horizontal body clearance
+    float const maxX = header.OriginX + float(header.SizeX) * header.CellSize;
+    float const maxY = header.OriginY + float(header.SizeY) * header.CellSize;
+    float const maxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
+    auto const inside = [&header, maxX, maxY, maxZ](Position const& position)
+    {
+        return position.GetPositionX() >= header.OriginX && position.GetPositionX() <= maxX &&
+               position.GetPositionY() >= header.OriginY && position.GetPositionY() <= maxY &&
+               position.GetPositionZ() >= header.OriginZ && position.GetPositionZ() <= maxZ;
+    };
+    if (!inside(start) || !inside(goal))
+        return false;
+
+    Nav3DResult tileResult;
+    if (!FindPathDirected(map, phase, start, goal, path, tileResult, tile.get()))
+        return false;
+
+    result = tileResult;
+    result.CellSize = header.CellSize;
+    return true;
+}
+
 bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Position const& goal,
                             Movement::PointsArray& path, Nav3DResult& result)
 {
     result = {};
     path.clear();
 
-    if (!map || !sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
         return false;
+
+    if (!sPlayerbotAIConfig.Nav3DLazy)
+    {
+        if (FindPathTile(map, phase, start, goal, path, result))
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d tile path {} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) "
+                      "direct={} partial={} points={} len={:.1f} ms={}",
+                      map->GetId(), start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(),
+                      goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(), result.Direct ? 1 : 0,
+                      result.Partial ? 1 : 0, path.size(), result.Length, result.ElapsedMs);
+            return true;
+        }
+
+        LOG_DEBUG("playerbots", "nav3d tile miss map {} start=({:.2f},{:.2f},{:.2f}); lazy fallback",
+                  map->GetId(), start.GetPositionX(), start.GetPositionY(), start.GetPositionZ());
+    }
 
     if (FindPathDirected(map, phase, start, goal, path, result))
         return true;
@@ -599,46 +705,88 @@ bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Posit
 }
 
 bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
-                                    Movement::PointsArray& path, Nav3DResult& result)
+                                    Movement::PointsArray& path, Nav3DResult& result,
+                                    Nav3DTile const* tile)
 {
     result = {};
     path.clear();
 
-    if (!map || !sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
         return false;
 
-    bool const openWater = IsOpenWaterArea(map, phase, start) && IsOpenWaterArea(map, phase, goal);
-    bool const detailGrid = !openWater && (NeedsDetailGrid(map, phase, start) || NeedsDetailGrid(map, phase, goal));
-    float const detailCellSize = std::clamp(sPlayerbotAIConfig.Nav3DCellSize, kMinCellSize, kMaxCellSize);
-    float const cellSize = detailGrid ? detailCellSize : std::min(kMaxCellSize, detailCellSize * 2.0f);
-    result.CellSize = cellSize;
+    bool const openWater = !tile && IsOpenWaterArea(map, phase, start) && IsOpenWaterArea(map, phase, goal);
 
     Grid grid;
     grid.MapPtr = map;
     grid.Phase = phase;
-    grid.Cell = cellSize;
 
-    float const minX = std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad;
-    float const minY = std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad;
-    float const minZ = std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad;
-    float const maxX = std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad;
-    float const maxY = std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad;
-    float const maxZ = std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad;
+    if (tile)
+    {
+        Nav3DTileHeader const& header = tile->Header();
+        float const tileMaxX = header.OriginX + float(header.SizeX) * header.CellSize;
+        float const tileMaxY = header.OriginY + float(header.SizeY) * header.CellSize;
+        float const tileMaxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
 
-    grid.MinX = minX;
-    grid.MinY = minY;
-    grid.MinZ = minZ;
-    grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxX - minX) / cellSize))));
-    grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxY - minY) / cellSize))));
-    grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxZ - minZ) / cellSize))));
+        grid.Tile = tile;
+        grid.Cell = header.CellSize;
 
-    float const startLevel = map->GetWaterLevel(start.GetPositionX(), start.GetPositionY());
-    bool const startInWater = map->IsUnderWater(phase, start.GetPositionX(), start.GetPositionY(),
-                                                start.GetPositionZ(), 1.0f) ||
-                              map->IsInWater(phase, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(),
-                                             1.0f) ||
-                              (startLevel > INVALID_HEIGHT && start.GetPositionZ() <= startLevel + kSurfaceMargin);
-    grid.RestrictSky = startInWater;
+        // Align the search grid to the tile cell centres. Otherwise a node centre is offset
+        // from the baked cell it samples, and a one-cell-wide hull window can fall between
+        // the goal node and the tile, making a navigable window look unreachable.
+        auto const alignDown = [&header](float value, float origin)
+        {
+            return origin + std::floor((value - origin) / header.CellSize) * header.CellSize;
+        };
+        grid.MinX = alignDown(std::max(header.OriginX,
+                                       std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad),
+                              header.OriginX);
+        grid.MinY = alignDown(std::max(header.OriginY,
+                                       std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad),
+                              header.OriginY);
+        grid.MinZ = alignDown(std::max(header.OriginZ,
+                                       std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad),
+                              header.OriginZ);
+        float const maxX = std::min(tileMaxX,
+                                    std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad);
+        float const maxY = std::min(tileMaxY,
+                                    std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad);
+        float const maxZ = std::min(tileMaxZ,
+                                    std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad);
+        grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / header.CellSize)));
+        grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / header.CellSize)));
+        grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / header.CellSize)));
+        result.CellSize = header.CellSize;
+    }
+    else
+    {
+        bool const detailGrid =
+            !openWater && (NeedsDetailGrid(map, phase, start) || NeedsDetailGrid(map, phase, goal));
+        float const detailCellSize = std::clamp(sPlayerbotAIConfig.Nav3DCellSize, kMinCellSize, kMaxCellSize);
+        float const cellSize = detailGrid ? detailCellSize : std::min(kMaxCellSize, detailCellSize * 2.0f);
+        result.CellSize = cellSize;
+
+        grid.Cell = cellSize;
+        float const minX = std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad;
+        float const minY = std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad;
+        float const minZ = std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad;
+        float const maxX = std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad;
+        float const maxY = std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad;
+        float const maxZ = std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad;
+
+        grid.MinX = minX;
+        grid.MinY = minY;
+        grid.MinZ = minZ;
+        grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxX - minX) / cellSize))));
+        grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxY - minY) / cellSize))));
+        grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxZ - minZ) / cellSize))));
+
+        float const startLevel = map->GetWaterLevel(start.GetPositionX(), start.GetPositionY());
+        bool const startInWater =
+            map->IsUnderWater(phase, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), 1.0f) ||
+            map->IsInWater(phase, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), 1.0f) ||
+            (startLevel > INVALID_HEIGHT && start.GetPositionZ() <= startLevel + kSurfaceMargin);
+        grid.RestrictSky = startInWater;
+    }
 
     auto const inside = [&grid](Position const& position)
     {
@@ -664,11 +812,14 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         !FindNearestNavigable(grid, goal, goalNode, states))
         return false;
 
-    if (SegmentClear(map, phase, {start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()},
-                     {goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()}, 0.5f))
+    G3D::Vector3 const startPoint{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
+    G3D::Vector3 const goalPoint{goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()};
+    bool const directClear = tile ? TileLineClear(tile, startPoint, goalPoint, kTileBodyRadius)
+                                  : SegmentClear(map, phase, startPoint, goalPoint, 0.5f);
+    if (directClear)
     {
-        path.push_back({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
-        path.push_back({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
+        path.push_back(startPoint);
+        path.push_back(goalPoint);
         result.Found = true;
         result.Direct = true;
         result.Nodes = uint32(states.size());
@@ -681,10 +832,14 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     {
         return Distance(grid.Center(node), goal);
     };
+    // The tile has narrow one-cell hull windows. A pure Dijkstra-like heuristic expands most
+    // of the open-water volume before it finds the window; a greedy tile search is still safe
+    // because every visited cell has been clearance-checked, and it is much cheaper.
+    float const heuristicWeight = grid.Tile ? 2.0f : 1.0f;
 
     NodeState& startState = states[startNode];
     startState.G = 0.0f;
-    startState.F = heuristic(startNode);
+    startState.F = heuristic(startNode) * heuristicWeight;
     startState.HasParent = false;
 
     std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open;
@@ -767,7 +922,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
                 continue;
 
             Position const neighborCenter = grid.Center(neighbor);
-            if (!LineClear(map, phase, currentCenter, neighborCenter))
+            if (!GridLineClear(grid, map, phase, currentCenter, neighborCenter))
                 continue;
 
             float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
@@ -777,7 +932,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
             neighborState.G = tentative;
             neighborState.Parent = current.Node;
             neighborState.HasParent = true;
-            neighborState.F = tentative + heuristic(neighbor);
+            neighborState.F = tentative + heuristic(neighbor) * heuristicWeight;
             open.push({neighborState.F, neighbor});
         }
     }
@@ -921,7 +1076,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
                 continue;
 
             Position const neighborCenter = grid.Center(neighbor);
-            if (!LineClear(map, phase, currentCenter, neighborCenter))
+            if (!GridLineClear(grid, map, phase, currentCenter, neighborCenter))
                 continue;
 
             float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
@@ -961,292 +1116,6 @@ bool Nav3DManager::IsPathClear(Map* map, uint32 phase, Movement::PointsArray con
             return false;
 
     return true;
-}
-
-bool Nav3DTile::Save(std::string const& path) const
-{
-    if (path.empty() || _header.CellSize <= 0.0f || _header.SizeX == 0 || _header.SizeY == 0 ||
-        _header.SizeZ == 0)
-        return false;
-
-    uint64 const expectedColumns = uint64(_header.SizeX) * uint64(_header.SizeY);
-    if (expectedColumns == 0 || expectedColumns > std::numeric_limits<uint32>::max() ||
-        _columns.size() != size_t(expectedColumns))
-        return false;
-    if (_intervals.size() > std::numeric_limits<uint32>::max())
-        return false;
-
-    for (Nav3DTileColumn const& column : _columns)
-    {
-        if (uint64(column.IntervalOffset) + column.IntervalCount > _intervals.size())
-            return false;
-    }
-
-    std::vector<uint8> payload;
-    payload.reserve(_columns.size() * 8 + _intervals.size() * 6 + 8);
-    AppendPod(payload, uint32(_columns.size()));
-    for (Nav3DTileColumn const& column : _columns)
-    {
-        AppendPod(payload, column.IntervalOffset);
-        AppendPod(payload, column.IntervalCount);
-        AppendPod(payload, column.Reserved);
-    }
-
-    AppendPod(payload, uint32(_intervals.size()));
-    for (Nav3DTileInterval const& interval : _intervals)
-    {
-        AppendPod(payload, interval.ZMin);
-        AppendPod(payload, interval.ZMax);
-        AppendPod(payload, interval.Clearance);
-        AppendPod(payload, interval.Flags);
-    }
-
-    if (payload.size() > kMaxTilePayload)
-        return false;
-
-    Nav3DTileHeader header = _header;
-    header.Magic = Nav3D::TileMagic;
-    header.Version = Nav3D::TileVersion;
-    header.HeaderSize = Nav3D::TileHeaderSize;
-    header.Flags |= Nav3D::FlagCompressed | Nav3D::FlagDenseColumns;
-    header.UncompressedSize = uint32(payload.size());
-
-    uLongf compressedSize = compressBound(uLong(payload.size()));
-    std::vector<uint8> compressed(compressedSize);
-    if (compress2(compressed.data(), &compressedSize, payload.data(), uLong(payload.size()),
-                  Z_DEFAULT_COMPRESSION) != Z_OK)
-        return false;
-
-    compressed.resize(compressedSize);
-    header.CompressedSize = uint32(compressed.size());
-    header.Checksum = uint32(crc32(0, payload.data(), uInt(payload.size())));
-
-    std::ofstream out(path, std::ios::binary);
-    if (!out)
-        return false;
-
-    auto const write = [&out](auto const& value)
-    {
-        out.write(reinterpret_cast<char const*>(&value), sizeof(value));
-    };
-
-    write(header.Magic);
-    write(header.Version);
-    write(header.HeaderSize);
-    write(header.MapId);
-    write(header.TileX);
-    write(header.TileY);
-    write(header.Medium);
-    write(header.Flags);
-    write(header.CellSize);
-    write(header.OriginX);
-    write(header.OriginY);
-    write(header.OriginZ);
-    write(header.ExtentX);
-    write(header.ExtentY);
-    write(header.ExtentZ);
-    write(header.SizeX);
-    write(header.SizeY);
-    write(header.SizeZ);
-    write(header.GeneratorVersion);
-    write(header.GeometryHash);
-    write(header.UncompressedSize);
-    write(header.CompressedSize);
-    write(header.Checksum);
-
-    out.write(reinterpret_cast<char const*>(compressed.data()), std::streamsize(compressed.size()));
-    return out.good();
-}
-
-bool Nav3DTile::Load(std::string const& path)
-{
-    _columns.clear();
-    _intervals.clear();
-
-    std::ifstream in(path, std::ios::binary);
-    if (!in)
-        return false;
-
-    Nav3DTileHeader header;
-    auto const read = [&in](auto& value)
-    {
-        in.read(reinterpret_cast<char*>(&value), sizeof(value));
-        return in.good();
-    };
-
-    if (!read(header.Magic) || !read(header.Version) || !read(header.HeaderSize) ||
-        !read(header.MapId) || !read(header.TileX) || !read(header.TileY) || !read(header.Medium) ||
-        !read(header.Flags) || !read(header.CellSize) || !read(header.OriginX) ||
-        !read(header.OriginY) || !read(header.OriginZ) || !read(header.ExtentX) ||
-        !read(header.ExtentY) || !read(header.ExtentZ) || !read(header.SizeX) ||
-        !read(header.SizeY) || !read(header.SizeZ) || !read(header.GeneratorVersion) ||
-        !read(header.GeometryHash) || !read(header.UncompressedSize) ||
-        !read(header.CompressedSize) || !read(header.Checksum))
-        return false;
-
-    if (header.Magic != Nav3D::TileMagic || header.Version != Nav3D::TileVersion ||
-        header.HeaderSize != Nav3D::TileHeaderSize || header.CellSize <= 0.0f ||
-        header.SizeX == 0 || header.SizeY == 0 || header.SizeZ == 0 ||
-        header.UncompressedSize == 0 || header.UncompressedSize > kMaxTilePayload ||
-        header.CompressedSize == 0 || header.CompressedSize > kMaxTilePayload ||
-        !(header.Flags & Nav3D::FlagCompressed) || !(header.Flags & Nav3D::FlagDenseColumns))
-        return false;
-
-    std::vector<uint8> compressed(header.CompressedSize);
-    in.read(reinterpret_cast<char*>(compressed.data()), std::streamsize(compressed.size()));
-    if (!in.good())
-        return false;
-
-    std::vector<uint8> payload(header.UncompressedSize);
-    uLongf payloadSize = header.UncompressedSize;
-    if (uncompress(payload.data(), &payloadSize, compressed.data(), uLong(compressed.size())) != Z_OK ||
-        payloadSize != header.UncompressedSize)
-        return false;
-    if (uint32(crc32(0, payload.data(), uInt(payload.size()))) != header.Checksum)
-        return false;
-
-    size_t offset = 0;
-    uint32 columnCount = 0;
-    if (!ReadPod(payload, offset, columnCount))
-        return false;
-
-    uint64 const expectedColumns = uint64(header.SizeX) * uint64(header.SizeY);
-    if (expectedColumns == 0 || expectedColumns > std::numeric_limits<uint32>::max() ||
-        columnCount != uint32(expectedColumns))
-        return false;
-
-    _columns.resize(columnCount);
-    for (Nav3DTileColumn& column : _columns)
-    {
-        if (!ReadPod(payload, offset, column.IntervalOffset) ||
-            !ReadPod(payload, offset, column.IntervalCount) ||
-            !ReadPod(payload, offset, column.Reserved))
-            return false;
-    }
-
-    uint32 intervalCount = 0;
-    if (!ReadPod(payload, offset, intervalCount))
-        return false;
-    if (intervalCount > kMaxTilePayload / sizeof(Nav3DTileInterval))
-        return false;
-
-    _intervals.resize(intervalCount);
-    for (Nav3DTileInterval& interval : _intervals)
-    {
-        if (!ReadPod(payload, offset, interval.ZMin) || !ReadPod(payload, offset, interval.ZMax) ||
-            !ReadPod(payload, offset, interval.Clearance) || !ReadPod(payload, offset, interval.Flags))
-            return false;
-        if (interval.ZMin > interval.ZMax || interval.ZMin < 0 ||
-            uint32(interval.ZMax) >= header.SizeZ)
-            return false;
-    }
-
-    if (offset != payload.size())
-        return false;
-
-    for (Nav3DTileColumn const& column : _columns)
-    {
-        if (uint64(column.IntervalOffset) + column.IntervalCount > _intervals.size())
-            return false;
-    }
-
-    _header = header;
-    return true;
-}
-
-bool Nav3DTile::CellIndex(float x, float y, float z, uint32& column, int32& zCell) const
-{
-    if (_header.CellSize <= 0.0f || _columns.empty())
-        return false;
-
-    float const fx = (x - _header.OriginX) / _header.CellSize;
-    float const fy = (y - _header.OriginY) / _header.CellSize;
-    float const fz = (z - _header.OriginZ) / _header.CellSize;
-    if (fx < 0.0f || fy < 0.0f || fz < 0.0f || fx >= float(_header.SizeX) ||
-        fy >= float(_header.SizeY) || fz >= float(_header.SizeZ))
-        return false;
-
-    uint32 const ix = uint32(fx);
-    uint32 const iy = uint32(fy);
-    int32 const iz = int32(fz);
-    if (ix >= _header.SizeX || iy >= _header.SizeY || iz < 0 || uint32(iz) >= _header.SizeZ)
-        return false;
-
-    uint64 const columnIndex = uint64(iy) * _header.SizeX + ix;
-    if (columnIndex >= _columns.size())
-        return false;
-
-    column = uint32(columnIndex);
-    zCell = iz;
-    return true;
-}
-
-bool Nav3DTile::IsNavigable(float x, float y, float z, float radius) const
-{
-    uint32 column = 0;
-    int32 zCell = 0;
-    if (!CellIndex(x, y, z, column, zCell))
-        return false;
-
-    Nav3DTileColumn const& cellColumn = _columns[column];
-    if (cellColumn.IntervalCount == 0 ||
-        uint64(cellColumn.IntervalOffset) + cellColumn.IntervalCount > _intervals.size())
-        return false;
-
-    size_t low = 0;
-    size_t high = cellColumn.IntervalCount;
-    while (low < high)
-    {
-        size_t const mid = (low + high) / 2;
-        Nav3DTileInterval const& interval = _intervals[cellColumn.IntervalOffset + mid];
-        if (interval.ZMin <= zCell)
-            low = mid + 1;
-        else
-            high = mid;
-    }
-
-    if (low == 0)
-        return false;
-
-    Nav3DTileInterval const& interval = _intervals[cellColumn.IntervalOffset + low - 1];
-    if (zCell < interval.ZMin || zCell > interval.ZMax)
-        return false;
-
-    return float(interval.Clearance) * Nav3D::ClearanceUnit >= radius;
-}
-
-uint8 Nav3DTile::GetClearance(float x, float y, float z) const
-{
-    uint32 column = 0;
-    int32 zCell = 0;
-    if (!CellIndex(x, y, z, column, zCell))
-        return 0;
-
-    Nav3DTileColumn const& cellColumn = _columns[column];
-    if (cellColumn.IntervalCount == 0 ||
-        uint64(cellColumn.IntervalOffset) + cellColumn.IntervalCount > _intervals.size())
-        return 0;
-
-    size_t low = 0;
-    size_t high = cellColumn.IntervalCount;
-    while (low < high)
-    {
-        size_t const mid = (low + high) / 2;
-        Nav3DTileInterval const& interval = _intervals[cellColumn.IntervalOffset + mid];
-        if (interval.ZMin <= zCell)
-            low = mid + 1;
-        else
-            high = mid;
-    }
-
-    if (low == 0)
-        return 0;
-
-    Nav3DTileInterval const& interval = _intervals[cellColumn.IntervalOffset + low - 1];
-    if (zCell < interval.ZMin || zCell > interval.ZMax)
-        return 0;
-
-    return interval.Clearance;
 }
 
 std::shared_ptr<Nav3DTile> Nav3DManager::GetTile(uint32 mapId, uint16 tileX, uint16 tileY, uint8 medium)
@@ -1298,4 +1167,323 @@ void Nav3DManager::ClearTileCache()
     std::scoped_lock lock(_tileCacheMutex);
     _tileCache.clear();
     _tileLru.clear();
+}
+
+bool Nav3DManager::BakeWaterTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
+                                 float waterLevel, float minZ, float boundsMinX, float boundsMaxX,
+                                 float boundsMinY, float boundsMaxY, std::string const& outputPath,
+                                 std::string& error)
+{
+    if (!map)
+    {
+        error = "no map";
+        return false;
+    }
+    if (cellSize < 0.5f || cellSize > 4.0f)
+    {
+        error = "cell size must be in [0.5, 4.0]";
+        return false;
+    }
+    if (waterLevel <= INVALID_HEIGHT || minZ >= waterLevel - 1.0f)
+    {
+        error = "invalid water level / minimum Z";
+        return false;
+    }
+
+    constexpr float gridSize = 533.3333f;
+    uint32 const mapId = map->GetId();
+
+    float const tileOriginX = (32.0f - float(tileX)) * gridSize - gridSize;
+    float const tileOriginY = (32.0f - float(tileY)) * gridSize - gridSize;
+    float originX = tileOriginX;
+    float originY = tileOriginY;
+    uint32 sizeX = std::max<uint32>(1, uint32(std::ceil(gridSize / cellSize)));
+    uint32 sizeY = std::max<uint32>(1, uint32(std::ceil(gridSize / cellSize)));
+    uint32 const sizeZ = std::max<uint32>(1, uint32(std::ceil((waterLevel + 1.0f - minZ) / cellSize)));
+
+    // Optional local box for fast iteration. The tile header describes only this box, so
+    // FindPathTile falls back to the lazy search for points outside it.
+    if (boundsMaxX > boundsMinX && boundsMaxY > boundsMinY)
+    {
+        float const tileMaxX = tileOriginX + gridSize;
+        float const tileMaxY = tileOriginY + gridSize;
+        float const clampMinX = std::clamp(boundsMinX, tileOriginX, tileMaxX - cellSize);
+        float const clampMaxX = std::clamp(boundsMaxX, clampMinX + cellSize, tileMaxX);
+        float const clampMinY = std::clamp(boundsMinY, tileOriginY, tileMaxY - cellSize);
+        float const clampMaxY = std::clamp(boundsMaxY, clampMinY + cellSize, tileMaxY);
+        originX = tileOriginX +
+                  std::floor((clampMinX - tileOriginX) / cellSize) * cellSize;
+        originY = tileOriginY +
+                  std::floor((clampMinY - tileOriginY) / cellSize) * cellSize;
+        uint32 const fullSizeX = sizeX;
+        uint32 const fullSizeY = sizeY;
+        sizeX = std::clamp<uint32>(uint32(std::ceil((clampMaxX - originX) / cellSize)), 1,
+                                   fullSizeX);
+        sizeY = std::clamp<uint32>(uint32(std::ceil((clampMaxY - originY) / cellSize)), 1,
+                                   fullSizeY);
+    }
+
+    uint64 const cellCount64 = uint64(sizeX) * uint64(sizeY) * uint64(sizeZ);
+    if (cellCount64 == 0 || cellCount64 > 512ull * 1024ull * 1024ull)
+    {
+        error = "voxel grid too large";
+        return false;
+    }
+    size_t const cellCount = size_t(cellCount64);
+
+    auto const cellIndex = [sizeX, sizeY](uint32 x, uint32 y, uint32 z) -> size_t
+    {
+        return (size_t(z) * size_t(sizeY) + size_t(y)) * size_t(sizeX) + size_t(x);
+    };
+
+    std::vector<uint8> water(cellCount, 0);
+    size_t waterColumns = 0;
+    size_t waterCells = 0;
+    LOG_INFO("playerbots", "nav3dbake map {} tile {}:{} cell {:.2f} grid {}x{}x{}", mapId, tileX, tileY,
+             cellSize, sizeX, sizeY, sizeZ);
+
+    for (uint32 y = 0; y < sizeY; ++y)
+    {
+        for (uint32 x = 0; x < sizeX; ++x)
+        {
+            float const worldX = originX + (float(x) + 0.5f) * cellSize;
+            float const worldY = originY + (float(y) + 0.5f) * cellSize;
+
+            // Terrain seabed for this column. Water below it is the void under the map and is
+            // excluded even when the liquid data still reports water.
+            float const terrainZ = map->GetHeight(worldX, worldY, waterLevel, false);
+            bool const hasTerrain = terrainZ > INVALID_HEIGHT;
+            float const floorLimit = hasTerrain ? terrainZ + 0.25f : waterLevel - 40.0f;
+
+            bool anyWater = false;
+            int dryRun = 0;
+            int maxDryRun = std::max<int>(2, int(std::ceil(4.0f / cellSize)));
+
+            // Walk the water column downward from the surface. Wet cells are navigable water.
+            // Thin solid decks are skipped (the hold below them is still water); a long dry
+            // run means solid hull/terrain or the breathable void above the seabed, and the
+            // column stops there.
+            for (float z = waterLevel - 0.5f; z >= std::max(minZ, floorLimit); z -= cellSize)
+            {
+                int const zc = int(std::floor((z - minZ) / cellSize));
+                if (zc < 0 || uint32(zc) >= sizeZ)
+                    break;
+
+                bool const wet = map->IsUnderWater(phase, worldX, worldY, z, 1.0f) ||
+                                 map->IsInWater(phase, worldX, worldY, z, 1.0f);
+                if (wet)
+                {
+                    size_t const index = cellIndex(uint32(x), uint32(y), uint32(zc));
+                    if (!water[index])
+                    {
+                        water[index] = 1;
+                        ++waterCells;
+                    }
+                    anyWater = true;
+                    dryRun = 0;
+                }
+                else
+                {
+                    ++dryRun;
+                    if (dryRun >= maxDryRun)
+                        break;
+                }
+            }
+
+            if (anyWater)
+                ++waterColumns;
+        }
+    }
+
+    // Body-radius solid pass. Liquid data still reports water inside a thin WMO hull wall or
+    // between two hull plates, so a cell whose centre is near geometry must be removed. Cast
+    // rays in eight horizontal directions plus up/down; any hit within the probe distance means
+    // a body of that radius would overlap the geometry. This closes narrow gaps (anchor-chain
+    // holes) while keeping a genuinely wide window open.
+    {
+        constexpr float probe = 0.55f;
+        static constexpr float dirs[10][3] = {
+            {1.0f, 0.0f, 0.0f},   {-1.0f, 0.0f, 0.0f},  {0.0f, 1.0f, 0.0f},
+            {0.0f, -1.0f, 0.0f},  {0.7071f, 0.7071f, 0.0f}, {-0.7071f, 0.7071f, 0.0f},
+            {0.7071f, -0.7071f, 0.0f}, {-0.7071f, -0.7071f, 0.0f}, {0.0f, 0.0f, 1.0f},
+            {0.0f, 0.0f, -1.0f}};
+
+        size_t blockedCells = 0;
+        for (uint32 z = 0; z < sizeZ; ++z)
+        {
+            for (uint32 y = 0; y < sizeY; ++y)
+            {
+                for (uint32 x = 0; x < sizeX; ++x)
+                {
+                    size_t const index = cellIndex(x, y, z);
+                    if (!water[index])
+                        continue;
+
+                    float const wx = originX + (float(x) + 0.5f) * cellSize;
+                    float const wy = originY + (float(y) + 0.5f) * cellSize;
+                    float const wz = minZ + (float(z) + 0.5f) * cellSize;
+
+                    bool blocked = false;
+                    for (auto const& dir : dirs)
+                    {
+                        if (!map->isInLineOfSight(wx, wy, wz, wx + dir[0] * probe,
+                                                  wy + dir[1] * probe, wz + dir[2] * probe,
+                                                  phase, LINEOFSIGHT_ALL_CHECKS,
+                                                  VMAP::ModelIgnoreFlags::Nothing))
+                        {
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    if (blocked)
+                    {
+                        water[index] = 0;
+                        ++blockedCells;
+                    }
+                }
+            }
+        }
+        if (blockedCells)
+            LOG_INFO("playerbots", "nav3dbake solid pass: {} blocked cells removed", blockedCells);
+    }
+
+    // Horizontal clearance: distance in the XY plane to the nearest non-water cell in the
+    // same Z slice. The water surface/floor must not shrink this value; only walls and other
+    // solid obstacles in the swimmer's horizontal plane matter for fitting through a gap.
+    std::vector<uint8> distance(cellCount, 0);
+    auto const relax2D = [&distance, sizeX, sizeY](uint8& value, int x, int y, uint32 z)
+    {
+        if (x < 0 || y < 0 || x >= int(sizeX) || y >= int(sizeY))
+        {
+            value = std::min<uint8>(value, 1);
+            return;
+        }
+        uint8 const neighbor = distance[(size_t(z) * size_t(sizeY) + size_t(y)) * size_t(sizeX) + size_t(x)];
+        if (neighbor < 255)
+            value = std::min<uint8>(value, uint8(neighbor + 1));
+    };
+
+    for (uint32 z = 0; z < sizeZ; ++z)
+    {
+        for (uint32 y = 0; y < sizeY; ++y)
+            for (uint32 x = 0; x < sizeX; ++x)
+            {
+                size_t const index = cellIndex(x, y, z);
+                distance[index] = water[index] ? 255 : 0;
+            }
+
+        for (uint32 y = 0; y < sizeY; ++y)
+            for (uint32 x = 0; x < sizeX; ++x)
+            {
+                size_t const index = cellIndex(x, y, z);
+                if (!water[index])
+                    continue;
+                uint8 value = 255;
+                relax2D(value, int(x) - 1, int(y), z);
+                relax2D(value, int(x), int(y) - 1, z);
+                distance[index] = value;
+            }
+
+        for (uint32 y = sizeY; y-- > 0;)
+            for (uint32 x = sizeX; x-- > 0;)
+            {
+                size_t const index = cellIndex(x, y, z);
+                if (!water[index])
+                    continue;
+                uint8 value = distance[index];
+                relax2D(value, int(x) + 1, int(y), z);
+                relax2D(value, int(x), int(y) + 1, z);
+                distance[index] = value;
+            }
+    }
+
+    Nav3DTile tile;
+    Nav3DTileHeader& header = tile.Header();
+    header.MapId = mapId;
+    header.TileX = tileX;
+    header.TileY = tileY;
+    header.Medium = Nav3D::MediumWater;
+    header.CellSize = cellSize;
+    header.OriginX = originX;
+    header.OriginY = originY;
+    header.OriginZ = minZ;
+    header.ExtentX = float(sizeX) * cellSize;
+    header.ExtentY = float(sizeY) * cellSize;
+    header.ExtentZ = float(sizeZ) * cellSize;
+    header.SizeX = sizeX;
+    header.SizeY = sizeY;
+    header.SizeZ = sizeZ;
+    header.GeneratorVersion = 3;
+    header.GeometryHash = 0;
+    header.Flags |= Nav3D::FlagHasSolid;
+
+    tile.Columns().resize(size_t(sizeX) * size_t(sizeY));
+    for (uint32 y = 0; y < sizeY; ++y)
+    {
+        for (uint32 x = 0; x < sizeX; ++x)
+        {
+            Nav3DTileColumn& column = tile.Columns()[size_t(y) * size_t(sizeX) + size_t(x)];
+            int start = -1;
+            uint8 currentClearance = 0;
+
+            auto const flush = [&](int end)
+            {
+                if (start < 0)
+                    return;
+                Nav3DTileInterval interval;
+                interval.ZMin = int16(start);
+                interval.ZMax = int16(end);
+                interval.Clearance = currentClearance;
+                interval.Flags = 0;
+                if (column.IntervalCount == 0)
+                    column.IntervalOffset = uint32(tile.Intervals().size());
+                column.IntervalCount = uint16(column.IntervalCount + 1);
+                tile.Intervals().push_back(interval);
+                start = -1;
+                currentClearance = 0;
+            };
+
+            for (int z = 0; z < int(sizeZ); ++z)
+            {
+                size_t const index = cellIndex(x, y, uint32(z));
+                if (!water[index])
+                {
+                    flush(z - 1);
+                    continue;
+                }
+
+                // Clearance is horizontal, so it can change with depth (a hull window is wide
+                // at chest height and narrow above/below). Split intervals instead of storing
+                // the minimum over the whole column; a single minimum would let the seabed or
+                // water surface close an otherwise usable window.
+                uint32 const rawClearance = std::min<uint32>(
+                    16, uint32(float(distance[index]) * cellSize / Nav3D::ClearanceUnit));
+                uint8 const clearance = uint8((rawClearance / 2) * 2);  // 0.5-yd buckets
+                if (start < 0)
+                {
+                    start = z;
+                    currentClearance = clearance;
+                }
+                else if (clearance != currentClearance)
+                {
+                    flush(z - 1);
+                    start = z;
+                    currentClearance = clearance;
+                }
+            }
+            flush(int(sizeZ) - 1);
+        }
+    }
+
+    if (!tile.Save(outputPath))
+    {
+        error = "failed to write " + outputPath;
+        return false;
+    }
+
+    LOG_INFO("playerbots",
+             "nav3dbake map {} tile {}:{} wrote {} ({} water columns, {} cells, {} intervals)", mapId,
+             tileX, tileY, outputPath, waterColumns, waterCells, tile.Intervals().size());
+    return true;
 }
