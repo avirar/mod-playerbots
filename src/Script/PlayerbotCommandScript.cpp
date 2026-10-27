@@ -53,6 +53,8 @@ public:
             {"nav3d", HandleNav3DCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dmove", HandleNav3DMoveCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dmap", HandleNav3DMapCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dair", HandleNav3DAirCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dcanfly", HandleNav3DCanFlyCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dteleport", HandleNav3DTeleportCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dbake", HandleNav3DBakeCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dtile", HandleNav3DTileCommand, SEC_GAMEMASTER, Console::Yes},
@@ -223,6 +225,50 @@ public:
         for (size_t i = 0; i < path.size(); ++i)
             LOG_INFO("playerbots", "nav3dmap {} point[{}] = ({:.2f},{:.2f},{:.2f})", mapId, i, path[i].x, path[i].y,
                      path[i].z);
+        return true;
+    }
+
+    static bool HandleNav3DAirCommand(ChatHandler* handler, uint32 mapId, float sx, float sy, float sz,
+                                      float gx, float gy, float gz)
+    {
+        Map* map = sMapMgr->FindMap(mapId, 0);
+        if (!map)
+        {
+            handler->SendErrorMessage("Map {} is not loaded", mapId);
+            return false;
+        }
+
+        Position const start(sx, sy, sz);
+        Position const goal(gx, gy, gz);
+        Movement::PointsArray path;
+        Nav3DResult result;
+        bool const found = Nav3DManager::Instance().FindPathAir(map, PHASEMASK_NORMAL, start, goal, path, result);
+        handler->PSendSysMessage(
+            "nav3dair {}: found={} direct={} points={} len={:.1f} ms={} cell={:.1f}", mapId,
+            found ? 1 : 0, result.Direct ? 1 : 0, path.size(), result.Length, result.ElapsedMs,
+            result.CellSize);
+        LOG_INFO("playerbots",
+                 "nav3dair {} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) found={} direct={} "
+                 "points={} len={:.1f} ms={} cell={:.1f}",
+                 mapId, sx, sy, sz, gx, gy, gz, found ? 1 : 0, result.Direct ? 1 : 0, path.size(),
+                 result.Length, result.ElapsedMs, result.CellSize);
+        for (size_t i = 0; i < path.size(); ++i)
+            LOG_INFO("playerbots", "nav3dair {} point[{}] = ({:.2f},{:.2f},{:.2f})", mapId, i, path[i].x,
+                     path[i].y, path[i].z);
+        return true;
+    }
+
+    static bool HandleNav3DCanFlyCommand(ChatHandler* handler, PlayerIdentifier target)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+        Player* bot = botAI->GetBot();
+        bool const allowed = Nav3DManager::CanUseFlight(bot);
+        handler->PSendSysMessage("nav3dcanfly {} map={} zone={} area={} canFly={}", target.GetName(),
+                                 bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), allowed ? 1 : 0);
+        LOG_INFO("playerbots", "nav3dcanfly {} map={} zone={} area={} canFly={}", target.GetName(),
+                 bot->GetMapId(), bot->GetZoneId(), bot->GetAreaId(), allowed ? 1 : 0);
         return true;
     }
 

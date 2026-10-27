@@ -227,7 +227,7 @@ bool MovementAction::TryNav3DFly(float x, float y, float z, MovementPriority pri
         return false;
 
     float const distance = bot->GetExactDist(x, y, z);
-    if (distance < 20.0f || distance > 7000.0f)
+    if (distance < 20.0f || distance > 12000.0f)
         return false;
     if (IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
         return false;
