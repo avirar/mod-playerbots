@@ -63,7 +63,7 @@ bool Nav3DTestAction::Execute(Event event)
         return true;
     }
 
-    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
     {
         botAI->TellMasterNoFacing("Nav3D is disabled (or lazy mode is off) in playerbots.conf");
         return true;
@@ -84,6 +84,10 @@ bool Nav3DTestAction::Execute(Event event)
         if (bot->IsMounted())
             bot->Dismount();
         SpellCastResult const mountResult = bot->CastSpell(bot, 34068, true);  // Swift Nether Drake
+        // A test bot may be below the mount's level requirement. The forced-fly spline only
+        // needs the movement flags, so restore them after the cast.
+        bot->SetCanFly(true);
+        bot->SetDisableGravity(true);
         LOG_INFO("playerbots", "nav3d fly setup {} canFly={} gravityOff={} mounted={} cast={}", bot->GetName(),
                  bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0,
                  bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0, bot->IsMounted() ? 1 : 0,
@@ -95,7 +99,7 @@ bool Nav3DTestAction::Execute(Event event)
 
     // This is a local movement probe, not a world-travel command. A stale or wrong-map goal
     // otherwise looks like a valid direct line in the vmap void and produces a huge spline.
-    constexpr float kMaxCommandDistance = 450.0f;
+    float const kMaxCommandDistance = fly ? 3000.0f : 450.0f;
     float const commandDistance = std::sqrt(std::pow(goal.GetPositionX() - start.GetPositionX(), 2) +
                                             std::pow(goal.GetPositionY() - start.GetPositionY(), 2) +
                                             std::pow(goal.GetPositionZ() - start.GetPositionZ(), 2));
@@ -120,7 +124,7 @@ bool Nav3DTestAction::Execute(Event event)
 
     // Inside a WMO the navmesh may already have the route even though the outside approach does
     // not. Prefer a normal 2D path that ends within interaction range; fall back to 3D otherwise.
-    if (route.size() == 2)
+    if (!fly && route.size() == 2)
     {
         PathGenerator generator(bot);
         generator.CalculatePath(goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
@@ -158,8 +162,12 @@ bool Nav3DTestAction::Execute(Event event)
         {
             Movement::PointsArray leg;
             Nav3DResult legResult;
-            if (!Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), route[i], route[i + 1], leg,
-                                                   legResult))
+            bool const legFound =
+                fly ? Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), route[i],
+                                                           route[i + 1], leg, legResult)
+                    : Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), route[i],
+                                                        route[i + 1], leg, legResult);
+            if (!legFound)
             {
                 found = false;
                 result.BestDistance = legResult.BestDistance;
@@ -210,7 +218,7 @@ bool Nav3DTestAction::Execute(Event event)
         return true;
     }
 
-    if (!Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
+    if (!fly && !Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
     {
         botAI->TellMasterNoFacing("nav3d path blocked by clearance");
         return true;

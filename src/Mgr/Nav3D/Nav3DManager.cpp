@@ -6,8 +6,11 @@
 
 #include "Nav3DManager.h"
 
+#include "AreaDefines.h"
+#include "DBCStores.h"
 #include "Log.h"
 #include "Map.h"
+#include "Player.h"
 #include "PlayerbotAIConfig.h"
 #include "StringFormat.h"
 #include "Timer.h"
@@ -739,6 +742,74 @@ bool Nav3DManager::FindPathTile(Map* map, uint32 phase, Position const& start, P
     return true;
 }
 
+bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Position const& goal,
+                               Movement::PointsArray& path, Nav3DResult& result)
+{
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
+        return false;
+
+    constexpr float gridSize = 533.3333f;
+    uint16 const tileX =
+        uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionX() / gridSize))));
+    uint16 const tileY =
+        uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionY() / gridSize))));
+    std::shared_ptr<Nav3DTile> tile = GetTile(map->GetId(), tileX, tileY, Nav3D::MediumAir);
+
+    if (tile)
+    {
+        Nav3DTileHeader const& header = tile->Header();
+        if ((header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 3)
+        {
+            float const maxX = header.OriginX + float(header.SizeX) * header.CellSize;
+            float const maxY = header.OriginY + float(header.SizeY) * header.CellSize;
+            float const maxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
+            auto const inside = [&header, maxX, maxY, maxZ](Position const& position)
+            {
+                return position.GetPositionX() >= header.OriginX && position.GetPositionX() <= maxX &&
+                       position.GetPositionY() >= header.OriginY && position.GetPositionY() <= maxY &&
+                       position.GetPositionZ() >= header.OriginZ && position.GetPositionZ() <= maxZ;
+            };
+            if (inside(start) && inside(goal))
+            {
+                Nav3DResult tileResult;
+                if (FindPathDirected(map, phase, start, goal, path, tileResult, tile.get()))
+                {
+                    result = tileResult;
+                    result.CellSize = header.CellSize;
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Different ADT tiles, missing air tile, or a failed local route: climb to a cruise
+    // altitude, cross above terrain/WMO, then descend. This is the long-range complement to
+    // the local air tile and is what handles Storm Peaks' extreme Z changes.
+    float cruise = std::max({3000.0f, start.GetPositionZ(), goal.GetPositionZ()});
+    for (int attempt = 0; attempt < 4; ++attempt, cruise += 250.0f)
+    {
+        G3D::Vector3 const a{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
+        G3D::Vector3 const b{start.GetPositionX(), start.GetPositionY(), cruise};
+        G3D::Vector3 const c{goal.GetPositionX(), goal.GetPositionY(), cruise};
+        G3D::Vector3 const d{goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()};
+        if (!LineClear(map, phase, a, b) || !LineClear(map, phase, b, c) ||
+            !LineClear(map, phase, c, d))
+            continue;
+
+        path = {a, b, c, d};
+        RemoveCollinear(path);
+        result = {};
+        result.Found = true;
+        result.Direct = true;
+        result.Length = 0.0f;
+        for (size_t i = 1; i < path.size(); ++i)
+            result.Length += Distance(path[i - 1], path[i]);
+        return true;
+    }
+
+    return false;
+}
+
 bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Position const& goal,
                             Movement::PointsArray& path, Nav3DResult& result)
 {
@@ -1251,6 +1322,24 @@ std::shared_ptr<Nav3DTile> Nav3DManager::GetTile(uint32 mapId, uint16 tileX, uin
     }
 
     return tile;
+}
+
+bool Nav3DManager::CanUseFlight(Player const* bot)
+{
+    if (!bot)
+        return false;
+    if (bot->GetPureSkillValue(SKILL_RIDING) < 225)
+        return false;
+
+    AreaTableEntry const* area = sAreaTableStore.LookupEntry(bot->GetAreaId());
+    if (!area || !area->IsFlyable() || (area->flags & AREA_FLAG_NO_FLY_ZONE))
+        return false;
+
+    uint32 const vmap = GetVirtualMapForMapAndZone(bot->GetMapId(), bot->GetZoneId());
+    if (vmap == MAP_NORTHREND && !bot->HasSpell(54197))
+        return false;
+
+    return true;
 }
 
 bool Nav3DManager::HasSolidTileAt(Map* map, Position const& position)

@@ -134,9 +134,6 @@ bool MoveToTravelTargetAction::isUseful()
     if (bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
         return false;
 
-    if (bot->IsFlying())
-        return false;
-
     if (bot->isMoving())
         return false;
 

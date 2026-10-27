@@ -176,8 +176,10 @@ bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority pr
 {
     if (!sPlayerbotAIConfig.Nav3DEnabled)
         return false;
-    if (!bot || !bot->IsAlive() || !bot->GetMap() || bot->IsFlying() || bot->GetVehicle())
+    if (!bot || !bot->IsAlive() || !bot->GetMap() || bot->GetVehicle())
         return false;
+    if (bot->IsFlying())
+        return TryNav3DFly(x, y, z, priority, reason);
 
     float const distance = bot->GetExactDist(x, y, z);
     if (distance < 0.5f || distance > 250.0f)
@@ -212,6 +214,42 @@ bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority pr
     LOG_DEBUG("playerbots",
               "swim-trace {}: nav3d move reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
               bot->GetName(), reason, clear ? 1 : 0, path.size(), result.Length, result.ElapsedMs, x, y, z);
+    return true;
+}
+
+bool MovementAction::TryNav3DFly(float x, float y, float z, MovementPriority priority, char const* reason)
+{
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
+        return false;
+    if (!bot || !bot->IsAlive() || !bot->GetMap() || !bot->IsFlying() || bot->GetVehicle())
+        return false;
+    if (!Nav3DManager::Instance().CanUseFlight(bot))
+        return false;
+
+    float const distance = bot->GetExactDist(x, y, z);
+    if (distance < 20.0f || distance > 7000.0f)
+        return false;
+    if (IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Position const goal(x, y, z);
+    Movement::PointsArray path;
+    Nav3DResult result;
+    if (!Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), start, goal, path, result) ||
+        path.size() < 2)
+        return false;
+
+    bool const clear = Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
+    UpdateMovementState();
+    bot->StopMoving();
+    bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_FLY);
+
+    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, result.Length * 100.0f));
+    AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
+    LOG_DEBUG("playerbots",
+              "nav3d fly reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
+              reason, clear ? 1 : 0, path.size(), result.Length, result.ElapsedMs, x, y, z);
     return true;
 }
 
@@ -270,6 +308,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     {
         return false;
     }
+
+    if (bot->IsFlying() && mapId == bot->GetMapId() &&
+        TryNav3DFly(x, y, z, priority, "fly-move"))
+        return true;
 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     bool disableMoveSplinePath =
