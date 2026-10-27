@@ -113,7 +113,8 @@ public:
         DispelAuraDuration, PassiveDelay, RepeatDelay, ErrorDelay, RpgDelay, SitDelay, ReturnDelay, LootDelay;
     bool Nav3DEnabled, Nav3DLazy, Nav3DSwim;
     float Nav3DCellSize;
-    uint32 Nav3DNeighbors, Nav3DMaxNodes, Nav3DMaxSearchTimeMs;
+    uint32 Nav3DNeighbors, Nav3DMaxNodes, Nav3DMaxSearchTimeMs, Nav3DTileCacheSize;
+    std::string Nav3DDataPath;
     std::vector<uint32> Nav3DOpenWaterAreas;
     bool DynamicReactDelay;
     float SightDistance, SpellDistance, ReactDistance, GrindDistance, LootDistance, ShootDistance, FleeDistance,

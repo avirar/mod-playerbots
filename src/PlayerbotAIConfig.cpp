@@ -100,6 +100,10 @@ bool PlayerbotAIConfig::Initialize()
     Nav3DNeighbors = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.Neighbors", 26);
     if (Nav3DNeighbors != 6 && Nav3DNeighbors != 18 && Nav3DNeighbors != 26)
         Nav3DNeighbors = 26;
+    Nav3DDataPath = sConfigMgr->GetOption<std::string>("Playerbots.Nav3D.DataPath", "nav3d");
+    Nav3DTileCacheSize = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.TileCacheSize", 64);
+    if (Nav3DTileCacheSize < 1)
+        Nav3DTileCacheSize = 1;
     Nav3DMaxNodes = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxNodes", 20000);
     Nav3DMaxSearchTimeMs = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxSearchTimeMs", 50);
     Nav3DOpenWaterAreas.clear();

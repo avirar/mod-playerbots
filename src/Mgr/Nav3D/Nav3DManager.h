@@ -9,7 +9,13 @@
 
 #include "Define.h"
 #include "MoveSplineInitArgs.h"
+#include "Nav3DTile.h"
 #include "Position.h"
+
+#include <list>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 class Map;
 
@@ -43,11 +49,26 @@ public:
                            Nav3DResult& result);
     bool IsPathClear(Map* map, uint32 phase, Movement::PointsArray const& path, float radius = 0.5f) const;
 
+    // Precomputed .n3t tile cache. The lazy pathfinder remains the fallback until the
+    // generator and tile search are wired in.
+    std::shared_ptr<Nav3DTile> GetTile(uint32 mapId, uint16 tileX, uint16 tileY, uint8 medium);
+    void ClearTileCache();
+
 private:
     Nav3DManager() = default;
 
     bool FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                           Movement::PointsArray& path, Nav3DResult& result);
+
+    struct TileCacheEntry
+    {
+        uint64 Key = 0;
+        std::shared_ptr<Nav3DTile> Tile;
+    };
+
+    std::mutex _tileCacheMutex;
+    std::list<TileCacheEntry> _tileLru;
+    std::unordered_map<uint64, std::list<TileCacheEntry>::iterator> _tileCache;
 };
 
 #endif

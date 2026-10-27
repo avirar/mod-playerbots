@@ -379,6 +379,10 @@ Playerbots.Nav3D.Swim = 1
 Playerbots.Nav3D.CellSize = 1.0
 # A* neighbour moves: 6 = cardinal, 18 = + edge diagonals, 26 = full 3D diagonals.
 Playerbots.Nav3D.Neighbors = 26
+# Directory (relative to DataDir) for precomputed .n3t tiles. Lazy mode ignores it.
+Playerbots.Nav3D.DataPath = nav3d
+# Maximum number of precomputed tiles kept in the shared LRU.
+Playerbots.Nav3D.TileCacheSize = 64
 # Areas where the coarse (2x) grid is safe: open water without WMO tunnels. CSV of area ids.
 # Empty = rely on the WMO-floor heuristic only.
 Playerbots.Nav3D.OpenWaterAreas =
