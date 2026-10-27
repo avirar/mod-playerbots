@@ -114,6 +114,7 @@ namespace
         float MinZ = 0.0f;
         bool RestrictSky = false;
         Nav3DTile const* Tile = nullptr;
+        std::shared_ptr<Nav3DTile> SolidTile;
         int32 SizeX = 0;
         int32 SizeY = 0;
         int32 SizeZ = 0;
@@ -139,6 +140,70 @@ namespace
                     std::clamp(z, 0, SizeZ - 1)};
         }
     };
+
+    std::shared_ptr<Nav3DTile> ResolveSolidTile(Map* map, Position const& position)
+    {
+        if (!map)
+            return nullptr;
+
+        constexpr float gridSize = 533.3333f;
+        uint16 const tileX =
+            uint16(std::max<int32>(0, int32(std::floor(32.0f - position.GetPositionX() / gridSize))));
+        uint16 const tileY =
+            uint16(std::max<int32>(0, int32(std::floor(32.0f - position.GetPositionY() / gridSize))));
+        std::shared_ptr<Nav3DTile> tile =
+            Nav3DManager::Instance().GetTile(map->GetId(), tileX, tileY, Nav3D::MediumWater);
+        if (!tile)
+            return nullptr;
+
+        Nav3DTileHeader const& header = tile->Header();
+        if (!(header.Flags & Nav3D::FlagHasSolid) || header.GeneratorVersion < 3)
+            return nullptr;
+        return tile;
+    }
+
+    // The tile is water-only; cells above the baked water column are air and must not be
+    // vetoed. Everything below the top water cell is either navigable water or solid hull.
+    bool TileBlocks(Grid const& grid, float x, float y, float z)
+    {
+        if (!grid.SolidTile)
+            return false;
+
+        Nav3DTileHeader const& header = grid.SolidTile->Header();
+        if (x < header.OriginX || y < header.OriginY || z < header.OriginZ ||
+            x > header.OriginX + float(header.SizeX) * header.CellSize ||
+            y > header.OriginY + float(header.SizeY) * header.CellSize ||
+            z > header.OriginZ + float(header.SizeZ) * header.CellSize)
+            return false;
+
+        // The water column ends at the surface; the node just above the top water cell is
+        // still a valid ascent target. Keep a 1-yd surface band out of the solid veto.
+        float const waterLevel =
+            header.OriginZ + float(header.SizeZ) * header.CellSize - 1.0f;
+        if (z >= waterLevel - 1.0f)
+            return false;
+
+        return !grid.SolidTile->IsNavigable(x, y, z, kTileBodyRadius);
+    }
+
+    bool SolidTileLineClear(Grid const& grid, G3D::Vector3 const& from, G3D::Vector3 const& to)
+    {
+        if (!grid.SolidTile)
+            return true;
+
+        float const dx = to.x - from.x;
+        float const dy = to.y - from.y;
+        float const dz = to.z - from.z;
+        float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            G3D::Vector3 const point = from + (to - from) * (float(i) / float(steps));
+            if (TileBlocks(grid, point.x, point.y, point.z))
+                return false;
+        }
+        return true;
+    }
 
     float Distance(Position const& left, Position const& right)
     {
@@ -275,7 +340,10 @@ namespace
         if (!tile)
             return false;
 
-        float const distance = Distance(from, to);
+        float const dx = to.x - from.x;
+        float const dy = to.y - from.y;
+        float const dz = to.z - from.z;
+        float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
         int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
         for (int i = 0; i <= steps; ++i)
         {
@@ -291,18 +359,17 @@ namespace
     {
         if (grid.Tile)
             return TileLineClear(grid.Tile, from, to, kTileBodyRadius);
-        return LineClear(map, phase, from, to);
+        return LineClear(map, phase, from, to) && SolidTileLineClear(grid, from, to);
     }
 
     bool GridLineClear(Grid const& grid, Map* map, uint32 phase, Position const& from,
                        Position const& to)
     {
+        G3D::Vector3 const fromPoint{from.GetPositionX(), from.GetPositionY(), from.GetPositionZ()};
+        G3D::Vector3 const toPoint{to.GetPositionX(), to.GetPositionY(), to.GetPositionZ()};
         if (grid.Tile)
-            return TileLineClear(grid.Tile,
-                                 {from.GetPositionX(), from.GetPositionY(), from.GetPositionZ()},
-                                 {to.GetPositionX(), to.GetPositionY(), to.GetPositionZ()},
-                                 kTileBodyRadius);
-        return LineClear(map, phase, from, to);
+            return TileLineClear(grid.Tile, fromPoint, toPoint, kTileBodyRadius);
+        return LineClear(map, phase, fromPoint, toPoint) && SolidTileLineClear(grid, fromPoint, toPoint);
     }
 
     bool PathCenterLineSafe(Map* map, uint32 phase, Movement::PointsArray const& path)
@@ -343,7 +410,10 @@ namespace
     bool SegmentClear(Map* map, uint32 phase, G3D::Vector3 const& from, G3D::Vector3 const& to,
                       float radius)
     {
-        float const distance = Distance(from, to);
+        float const dx = to.x - from.x;
+        float const dy = to.y - from.y;
+        float const dz = to.z - from.z;
+        float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
         int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
 
         static G3D::Vector3 const offsets[] = {
@@ -435,6 +505,9 @@ namespace
             if (!floorSafe)
                 navigable = false;
         }
+
+        if (navigable && TileBlocks(grid, x, y, z))
+            navigable = false;
 
         state.Nav = navigable ? 1 : -1;
         return navigable;
@@ -788,6 +861,13 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         grid.RestrictSky = startInWater;
     }
 
+    if (!tile)
+    {
+        grid.SolidTile = ResolveSolidTile(map, start);
+        if (!grid.SolidTile)
+            grid.SolidTile = ResolveSolidTile(map, goal);
+    }
+
     auto const inside = [&grid](Position const& position)
     {
         return position.GetPositionX() >= grid.MinX &&
@@ -969,7 +1049,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
     result = {};
     path.clear();
 
-    if (!map || !sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
         return false;
 
     bool const openWater = IsOpenWaterArea(map, phase, start);
@@ -991,6 +1071,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
     grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusXY / cellSize))));
     grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusXY / cellSize))));
     grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil(2.0f * kSurfaceRadiusZ / cellSize))));
+    grid.SolidTile = ResolveSolidTile(map, start);
 
     float const startLevel = map->GetWaterLevel(start.GetPositionX(), start.GetPositionY());
     bool const startInWater = map->IsUnderWater(phase, start.GetPositionX(), start.GetPositionY(),
@@ -1048,7 +1129,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
                                                      kSurfaceCheckHeight, {});
         bool const atSurface =
             liquid.Level > INVALID_HEIGHT
-                ? currentCenter.GetPositionZ() >= liquid.Level - 0.5f
+                ? currentCenter.GetPositionZ() >= liquid.Level - 1.0f
                 : !map->IsUnderWater(phase, currentCenter.GetPositionX(), currentCenter.GetPositionY(),
                                      currentCenter.GetPositionZ(), kSurfaceCheckHeight);
         if (atSurface)
@@ -1160,6 +1241,20 @@ std::shared_ptr<Nav3DTile> Nav3DManager::GetTile(uint32 mapId, uint16 tileX, uin
     }
 
     return tile;
+}
+
+bool Nav3DManager::HasSolidTileAt(Map* map, Position const& position)
+{
+    std::shared_ptr<Nav3DTile> tile = ResolveSolidTile(map, position);
+    if (!tile)
+        return false;
+
+    Nav3DTileHeader const& header = tile->Header();
+    return position.GetPositionX() >= header.OriginX && position.GetPositionY() >= header.OriginY &&
+           position.GetPositionZ() >= header.OriginZ &&
+           position.GetPositionX() <= header.OriginX + float(header.SizeX) * header.CellSize &&
+           position.GetPositionY() <= header.OriginY + float(header.SizeY) * header.CellSize &&
+           position.GetPositionZ() <= header.OriginZ + float(header.SizeZ) * header.CellSize;
 }
 
 void Nav3DManager::ClearTileCache()
@@ -1295,18 +1390,27 @@ bool Nav3DManager::BakeWaterTile(Map* map, uint32 phase, uint16 tileX, uint16 ti
         }
     }
 
-    // Body-radius solid pass. Liquid data still reports water inside a thin WMO hull wall or
-    // between two hull plates, so a cell whose centre is near geometry must be removed. Cast
-    // rays in eight horizontal directions plus up/down; any hit within the probe distance means
-    // a body of that radius would overlap the geometry. This closes narrow gaps (anchor-chain
-    // holes) while keeping a genuinely wide window open.
+    // Body-box solid pass. The client collision volume is an axis-aligned box of half-width
+    // 2 * radius in X/Y and full collision height, not a circle. A gap that clears a circular
+    // probe can still be too small for the box corners. Probe the box boundary: axis rays at
+    // the half-width, diagonal rays at half-width * sqrt(2), and short vertical rays.
     {
-        constexpr float probe = 0.55f;
-        static constexpr float dirs[10][3] = {
-            {1.0f, 0.0f, 0.0f},   {-1.0f, 0.0f, 0.0f},  {0.0f, 1.0f, 0.0f},
-            {0.0f, -1.0f, 0.0f},  {0.7071f, 0.7071f, 0.0f}, {-0.7071f, 0.7071f, 0.0f},
-            {0.7071f, -0.7071f, 0.0f}, {-0.7071f, -0.7071f, 0.0f}, {0.0f, 0.0f, 1.0f},
-            {0.0f, 0.0f, -1.0f}};
+        constexpr float bodyRadius = 0.45f;  // covers the largest playable race (0.433) + margin
+        constexpr float bodyDiagonal = bodyRadius * 1.41421356f;
+        constexpr float bodyHalfHeight = 0.8f;
+        struct BoxRay
+        {
+            float X;
+            float Y;
+            float Z;
+            float Distance;
+        };
+        static constexpr BoxRay rays[10] = {
+            {1.0f, 0.0f, 0.0f, bodyRadius},       {-1.0f, 0.0f, 0.0f, bodyRadius},
+            {0.0f, 1.0f, 0.0f, bodyRadius},       {0.0f, -1.0f, 0.0f, bodyRadius},
+            {0.7071f, 0.7071f, 0.0f, bodyDiagonal}, {-0.7071f, 0.7071f, 0.0f, bodyDiagonal},
+            {0.7071f, -0.7071f, 0.0f, bodyDiagonal}, {-0.7071f, -0.7071f, 0.0f, bodyDiagonal},
+            {0.0f, 0.0f, 1.0f, bodyHalfHeight},   {0.0f, 0.0f, -1.0f, bodyHalfHeight}};
 
         size_t blockedCells = 0;
         for (uint32 z = 0; z < sizeZ; ++z)
@@ -1324,10 +1428,10 @@ bool Nav3DManager::BakeWaterTile(Map* map, uint32 phase, uint16 tileX, uint16 ti
                     float const wz = minZ + (float(z) + 0.5f) * cellSize;
 
                     bool blocked = false;
-                    for (auto const& dir : dirs)
+                    for (BoxRay const& ray : rays)
                     {
-                        if (!map->isInLineOfSight(wx, wy, wz, wx + dir[0] * probe,
-                                                  wy + dir[1] * probe, wz + dir[2] * probe,
+                        if (!map->isInLineOfSight(wx, wy, wz, wx + ray.X * ray.Distance,
+                                                  wy + ray.Y * ray.Distance, wz + ray.Z * ray.Distance,
                                                   phase, LINEOFSIGHT_ALL_CHECKS,
                                                   VMAP::ModelIgnoreFlags::Nothing))
                         {

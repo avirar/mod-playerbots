@@ -174,7 +174,7 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
 
 bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority priority, char const* reason)
 {
-    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
         return false;
     if (!bot || !bot->IsAlive() || !bot->GetMap() || bot->IsFlying() || bot->GetVehicle())
         return false;
@@ -304,8 +304,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         // Exact moves are used by RPG/travel and swim chunks. If the destination is inside a
         // WMO (the 2D mmap cannot represent it), try the volumetric route before the straight
         // point spline. Outdoor exact moves keep the cheap point move.
-        if (exact_waypoint && sPlayerbotAIConfig.Nav3DEnabled && sPlayerbotAIConfig.Nav3DLazy &&
-            !bot->IsFlying())
+        if (exact_waypoint && sPlayerbotAIConfig.Nav3DEnabled && !bot->IsFlying())
         {
             PositionFullTerrainStatus status;
             bot->GetMap()->GetFullTerrainStatusForPosition(bot->GetPhaseMask(), x, y, z, 1.0f, status, {});
@@ -2789,7 +2788,7 @@ bool SurfaceFromDiveAction::isUseful()
 
 bool SurfaceFromDiveAction::Execute(Event /*event*/)
 {
-    uint32 const now = getMSTime();
+    uint32 now = getMSTime();
 
     if (!bot->IsUnderWater())
     {
@@ -2851,10 +2850,18 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
         LOG_DEBUG("playerbots", "swim-trace {}: surfacing to {:.1f} {:.1f} {:.1f} ({})", bot->GetName(),
                   botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, withLOS ? "los" : "blocked");
 
-        // A blocked column in a tunnel/cave is the case the old blind ascent could not solve.
-        // Ask the volumetric pathfinder for a route to the nearest breathable cell.
-        if (!withLOS)
+        // A blocked column is the obvious case. Inside a baked hull, a "LOS" column can still
+        // be a straight climb through the WMO roof, so prefer the tile-aware surface route
+        // whenever the bot is inside a solid tile.
+        bool const solidTile = Nav3DManager::Instance().HasSolidTileAt(
+            bot->GetMap(),
+            Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+        if (!withLOS || solidTile)
             TryNav3DEscape();
+
+        // The surface search can take seconds. Do not compare its result against the timestamp
+        // captured before the search; that made a fresh escape path look eight seconds stale.
+        now = getMSTime();
     }
 
     // A spell cast keeps the point movement generator from starting; stop it every tick while
@@ -2944,7 +2951,7 @@ bool SurfaceFromDiveAction::Execute(Event /*event*/)
 
 bool SurfaceFromDiveAction::TryNav3DEscape()
 {
-    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DLazy)
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
         return false;
 
     Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
@@ -3308,7 +3315,13 @@ bool MoveToLootAction::Execute(Event /*event*/)
         bool const pathClear = IsSwimPathClear(x, y, z, worstClearance, terrainChecked);
         bool const los = bot->IsWithinLOS(x, y, z);
 
-        if (!pathClear || !los)
+        // Inside a baked hull, a direct swim can slip through a gap that is too narrow for the
+        // body but still passes the point/segment check. Prefer the tile route there.
+        bool const solidTile = sPlayerbotAIConfig.Nav3DEnabled &&
+                               Nav3DManager::Instance().HasSolidTileAt(
+                                   map, Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+
+        if (!pathClear || !los || solidTile)
         {
             // The direct segment is blocked, but a wreck hold or tunnel room can still be
             // reachable through the volumetric mesh. Try that before dropping the target.

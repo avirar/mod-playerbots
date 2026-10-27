@@ -52,6 +52,7 @@ public:
     // Precomputed .n3t tile cache. The lazy pathfinder remains the fallback until the
     // generator and tile search are wired in.
     std::shared_ptr<Nav3DTile> GetTile(uint32 mapId, uint16 tileX, uint16 tileY, uint8 medium);
+    bool HasSolidTileAt(Map* map, Position const& position);
     void ClearTileCache();
 
     // Live-Map bake for WMO/dynamic interiors that the static VMAP extractor does not
