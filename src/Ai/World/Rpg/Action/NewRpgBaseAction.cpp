@@ -13,6 +13,7 @@
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "LootObjectStack.h"
 #include "NewRpgInfo.h"
 #include "QuestLevelRules.h"
 #include "NewRpgStrategy.h"
@@ -39,10 +40,55 @@
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
 
+bool NewRpgBaseAction::IsRpgTravelBlocked()
+{
+    if (!bot || !botAI)
+        return true;
+
+    // The surface ascent/hold owns movement. Do not count the blocked travel as an RPG stuck
+    // state; the bot must finish surfacing before it can resume the POI route.
+    if (botAI->IsDiveSafetyActive())
+        return true;
+
+    if (bot->IsInCombat() || botAI->GetState() == BOT_STATE_COMBAT)
+        return true;
+
+    if (bot->GetLootGUID())
+        return true;
+
+    // Moving to / looting a specific corpse or chest owns movement. Merely standing near
+    // lootable objects must not stop RPG travel; the loot action selects a target first.
+    if (!AI_VALUE(LootObject, "loot target").IsEmpty())
+        return true;
+
+    if (bot->InBattleground() || bot->IsInFlight() || !bot->IsAlive())
+        return true;
+
+    return false;
+}
+
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
     if (dest == WorldPosition())
         return false;
+
+    if (IsRpgTravelBlocked())
+    {
+        // Log the transition into a blocked state, not every tick.
+        if (botAI->rpgInfo.nearestMoveFarDis < 1.0e9f)
+            LOG_DEBUG("playerbots",
+                      "rpg-move {} paused: dive={} underwater={} combat={} lootGuid={} lootTarget={} flight={} "
+                      "alive={}",
+                      bot->GetName(), botAI->IsDiveSafetyActive() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                      bot->IsInCombat() || botAI->GetState() == BOT_STATE_COMBAT ? 1 : 0,
+                      bot->GetLootGUID() ? 1 : 0,
+                      !AI_VALUE(LootObject, "loot target").IsEmpty() ? 1 : 0, bot->IsInFlight() ? 1 : 0,
+                      bot->IsAlive() ? 1 : 0);
+        botAI->rpgInfo.stuckTs = getMSTime();
+        botAI->rpgInfo.stuckAttempts = 0;
+        botAI->rpgInfo.nearestMoveFarDis = 1.0e9f;
+        return true;
+    }
 
     // Don't start a ground move while the bot is on a taxi: the MovePoint issued
     // below would fight the active flight spline. Returning true consumes the tick
@@ -121,6 +167,16 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     else if (++botAI->rpgInfo.stuckAttempts >= 5 && GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= stuckTime)
     {
+        // The state can change between the entry guard and here (loot target picked up, mob
+        // aggro, dive safety). Never teleport out from under an action that owns movement.
+        if (IsRpgTravelBlocked())
+        {
+            botAI->rpgInfo.stuckTs = getMSTime();
+            botAI->rpgInfo.stuckAttempts = 0;
+            botAI->rpgInfo.nearestMoveFarDis = 1.0e9f;
+            return true;
+        }
+
         // No meaningful progress toward dest for `stuckTime`: fall
         // back to teleporting directly so the bot can get on with
         // its RPG objective instead of oscillating indefinitely.

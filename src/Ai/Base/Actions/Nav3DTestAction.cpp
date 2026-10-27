@@ -6,12 +6,14 @@
 
 #include "Nav3DTestAction.h"
 
+#include "LastMovementValue.h"
 #include "Log.h"
 #include "MotionMaster.h"
 #include "Nav3DManager.h"
 #include "PathGenerator.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include "Playerbots.h"
 
 #include <algorithm>
 #include <cmath>
@@ -217,10 +219,12 @@ bool Nav3DTestAction::Execute(Event event)
     bot->StopMoving();
     bot->GetMotionMaster()->MoveSplinePath(&path, fly ? FORCED_MOVEMENT_FLY : FORCED_MOVEMENT_NONE);
 
-    // Freeze the AI while the one-shot debug spline plays out; the movement generator still runs.
-    uint32 delay = uint32(result.Length * 250.0f);
-    delay = std::max<uint32>(30000, std::min<uint32>(120000, delay));
-    botAI->SetNextCheckDelay(delay);
+    // Keep the AI ticking. A LastMovement delay only prevents another mover from immediately
+    // reissuing the same target; it does not put the bot AI to sleep like SetNextCheckDelay.
+    uint32 const delay = uint32(std::max(1000.0f, std::min(10000.0f, result.Length * 250.0f)));
+    AI_VALUE(LastMovement&, "last movement")
+        .Set(bot->GetMapId(), goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(),
+             bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
 
     botAI->TellMasterNoFacing(summary.str() + " moving");
     LOG_INFO("playerbots",

@@ -652,6 +652,18 @@ public:
     uint32 nav3dEscapeProgressMs = 0;
     float nav3dEscapeLastX = 0, nav3dEscapeLastY = 0, nav3dEscapeLastZ = 0;
     Movement::PointsArray nav3dEscapePath;
+
+    // Active 3D loot spline. The loot mover must not freeze the bot AI with
+    // SetNextCheckDelay: the world movement generator keeps running, but loot/combat/triggers
+    // would sleep until the timer expires. Keep the path active and let the AI tick; the loot
+    // action opens the target as soon as the bot is in interaction range.
+    ObjectGuid nav3dLootGuid;
+    uint32 nav3dLootUntilMs = 0;
+
+    // True while the emergency surface ascent/hold owns movement. Teleport recovery must not
+    // fire while the bot is being held at the surface.
+    bool IsDiveSafetyActive() const { return diveSurfacing || diveHoldSurface; }
+
     NewRpgStatistic rpgStatistic;
     std::unordered_set<uint32> countedQuestCompletions;
     void RecordQuestAccepted(uint32 questId);

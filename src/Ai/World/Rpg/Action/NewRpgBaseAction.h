@@ -34,6 +34,7 @@ public:
 
 protected:
     /* MOVEMENT RELATED */
+    bool IsRpgTravelBlocked();
     bool MoveFarTo(WorldPosition dest);
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
