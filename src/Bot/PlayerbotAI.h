@@ -659,6 +659,7 @@ public:
     // action opens the target as soon as the bot is in interaction range.
     ObjectGuid nav3dLootGuid;
     uint32 nav3dLootUntilMs = 0;
+    uint32 nav3dLootIssuedMs = 0;
 
     // True while the emergency surface ascent/hold owns movement. Teleport recovery must not
     // fire while the bot is being held at the surface.
