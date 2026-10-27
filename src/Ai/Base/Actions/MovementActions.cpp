@@ -3146,12 +3146,18 @@ bool MovementAction::IsSwimPathClear(float x, float y, float z, float& worstClea
 bool MoveToLootAction::Execute(Event /*event*/)
 {
     LootObjectStack* availableLoot = AI_VALUE(LootObjectStack*, "available loot");
+    auto const clearNav3DLoot = [this]()
+    {
+        botAI->nav3dLootGuid.Clear();
+        botAI->nav3dLootUntilMs = 0;
+    };
 
     // A dive-safety ascent or a post-emergency surface hold owns movement; dropping the watchdog
     // state here also gives the re-dive a fresh no-progress budget once the bot goes under again.
     if (botAI->diveSurfacing || botAI->diveHoldSurface)
     {
         lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
     }
 
@@ -3159,6 +3165,7 @@ bool MoveToLootAction::Execute(Event /*event*/)
     {
         LOG_DEBUG("playerbots", "swim-trace {}: move-to-loot: pending or looting", bot->GetName());
         lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
     }
 
@@ -3168,8 +3175,13 @@ bool MoveToLootAction::Execute(Event /*event*/)
         LOG_DEBUG("playerbots", "swim-trace {}: move-to-loot: target {} not loot-possible", bot->GetName(),
                   loot.guid.ToString());
         lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
     }
+
+    // A new loot target invalidates the previous 3D spline.
+    if (!botAI->nav3dLootGuid.IsEmpty() && botAI->nav3dLootGuid != loot.guid)
+        clearNav3DLoot();
 
     WorldObject* target = loot.GetWorldObject(bot);
     if (!target)
@@ -3186,6 +3198,11 @@ bool MoveToLootAction::Execute(Event /*event*/)
     constexpr uint32 noProgressMs = 5000;  // give up on a target after 5s without progress
     constexpr float reachedMargin = 2.0f;  // near-target distance jitter margin
 
+    // A valid 3D spline is already heading to the target. Distance can grow while it rounds a
+    // corner, so the no-progress watchdog must not defer the target while the path is active.
+    bool const nav3dPathActive = !botAI->nav3dLootGuid.IsEmpty() &&
+                                 botAI->nav3dLootGuid == loot.guid && nowMs < botAI->nav3dLootUntilMs;
+
     if (loot.guid != lootWatchGuid || nowMs - lootWatchLastEvalMs > evalGapMs)
     {
         lootWatchGuid = loot.guid;
@@ -3201,13 +3218,15 @@ bool MoveToLootAction::Execute(Event /*event*/)
 
     // Drop a target the bot is not getting closer to (blocked path, pulled elsewhere), so the next
     // pickup chooses a closer reachable one.
-    if (distance > sPlayerbotAIConfig.ContactDistance + reachedMargin && nowMs - lootWatchMs >= noProgressMs)
+    if (!nav3dPathActive && distance > sPlayerbotAIConfig.ContactDistance + reachedMargin &&
+        nowMs - lootWatchMs >= noProgressMs)
     {
         LOG_DEBUG("playerbots", "swim-trace {}: defer loot {} after no progress", bot->GetName(), loot.guid.ToString());
         availableLoot->DeferLoot(loot.guid);
         if (AI_VALUE(LootObject, "loot target").guid == loot.guid)
             context->GetValue<LootObject>("loot target")->Set(LootObject());
         lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
     }
 
@@ -3234,9 +3253,23 @@ bool MoveToLootAction::Execute(Event /*event*/)
         float const dy = bot->GetPositionY() - target->GetPositionY();
         float const dz = bot->GetPositionZ() - target->GetPositionZ();
         float const dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Follow an already-issued 3D loot spline without recomputing/reissuing it every tick.
+        // The AI must keep ticking so the loot action can fire as soon as we are in range.
+        if (!botAI->nav3dLootGuid.IsEmpty())
+        {
+            if (botAI->nav3dLootGuid != loot.guid || nowMs >= botAI->nav3dLootUntilMs)
+                clearNav3DLoot();
+            else if (dist > range && bot->isMoving())
+                return true;
+            else
+                clearNav3DLoot();
+        }
+
         if (dist <= range)
         {
             LOG_DEBUG("playerbots", "swim-trace {}: within swim range {:.1f} of target", bot->GetName(), dist);
+            clearNav3DLoot();
             return false;
         }
 
@@ -3289,7 +3322,12 @@ bool MoveToLootAction::Execute(Event /*event*/)
                         Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
                     bot->StopMoving();
                     bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_NONE);
-                    botAI->SetNextCheckDelay(uint32(std::max(30000.0f, result.Length * 250.0f)));
+                    // Do not sleep the AI here. The spline runs in the movement generator while
+                    // the AI keeps ticking, so LootAction can interact as soon as we are in
+                    // range. The state guard above prevents reissuing the same path.
+                    botAI->nav3dLootGuid = loot.guid;
+                    botAI->nav3dLootUntilMs =
+                        nowMs + uint32(std::min(60000.0f, std::max(3000.0f, result.Length * 250.0f + 5000.0f)));
                     LOG_DEBUG("playerbots",
                               "swim-trace {}: nav3d loot path target={} clear={} points={} len={:.1f} ms={}",
                               bot->GetName(), loot.guid.ToString(), clear ? 1 : 0, path.size(), result.Length,
@@ -3310,6 +3348,7 @@ bool MoveToLootAction::Execute(Event /*event*/)
             if (AI_VALUE(LootObject, "loot target").guid == loot.guid)
                 context->GetValue<LootObject>("loot target")->Set(LootObject());
             lootWatchGuid.Clear();
+            clearNav3DLoot();
             return false;
         }
 

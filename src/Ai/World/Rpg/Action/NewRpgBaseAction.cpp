@@ -13,6 +13,7 @@
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "LootObjectStack.h"
 #include "NewRpgInfo.h"
 #include "QuestLevelRules.h"
 #include "NewRpgStrategy.h"
@@ -39,10 +40,55 @@
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
 
+bool NewRpgBaseAction::IsRpgTravelBlocked()
+{
+    if (!bot || !botAI)
+        return true;
+
+    // The surface ascent/hold owns movement. Do not count the blocked travel as an RPG stuck
+    // state; the bot must finish surfacing before it can resume the POI route.
+    if (botAI->IsDiveSafetyActive())
+        return true;
+
+    if (bot->IsInCombat() || botAI->GetState() == BOT_STATE_COMBAT)
+        return true;
+
+    if (bot->GetLootGUID())
+        return true;
+
+    // Moving to / looting a specific corpse or chest owns movement. Merely standing near
+    // lootable objects must not stop RPG travel; the loot action selects a target first.
+    if (!AI_VALUE(LootObject, "loot target").IsEmpty())
+        return true;
+
+    if (bot->InBattleground() || bot->IsInFlight() || !bot->IsAlive())
+        return true;
+
+    return false;
+}
+
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
     if (dest == WorldPosition())
         return false;
+
+    if (IsRpgTravelBlocked())
+    {
+        // Log the transition into a blocked state, not every tick.
+        if (botAI->rpgInfo.nearestMoveFarDis < 1.0e9f)
+            LOG_DEBUG("playerbots",
+                      "rpg-move {} paused: dive={} underwater={} combat={} lootGuid={} lootTarget={} flight={} "
+                      "alive={}",
+                      bot->GetName(), botAI->IsDiveSafetyActive() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                      bot->IsInCombat() || botAI->GetState() == BOT_STATE_COMBAT ? 1 : 0,
+                      bot->GetLootGUID() ? 1 : 0,
+                      !AI_VALUE(LootObject, "loot target").IsEmpty() ? 1 : 0, bot->IsInFlight() ? 1 : 0,
+                      bot->IsAlive() ? 1 : 0);
+        botAI->rpgInfo.stuckTs = getMSTime();
+        botAI->rpgInfo.stuckAttempts = 0;
+        botAI->rpgInfo.nearestMoveFarDis = 1.0e9f;
+        return true;
+    }
 
     // Don't start a ground move while the bot is on a taxi: the MovePoint issued
     // below would fight the active flight spline. Returning true consumes the tick
@@ -100,6 +146,15 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 
     // stuck check
     float disToDest = bot->GetDistance(dest);
+    // TEMP DIAGNOSTIC: far RPG travel uses exact point moves (see the MoveTo calls below);
+    // log the destination and state so underwater/void crossings can be attributed.
+    LOG_DEBUG("playerbots",
+              "rpg-move {} dest=({:.2f},{:.2f},{:.2f},{}) bot=({:.2f},{:.2f},{:.2f}) dis={:.2f} "
+              "inWater={} under={} swimming={} falling={} pathFinderDis={:.1f}",
+              bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId(),
+              bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), disToDest, bot->IsInWater() ? 1 : 0,
+              bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0,
+              bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0, pathFinderDis);
     // Require a meaningful improvement (5yd) to reset the stuck counter.
     // The old 1yd threshold was small enough that bots oscillating back
     // and forth around an obstacle would keep "making progress" forever
@@ -112,6 +167,16 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     else if (++botAI->rpgInfo.stuckAttempts >= 5 && GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= stuckTime)
     {
+        // The state can change between the entry guard and here (loot target picked up, mob
+        // aggro, dive safety). Never teleport out from under an action that owns movement.
+        if (IsRpgTravelBlocked())
+        {
+            botAI->rpgInfo.stuckTs = getMSTime();
+            botAI->rpgInfo.stuckAttempts = 0;
+            botAI->rpgInfo.nearestMoveFarDis = 1.0e9f;
+            return true;
+        }
+
         // No meaningful progress toward dest for `stuckTime`: fall
         // back to teleporting directly so the bot can get on with
         // its RPG objective instead of oscillating indefinitely.
@@ -130,8 +195,11 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
 
     float dis = bot->GetExactDist(dest);
-    if (dis < pathFinderDis)
+    if (dis < pathFinderDis && !bot->IsUnderWater() && !bot->isSwimming())
     {
+        LOG_DEBUG("playerbots", "rpg-move {} short exact move dest=({:.2f},{:.2f},{:.2f}) dis={:.2f} los={}",
+                  bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dis,
+                  bot->IsWithinLOS(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()) ? 1 : 0);
         return MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), false, false,
                       false, true);
     }
@@ -162,6 +230,42 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             // INCOMPLETE) the endpoint can land right under the bot;
             // fall through to cone sampling in that case.
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
+            LOG_DEBUG("playerbots",
+                      "rpg-path {} dest=({:.2f},{:.2f},{:.2f}) type=0x{:x} canReach={} end=({:.2f},{:.2f},{:.2f}) "
+                      "endDist={:.2f} dis={:.2f} endLos={} endTerrain={:.2f} botUnder={} botSwim={}",
+                      bot->GetName(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), uint32(type),
+                      canReach ? 1 : 0, endPos.x, endPos.y, endPos.z, endDistToDest, disToDest,
+                      bot->IsWithinLOS(endPos.x, endPos.y, endPos.z) ? 1 : 0,
+                      bot->GetMap()->GetHeight(bot->GetPhaseMask(), endPos.x, endPos.y, MAX_HEIGHT, true),
+                      bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0);
+
+            // While swimming, an exact move to the true endpoint is pathless and can tunnel
+            // through the seabed. Follow the mmap path in short chunks instead; MoveTo's swim
+            // guard checks each chunk before it is issued.
+            if (bot->IsUnderWater() || bot->isSwimming())
+            {
+                Movement::PointsArray const& points = path.GetPath();
+                for (G3D::Vector3 const& point : points)
+                {
+                    float const dx = point.x - bot->GetPositionX();
+                    float const dy = point.y - bot->GetPositionY();
+                    float const dz = point.z - bot->GetPositionZ();
+                    float const d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (d <= 1.0f)
+                        continue;
+
+                    float const chunk = std::min(20.0f, d);
+                    float const t = chunk / d;
+                    float const cx = bot->GetPositionX() + dx * t;
+                    float const cy = bot->GetPositionY() + dy * t;
+                    float const cz = bot->GetPositionZ() + dz * t;
+                    LOG_DEBUG("playerbots",
+                              "rpg-path {} swimming chunk next=({:.2f},{:.2f},{:.2f}) d={:.2f} chunk={:.2f}",
+                              bot->GetName(), point.x, point.y, point.z, d, chunk);
+                    return MoveTo(bot->GetMapId(), cx, cy, cz, false, false, false, true);
+                }
+            }
+
             if (endDistToDest + 5.0f < disToDest)
             {
                 return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
@@ -206,6 +310,10 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     if (found)
     {
+        LOG_DEBUG("playerbots",
+                  "rpg-path {} cone endpoint=({:.2f},{:.2f},{:.2f}) dis={:.2f} los={} under={} swim={}",
+                  bot->GetName(), rx, ry, rz, disToDest, bot->IsWithinLOS(rx, ry, rz) ? 1 : 0,
+                  bot->IsUnderWater() ? 1 : 0, bot->isSwimming() ? 1 : 0);
         return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
     }
     return false;

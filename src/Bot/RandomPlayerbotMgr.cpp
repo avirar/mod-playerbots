@@ -21,6 +21,7 @@
 #include "GridNotifiersImpl.h"
 #include "JsonUtils.h"
 #include "LFGMgr.h"
+#include "LootObjectStack.h"
 #include "MapMgr.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
@@ -1663,6 +1664,25 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         if (bot->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && bot->HasUnitState(UNIT_STATE_IGNORE_PATHFINDING) &&
             botAI->HasPlayerNearby())
             return;
+
+        // Do not teleport a bot away from an action that owns movement or interaction. The
+        // surface ascent/hold is short-lived; loot and combat will finish or fail on their own.
+        if (botAI->IsDiveSafetyActive() || bot->IsUnderWater() || bot->IsInCombat() || bot->GetLootGUID() ||
+            bot->IsInFlight())
+        {
+            LOG_DEBUG("playerbots", "Random teleport skipped for {}: dive={} underwater={} combat={} loot={} flight={}",
+                      bot->GetName(), botAI->IsDiveSafetyActive() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                      bot->IsInCombat() ? 1 : 0, bot->GetLootGUID() ? 1 : 0, bot->IsInFlight() ? 1 : 0);
+            return;
+        }
+
+        LootObject loot = botAI->GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
+        if (!loot.IsEmpty())
+        {
+            LOG_DEBUG("playerbots", "Random teleport skipped for {}: active loot target {}",
+                      bot->GetName(), loot.guid.ToString());
+            return;
+        }
     }
 
     // if (sPlayerbotAIConfig.RandomBotRpgChance < 0)
