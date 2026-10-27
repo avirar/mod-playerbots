@@ -784,9 +784,23 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
 
     // Different ADT tiles, missing air tile, or a failed local route: climb to a cruise
     // altitude, cross above terrain/WMO, then descend. This is the long-range complement to
-    // the local air tile and is what handles Storm Peaks' extreme Z changes.
-    float cruise = std::max({3000.0f, start.GetPositionZ(), goal.GetPositionZ()});
-    for (int attempt = 0; attempt < 4; ++attempt, cruise += 250.0f)
+    // the local air tile and is what handles Storm Peaks' extreme Z changes. Cruise just over
+    // the highest ground/WMO on the route instead of using a fixed 3000-yd ceiling.
+    float cruise = std::max(start.GetPositionZ(), goal.GetPositionZ());
+    float const dx = goal.GetPositionX() - start.GetPositionX();
+    float const dy = goal.GetPositionY() - start.GetPositionY();
+    float const horizontal = std::sqrt(dx * dx + dy * dy);
+    int const samples = std::max(2, int(std::ceil(horizontal / 25.0f)));
+    for (int i = 0; i <= samples; ++i)
+    {
+        float const t = float(i) / float(samples);
+        float const x = start.GetPositionX() + dx * t;
+        float const y = start.GetPositionY() + dy * t;
+        float const ground = map->GetHeight(phase, x, y, 4000.0f, true, 4000.0f);
+        if (ground > -1000.0f)
+            cruise = std::max(cruise, ground + 80.0f);
+    }
+    for (int attempt = 0; attempt < 4; ++attempt, cruise += 150.0f)
     {
         G3D::Vector3 const a{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
         G3D::Vector3 const b{start.GetPositionX(), start.GetPositionY(), cruise};
