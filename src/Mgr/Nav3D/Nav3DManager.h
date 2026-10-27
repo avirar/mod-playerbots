@@ -51,6 +51,7 @@ public:
     bool FindPathAir(Map* map, uint32 phase, Position const& start, Position const& goal,
                      Movement::PointsArray& path, Nav3DResult& result);
     static bool CanUseFlight(Player const* bot);
+    static bool CanUseFlightAt(Player const* bot, Position const& position);
     bool IsPathClear(Map* map, uint32 phase, Movement::PointsArray const& path, float radius = 0.5f) const;
 
     // Precomputed .n3t tile cache. The lazy pathfinder remains the fallback until the

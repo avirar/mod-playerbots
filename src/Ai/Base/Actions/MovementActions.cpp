@@ -223,7 +223,8 @@ bool MovementAction::TryNav3DFly(float x, float y, float z, MovementPriority pri
         return false;
     if (!bot || !bot->IsAlive() || !bot->GetMap() || !bot->IsFlying() || bot->GetVehicle())
         return false;
-    if (!Nav3DManager::Instance().CanUseFlight(bot))
+    if (!Nav3DManager::Instance().CanUseFlight(bot) ||
+        !Nav3DManager::Instance().CanUseFlightAt(bot, Position(x, y, z)))
         return false;
 
     float const distance = bot->GetExactDist(x, y, z);

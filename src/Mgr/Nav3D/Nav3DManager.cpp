@@ -1328,10 +1328,19 @@ bool Nav3DManager::CanUseFlight(Player const* bot)
 {
     if (!bot)
         return false;
+    return CanUseFlightAt(bot, Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+}
+
+bool Nav3DManager::CanUseFlightAt(Player const* bot, Position const& position)
+{
+    if (!bot || !bot->GetMap())
+        return false;
     if (bot->GetPureSkillValue(SKILL_RIDING) < 225)
         return false;
 
-    AreaTableEntry const* area = sAreaTableStore.LookupEntry(bot->GetAreaId());
+    uint32 const areaId = bot->GetMap()->GetAreaId(bot->GetPhaseMask(), position.GetPositionX(),
+                                                   position.GetPositionY(), position.GetPositionZ());
+    AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
     if (!area || !area->IsFlyable() || (area->flags & AREA_FLAG_NO_FLY_ZONE))
         return false;
 
