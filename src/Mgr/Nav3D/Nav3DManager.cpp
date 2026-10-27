@@ -34,6 +34,10 @@ namespace
     constexpr float kSurfaceMargin = 0.5f;
     constexpr float kFloorMargin = 0.25f;  // navigability: keep tight tunnel cells connected
     constexpr float kCapsuleFloorClearance = 0.5f;  // final body clearance
+    constexpr float kHardFloorClearance = -0.05f;  // final path may touch the floor, not pass it
+    constexpr uint32 kNeighborsCardinal = 6;
+    constexpr uint32 kNeighborsEdge = 18;
+    constexpr uint32 kNeighborsFull = 26;
     constexpr uint32 kHardMaxNodes = 2000000;
     constexpr uint32 kHardMaxTimeMs = 10000;
     constexpr uint32 kTimeCheckMask = 0x7F;
@@ -52,6 +56,14 @@ namespace
         int32 X = 0;
         int32 Y = 0;
         int32 Z = 0;
+    };
+
+    struct NeighborOffset
+    {
+        int8 X = 0;
+        int8 Y = 0;
+        int8 Z = 0;
+        uint8 Axes = 0;
     };
 
     bool operator==(GridNode const& left, GridNode const& right)
@@ -141,6 +153,80 @@ namespace
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
+    bool HasFloorClearance(Map* map, uint32 phase, Position const& position, float minClearance)
+    {
+        PositionFullTerrainStatus status;
+        map->GetFullTerrainStatusForPosition(phase, position.GetPositionX(), position.GetPositionY(),
+                                             position.GetPositionZ(), 1.0f, status, {});
+        return status.floorZ > INVALID_HEIGHT &&
+               position.GetPositionZ() - status.floorZ >= minClearance;
+    }
+
+    uint32 Nav3DNeighborCount()
+    {
+        uint32 const configured = sPlayerbotAIConfig.Nav3DNeighbors;
+        if (configured == kNeighborsCardinal || configured == kNeighborsEdge)
+            return configured;
+        return kNeighborsFull;
+    }
+
+    std::vector<NeighborOffset> BuildNeighborOffsets(uint32 mode)
+    {
+        std::vector<NeighborOffset> offsets;
+        for (int32 dx = -1; dx <= 1; ++dx)
+        {
+            for (int32 dy = -1; dy <= 1; ++dy)
+            {
+                for (int32 dz = -1; dz <= 1; ++dz)
+                {
+                    uint8 const axes =
+                        uint8((dx != 0 ? 1 : 0) + (dy != 0 ? 1 : 0) + (dz != 0 ? 1 : 0));
+                    if (!axes)
+                        continue;
+                    if (mode == kNeighborsCardinal && axes != 1)
+                        continue;
+                    if (mode == kNeighborsEdge && axes > 2)
+                        continue;
+                    offsets.push_back(
+                        {static_cast<int8>(dx), static_cast<int8>(dy), static_cast<int8>(dz), axes});
+                }
+            }
+        }
+        return offsets;
+    }
+
+    bool PathFloorSafe(Map* map, uint32 phase, Movement::PointsArray const& path, float minClearance)
+    {
+        if (path.size() < 2)
+            return false;
+
+        float travelled = 0.0f;
+        for (size_t i = 1; i < path.size(); ++i)
+        {
+            float const distance = Distance(path[i - 1], path[i]);
+            if (distance < 0.001f)
+                continue;
+
+            int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
+            for (int step = 1; step <= steps; ++step)
+            {
+                float const t = float(step) / float(steps);
+                G3D::Vector3 const point = path[i - 1] + (path[i] - path[i - 1]) * t;
+                travelled += distance / float(steps);
+
+                // The bot may already be slightly embedded in the floor at the start; do not
+                // reject the whole path for the first yard it is trying to climb out of.
+                if (travelled < 1.0f)
+                    continue;
+
+                if (!HasFloorClearance(map, phase, Position(point.x, point.y, point.z), minClearance))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     bool LineClear(Map* map, uint32 phase, Position const& from, Position const& to)
     {
         return map->isInLineOfSight(from.GetPositionX(), from.GetPositionY(), from.GetPositionZ(),
@@ -178,6 +264,38 @@ namespace
     {
         return map->isInLineOfSight(from.x, from.y, from.z, to.x, to.y, to.z, phase, LINEOFSIGHT_ALL_CHECKS,
                                     VMAP::ModelIgnoreFlags::Nothing);
+    }
+
+    bool PathCenterLineSafe(Map* map, uint32 phase, Movement::PointsArray const& path)
+    {
+        for (size_t i = 1; i < path.size(); ++i)
+        {
+            if (!LineClear(map, phase, path[i - 1], path[i]))
+                return false;
+        }
+        return true;
+    }
+
+    void RemoveCollinear(Movement::PointsArray& path)
+    {
+        if (path.size() < 3)
+            return;
+
+        Movement::PointsArray result;
+        result.push_back(path.front());
+        for (size_t i = 1; i + 1 < path.size(); ++i)
+        {
+            G3D::Vector3 const& previous = result.back();
+            G3D::Vector3 const& current = path[i];
+            G3D::Vector3 const& next = path[i + 1];
+            G3D::Vector3 const first = current - previous;
+            G3D::Vector3 const second = next - current;
+            if (first.cross(second).squaredLength() <= 1.0e-6f)
+                continue;
+            result.push_back(current);
+        }
+        result.push_back(path.back());
+        path = result;
     }
 
     // A swimmer has a body. The planner's single ray can pass while the model clips a wall or
@@ -257,6 +375,19 @@ namespace
         if (navigable && grid.RestrictSky && !underWater && !inWater && hasWater &&
             z > liquid.Level + kSurfaceMargin)
             navigable = false;
+
+        // A liquid cell is not automatically valid: the seabed, a hull floor, or a cave floor
+        // must actually be below it. This is the hard void guard; the body capsule stays
+        // advisory so hull windows remain reachable. The liquid depth is the cheap floor
+        // source; dry/WMO cells fall back to the terrain query.
+        if (navigable)
+        {
+            bool const floorSafe =
+                hasWater ? (z - liquid.DepthLevel >= kFloorMargin)
+                         : HasFloorClearance(grid.MapPtr, grid.Phase, center, kFloorMargin);
+            if (!floorSafe)
+                navigable = false;
+        }
 
         state.Nav = navigable ? 1 : -1;
         return navigable;
@@ -372,12 +503,30 @@ namespace
         if (!capsuleClear)
             path = points;
 
-        if (path.size() < 2)
+        RemoveCollinear(path);
+
+        // The capsule is advisory for a hull window, but the floor and centreline are not.
+        // A path that dives below the seabed or passes through a wall must never be followed.
+        bool const pathSafe =
+            PathFloorSafe(grid.MapPtr, grid.Phase, path, kHardFloorClearance) &&
+            PathCenterLineSafe(grid.MapPtr, grid.Phase, path);
+        if (!pathSafe)
         {
-            path.clear();
-            path.push_back({start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()});
-            path.push_back({goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()});
+            RemoveCollinear(points);
+            if (!PathFloorSafe(grid.MapPtr, grid.Phase, points, kHardFloorClearance) ||
+                !PathCenterLineSafe(grid.MapPtr, grid.Phase, points))
+            {
+                LOG_DEBUG("playerbots",
+                          "nav3d path rejected: floor or centreline unsafe (path={}, raw={})",
+                          path.size(), points.size());
+                return false;
+            }
+
+            path = points;
         }
+
+        if (path.size() < 2)
+            return false;
 
         result.Length = 0.0f;
         for (size_t i = 1; i < path.size(); ++i)
@@ -522,6 +671,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     GridNode bestNode{};
     bool hasBest = false;
     result.BestDistance = std::numeric_limits<float>::max();
+    std::vector<NeighborOffset> const neighborOffsets = BuildNeighborOffsets(Nav3DNeighborCount());
 
     while (!open.empty())
     {
@@ -577,8 +727,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
             break;
 
         Position const currentCenter = grid.Center(current.Node);
-        static GridNode const offsets[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-        for (GridNode const& offset : offsets)
+        for (NeighborOffset const& offset : neighborOffsets)
         {
             GridNode const neighbor{current.Node.X + offset.X, current.Node.Y + offset.Y,
                                     current.Node.Z + offset.Z};
@@ -695,6 +844,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
     uint32 expanded = 0;
     bool found = false;
     GridNode surfaceNode{};
+    std::vector<NeighborOffset> const neighborOffsets = BuildNeighborOffsets(Nav3DNeighborCount());
 
     while (!open.empty())
     {
@@ -731,9 +881,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
         if (expanded >= maxNodes)
             break;
 
-        static GridNode const offsets[] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
-                                           {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-        for (GridNode const& offset : offsets)
+        for (NeighborOffset const& offset : neighborOffsets)
         {
             GridNode const neighbor{current.Node.X + offset.X, current.Node.Y + offset.Y,
                                     current.Node.Z + offset.Z};

@@ -377,6 +377,8 @@ Playerbots.Nav3D.Lazy = 0
 Playerbots.Nav3D.Swim = 1
 # Grid cell size in yards. WMO interiors use this size; open water uses twice it.
 Playerbots.Nav3D.CellSize = 1.0
+# A* neighbour moves: 6 = cardinal, 18 = + edge diagonals, 26 = full 3D diagonals.
+Playerbots.Nav3D.Neighbors = 26
 # Areas where the coarse (2x) grid is safe: open water without WMO tunnels. CSV of area ids.
 # Empty = rely on the WMO-floor heuristic only.
 Playerbots.Nav3D.OpenWaterAreas =

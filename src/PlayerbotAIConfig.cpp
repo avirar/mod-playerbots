@@ -97,6 +97,9 @@ bool PlayerbotAIConfig::Initialize()
     Nav3DLazy = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Lazy", false);
     Nav3DSwim = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Swim", true);
     Nav3DCellSize = sConfigMgr->GetOption<float>("Playerbots.Nav3D.CellSize", 1.0f);
+    Nav3DNeighbors = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.Neighbors", 26);
+    if (Nav3DNeighbors != 6 && Nav3DNeighbors != 18 && Nav3DNeighbors != 26)
+        Nav3DNeighbors = 26;
     Nav3DMaxNodes = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxNodes", 20000);
     Nav3DMaxSearchTimeMs = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxSearchTimeMs", 50);
     Nav3DOpenWaterAreas.clear();

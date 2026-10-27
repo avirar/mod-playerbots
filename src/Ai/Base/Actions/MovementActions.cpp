@@ -3150,6 +3150,7 @@ bool MoveToLootAction::Execute(Event /*event*/)
     {
         botAI->nav3dLootGuid.Clear();
         botAI->nav3dLootUntilMs = 0;
+        botAI->nav3dLootIssuedMs = 0;
     };
 
     // A dive-safety ascent or a post-emergency surface hold owns movement; dropping the watchdog
@@ -3265,7 +3266,9 @@ bool MoveToLootAction::Execute(Event /*event*/)
         {
             if (botAI->nav3dLootGuid != loot.guid || nowMs >= botAI->nav3dLootUntilMs)
                 clearNav3DLoot();
-            else if (dist > range && bot->isMoving())
+            // The movement flag can lag the launch by one tick; do not throw away a fresh
+            // 100-yd path just because isMoving() is not visible yet.
+            else if (nowMs - botAI->nav3dLootIssuedMs < 1000 || (dist > range && bot->isMoving()))
                 return true;
             else
                 clearNav3DLoot();
@@ -3331,12 +3334,16 @@ bool MoveToLootAction::Execute(Event /*event*/)
                     // the AI keeps ticking, so LootAction can interact as soon as we are in
                     // range. The state guard above prevents reissuing the same path.
                     botAI->nav3dLootGuid = loot.guid;
+                    botAI->nav3dLootIssuedMs = nowMs;
                     botAI->nav3dLootUntilMs =
                         nowMs + uint32(std::min(60000.0f, std::max(3000.0f, result.Length * 250.0f + 5000.0f)));
                     LOG_DEBUG("playerbots",
                               "swim-trace {}: nav3d loot path target={} clear={} points={} len={:.1f} ms={}",
                               bot->GetName(), loot.guid.ToString(), clear ? 1 : 0, path.size(), result.Length,
                               result.ElapsedMs);
+                    for (size_t i = 0; i < path.size(); ++i)
+                        LOG_DEBUG("playerbots", "swim-trace {}: nav3d loot point[{}] = ({:.2f},{:.2f},{:.2f})",
+                                  bot->GetName(), i, path[i].x, path[i].y, path[i].z);
                     lootWatchGuid = loot.guid;
                     lootWatchDistance = distance;
                     lootWatchMs = nowMs;
