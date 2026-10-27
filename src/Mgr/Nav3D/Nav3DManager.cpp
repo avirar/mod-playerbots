@@ -1336,6 +1336,10 @@ bool Nav3DManager::CanUseFlight(Player const* bot)
         return false;
 
     uint32 const vmap = GetVirtualMapForMapAndZone(bot->GetMapId(), bot->GetZoneId());
+    // Player free flight is an Outland/Northrend feature. Eastern Kingdoms and Kalimdor
+    // (maps 0/1) are taxi-only even if a sub-area carries the expansion flag.
+    if (vmap != MAP_OUTLAND && vmap != MAP_NORTHREND)
+        return false;
     if (vmap == MAP_NORTHREND && !bot->HasSpell(54197))
         return false;
 
