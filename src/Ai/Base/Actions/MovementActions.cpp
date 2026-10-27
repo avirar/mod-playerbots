@@ -3216,6 +3216,11 @@ bool MoveToLootAction::Execute(Event /*event*/)
     }
     lootWatchLastEvalMs = nowMs;
 
+    // While the 3D spline owns movement, keep the watchdog fresh. Distance can grow while the
+    // path rounds a corner; the path has its own expiry and the next tick re-paths if needed.
+    if (nav3dPathActive)
+        lootWatchMs = nowMs;
+
     // Drop a target the bot is not getting closer to (blocked path, pulled elsewhere), so the next
     // pickup chooses a closer reachable one.
     if (!nav3dPathActive && distance > sPlayerbotAIConfig.ContactDistance + reachedMargin &&
