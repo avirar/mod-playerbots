@@ -73,25 +73,30 @@ bool Nav3DTestAction::Execute(Event event)
     if (!bot || !bot->GetMap())
         return false;
 
-    // Test-only: a forced fly spline does not disable the player's gravity by itself. The
-    // mount aura normally supplies both flags; set them explicitly for the probe and try the
-    // flying mount for the visual/mounted state.
+    // Test-only: never dismount or replace the bot's mount. A forced-fly probe is only valid
+    // on a bot that is already on a flying mount; changing the mount here can turn a live
+    // character into an unrelated creature and destroys the very state under test.
     if (fly)
     {
+        bool const flyingMount = bot->HasIncreaseMountedFlightSpeedAura() || bot->HasFlyAura();
+        if (!bot->IsMounted() || !flyingMount)
+        {
+            botAI->TellMasterNoFacing(
+                "nav3d fly requires an existing flying mount; mount the bot first and retry");
+            return true;
+        }
+
         bot->SetCanFly(true);
         bot->SetDisableGravity(true);
-        bot->SetSkill(SKILL_RIDING, 4, 300, 300);
-        if (bot->IsMounted())
-            bot->Dismount();
-        SpellCastResult const mountResult = bot->CastSpell(bot, 34068, true);  // Swift Nether Drake
-        // A test bot may be below the mount's level requirement. The forced-fly spline only
-        // needs the movement flags, so restore them after the cast.
-        bot->SetCanFly(true);
-        bot->SetDisableGravity(true);
-        LOG_INFO("playerbots", "nav3d fly setup {} canFly={} gravityOff={} mounted={} cast={}", bot->GetName(),
-                 bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0,
-                 bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0, bot->IsMounted() ? 1 : 0,
-                 uint32(mountResult));
+        // SetCanFly/SetDisableGravity do not always update the movement-info flags that the
+        // client uses for gravity. Add them explicitly or the bot hops along the spline.
+        bot->AddUnitMovementFlag(MOVEMENTFLAG_CAN_FLY | MOVEMENTFLAG_DISABLE_GRAVITY |
+                                 MOVEMENTFLAG_FLYING);
+        bot->SendMovementFlagUpdate();
+        LOG_INFO("playerbots", "nav3d fly setup {} mounted={} mountSpell={} flying={} canFlyFlag={} gravityOff={}",
+                 bot->GetName(), bot->IsMounted() ? 1 : 0, bot->GetMountBlockId(),
+                 bot->IsFlying() ? 1 : 0, bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0,
+                 bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0);
     }
 
     Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());

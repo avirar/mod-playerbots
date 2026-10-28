@@ -56,7 +56,9 @@ public:
             {"nav3dair", HandleNav3DAirCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dcanfly", HandleNav3DCanFlyCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dteleport", HandleNav3DTeleportCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dunmount", HandleNav3DUnmountCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dbake", HandleNav3DBakeCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dairbake", HandleNav3DAirBakeCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dtile", HandleNav3DTileCommand, SEC_GAMEMASTER, Console::Yes},
             {"addquest", HandleAddQuestCommand, SEC_GAMEMASTER, Console::Yes},
             {"completequest", HandleCompleteQuestCommand, SEC_GAMEMASTER, Console::Yes},
@@ -122,7 +124,7 @@ public:
         if (command.empty())
         {
             handler->SendErrorMessage("Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
-                                      "movement, target, hp, strategy, action, values, travel, budget)");
+                                      "movement, mount, target, hp, strategy, action, values, travel, budget)");
             return false;
         }
 
@@ -312,6 +314,97 @@ public:
                  "point=({:.2f},{:.2f},{:.2f}) radius={:.2f} navigable={} clearance={}",
                  map->GetId(), tileX, tileY, header.OriginX, header.OriginY, header.OriginZ, header.SizeX,
                  header.SizeY, header.SizeZ, header.CellSize, x, y, z, radius, navigable ? 1 : 0, clearance);
+        return true;
+    }
+
+    static bool HandleNav3DUnmountCommand(ChatHandler* handler, PlayerIdentifier target)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        uint32 const mountSpell = bot->GetMountBlockId();
+        bot->Dismount();
+        handler->PSendSysMessage("nav3dunmount {} mountSpell={} mounted={}", target.GetName(), mountSpell,
+                                 bot->IsMounted() ? 1 : 0);
+        LOG_INFO("playerbots", "nav3dunmount {} removed mount spell {} mounted={}", target.GetName(), mountSpell,
+                 bot->IsMounted() ? 1 : 0);
+        return true;
+    }
+
+    static bool HandleNav3DAirBakeCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Map* map = bot->GetMap();
+        if (!map)
+        {
+            handler->SendErrorMessage("nav3dairbake {} has no map", target.GetName());
+            return false;
+        }
+
+        std::istringstream in{std::string(command)};
+        uint32 tileX = 0;
+        uint32 tileY = 0;
+        float minX = 0.0f;
+        float maxX = 0.0f;
+        float minY = 0.0f;
+        float maxY = 0.0f;
+        float minZ = 0.0f;
+        float maxZ = 0.0f;
+        if (!(in >> tileX >> tileY >> minX >> maxX >> minY >> maxY >> minZ >> maxZ))
+        {
+            handler->SendErrorMessage(
+                "Usage: nav3dairbake <bot> <tileX> <tileY> <minX> <maxX> <minY> <maxY> <minZ> <maxZ>");
+            return false;
+        }
+
+        std::string dataPath = sWorld ? sWorld->GetDataPath() : std::string();
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+        dataPath += sPlayerbotAIConfig.Nav3DDataPath;
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+
+        std::string const source = Acore::StringFormat("{}map{:04}/{:02}_{:02}_air.n3t", dataPath,
+                                                       map->GetId(), tileX, tileY);
+        std::string const output = source + ".new";
+        std::string const backup = source + ".bak";
+
+        std::error_code ec;
+        if (std::filesystem::exists(source, ec) && !std::filesystem::exists(backup, ec))
+            std::filesystem::copy_file(source, backup, std::filesystem::copy_options::none, ec);
+        if (ec)
+        {
+            handler->SendErrorMessage("nav3dairbake backup failed: {}", ec.message());
+            return false;
+        }
+
+        std::string error;
+        if (!Nav3DManager::Instance().BakeAirTile(map, bot->GetPhaseMask(), uint16(tileX), uint16(tileY),
+                                                  4.0f, minZ, maxZ, minX, maxX, minY, maxY, source,
+                                                  output, error))
+        {
+            handler->SendErrorMessage("nav3dairbake {} failed: {}", target.GetName(), error);
+            return false;
+        }
+
+        std::filesystem::copy_file(output, source, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec)
+        {
+            handler->SendErrorMessage("nav3dairbake commit failed: {}", ec.message());
+            return false;
+        }
+        Nav3DManager::Instance().ClearTileCache();
+
+        handler->PSendSysMessage("nav3dairbake {} tile {}:{} wrote {}", target.GetName(), tileX, tileY,
+                                 source);
+        LOG_INFO("playerbots", "nav3dairbake {} tile {}:{} source={} backup={}", target.GetName(), tileX,
+                 tileY, source, backup);
         return true;
     }
 

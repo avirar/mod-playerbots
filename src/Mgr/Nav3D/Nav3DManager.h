@@ -67,12 +67,20 @@ public:
                        float boundsMinY, float boundsMaxY, std::string const& outputPath,
                        std::string& error);
 
+    // Live air bake for WMO/cave volumes that the offline VMAP extractor does not include.
+    // Loads the existing air tile, probes a local box through the server's collision mesh,
+    // merges the air spans, and writes a new tile.
+    bool BakeAirTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
+                     float minZ, float maxZ, float boundsMinX, float boundsMaxX,
+                     float boundsMinY, float boundsMaxY, std::string const& sourcePath,
+                     std::string const& outputPath, std::string& error);
+
 private:
     Nav3DManager() = default;
 
     bool FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                           Movement::PointsArray& path, Nav3DResult& result,
-                          Nav3DTile const* tile = nullptr);
+                          Nav3DTile const* tile = nullptr, bool airComposite = false);
     bool FindPathTile(Map* map, uint32 phase, Position const& start, Position const& goal,
                       Movement::PointsArray& path, Nav3DResult& result);
     struct TileCacheEntry

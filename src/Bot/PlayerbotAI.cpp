@@ -5399,6 +5399,20 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
             << target->GetMapId() << " " << target->GetOrientation();
         return out.str();
     }
+    else if (command == "mount")
+    {
+        std::ostringstream out;
+        out << "mounted=" << (bot->IsMounted() ? 1 : 0)
+            << " mountSpell=" << bot->GetMountBlockId()
+            << " mountDisplay=" << bot->GetMountID()
+            << " flying=" << (bot->IsFlying() ? 1 : 0)
+            << " canFlyFlag=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0)
+            << " gravityOff=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0)
+            << " flyingFlag=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) ? 1 : 0)
+            << " flightAura=" << (bot->HasIncreaseMountedFlightSpeedAura() ? 1 : 0)
+            << " flyAura=" << (bot->HasFlyAura() ? 1 : 0);
+        return out.str();
+    }
     else if (command == "movement")
     {
         LastMovement& data = *GetAiObjectContext()->GetValue<LastMovement&>("last movement");

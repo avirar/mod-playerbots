@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <limits>
 #include <queue>
 #include <unordered_map>
@@ -36,6 +37,8 @@ namespace
     // nothing until it is searched. Uldis is ~263 yd in Y and ~171 yd down; at 0.5-yd detail
     // cells that no longer fits in 512.
     constexpr int32 kMaxCellsPerAxis = 2048;
+    constexpr int32 kMaxAirCellsPerAxis = 4096;
+    constexpr float kAirCompositeCell = 4.0f;
     constexpr float kSurfaceMargin = 0.5f;
     constexpr float kFloorMargin = 0.25f;  // navigability: keep tight tunnel cells connected
     constexpr float kCapsuleFloorClearance = 0.5f;  // final body clearance
@@ -116,7 +119,10 @@ namespace
         float MinY = 0.0f;
         float MinZ = 0.0f;
         bool RestrictSky = false;
+        bool Air = false;
+        bool AirLos = true;
         Nav3DTile const* Tile = nullptr;
+        mutable std::unordered_map<uint64_t, std::shared_ptr<Nav3DTile>> AirTiles;
         std::shared_ptr<Nav3DTile> SolidTile;
         int32 SizeX = 0;
         int32 SizeY = 0;
@@ -367,9 +373,69 @@ namespace
         return true;
     }
 
+    std::shared_ptr<Nav3DTile> GetAirTileAt(Grid const& grid, float x, float y)
+    {
+        constexpr float gridSize = 533.3333f;
+        int32 const tileX = int32(std::floor(32.0f - x / gridSize));
+        int32 const tileY = int32(std::floor(32.0f - y / gridSize));
+        if (tileX < 0 || tileY < 0 || tileX >= 64 || tileY >= 64)
+            return nullptr;
+        uint64 const key = (uint64(grid.MapPtr->GetId()) << 42) |
+                           (uint64(uint16(tileX)) << 21) | uint64(uint16(tileY));
+        auto const cached = grid.AirTiles.find(key);
+        if (cached != grid.AirTiles.end())
+            return cached->second;
+        std::shared_ptr<Nav3DTile> tile = Nav3DManager::Instance().GetTile(
+            grid.MapPtr->GetId(), uint16(tileX), uint16(tileY), Nav3D::MediumAir);
+        grid.AirTiles.emplace(key, tile);
+        return tile;
+    }
+
+    bool AirTileUsable(Nav3DTile const* tile)
+    {
+        if (!tile)
+            return false;
+        Nav3DTileHeader const& header = tile->Header();
+        return (header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 5;
+    }
+
+    bool AirNavigable(Grid const& grid, Position const& position)
+    {
+        std::shared_ptr<Nav3DTile> tile =
+            GetAirTileAt(grid, position.GetPositionX(), position.GetPositionY());
+        if (!AirTileUsable(tile.get()))
+            return false;
+        return tile->IsNavigable(position.GetPositionX(), position.GetPositionY(),
+                                 position.GetPositionZ(), kTileBodyRadius);
+    }
+
+    // A multi-tile edge can cross several air tiles. Sample the same 0.5-yd line the single
+    // tile search uses, choosing the tile by world position at every sample, then run one
+    // VMAP centreline check for the whole edge.
+    bool AirLineClearLive(Grid const& grid, G3D::Vector3 const& from, G3D::Vector3 const& to,
+                          bool liveLos = true)
+    {
+        float const dx = to.x - from.x;
+        float const dy = to.y - from.y;
+        float const dz = to.z - from.z;
+        float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        int const steps = std::max(1, int(std::ceil(distance / 1.0f)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            G3D::Vector3 const point = from + (to - from) * (float(i) / float(steps));
+            std::shared_ptr<Nav3DTile> tile = GetAirTileAt(grid, point.x, point.y);
+            if (!AirTileUsable(tile.get()) ||
+                !tile->IsNavigable(point.x, point.y, point.z, kTileBodyRadius))
+                return false;
+        }
+        return !liveLos || LineClear(grid.MapPtr, grid.Phase, from, to);
+    }
+
     bool GridLineClear(Grid const& grid, Map* map, uint32 phase, G3D::Vector3 const& from,
                        G3D::Vector3 const& to)
     {
+        if (grid.Air)
+            return AirLineClearLive(grid, from, to, grid.AirLos);
         if (grid.Tile)
             return TileLineClearLive(grid.Tile, map, phase, from, to);
         return LineClear(map, phase, from, to) && SolidTileLineClear(grid, from, to);
@@ -380,6 +446,8 @@ namespace
     {
         G3D::Vector3 const fromPoint{from.GetPositionX(), from.GetPositionY(), from.GetPositionZ()};
         G3D::Vector3 const toPoint{to.GetPositionX(), to.GetPositionY(), to.GetPositionZ()};
+        if (grid.Air)
+            return AirLineClearLive(grid, fromPoint, toPoint, grid.AirLos);
         if (grid.Tile)
             return TileLineClearLive(grid.Tile, map, phase, fromPoint, toPoint);
         return LineClear(map, phase, fromPoint, toPoint) && SolidTileLineClear(grid, fromPoint, toPoint);
@@ -466,6 +534,13 @@ namespace
             return state.Nav > 0;
 
         Position const center = grid.Center(node);
+        if (grid.Air)
+        {
+            bool const navigable = AirNavigable(grid, center);
+            state.Nav = navigable ? 1 : -1;
+            return navigable;
+        }
+
         if (grid.Tile)
         {
             bool const navigable = grid.Tile->IsNavigable(center.GetPositionX(), center.GetPositionY(),
@@ -629,11 +704,33 @@ namespace
             index = best;
         }
 
+        // An air path starts and ends on the ground, which is below the first baked air cell
+        // (the bake keeps the body half-height out of the floor). The lift off and the final
+        // descent are vertical ground-contact edges, so validate those two edges with map LOS
+        // instead of the tile body band. Longer endpoint edges still use the tile volume.
+        auto const edgeClear = [&grid](G3D::Vector3 const& from, G3D::Vector3 const& to,
+                                       bool endpointEdge)
+        {
+            if (endpointEdge)
+            {
+                float const dx = to.x - from.x;
+                float const dy = to.y - from.y;
+                if (dx * dx + dy * dy <= 64.0f && LineClear(grid.MapPtr, grid.Phase, from, to))
+                    return true;
+            }
+            if (grid.Air)
+                return AirLineClearLive(grid, from, to);
+            return TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, from, to);
+        };
+
         bool capsuleClear = path.size() >= 2;
-        if (grid.Tile)
+        if (grid.Air || grid.Tile)
         {
             for (size_t i = 1; capsuleClear && i < path.size(); ++i)
-                capsuleClear = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, path[i - 1], path[i]);
+            {
+                bool const endpointEdge = i == 1 || i + 1 == path.size();
+                capsuleClear = edgeClear(path[i - 1], path[i], endpointEdge);
+            }
         }
         else
         {
@@ -649,11 +746,14 @@ namespace
         // The capsule is advisory for a hull window, but the floor and centreline are not.
         // A path that dives below the seabed or passes through a wall must never be followed.
         bool pathSafe = false;
-        if (grid.Tile)
+        if (grid.Air || grid.Tile)
         {
             pathSafe = path.size() >= 2;
             for (size_t i = 1; pathSafe && i < path.size(); ++i)
-                pathSafe = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, path[i - 1], path[i]);
+            {
+                bool const endpointEdge = i == 1 || i + 1 == path.size();
+                pathSafe = edgeClear(path[i - 1], path[i], endpointEdge);
+            }
         }
         else
             pathSafe = PathFloorSafe(grid.MapPtr, grid.Phase, path, kHardFloorClearance) &&
@@ -663,11 +763,14 @@ namespace
         {
             RemoveCollinear(points);
             bool rawSafe = false;
-            if (grid.Tile)
+            if (grid.Air || grid.Tile)
             {
                 rawSafe = points.size() >= 2;
                 for (size_t i = 1; rawSafe && i < points.size(); ++i)
-                    rawSafe = TileLineClearLive(grid.Tile, grid.MapPtr, grid.Phase, points[i - 1], points[i]);
+                {
+                    bool const endpointEdge = i == 1 || i + 1 == points.size();
+                    rawSafe = edgeClear(points[i - 1], points[i], endpointEdge);
+                }
             }
             else
                 rawSafe = PathFloorSafe(grid.MapPtr, grid.Phase, points, kHardFloorClearance) &&
@@ -782,10 +885,19 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
         }
     }
 
-    // Different ADT tiles, missing air tile, or a failed local route: climb to a cruise
-    // altitude, cross above terrain/WMO, then descend. This is the long-range complement to
-    // the local air tile and is what handles Storm Peaks' extreme Z changes. Cruise just over
-    // the highest ground/WMO on the route instead of using a fixed 3000-yd ceiling.
+    // Cross-tile volumetric route: one A* over a composite grid spanning the ADT air tiles.
+    // Each node samples the aligned air tile at its world position, so WMO floors/ceilings and
+    // terrain stay in the search across tile boundaries.
+    Nav3DResult airResult;
+    if (FindPathDirected(map, phase, start, goal, path, airResult, nullptr, true))
+    {
+        result = airResult;
+        result.CellSize = kAirCompositeCell;
+        return true;
+    }
+
+    // Fallback: climb to a cruise altitude, cross above terrain/WMO, then descend. The
+    // cruise altitude is sampled just above the highest ground/WMO on the route.
     float cruise = std::max(start.GetPositionZ(), goal.GetPositionZ());
     float const dx = goal.GetPositionX() - start.GetPositionX();
     float const dy = goal.GetPositionY() - start.GetPositionY();
@@ -874,7 +986,7 @@ bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Posit
 
 bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                                     Movement::PointsArray& path, Nav3DResult& result,
-                                    Nav3DTile const* tile)
+                                    Nav3DTile const* tile, bool airComposite)
 {
     result = {};
     path.clear();
@@ -882,7 +994,8 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
         return false;
 
-    bool const openWater = !tile && IsOpenWaterArea(map, phase, start) && IsOpenWaterArea(map, phase, goal);
+    bool const openWater =
+        !tile && !airComposite && IsOpenWaterArea(map, phase, start) && IsOpenWaterArea(map, phase, goal);
 
     Grid grid;
     grid.MapPtr = map;
@@ -925,6 +1038,50 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / header.CellSize)));
         result.CellSize = header.CellSize;
     }
+    else if (airComposite)
+    {
+        grid.Air = true;
+        grid.Cell = kAirCompositeCell;
+        result.CellSize = kAirCompositeCell;
+
+        float const dx = goal.GetPositionX() - start.GetPositionX();
+        float const dy = goal.GetPositionY() - start.GetPositionY();
+        float const horizontal = std::sqrt(dx * dx + dy * dy);
+        float const margin = std::clamp(horizontal * 0.05f, 40.0f, 250.0f);
+        float const minX = std::min(start.GetPositionX(), goal.GetPositionX()) - margin;
+        float const minY = std::min(start.GetPositionY(), goal.GetPositionY()) - margin;
+        float const maxX = std::max(start.GetPositionX(), goal.GetPositionX()) + margin;
+        float const maxY = std::max(start.GetPositionY(), goal.GetPositionY()) + margin;
+
+        // Allow the route to climb over the highest terrain/WMO between the endpoints. A
+        // fixed ceiling is either needlessly high or too low; sample the ground at 50 yd.
+        float minZ = std::min(start.GetPositionZ(), goal.GetPositionZ()) - 150.0f;
+        float maxZ = std::max(start.GetPositionZ(), goal.GetPositionZ()) + 150.0f;
+        int const samples = std::max(2, int(std::ceil(horizontal / 50.0f)));
+        for (int i = 0; i <= samples; ++i)
+        {
+            float const t = float(i) / float(samples);
+            float const x = start.GetPositionX() + dx * t;
+            float const y = start.GetPositionY() + dy * t;
+            float const ground = map->GetHeight(phase, x, y, 4000.0f, true, 4000.0f);
+            if (ground > -1000.0f)
+                maxZ = std::max(maxZ, ground + 150.0f);
+        }
+        minZ = std::max(-1000.0f, minZ);
+        maxZ = std::min(4000.0f, maxZ);
+
+        auto const alignDown = [](float value)
+        { return std::floor(value / kAirCompositeCell) * kAirCompositeCell; };
+        grid.MinX = alignDown(minX);
+        grid.MinY = alignDown(minY);
+        grid.MinZ = alignDown(minZ);
+        grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / kAirCompositeCell)));
+        grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / kAirCompositeCell)));
+        grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / kAirCompositeCell)));
+        if (grid.SizeX > kMaxAirCellsPerAxis || grid.SizeY > kMaxAirCellsPerAxis ||
+            grid.SizeZ > kMaxAirCellsPerAxis)
+            return false;
+    }
     else
     {
         bool const detailGrid =
@@ -956,7 +1113,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         grid.RestrictSky = startInWater;
     }
 
-    if (!tile)
+    if (!tile && !airComposite)
     {
         grid.SolidTile = ResolveSolidTile(map, start);
         if (!grid.SolidTile)
@@ -975,8 +1132,16 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     if (!inside(start) || !inside(goal))
         return false;
 
-    uint32 const maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
-    uint32 const maxTimeMs = std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
+    uint32 maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
+    uint32 maxTimeMs =
+        std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
+    if (airComposite)
+    {
+        // This search runs on the map thread. A long route must never freeze every bot while
+        // A* explores; bound it hard and let the caller fall back to the cruise corridor.
+        maxTimeMs = std::min<uint32>(maxTimeMs, 300);
+        maxNodes = std::min<uint32>(maxNodes, 300000);
+    }
 
     std::unordered_map<GridNode, NodeState, GridNodeHash> states;
     states.reserve(4096);
@@ -990,7 +1155,9 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     G3D::Vector3 const startPoint{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
     G3D::Vector3 const goalPoint{goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()};
     bool const directClear = tile ? TileLineClearLive(tile, map, phase, startPoint, goalPoint)
-                                  : SegmentClear(map, phase, startPoint, goalPoint, 0.5f);
+                                  : airComposite
+                                        ? AirLineClearLive(grid, startPoint, goalPoint)
+                                        : SegmentClear(map, phase, startPoint, goalPoint, 0.5f);
     if (directClear)
     {
         path.push_back(startPoint);
@@ -1003,6 +1170,11 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         return true;
     }
 
+    // The tile volume already contains WMO floors/ceilings and terrain. Skip the expensive
+    // VMAP line check on every A* edge; BuildPath re-validates the final path with full LOS.
+    if (airComposite)
+        grid.AirLos = false;
+
     auto const heuristic = [&grid, &goal](GridNode const& node)
     {
         return Distance(grid.Center(node), goal);
@@ -1010,7 +1182,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     // The tile has narrow one-cell hull windows. A pure Dijkstra-like heuristic expands most
     // of the open-water volume before it finds the window; a greedy tile search is still safe
     // because every visited cell has been clearance-checked, and it is much cheaper.
-    float const heuristicWeight = grid.Tile ? 2.0f : 1.0f;
+    float const heuristicWeight = (grid.Tile || grid.Air) ? 2.0f : 1.0f;
 
     NodeState& startState = states[startNode];
     startState.G = 0.0f;
@@ -1130,6 +1302,9 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
 
     if (!found)
         return false;
+
+    if (airComposite)
+        grid.AirLos = true;
 
     if (!BuildPath(grid, states, startNode, goalNode, start, goal, result.Partial, path, result))
         return false;
@@ -1388,6 +1563,193 @@ void Nav3DManager::ClearTileCache()
     std::scoped_lock lock(_tileCacheMutex);
     _tileCache.clear();
     _tileLru.clear();
+}
+
+namespace
+{
+    bool IsLiveAirCell(Map* map, uint32 phase, float x, float y, float z)
+    {
+        PositionFullTerrainStatus status;
+        map->GetFullTerrainStatusForPosition(phase, x, y, z, 1.0f, status, {});
+        if (status.floorZ > INVALID_HEIGHT && status.floorZ > z + 0.5f)
+            return false;
+
+        constexpr float bodyRadius = 0.45f;
+        constexpr float bodyDiagonal = 0.6364f;
+        constexpr float bodyHalfHeight = 0.8f;
+        struct Ray
+        {
+            float X;
+            float Y;
+            float Z;
+            float Distance;
+        };
+        static constexpr Ray rays[10] = {
+            {1.0f, 0.0f, 0.0f, bodyRadius},         {-1.0f, 0.0f, 0.0f, bodyRadius},
+            {0.0f, 1.0f, 0.0f, bodyRadius},         {0.0f, -1.0f, 0.0f, bodyRadius},
+            {0.7071f, 0.7071f, 0.0f, bodyDiagonal}, {-0.7071f, 0.7071f, 0.0f, bodyDiagonal},
+            {0.7071f, -0.7071f, 0.0f, bodyDiagonal}, {-0.7071f, -0.7071f, 0.0f, bodyDiagonal},
+            {0.0f, 0.0f, 1.0f, bodyHalfHeight},     {0.0f, 0.0f, -1.0f, bodyHalfHeight}};
+
+        for (Ray const& ray : rays)
+        {
+            if (!map->isInLineOfSight(x, y, z, x + ray.X * ray.Distance, y + ray.Y * ray.Distance,
+                                      z + ray.Z * ray.Distance, phase, LINEOFSIGHT_ALL_CHECKS,
+                                      VMAP::ModelIgnoreFlags::Nothing))
+                return false;
+        }
+        return true;
+    }
+}
+
+bool Nav3DManager::BakeAirTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
+                               float minZ, float maxZ, float boundsMinX, float boundsMaxX,
+                               float boundsMinY, float boundsMaxY, std::string const& sourcePath,
+                               std::string const& outputPath, std::string& error)
+{
+    if (!map)
+    {
+        error = "no map";
+        return false;
+    }
+    if (cellSize < 0.5f || cellSize > 4.0f || minZ >= maxZ || boundsMinX >= boundsMaxX ||
+        boundsMinY >= boundsMaxY)
+    {
+        error = "invalid bake bounds";
+        return false;
+    }
+
+    Nav3DTile tile;
+    if (!tile.Load(sourcePath))
+    {
+        error = "cannot load source tile";
+        return false;
+    }
+
+    Nav3DTileHeader& header = tile.Header();
+    if (header.Medium != Nav3D::MediumAir || header.CellSize != cellSize)
+    {
+        error = "source tile is not a matching air tile";
+        return false;
+    }
+
+    float const originX = header.OriginX;
+    float const originY = header.OriginY;
+    float const originZ = header.OriginZ;
+    int32 const sizeX = int32(header.SizeX);
+    int32 const sizeY = int32(header.SizeY);
+    int32 const sizeZ = int32(header.SizeZ);
+
+    int32 const x0 = std::clamp(int32(std::floor((boundsMinX - originX) / cellSize)), 0, sizeX - 1);
+    int32 const x1 = std::clamp(int32(std::ceil((boundsMaxX - originX) / cellSize)), 0, sizeX);
+    int32 const y0 = std::clamp(int32(std::floor((boundsMinY - originY) / cellSize)), 0, sizeY - 1);
+    int32 const y1 = std::clamp(int32(std::ceil((boundsMaxY - originY) / cellSize)), 0, sizeY);
+    int32 const z0 = std::clamp(int32(std::floor((minZ - originZ) / cellSize)), 0, sizeZ - 1);
+    int32 const z1 = std::clamp(int32(std::ceil((maxZ - originZ) / cellSize)), 0, sizeZ);
+    if (x0 >= x1 || y0 >= y1 || z0 >= z1)
+    {
+        error = "bake bounds do not intersect the tile";
+        return false;
+    }
+
+    std::vector<Nav3DTileInterval> const oldIntervals = tile.Intervals();
+    std::vector<Nav3DTileColumn> const oldColumns = tile.Columns();
+    std::vector<Nav3DTileInterval> newIntervals;
+    newIntervals.reserve(oldIntervals.size() + size_t((x1 - x0) * (y1 - y0)));
+
+    size_t liveColumns = 0;
+    size_t liveCells = 0;
+    for (int32 y = 0; y < sizeY; ++y)
+    {
+        for (int32 x = 0; x < sizeX; ++x)
+        {
+            size_t const columnIndex = size_t(y) * size_t(sizeX) + size_t(x);
+            Nav3DTileColumn& column = tile.Columns()[columnIndex];
+            Nav3DTileColumn const& oldColumn = oldColumns[columnIndex];
+
+            std::vector<std::pair<int32, int32>> spans;
+            for (uint32 i = 0; i < oldColumn.IntervalCount; ++i)
+            {
+                Nav3DTileInterval const& interval = oldIntervals[oldColumn.IntervalOffset + i];
+                spans.emplace_back(interval.ZMin, interval.ZMax);
+            }
+
+            bool const inBox = x >= x0 && x < x1 && y >= y0 && y < y1;
+            if (inBox)
+            {
+                float const worldX = originX + (float(x) + 0.5f) * cellSize;
+                float const worldY = originY + (float(y) + 0.5f) * cellSize;
+                bool any = false;
+                for (int32 z = z0; z < z1;)
+                {
+                    float const worldZ = originZ + (float(z) + 0.5f) * cellSize;
+                    if (!IsLiveAirCell(map, phase, worldX, worldY, worldZ))
+                    {
+                        ++z;
+                        continue;
+                    }
+
+                    int32 const start = z;
+                    while (z < z1)
+                    {
+                        float const nextZ = originZ + (float(z) + 0.5f) * cellSize;
+                        if (!IsLiveAirCell(map, phase, worldX, worldY, nextZ))
+                            break;
+                        ++z;
+                    }
+                    spans.emplace_back(start, z - 1);
+                    liveCells += size_t(z - start);
+                    any = true;
+                }
+                if (any)
+                    ++liveColumns;
+            }
+
+            std::sort(spans.begin(), spans.end());
+            std::vector<std::pair<int32, int32>> merged;
+            for (auto const& span : spans)
+            {
+                if (merged.empty() || span.first > merged.back().second + 1)
+                    merged.push_back(span);
+                else
+                    merged.back().second = std::max(merged.back().second, span.second);
+            }
+
+            column.IntervalOffset = uint32(newIntervals.size());
+            column.IntervalCount = uint16(merged.size());
+            for (auto const& span : merged)
+            {
+                Nav3DTileInterval interval;
+                interval.ZMin = int16(span.first);
+                interval.ZMax = int16(span.second);
+                interval.Clearance = 16;
+                interval.Flags = 0;
+                newIntervals.push_back(interval);
+            }
+        }
+    }
+
+    tile.Intervals() = std::move(newIntervals);
+    header.Flags |= Nav3D::FlagHasSolid | Nav3D::FlagLiveLos;
+    header.GeneratorVersion = 6;
+
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(outputPath).parent_path(), ec);
+    if (ec)
+    {
+        error = "cannot create output directory: " + ec.message();
+        return false;
+    }
+    if (!tile.Save(outputPath))
+    {
+        error = "cannot save air tile";
+        return false;
+    }
+
+    LOG_INFO("playerbots",
+             "nav3dairbake map {} tile {}:{} box x{}..{} y{}..{} z{}..{} liveColumns={} liveCells={}",
+             map->GetId(), tileX, tileY, x0, x1, y0, y1, z0, z1, liveColumns, liveCells);
+    return true;
 }
 
 bool Nav3DManager::BakeWaterTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
