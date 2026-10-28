@@ -59,6 +59,7 @@ public:
             {"nav3dunmount", HandleNav3DUnmountCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dbake", HandleNav3DBakeCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dairbake", HandleNav3DAirBakeCommand, SEC_GAMEMASTER, Console::Yes},
+            {"nav3dairdetail", HandleNav3DAirDetailCommand, SEC_GAMEMASTER, Console::Yes},
             {"nav3dtile", HandleNav3DTileCommand, SEC_GAMEMASTER, Console::Yes},
             {"addquest", HandleAddQuestCommand, SEC_GAMEMASTER, Console::Yes},
             {"completequest", HandleCompleteQuestCommand, SEC_GAMEMASTER, Console::Yes},
@@ -359,7 +360,20 @@ public:
         if (!(in >> tileX >> tileY >> minX >> maxX >> minY >> maxY >> minZ >> maxZ))
         {
             handler->SendErrorMessage(
-                "Usage: nav3dairbake <bot> <tileX> <tileY> <minX> <maxX> <minY> <maxY> <minZ> <maxZ>");
+                "Usage: nav3dairbake <bot> <tileX> <tileY> <minX> <maxX> <minY> <maxY> <minZ> <maxZ> "
+                "[seedX seedY seedZ ...]");
+            return false;
+        }
+
+        std::vector<Position> seeds;
+        float seedX = 0.0f;
+        float seedY = 0.0f;
+        float seedZ = 0.0f;
+        while (in >> seedX >> seedY >> seedZ)
+            seeds.emplace_back(seedX, seedY, seedZ);
+        if (seeds.empty())
+        {
+            handler->SendErrorMessage("nav3dairbake requires at least one seed");
             return false;
         }
 
@@ -387,7 +401,7 @@ public:
         std::string error;
         if (!Nav3DManager::Instance().BakeAirTile(map, bot->GetPhaseMask(), uint16(tileX), uint16(tileY),
                                                   4.0f, minZ, maxZ, minX, maxX, minY, maxY, source,
-                                                  output, error))
+                                                  output, seeds, 0.0f, error))
         {
             handler->SendErrorMessage("nav3dairbake {} failed: {}", target.GetName(), error);
             return false;
@@ -405,6 +419,96 @@ public:
                                  source);
         LOG_INFO("playerbots", "nav3dairbake {} tile {}:{} source={} backup={}", target.GetName(), tileX,
                  tileY, source, backup);
+        return true;
+    }
+
+    static bool HandleNav3DAirDetailCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        Player* bot = botAI->GetBot();
+        Map* map = bot->GetMap();
+        if (!map)
+        {
+            handler->SendErrorMessage("nav3dairdetail {} has no map", target.GetName());
+            return false;
+        }
+
+        std::istringstream in{std::string(command)};
+        uint32 tileX = 0;
+        uint32 tileY = 0;
+        float minX = 0.0f;
+        float maxX = 0.0f;
+        float minY = 0.0f;
+        float maxY = 0.0f;
+        float minZ = 0.0f;
+        float maxZ = 0.0f;
+        float corridor = 20.0f;
+        if (!(in >> tileX >> tileY >> minX >> maxX >> minY >> maxY >> minZ >> maxZ >> corridor))
+        {
+            handler->SendErrorMessage(
+                "Usage: nav3dairdetail <bot> <tileX> <tileY> <minX> <maxX> <minY> <maxY> "
+                "<minZ> <maxZ> <corridor> <seedX seedY seedZ ...>");
+            return false;
+        }
+
+        std::vector<Position> seeds;
+        float seedX = 0.0f;
+        float seedY = 0.0f;
+        float seedZ = 0.0f;
+        while (in >> seedX >> seedY >> seedZ)
+            seeds.emplace_back(seedX, seedY, seedZ);
+        if (seeds.empty())
+        {
+            handler->SendErrorMessage("nav3dairdetail requires at least one seed");
+            return false;
+        }
+
+        std::string dataPath = sWorld ? sWorld->GetDataPath() : std::string();
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+        dataPath += sPlayerbotAIConfig.Nav3DDataPath;
+        if (!dataPath.empty() && dataPath.back() != '/')
+            dataPath += '/';
+
+        std::string const source = Acore::StringFormat("{}map{:04}/{:02}_{:02}_airdetail.n3t",
+                                                       dataPath, map->GetId(), tileX, tileY);
+        std::string const output = source + ".new";
+        std::string const backup = source + ".bak";
+
+        std::error_code ec;
+        if (std::filesystem::exists(source, ec) && !std::filesystem::exists(backup, ec))
+            std::filesystem::copy_file(source, backup, std::filesystem::copy_options::none, ec);
+        if (ec)
+        {
+            handler->SendErrorMessage("nav3dairdetail backup failed: {}", ec.message());
+            return false;
+        }
+
+        std::string error;
+        if (!Nav3DManager::Instance().BakeAirDetailTile(
+                map, bot->GetPhaseMask(), uint16(tileX), uint16(tileY), 1.0f, minZ, maxZ, minX,
+                maxX, minY, maxY, corridor, seeds, output, error))
+        {
+            handler->SendErrorMessage("nav3dairdetail {} failed: {}", target.GetName(), error);
+            return false;
+        }
+
+        std::filesystem::copy_file(output, source, std::filesystem::copy_options::overwrite_existing,
+                                   ec);
+        if (ec)
+        {
+            handler->SendErrorMessage("nav3dairdetail commit failed: {}", ec.message());
+            return false;
+        }
+        Nav3DManager::Instance().ClearTileCache();
+
+        handler->PSendSysMessage("nav3dairdetail {} tile {}:{} wrote {}", target.GetName(), tileX,
+                                 tileY, source);
+        LOG_INFO("playerbots", "nav3dairdetail {} tile {}:{} source={} backup={} corridor={:.1f}",
+                 target.GetName(), tileX, tileY, source, backup, corridor);
         return true;
     }
 

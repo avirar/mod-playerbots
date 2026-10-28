@@ -73,7 +73,13 @@ public:
     bool BakeAirTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
                      float minZ, float maxZ, float boundsMinX, float boundsMaxX,
                      float boundsMinY, float boundsMaxY, std::string const& sourcePath,
-                     std::string const& outputPath, std::string& error);
+                     std::string const& outputPath, std::vector<Position> const& seeds,
+                     float corridorRadius, std::string& error);
+    bool BakeAirDetailTile(Map* map, uint32 phase, uint16 tileX, uint16 tileY, float cellSize,
+                           float minZ, float maxZ, float boundsMinX, float boundsMaxX,
+                           float boundsMinY, float boundsMaxY, float corridorRadius,
+                           std::vector<Position> const& seeds, std::string const& outputPath,
+                           std::string& error);
 
 private:
     Nav3DManager() = default;
