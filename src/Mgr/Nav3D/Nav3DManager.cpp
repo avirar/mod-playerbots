@@ -909,6 +909,71 @@ bool Nav3DManager::FindPathTile(Map* map, uint32 phase, Position const& start, P
     return true;
 }
 
+bool Nav3DManager::RefineDetailPath(Map* map, uint32 phase, Nav3DTile const* tile,
+                                    Movement::PointsArray const& coarse, Movement::PointsArray& path,
+                                    Nav3DResult& result)
+{
+    result = {};
+    path.clear();
+    if (!map || !tile || coarse.size() < 2)
+        return false;
+
+    constexpr float kRefinePad = 16.0f;
+    constexpr uint32 kRefineBudgetMs = 5000;
+    uint32 const startedMs = getMSTime();
+    uint32 totalMs = 0;
+    uint32 totalNodes = 0;
+    uint32 totalExpanded = 0;
+
+    auto const appendUnique = [&path](G3D::Vector3 const& point)
+    {
+        if (path.empty() || Distance(path.back(), point) > kDuplicateEpsilon)
+            path.push_back(point);
+    };
+
+    for (size_t i = 1; i < coarse.size(); ++i)
+    {
+        if (getMSTime() - startedMs >= kRefineBudgetMs)
+            return false;
+
+        G3D::Vector3 const& from = coarse[i - 1];
+        G3D::Vector3 const& to = coarse[i];
+        Nav3DSearchBounds bounds;
+        bounds.MinX = std::min(from.x, to.x) - kRefinePad;
+        bounds.MaxX = std::max(from.x, to.x) + kRefinePad;
+        bounds.MinY = std::min(from.y, to.y) - kRefinePad;
+        bounds.MaxY = std::max(from.y, to.y) + kRefinePad;
+        bounds.MinZ = std::min(from.z, to.z) - kRefinePad;
+        bounds.MaxZ = std::max(from.z, to.z) + kRefinePad;
+
+        Nav3DResult legResult;
+        Movement::PointsArray legPath;
+        if (!FindPathDirected(map, phase, Position(from.x, from.y, from.z),
+                              Position(to.x, to.y, to.z), legPath, legResult, tile, false, 0.0f,
+                              &bounds))
+            return false;
+
+        for (G3D::Vector3 const& point : legPath)
+            appendUnique(point);
+        totalMs += legResult.ElapsedMs;
+        totalNodes += legResult.Nodes;
+        totalExpanded += legResult.Expanded;
+    }
+
+    if (path.size() < 2)
+        return false;
+
+    result.Found = true;
+    result.CellSize = tile->Header().CellSize;
+    result.ElapsedMs = totalMs;
+    result.Nodes = totalNodes;
+    result.Expanded = totalExpanded;
+    result.Length = 0.0f;
+    for (size_t i = 1; i < path.size(); ++i)
+        result.Length += Distance(path[i - 1], path[i]);
+    return true;
+}
+
 bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Position const& goal,
                                Movement::PointsArray& path, Nav3DResult& result)
 {
@@ -941,23 +1006,68 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
             };
             if (inside(start) && inside(goal))
             {
+                // Fine detail tiles (1-yd, 2-yd) are too large for a full cell A* within the
+                // runtime budget. Run a 4-yd pass over the same fine tile first (the validated
+                // Uldis route), then refine each coarse leg at the native cell size in a local
+                // box so the final path stays inside the tunnel.
+                float const coarseCell = std::max(4.0f, header.CellSize);
+                bool const needsCoarse = header.CellSize < coarseCell;
                 Nav3DResult detailResult;
-                bool const detailFound =
-                    FindPathDirected(map, phase, start, goal, path, detailResult, detail.get());
+                Movement::PointsArray detailPath;
+                bool detailFound = false;
+                if (needsCoarse)
+                {
+                    detailFound = FindPathDirected(map, phase, start, goal, detailPath, detailResult,
+                                                   detail.get(), false, coarseCell);
+                    LOG_DEBUG("playerbots",
+                              "nav3d detail coarse map {} found={} points={} ms={} nodes={} expanded={} best={:.1f}",
+                              map->GetId(), detailFound ? 1 : 0, detailPath.size(),
+                              detailResult.ElapsedMs, detailResult.Nodes, detailResult.Expanded,
+                              detailResult.BestDistance);
+                    if (detailFound)
+                    {
+                        Movement::PointsArray refined;
+                        Nav3DResult refineResult;
+                        if (RefineDetailPath(map, phase, detail.get(), detailPath, refined, refineResult))
+                        {
+                            detailPath = std::move(refined);
+                            detailResult = refineResult;
+                            detailResult.CellSize = header.CellSize;
+                            LOG_DEBUG("playerbots",
+                                      "nav3d detail refined map {} points={} len={:.1f} ms={} nodes={} expanded={}",
+                                      map->GetId(), detailPath.size(), detailResult.Length,
+                                      detailResult.ElapsedMs, detailResult.Nodes, detailResult.Expanded);
+                        }
+                        else
+                        {
+                            detailResult.CellSize = coarseCell;
+                            LOG_DEBUG("playerbots",
+                                      "nav3d detail refine failed map {}; using coarse path",
+                                      map->GetId());
+                        }
+                    }
+                }
+                else
+                {
+                    detailFound = FindPathDirected(map, phase, start, goal, detailPath, detailResult,
+                                                   detail.get());
+                }
                 LOG_DEBUG("playerbots",
                           "nav3d detail map {} start=({:.1f},{:.1f},{:.1f}) goal=({:.1f},{:.1f},{:.1f}) "
                           "found={} points={} ms={} nodes={} expanded={} best={:.1f}",
                           map->GetId(), start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(),
                           goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(),
-                          detailFound ? 1 : 0, path.size(), detailResult.ElapsedMs, detailResult.Nodes,
-                          detailResult.Expanded, detailResult.BestDistance);
+                          detailFound ? 1 : 0, detailPath.size(), detailResult.ElapsedMs,
+                          detailResult.Nodes, detailResult.Expanded, detailResult.BestDistance);
                 LOG_DEBUG("playerbots", "nav3d detail best=({:.1f},{:.1f},{:.1f}) goal=({:.1f},{:.1f},{:.1f})",
                           detailResult.BestX, detailResult.BestY, detailResult.BestZ,
                           goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
                 if (detailFound)
                 {
+                    path = std::move(detailPath);
                     result = detailResult;
-                    result.CellSize = header.CellSize;
+                    result.CellSize = detailResult.CellSize > 0.0f ? detailResult.CellSize
+                                                                   : header.CellSize;
                     return true;
                 }
             }
@@ -1094,7 +1204,8 @@ bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Posit
 
 bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                                     Movement::PointsArray& path, Nav3DResult& result,
-                                    Nav3DTile const* tile, bool airComposite)
+                                    Nav3DTile const* tile, bool airComposite,
+                                    float overrideCellSize, Nav3DSearchBounds const* bounds)
 {
     result = {};
     path.clear();
@@ -1117,31 +1228,39 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
         float const tileMaxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
 
         grid.Tile = tile;
-        grid.Cell = header.CellSize;
+        float const searchCell = overrideCellSize > 0.0f ? overrideCellSize : header.CellSize;
+        grid.Cell = searchCell;
         grid.PreferUp = header.Medium == Nav3D::MediumAir || header.Medium == Nav3D::MediumAirDetail;
+
+        auto const alignDown = [searchCell](float value, float origin)
+        {
+            return origin + std::floor((value - origin) / searchCell) * searchCell;
+        };
 
         if (header.Medium == Nav3D::MediumAirDetail)
         {
             // A detail tile is a local cave/tunnel box, and the real route may detour far
             // outside the straight start-goal band (Uldis: ~155 yd north to the tunnel
-            // mouth). Search the whole baked box instead of a narrow pad around the line;
-            // the A* set is sparse, so the larger bounds cost no allocation.
-            grid.MinX = header.OriginX;
-            grid.MinY = header.OriginY;
-            grid.MinZ = header.OriginZ;
-            grid.SizeX = int32(header.SizeX);
-            grid.SizeY = int32(header.SizeY);
-            grid.SizeZ = int32(header.SizeZ);
+            // mouth). Search the whole baked box (or the caller's local refinement box)
+            // instead of a narrow pad around the line.
+            float const minX = bounds ? std::max(header.OriginX, bounds->MinX) : header.OriginX;
+            float const minY = bounds ? std::max(header.OriginY, bounds->MinY) : header.OriginY;
+            float const minZ = bounds ? std::max(header.OriginZ, bounds->MinZ) : header.OriginZ;
+            float const maxX = bounds ? std::min(tileMaxX, bounds->MaxX) : tileMaxX;
+            float const maxY = bounds ? std::min(tileMaxY, bounds->MaxY) : tileMaxY;
+            float const maxZ = bounds ? std::min(tileMaxZ, bounds->MaxZ) : tileMaxZ;
+            grid.MinX = alignDown(minX, header.OriginX);
+            grid.MinY = alignDown(minY, header.OriginY);
+            grid.MinZ = alignDown(minZ, header.OriginZ);
+            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / searchCell)));
+            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / searchCell)));
+            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / searchCell)));
         }
         else
         {
             // Align the search grid to the tile cell centres. Otherwise a node centre is offset
             // from the baked cell it samples, and a one-cell-wide hull window can fall between
             // the goal node and the tile, making a navigable window look unreachable.
-            auto const alignDown = [&header](float value, float origin)
-            {
-                return origin + std::floor((value - origin) / header.CellSize) * header.CellSize;
-            };
             grid.MinX = alignDown(std::max(header.OriginX,
                                            std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad),
                                   header.OriginX);
@@ -1157,11 +1276,11 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
                                         std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad);
             float const maxZ = std::min(tileMaxZ,
                                         std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad);
-            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / header.CellSize)));
-            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / header.CellSize)));
-            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / header.CellSize)));
+            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / searchCell)));
+            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / searchCell)));
+            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / searchCell)));
         }
-        result.CellSize = header.CellSize;
+        result.CellSize = searchCell;
     }
     else if (airComposite)
     {

@@ -20,6 +20,16 @@
 class Map;
 class Player;
 
+struct Nav3DSearchBounds
+{
+    float MinX = 0.0f;
+    float MinY = 0.0f;
+    float MinZ = 0.0f;
+    float MaxX = 0.0f;
+    float MaxY = 0.0f;
+    float MaxZ = 0.0f;
+};
+
 struct Nav3DResult
 {
     bool Found = false;
@@ -86,7 +96,12 @@ private:
 
     bool FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                           Movement::PointsArray& path, Nav3DResult& result,
-                          Nav3DTile const* tile = nullptr, bool airComposite = false);
+                          Nav3DTile const* tile = nullptr, bool airComposite = false,
+                          float overrideCellSize = 0.0f,
+                          Nav3DSearchBounds const* bounds = nullptr);
+    bool RefineDetailPath(Map* map, uint32 phase, Nav3DTile const* tile,
+                          Movement::PointsArray const& coarse, Movement::PointsArray& path,
+                          Nav3DResult& result);
     bool FindPathTile(Map* map, uint32 phase, Position const& start, Position const& goal,
                       Movement::PointsArray& path, Nav3DResult& result);
     struct TileCacheEntry
