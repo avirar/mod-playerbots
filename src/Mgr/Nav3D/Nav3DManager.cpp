@@ -102,12 +102,17 @@ namespace
     struct QueueNode
     {
         float F = 0.0f;
+        float G = 0.0f;
         GridNode Node;
     };
 
     bool operator>(QueueNode const& left, QueueNode const& right)
     {
-        return left.F > right.F;
+        // Prefer the deeper node on equal f: in a huge open volume most frontier nodes
+        // share nearly the same f, and sinking toward the goal avoids expanding a shell.
+        if (left.F != right.F)
+            return left.F > right.F;
+        return left.G < right.G;
     }
 
     struct Grid
@@ -121,6 +126,7 @@ namespace
         bool RestrictSky = false;
         bool Air = false;
         bool AirLos = true;
+        bool PreferUp = false;
         Nav3DTile const* Tile = nullptr;
         mutable std::unordered_map<uint64_t, std::shared_ptr<Nav3DTile>> AirTiles;
         std::shared_ptr<Nav3DTile> SolidTile;
@@ -228,6 +234,20 @@ namespace
         float const dy = left.y - right.y;
         float const dz = left.z - right.z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Exact 26-connected grid distance: face, edge-diagonal and corner-diagonal costs.
+    // It is a tighter admissible bound than Euclidean distance and matches the edge costs
+    // used by the A* (1 / sqrt(2) / sqrt(3)).
+    float Octile3D(G3D::Vector3 const& from, Position const& to)
+    {
+        float const dx = std::fabs(from.x - to.GetPositionX());
+        float const dy = std::fabs(from.y - to.GetPositionY());
+        float const dz = std::fabs(from.z - to.GetPositionZ());
+        float const high = std::max({dx, dy, dz});
+        float const low = std::min({dx, dy, dz});
+        float const mid = dx + dy + dz - high - low;
+        return (high - mid) + (mid - low) * 1.41421356f + low * 1.73205081f;
     }
 
     bool HasFloorClearance(Map* map, uint32 phase, Position const& position, float minClearance)
@@ -605,14 +625,46 @@ namespace
                               std::unordered_map<GridNode, NodeState, GridNodeHash>& states)
     {
         GridNode const snapped = grid.Snap(position);
+        // A flying bot on a bridge/deck should lift off, not snap down through the
+        // deck/rail. Prefer the nearest air cell above before searching below.
+        if (grid.PreferUp)
+        {
+            for (int32 zoff = 0; zoff <= 4; ++zoff)
+            {
+                for (int32 radius = 0; radius <= 2; ++radius)
+                {
+                    for (int32 dx = -radius; dx <= radius; ++dx)
+                    {
+                        for (int32 dy = -radius; dy <= radius; ++dy)
+                        {
+                            if (std::max(std::abs(dx), std::abs(dy)) != radius)
+                                continue;
+                            GridNode const candidate{snapped.X + dx, snapped.Y + dy,
+                                                     snapped.Z + zoff};
+                            if (!grid.Contains(candidate))
+                                continue;
+                            NodeState& state = states[candidate];
+                            if (IsNavigable(grid, candidate, state))
+                            {
+                                result = candidate;
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        static constexpr int32 preferUpZ[5] = {0, 1, -1, 2, -2};
         for (int32 radius = 0; radius <= 2; ++radius)
         {
             for (int32 dx = -radius; dx <= radius; ++dx)
             {
                 for (int32 dy = -radius; dy <= radius; ++dy)
                 {
-                    for (int32 dz = -radius; dz <= radius; ++dz)
+                    for (int32 zi = 0; zi < 5; ++zi)
                     {
+                        int32 const dz = grid.PreferUp ? preferUpZ[zi] : (zi - 2);
                         if (std::max({std::abs(dx), std::abs(dy), std::abs(dz)}) != radius)
                             continue;
 
@@ -711,12 +763,24 @@ namespace
         auto const edgeClear = [&grid](G3D::Vector3 const& from, G3D::Vector3 const& to,
                                        bool endpointEdge)
         {
+            bool const airPath =
+                grid.Air || (grid.Tile && (grid.Tile->Header().Medium == Nav3D::MediumAir ||
+                                            grid.Tile->Header().Medium == Nav3D::MediumAirDetail));
             if (endpointEdge)
             {
                 float const dx = to.x - from.x;
                 float const dy = to.y - from.y;
-                if (dx * dx + dy * dy <= 64.0f && LineClear(grid.MapPtr, grid.Phase, from, to))
-                    return true;
+                if (dx * dx + dy * dy <= 64.0f)
+                {
+                    if (LineClear(grid.MapPtr, grid.Phase, from, to))
+                        return true;
+                    // A flying bot can lift off/land through the short solid band that the
+                    // air tile keeps under its feet. Do not let a bridge rail/deck GO veto
+                    // the first/last vertical contact edge; every other edge still gets
+                    // full Map LOS.
+                    if (airPath)
+                        return true;
+                }
             }
             if (grid.Air)
                 return AirLineClearLive(grid, from, to);
@@ -887,6 +951,9 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
                           goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(),
                           detailFound ? 1 : 0, path.size(), detailResult.ElapsedMs, detailResult.Nodes,
                           detailResult.Expanded, detailResult.BestDistance);
+                LOG_DEBUG("playerbots", "nav3d detail best=({:.1f},{:.1f},{:.1f}) goal=({:.1f},{:.1f},{:.1f})",
+                          detailResult.BestX, detailResult.BestY, detailResult.BestZ,
+                          goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
                 if (detailFound)
                 {
                     result = detailResult;
@@ -1051,37 +1118,55 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
 
         grid.Tile = tile;
         grid.Cell = header.CellSize;
+        grid.PreferUp = header.Medium == Nav3D::MediumAir || header.Medium == Nav3D::MediumAirDetail;
 
-        // Align the search grid to the tile cell centres. Otherwise a node centre is offset
-        // from the baked cell it samples, and a one-cell-wide hull window can fall between
-        // the goal node and the tile, making a navigable window look unreachable.
-        auto const alignDown = [&header](float value, float origin)
+        if (header.Medium == Nav3D::MediumAirDetail)
         {
-            return origin + std::floor((value - origin) / header.CellSize) * header.CellSize;
-        };
-        grid.MinX = alignDown(std::max(header.OriginX,
-                                       std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad),
-                              header.OriginX);
-        grid.MinY = alignDown(std::max(header.OriginY,
-                                       std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad),
-                              header.OriginY);
-        grid.MinZ = alignDown(std::max(header.OriginZ,
-                                       std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad),
-                              header.OriginZ);
-        float const maxX = std::min(tileMaxX,
-                                    std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad);
-        float const maxY = std::min(tileMaxY,
-                                    std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad);
-        float const maxZ = std::min(tileMaxZ,
-                                    std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad);
-        grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / header.CellSize)));
-        grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / header.CellSize)));
-        grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / header.CellSize)));
+            // A detail tile is a local cave/tunnel box, and the real route may detour far
+            // outside the straight start-goal band (Uldis: ~155 yd north to the tunnel
+            // mouth). Search the whole baked box instead of a narrow pad around the line;
+            // the A* set is sparse, so the larger bounds cost no allocation.
+            grid.MinX = header.OriginX;
+            grid.MinY = header.OriginY;
+            grid.MinZ = header.OriginZ;
+            grid.SizeX = int32(header.SizeX);
+            grid.SizeY = int32(header.SizeY);
+            grid.SizeZ = int32(header.SizeZ);
+        }
+        else
+        {
+            // Align the search grid to the tile cell centres. Otherwise a node centre is offset
+            // from the baked cell it samples, and a one-cell-wide hull window can fall between
+            // the goal node and the tile, making a navigable window look unreachable.
+            auto const alignDown = [&header](float value, float origin)
+            {
+                return origin + std::floor((value - origin) / header.CellSize) * header.CellSize;
+            };
+            grid.MinX = alignDown(std::max(header.OriginX,
+                                           std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad),
+                                  header.OriginX);
+            grid.MinY = alignDown(std::max(header.OriginY,
+                                           std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad),
+                                  header.OriginY);
+            grid.MinZ = alignDown(std::max(header.OriginZ,
+                                           std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad),
+                                  header.OriginZ);
+            float const maxX = std::min(tileMaxX,
+                                        std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad);
+            float const maxY = std::min(tileMaxY,
+                                        std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad);
+            float const maxZ = std::min(tileMaxZ,
+                                        std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad);
+            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / header.CellSize)));
+            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / header.CellSize)));
+            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / header.CellSize)));
+        }
         result.CellSize = header.CellSize;
     }
     else if (airComposite)
     {
         grid.Air = true;
+        grid.PreferUp = true;
         grid.Cell = kAirCompositeCell;
         result.CellSize = kAirCompositeCell;
 
@@ -1223,12 +1308,20 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
 
     auto const heuristic = [&grid, &goal](GridNode const& node)
     {
-        return Distance(grid.Center(node), goal);
+        G3D::Vector3 const center{grid.Center(node).GetPositionX(), grid.Center(node).GetPositionY(),
+                                  grid.Center(node).GetPositionZ()};
+        return Octile3D(center, goal);
     };
     // The tile has narrow one-cell hull windows. A pure Dijkstra-like heuristic expands most
     // of the open-water volume before it finds the window; a greedy tile search is still safe
     // because every visited cell has been clearance-checked, and it is much cheaper.
-    float const heuristicWeight = (grid.Tile || grid.Air) ? 2.0f : 1.0f;
+    // A greedy 2x heuristic is fine for open water, but a cave route often goes away
+    // from the goal before it can descend. Keep detail-air searches admissible so A*
+    // backtracks out of dead-end pockets instead of burning the node budget there.
+    float const heuristicWeight =
+        (grid.Tile && grid.Tile->Header().Medium == Nav3D::MediumAirDetail) ? 1.0f
+        : (grid.Tile || grid.Air)                                             ? 2.0f
+                                                                              : 1.0f;
 
     NodeState& startState = states[startNode];
     startState.G = 0.0f;
@@ -1236,7 +1329,7 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
     startState.HasParent = false;
 
     std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open;
-    open.push({startState.F, startNode});
+    open.push({startState.F, 0.0f, startNode});
 
     uint32 const startedMs = getMSTime();
     uint32 expanded = 0;
@@ -1307,26 +1400,38 @@ bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& star
             if (!grid.Contains(neighbor))
                 continue;
 
-            NodeState& neighborState = states[neighbor];
-            if (neighborState.Closed)
-                continue;
-
-            if (!IsNavigable(grid, neighbor, neighborState))
+            auto const known = states.find(neighbor);
+            if (known != states.end() && known->second.Closed)
                 continue;
 
             Position const neighborCenter = grid.Center(neighbor);
+            float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
+            if (known != states.end() && tentative >= known->second.G)
+                continue;
+
+            // Do not insert a hash entry for a solid neighbor just to remember it. The
+            // old states[neighbor] touched all 26 neighbours on every expansion, which
+            // bloated the map and rehashed it millions of times per query.
+            NodeState probe;
+            if (known != states.end())
+                probe = known->second;
+            if (!IsNavigable(grid, neighbor, probe))
+            {
+                if (known != states.end())
+                    known->second.Nav = -1;
+                continue;
+            }
+
             if (!GridLineClear(grid, map, phase, currentCenter, neighborCenter))
                 continue;
 
-            float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
-            if (tentative >= neighborState.G)
-                continue;
-
+            NodeState& neighborState = (known != states.end()) ? known->second : states[neighbor];
             neighborState.G = tentative;
             neighborState.Parent = current.Node;
             neighborState.HasParent = true;
+            neighborState.Nav = 1;
             neighborState.F = tentative + heuristic(neighbor) * heuristicWeight;
-            open.push({neighborState.F, neighbor});
+            open.push({neighborState.F, tentative, neighbor});
         }
     }
 
@@ -1422,7 +1527,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
     startState.HasParent = false;
 
     std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open;
-    open.push({0.0f, startNode});
+    open.push({0.0f, 0.0f, startNode});
 
     constexpr float kSurfaceCheckHeight = 2.0f;
     uint32 const startedMs = getMSTime();
@@ -1492,7 +1597,7 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
             neighborState.Parent = current.Node;
             neighborState.HasParent = true;
             neighborState.F = tentative;
-            open.push({tentative, neighbor});
+            open.push({tentative, tentative, neighbor});
         }
     }
 
