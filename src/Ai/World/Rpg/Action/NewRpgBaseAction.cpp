@@ -106,13 +106,30 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // instead of returning false, because the callers of MoveFarTo fall through to
     // MoveRandomNear, which is also a ground move.
     if (bot->IsInFlight())
+    {
+        botAI->rpgInfo.stuckTs = getMSTime();
+        botAI->rpgInfo.stuckAttempts = 0;
         return true;
+    }
 
     bool newDest = dest != botAI->rpgInfo.moveFarPos;
     if (newDest)
     {
         // clear stuck information if it's a new dest
         botAI->rpgInfo.SetMoveFarTo(dest);
+    }
+
+    // Transport rides and cross-map destinations are owned by the travel pipeline:
+    // neither can be reached by a ground path, and their distance is not a stuck signal.
+    bool const onTransport = bot->GetTransport() != nullptr;
+    bool const crossMap = bot->GetMapId() != dest.GetMapId();
+    bool const waitingAtDock = !onTransport && !crossMap && IsHoldingAtDockWait();
+    if (sPlayerbotAIConfig.EnableTravelNodes && (onTransport || crossMap || waitingAtDock) &&
+        !bot->IsUnderWater() && !bot->isSwimming() && !bot->IsFlying())
+    {
+        botAI->rpgInfo.stuckTs = getMSTime();
+        botAI->rpgInfo.stuckAttempts = 0;
+        return MoveTo2(dest);
     }
 
     // performance optimization
@@ -147,9 +164,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     if (!newDest)
     {
         LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
-        if (bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
+        WorldPosition const& lastTarget =
+            lastMove.lastPath.empty() ? lastMove.lastMoveShort : lastMove.lastPath.getBack();
+        if (bot->isMoving() && lastTarget.GetMapId() == bot->GetMapId())
         {
-            float remaining = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
+            float remaining = bot->GetExactDist(lastTarget.GetPositionX(), lastTarget.GetPositionY(),
+                                                lastTarget.GetPositionZ());
             if (remaining > 10.0f)
                 return true;
         }
@@ -203,6 +223,15 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             zone_name);
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
         return bot->TeleportTo(dest);
+    }
+
+    // Long overland destinations use the travel-node graph when it is enabled.
+    if (sPlayerbotAIConfig.EnableTravelNodes && !bot->IsUnderWater() && !bot->isSwimming() && !bot->IsFlying() &&
+        !bot->GetVehicle() &&
+        (dest.GetMapId() != bot->GetMapId() ||
+         bot->GetExactDist(dest) > sPlayerbotAIConfig.TravelNodeDirectDistance))
+    {
+        return MoveTo2(dest);
     }
 
     float dis = bot->GetExactDist(dest);
@@ -332,11 +361,6 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 
 bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
 {
-    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
-    {
-        return false;
-    }
-
     WorldObject* object = botAI->GetWorldObject(guid);
     if (!object)
         return false;
@@ -367,9 +391,6 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
 
 bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority, WorldObject*)
 {
-    if (IsWaitingForLastMove(priority))
-        return false;
-
     Map* map = bot->GetMap();
     const float x = bot->GetPositionX();
     const float y = bot->GetPositionY();
@@ -408,14 +429,6 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
     }
 
     return false;
-}
-
-bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
-{
-    AI_VALUE(LastMovement&, "last movement")
-        .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
-             duration, priority);
-    return true;
 }
 
 /// @TODO: Fix redundant code
@@ -1004,7 +1017,7 @@ bool NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
         if (bot->CanInteractWithQuestGiver(object))
         {
             InteractWithNpcOrGameObjectForQuest(npcOrGo);
-            ForceToWait(5000);
+            SetNextMovementDelay(questGiverStayTime, MovementPriority::MOVEMENT_NORMAL);
             return true;
         }
         return MoveWorldObjectTo(npcOrGo);

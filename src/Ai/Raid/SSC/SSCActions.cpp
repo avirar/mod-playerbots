@@ -284,8 +284,9 @@ bool MoveStraightTo(PlayerbotAI* botAI, float x, float y, float z, MovementPrior
             static_cast<float>(botAI->GetReactDelay()),
         0.0f, static_cast<float>(sPlayerbotAIConfig.MaxWaitForMove));
 
-    botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().Set(
-        SSC_MAP_ID, x, y, z, bot->GetOrientation(), delay, priority);
+    LastMovement& lastMove = botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
+    lastMove.Set(SSC_MAP_ID, x, y, z, bot->GetOrientation(), priority);
+    lastMove.SetHold(uint32(delay), priority);
     return true;
 }
 

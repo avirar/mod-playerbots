@@ -260,7 +260,7 @@ bool Nav3DTestAction::Execute(Event event)
     uint32 const delay = uint32(std::max(1000.0f, std::min(10000.0f, result.Length * 250.0f)));
     AI_VALUE(LastMovement&, "last movement")
         .Set(bot->GetMapId(), goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(),
-             bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
+             bot->GetOrientation(), MovementPriority::MOVEMENT_NORMAL);
 
     botAI->TellMasterNoFacing(summary.str() + " moving");
     LOG_INFO("playerbots",

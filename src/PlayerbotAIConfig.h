@@ -414,6 +414,10 @@ public:
     bool EnableNewRpgStrategy;
     float RpgTargetSearchDistance;
     bool CollectDetailedQuestStats;
+    // Travel-node graph routing for long-distance movement (Celandriel travel PR).
+    bool EnableTravelNodes;
+    uint32 TravelNodeProbeSteps;
+    float TravelNodeDirectDistance;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool SyncLevelWithPlayers;
     bool RandomBotConcentrateInPlayerZone;
