@@ -1470,7 +1470,7 @@ TravelNode* TravelNodeMap::getNode(WorldPosition pos, [[maybe_unused]] std::vect
     uint32 c = 0;
 
     std::vector<TravelNode*> nodes = TravelNodeMap::instance().getNodes(pos, range);
-    for (auto& node : _nodes)
+    for (auto& node : nodes)
     {
         if (!bot || pos.canPathTo(*node->getPosition(), bot))
             return node;
@@ -2369,10 +2369,35 @@ void TravelNodeMap::ScanPortalGameObjects()
         if (data->type == GAMEOBJECT_TYPE_GOOBER)
         {
             ++goobers;
-            if (goobers <= 20)
-                LOG_INFO("playerbots", "portal scan: goober {} '{}' spell {} map {} ({:.0f},{:.0f},{:.0f})",
-                         goData->id, data->name, data->goober.spellId, goData->mapid, goData->posX,
-                         goData->posY, goData->posZ);
+            uint32 const spellId = data->goober.spellId;
+            if (!spellId)
+                continue;
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (!spellInfo)
+            {
+                LOG_INFO("playerbots", "portal scan: goober {} '{}' spell {} has no SpellInfo", goData->id,
+                         data->name, spellId);
+                continue;
+            }
+            if (spellInfo->Effects[EFFECT_0].TriggerSpell)
+                if (SpellInfo const* triggered =
+                        sSpellMgr->GetSpellInfo(spellInfo->Effects[EFFECT_0].TriggerSpell))
+                    spellInfo = triggered;
+            uint8 teleIndex = MAX_SPELL_EFFECTS;
+            for (uint8 i = EFFECT_0; i < MAX_SPELL_EFFECTS; ++i)
+                if (spellInfo->Effects[i].Effect == SPELL_EFFECT_TELEPORT_UNITS)
+                {
+                    teleIndex = i;
+                    break;
+                }
+            SpellTargetPosition const* pos = teleIndex == MAX_SPELL_EFFECTS
+                ? nullptr
+                : sSpellMgr->GetSpellTargetPosition(spellInfo->Id, SpellEffIndex(teleIndex));
+            LOG_INFO("playerbots",
+                     "portal scan: goober {} '{}' spell {} -> {} teleIndex={} target={} map {} ({:.0f},{:.0f},{:.0f})",
+                     goData->id, data->name, spellId, spellInfo->Id, uint32(teleIndex), pos ? 1 : 0,
+                     pos ? pos->target_mapId : 0, pos ? pos->target_X : 0.0f, pos ? pos->target_Y : 0.0f,
+                     pos ? pos->target_Z : 0.0f);
         }
         else if (data->type == GAMEOBJECT_TYPE_SPELLCASTER)
             ++spellcasters;
