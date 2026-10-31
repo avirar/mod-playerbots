@@ -41,6 +41,13 @@ protected:
                 MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool MoveNear(WorldObject* target, float distance = sPlayerbotAIConfig.ContactDistance,
                   MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
+    // Pathless swims must be checked as a segment, not just at the destination. Returns false
+    // when the sampled segment is too close to the floor or the low ray is obstructed.
+    bool IsSwimPathClear(float x, float y, float z, float& worstClearance, bool& terrainChecked) const;
+    // Generic local fallback when the 2D path is missing/blocked inside a WMO or water
+    // volume. Used by combat reach/chase, loot, and RPG/travel callers.
+    bool TryNav3DMove(float x, float y, float z, MovementPriority priority, char const* reason);
+    bool TryNav3DFly(float x, float y, float z, MovementPriority priority, char const* reason);
     float GetFollowAngle();
     bool Follow(Unit* target, float distance = sPlayerbotAIConfig.FollowDistance);
     bool Follow(Unit* target, float distance, float angle);
@@ -74,13 +81,15 @@ protected:
         bool strict;
     };
 
+    // Raw point move without path generation; subclasses use it for direct swim/ascend moves.
+    void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
+
 private:
     // float SearchBestGroundZForPath(float x, float y, float z, bool generatePath, float range = 20.0f, bool
     // normal_only = false, float step = 8.0f);
     const Movement::PointsArray SearchForBestPath(float x, float y, float z, float& modified_z, int maxSearchCount = 5,
                                                   bool normal_only = false, float step = 8.0f);
     bool wasMovementRestricted = false;
-    void DoMovePoint(Unit* unit, float x, float y, float z, bool generatePath, bool backwards);
 };
 
 class FleeAction : public MovementAction
@@ -211,6 +220,30 @@ public:
     MoveToLootAction(PlayerbotAI* botAI) : MovementAction(botAI, "move to loot") {}
 
     bool Execute(Event event) override;
+
+private:
+    // Progress watchdog: stop chasing a loot target we are not actually getting closer to.
+    ObjectGuid lootWatchGuid;
+    float lootWatchDistance = -1.0f;
+    uint32 lootWatchMs = 0;
+    uint32 lootWatchLastEvalMs = 0;
+};
+
+// Emergency surfacing for a bot under water: swims to the closest water-surface column with
+// line of sight (straight up first, then a widening ring) before normal pathing resumes.
+class SurfaceFromDiveAction : public MovementAction
+{
+public:
+    SurfaceFromDiveAction(PlayerbotAI* botAI) : MovementAction(botAI, "surface from dive") {}
+
+    bool isUseful() override;
+    bool Execute(Event event) override;
+
+private:
+    bool FindSurfacePoint();
+    bool TryNav3DEscape();
+    bool FollowNav3DEscape(uint32 now);
+    void ClearNav3DEscape();
 };
 
 class MoveOutOfEnemyContactAction : public MovementAction

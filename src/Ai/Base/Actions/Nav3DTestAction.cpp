@@ -1,0 +1,274 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
+#include "Nav3DTestAction.h"
+
+#include "LastMovementValue.h"
+#include "Log.h"
+#include "MotionMaster.h"
+#include "Nav3DManager.h"
+#include "PathGenerator.h"
+#include "Player.h"
+#include "PlayerbotAI.h"
+#include "Playerbots.h"
+
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <vector>
+
+namespace
+{
+    float Distance(G3D::Vector3 const& left, G3D::Vector3 const& right)
+    {
+        float const dx = left.x - right.x;
+        float const dy = left.y - right.y;
+        float const dz = left.z - right.z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    bool Near(G3D::Vector3 const& left, G3D::Vector3 const& right)
+    {
+        float const dx = left.x - right.x;
+        float const dy = left.y - right.y;
+        float const dz = left.z - right.z;
+        return dx * dx + dy * dy + dz * dz <= 0.05f * 0.05f;
+    }
+}
+
+bool Nav3DTestAction::Execute(Event event)
+{
+    std::string text = event.getParam();
+    bool const fly = text.rfind("fly ", 0) == 0;
+    if (fly)
+        text.erase(0, 4);
+
+    std::istringstream input(text);
+
+    std::vector<Position> points;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    while (input >> x >> y >> z)
+        points.emplace_back(x, y, z);
+
+    if (points.empty())
+    {
+        botAI->TellMasterNoFacing("Usage: nav3d [fly] <goalX> <goalY> <goalZ> [viaX viaY viaZ ...]");
+        return true;
+    }
+
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
+    {
+        botAI->TellMasterNoFacing("Nav3D is disabled (or lazy mode is off) in playerbots.conf");
+        return true;
+    }
+
+    Player* bot = botAI->GetBot();
+    if (!bot || !bot->GetMap())
+        return false;
+
+    // Test-only: never dismount or replace the bot's mount. A forced-fly probe is only valid
+    // on a bot that is already on a flying mount; changing the mount here can turn a live
+    // character into an unrelated creature and destroys the very state under test.
+    if (fly)
+    {
+        bool const flyingMount = bot->HasIncreaseMountedFlightSpeedAura() || bot->HasFlyAura();
+        if (!bot->IsMounted() || !flyingMount)
+        {
+            botAI->TellMasterNoFacing(
+                "nav3d fly requires an existing flying mount; mount the bot first and retry");
+            return true;
+        }
+
+        bot->SetCanFly(true);
+        bot->SetDisableGravity(true);
+        // SetCanFly/SetDisableGravity do not always update the movement-info flags that the
+        // client uses for gravity. Add them explicitly or the bot hops along the spline.
+        bot->AddUnitMovementFlag(MOVEMENTFLAG_CAN_FLY | MOVEMENTFLAG_DISABLE_GRAVITY |
+                                 MOVEMENTFLAG_FLYING);
+        bot->SendMovementFlagUpdate();
+        LOG_INFO("playerbots", "nav3d fly setup {} mounted={} mountSpell={} flying={} canFlyFlag={} gravityOff={}",
+                 bot->GetName(), bot->IsMounted() ? 1 : 0, bot->GetMountBlockId(),
+                 bot->IsFlying() ? 1 : 0, bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0,
+                 bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0);
+    }
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Position const goal = points.front();
+
+    // This is a local movement probe, not a world-travel command. A stale or wrong-map goal
+    // otherwise looks like a valid direct line in the vmap void and produces a huge spline.
+    float const kMaxCommandDistance = fly ? 3000.0f : 450.0f;
+    float const commandDistance = std::sqrt(std::pow(goal.GetPositionX() - start.GetPositionX(), 2) +
+                                            std::pow(goal.GetPositionY() - start.GetPositionY(), 2) +
+                                            std::pow(goal.GetPositionZ() - start.GetPositionZ(), 2));
+    if (commandDistance > kMaxCommandDistance)
+    {
+        std::ostringstream error;
+        error << "nav3d goal is " << std::fixed << std::setprecision(1) << commandDistance
+              << " yd away; this command is limited to " << kMaxCommandDistance << " yd";
+        botAI->TellMasterNoFacing(error.str());
+        return true;
+    }
+
+    std::vector<Position> route;
+    route.push_back(start);
+    for (size_t i = 1; i < points.size(); ++i)
+        route.push_back(points[i]);
+    route.push_back(goal);
+
+    Movement::PointsArray path;
+    Nav3DResult result;
+    bool found = false;
+
+    // Inside a WMO the navmesh may already have the route even though the outside approach does
+    // not. Prefer a normal 2D path that ends within interaction range; fall back to 3D otherwise.
+    if (!fly && route.size() == 2)
+    {
+        PathGenerator generator(bot);
+        generator.CalculatePath(goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
+        PathType const pathType = generator.GetPathType();
+        if ((pathType & PATHFIND_NORMAL) && !(pathType & PATHFIND_NOPATH))
+        {
+            Movement::PointsArray const& navPath = generator.GetPath();
+            G3D::Vector3 const goalPoint(goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
+            // GetActualEndPosition() is the requested point before NormalizePath() snaps the
+            // stored points to terrain. Use the real last point: in the vmap void the requested
+            // point can be valid while the stored point is at INVALID_HEIGHT.
+            float const endDistance = navPath.empty() ? std::numeric_limits<float>::max()
+                                                      : Distance(navPath.back(), goalPoint);
+            if (endDistance <= 5.0f)
+            {
+                path = navPath;
+                found = true;
+                result.Direct = path.size() <= 2;
+                result.Partial = endDistance > 0.5f;
+                result.BestDistance = endDistance;
+                result.BestX = navPath.back().x;
+                result.BestY = navPath.back().y;
+                result.BestZ = navPath.back().z;
+                for (size_t i = 1; i < path.size(); ++i)
+                    result.Length += Distance(path[i - 1], path[i]);
+            }
+        }
+    }
+
+    if (!found)
+    {
+        result.Direct = true;
+        found = true;
+        for (size_t i = 0; i + 1 < route.size(); ++i)
+        {
+            Movement::PointsArray leg;
+            Nav3DResult legResult;
+            bool const legFound =
+                fly ? Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), route[i],
+                                                           route[i + 1], leg, legResult)
+                    : Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), route[i],
+                                                        route[i + 1], leg, legResult);
+            if (!legFound)
+            {
+                found = false;
+                result.BestDistance = legResult.BestDistance;
+                result.BestX = legResult.BestX;
+                result.BestY = legResult.BestY;
+                result.BestZ = legResult.BestZ;
+                result.Nodes = legResult.Nodes;
+                result.Expanded = legResult.Expanded;
+                result.ElapsedMs = legResult.ElapsedMs;
+                break;
+            }
+
+            for (G3D::Vector3 const& point : leg)
+            {
+                if (path.empty() || !Near(path.back(), point))
+                    path.push_back(point);
+            }
+
+            result.Nodes += legResult.Nodes;
+            result.Expanded += legResult.Expanded;
+            result.ElapsedMs += legResult.ElapsedMs;
+            result.Length += legResult.Length;
+            result.Direct = result.Direct && legResult.Direct;
+            result.Partial = result.Partial || legResult.Partial;
+            result.Reversed = result.Reversed || legResult.Reversed;
+            result.BestDistance = std::max(result.BestDistance, legResult.BestDistance);
+        }
+    }
+
+    result.Found = found;
+    if (!found)
+        path.clear();
+
+    std::ostringstream summary;
+    summary << "nav3d " << (found ? "found" : "failed") << " fly=" << (fly ? 1 : 0)
+            << " legs=" << (route.size() - 1) << " direct=" << (result.Direct ? 1 : 0)
+            << " partial=" << (result.Partial ? 1 : 0) << " reversed=" << (result.Reversed ? 1 : 0)
+            << " nodes=" << result.Nodes
+            << " expanded=" << result.Expanded << " ms=" << result.ElapsedMs << " len=" << result.Length
+            << " best=" << result.BestDistance << " points=" << path.size();
+
+    if (!found)
+    {
+        botAI->TellMasterNoFacing(summary.str());
+        LOG_INFO("playerbots", "{} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) {}", bot->GetName(),
+                 start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), goal.GetPositionX(),
+                 goal.GetPositionY(), goal.GetPositionZ(), summary.str());
+        return true;
+    }
+
+    if (!fly && !Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
+    {
+        botAI->TellMasterNoFacing("nav3d path blocked by clearance");
+        return true;
+    }
+
+    // Match normal bot movement: a goal inside restricted airspace must be a real ground
+    // landing (one-way dive), and a transit path must fit the restricted-flight budget.
+    Position const finalGoal = points.back();
+    bool goalRestricted = false;
+    if (!Nav3DManager::Instance().CanLandAt(bot, finalGoal, goalRestricted))
+    {
+        botAI->TellMasterNoFacing("nav3d goal is not a valid landing point (restricted air, no ground)");
+        return true;
+    }
+
+    uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+        bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+    if (!goalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+    {
+        std::ostringstream blocked;
+        blocked << "nav3d restricted transit: " << restrictedMs << " ms > "
+                << sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs << " ms";
+        botAI->TellMasterNoFacing(blocked.str());
+        LOG_INFO("playerbots", "{} {}", bot->GetName(), blocked.str());
+        return true;
+    }
+    summary << " restrictedMs=" << restrictedMs;
+
+    bot->StopMoving();
+    bot->GetMotionMaster()->MoveSplinePath(&path, fly ? FORCED_MOVEMENT_FLY : FORCED_MOVEMENT_NONE);
+
+    // Keep the AI ticking. A LastMovement delay only prevents another mover from immediately
+    // reissuing the same target; it does not put the bot AI to sleep like SetNextCheckDelay.
+    uint32 const delay = uint32(std::max(1000.0f, std::min(10000.0f, result.Length * 250.0f)));
+    AI_VALUE(LastMovement&, "last movement")
+        .Set(bot->GetMapId(), goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ(),
+             bot->GetOrientation(), delay, MovementPriority::MOVEMENT_NORMAL);
+
+    botAI->TellMasterNoFacing(summary.str() + " moving");
+    LOG_INFO("playerbots",
+             "{} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) {} moving delay={}ms", bot->GetName(),
+             start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), goal.GetPositionX(),
+             goal.GetPositionY(), goal.GetPositionZ(), summary.str(), delay);
+    for (size_t i = 0; i < path.size(); ++i)
+        LOG_INFO("playerbots", "nav3d {} point[{}] = ({:.2f},{:.2f},{:.2f})", bot->GetName(), i, path[i].x, path[i].y,
+                 path[i].z);
+    return true;
+}

@@ -14,6 +14,7 @@
 #include "Event.h"
 #include "ForceRebuff.h"
 #include "Item.h"
+#include "MoveSplineInitArgs.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
@@ -25,7 +26,9 @@
 #include "Util.h"
 #include "WorldPacket.h"
 #include <mutex>
+#include <cstdint>
 #include <stack>
+#include <unordered_set>
 
 class Action;
 class AiObjectContext;
@@ -480,6 +483,7 @@ public:
     static std::string GetLocalizedAreaName(AreaTableEntry const* entry);
     static std::string GetLocalizedCreatureName(uint32 entry);
     static std::string GetLocalizedGameObjectName(uint32 entry);
+    static constexpr size_t MAX_CHAT_MESSAGE_BYTES = 255;
     bool TellMaster(std::ostringstream& stream, PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     bool TellMaster(std::string const text, PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     bool TellMasterNoFacing(std::ostringstream& stream,
@@ -621,6 +625,76 @@ public:
     static bool IsHealingSpell(uint32 spellFamilyName, flag96 spellFamilyFlags);
     static SpellFamilyNames Class2SpellFamilyName(uint8 cls);
     NewRpgInfo rpgInfo;
+
+    // Underwater dive tracking shared by UnderwaterSafetyTrigger/SurfaceFromDiveAction.
+    // diveAirMs mirrors the core's BREATH mirror timer (config value is already in ms, scaled by
+    // MOD_WATER_BREATHING), regenerating 10x while not under water; HasWaterBreathingAura bots
+    // never trigger surfacing. diveHoldSurface keeps an emergency-surfaced bot at the surface
+    // until air is back to half before any diving movement resumes.
+    uint32 diveSubmergedSince = 0;
+    uint32 diveLastTickMs = 0;
+    uint32 diveIdleSince = 0;
+    uint32 diveAscendIssueMs = 0;
+    uint32 diveAscendProgressMs = 0;
+    uint32 diveAscendStartMs = 0;
+    float diveAscendLastZ = 0;
+    uint8 diveAscendRetries = 0;
+
+    int32 diveAirMs = INT32_MAX;
+    bool diveSurfacing = false;
+    bool diveHoldSurface = false;
+    float diveSurfaceX = 0, diveSurfaceY = 0, diveSurfaceZ = 0;
+
+    // 3D escape path used when the direct surface column has no line of sight
+    // (tunnel/cave). Cached until the bot surfaces, changes map, or stalls.
+    bool nav3dEscapeActive = false;
+    uint32 nav3dEscapeMap = 0;
+    size_t nav3dEscapeIndex = 0;
+    uint32 nav3dEscapeProgressMs = 0;
+    float nav3dEscapeLastX = 0, nav3dEscapeLastY = 0, nav3dEscapeLastZ = 0;
+    Movement::PointsArray nav3dEscapePath;
+
+    // Active 3D loot spline. The loot mover must not freeze the bot AI with
+    // SetNextCheckDelay: the world movement generator keeps running, but loot/combat/triggers
+    // would sleep until the timer expires. Keep the path active and let the AI tick; the loot
+    // action opens the target as soon as the bot is in interaction range.
+    ObjectGuid nav3dLootGuid;
+    uint32 nav3dLootUntilMs = 0;
+    uint32 nav3dLootIssuedMs = 0;
+
+    uint64 nav3dPathHandle = 0;
+    uint32 nav3dPathMap = 0;
+    uint32 nav3dPathStartMs = 0;
+    uint32 nav3dPathRetryAfterMs = 0;
+    float nav3dPathX = 0, nav3dPathY = 0, nav3dPathZ = 0;
+    bool nav3dPathAir = false;
+    bool nav3dPathReady = false;
+    bool nav3dPathGoalRestricted = false;
+    float nav3dPathLength = 0;
+    uint32 nav3dPathElapsedMs = 0;
+    Movement::PointsArray nav3dPath;
+
+    // Cooperative Nav3D path request. The search is advanced in bounded slices from
+    // UpdateAI, so the map thread never blocks on one bot's route. Movement actions wait in
+    // Pending instead of falling back to the 2D mover.
+    enum class Nav3DPathState : uint8
+    {
+        None,
+        Pending,
+        Ready,
+    };
+
+    Nav3DPathState GetNav3DPathState(float x, float y, float z, bool air) const;
+    bool RequestNav3DPath(float x, float y, float z, bool air, uint8 priority = 2);
+    bool TakeNav3DPath(float x, float y, float z, bool air, Movement::PointsArray& path, float& length,
+                       uint32& elapsedMs);
+    void CancelNav3DPath();
+    void UpdateNav3DPath();
+
+    // True while the emergency surface ascent/hold owns movement. Teleport recovery must not
+    // fire while the bot is being held at the surface.
+    bool IsDiveSafetyActive() const { return diveSurfacing || diveHoldSurface; }
+
     NewRpgStatistic rpgStatistic;
     std::mutex rpgStatisticMutex;
     void RecordQuestAccepted(uint32 questId);

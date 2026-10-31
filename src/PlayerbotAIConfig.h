@@ -111,6 +111,16 @@ public:
     bool RandomBotGuildNearby, RandomBotInvitePlayer, InviteChat;
     uint32 GlobalCoolDown, ReactDelay, MaxWaitForMove, DisableMoveSplinePath, MaxMovementSearchTime, ExpireActionTime,
         DispelAuraDuration, PassiveDelay, RepeatDelay, ErrorDelay, RpgDelay, SitDelay, ReturnDelay, LootDelay;
+    bool Nav3DEnabled, Nav3DLazy, Nav3DSwim, Nav3DCooperative, Nav3DRespectNoFlyZones;
+    float Nav3DCellSize;
+    uint32 Nav3DNeighbors, Nav3DMaxNodes, Nav3DMaxSearchTimeMs, Nav3DTileCacheSize;
+    uint32 Nav3DPathBudgetMs, Nav3DPathSliceUs, Nav3DPathMaxActive, Nav3DPathMaxAgeMs,
+        Nav3DPathGlobalBudgetMs, Nav3DPathMaxPending, Nav3DPathMaxPerMap, Nav3DPathRetryMs, Nav3DPathAgeBoostMs,
+        Nav3DPathWaitMs, Nav3DPathAirWaitMs,
+        Nav3DMaxRestrictedTransitMs,
+        Nav3DCoopSearchTimeMs, Nav3DCoopDetailSearchTimeMs, Nav3DNegativeTtlMs;
+    std::string Nav3DDataPath;
+    std::vector<uint32> Nav3DOpenWaterAreas;
     bool DynamicReactDelay;
     float SightDistance, SpellDistance, ReactDistance, GrindDistance, LootDistance, ShootDistance, FleeDistance,
         TooCloseDistance, MeleeDistance, FollowDistance, WhisperDistance, ContactDistance, AoeRadius, RpgDistance,
@@ -143,6 +153,7 @@ public:
     bool BotAutologin;
     std::string RandomBotMapsAsString;
     float ProbTeleToBankers;
+    float ProbTeleToQuestGivers;
     bool EnableWeightTeleToCityBankers;
     int WeightTeleToStormwind;
     int WeightTeleToIronforge;
@@ -393,6 +404,7 @@ public:
     bool DropObsoleteQuests;
     bool AllowLearnTrainerSpells;
     bool AutoPickTalents;
+    bool AutoPickTalentsForPlayerControlledBots;
     bool AutoUpgradeEquip;
     int32 HunterWolfPet;
     int32 DefaultPetStance;

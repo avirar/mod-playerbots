@@ -19,7 +19,9 @@
 #include "FleeManager.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "JsonUtils.h"
 #include "LFGMgr.h"
+#include "LootObjectStack.h"
 #include "MapMgr.h"
 #include "NewRpgInfo.h"
 #include "JsonUtils.h"
@@ -289,6 +291,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 /*elapsed*/, bool /*minimal*/)
 
     if (!sPlayerbotAIConfig.RandomBotAutologin || !sPlayerbotAIConfig.Enabled)
         return;
+
+    if (sPlayerbotAIConfig.RandomBotConcentrateInPlayerZone)
+        UpdatePlayerZones();
 
     /*if (sPlayerbotAIConfig.enablePrototypePerformanceDiff)
     {
@@ -1039,6 +1044,12 @@ void RandomPlayerbotMgr::CheckBgQueue()
                         instanceIds->push_back(instanceId);
 
                     BattlegroundData[queueTypeId][bracketId].bgInstanceCount = instanceIds->size();
+
+                    std::vector<uint32>& playerInstances = BattlegroundData[queueTypeId][bracketId].bgPlayerInstances;
+                    if (std::find(playerInstances.begin(), playerInstances.end(), instanceId) == playerInstances.end())
+                        playerInstances.push_back(instanceId);
+                    BattlegroundData[queueTypeId][bracketId].bgInstanceCapacity[instanceId] =
+                        bg->GetMaxPlayersPerTeam();
                 }
             }
 
@@ -1139,6 +1150,9 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 else
                 {
                     instanceIds = &BattlegroundData[queueTypeId][bracketId].bgInstances;
+                    BattlegroundData[queueTypeId][bracketId].bgInstanceCapacity[instanceId] =
+                        bg->GetMaxPlayersPerTeam();
+                    ++BattlegroundData[queueTypeId][bracketId].bgInstanceBots[instanceId][teamId];
                 }
 
                 if (instanceIds &&
@@ -1194,6 +1208,7 @@ void RandomPlayerbotMgr::CheckBgQueue()
         {
             for (uint32 bracket : brackets)
             {
+                BattlegroundData[queueType][bracket].bgAutoJoinTarget = minCount;
                 if (BattlegroundData[queueType][bracket].activeBgQueue == 0 &&
                     BattlegroundData[queueType][bracket].bgInstanceCount < minCount &&
                     BattlegroundData[queueType][bracket].bgInstances.size() < minCount)
@@ -1650,6 +1665,25 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         if (bot->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) && bot->HasUnitState(UNIT_STATE_IGNORE_PATHFINDING) &&
             botAI->HasPlayerNearby())
             return;
+
+        // Do not teleport a bot away from an action that owns movement or interaction. The
+        // surface ascent/hold is short-lived; loot and combat will finish or fail on their own.
+        if (botAI->IsDiveSafetyActive() || bot->IsUnderWater() || bot->IsInCombat() || bot->GetLootGUID() ||
+            bot->IsInFlight())
+        {
+            LOG_DEBUG("playerbots", "Random teleport skipped for {}: dive={} underwater={} combat={} loot={} flight={}",
+                      bot->GetName(), botAI->IsDiveSafetyActive() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                      bot->IsInCombat() ? 1 : 0, bot->GetLootGUID() ? 1 : 0, bot->IsInFlight() ? 1 : 0);
+            return;
+        }
+
+        LootObject loot = botAI->GetAiObjectContext()->GetValue<LootObject>("loot target")->Get();
+        if (!loot.IsEmpty())
+        {
+            LOG_DEBUG("playerbots", "Random teleport skipped for {}: active loot target {}",
+                      bot->GetName(), loot.guid.ToString());
+            return;
+        }
     }
 
     // if (sPlayerbotAIConfig.RandomBotRpgChance < 0)
@@ -1834,15 +1868,45 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
     if (bot->InBattleground())
         return;
 
-    if (bot->GetLevel() >= 10 && urand(0, 100) < sPlayerbotAIConfig.ProbTeleToBankers * 100)
+    // One weighted roll across the three destination classes, so each config value is an exact
+    // share of the roll (they are peers, not nested gates):
+    //   quest giver   : ProbTeleToQuestGivers
+    //   city/banker   : ProbTeleToBankers (level >= 10 only)
+    //   innkeeper/hub : the remainder (1 - quest giver - banker); absorbs any branch that had
+    //                   no destination (no valid giver, below level 10, empty city cache)
+    uint32 roll = urand(0, 99);
+
+    if (roll < sPlayerbotAIConfig.ProbTeleToQuestGivers * 100)
+    {
+        std::vector<WorldLocation> qlocs = sTravelMgr.GetValidQuestGiverLocations(bot);
+
+        // Concentrated servers keep bots near players: only givers in a player zone count, and
+        // otherwise the roll falls through to the hub path.
+        if (!qlocs.empty() && sPlayerbotAIConfig.RandomBotConcentrateInPlayerZone)
+        {
+            std::vector<WorldLocation> playerZoneLocs = GetPlayerZoneTeleportLocations(qlocs, bot);
+            qlocs = std::move(playerZoneLocs);
+        }
+
+        if (!qlocs.empty())
+        {
+            LOG_DEBUG("playerbots", "Random teleporting bot {} to a quest giver ({} candidates)",
+                      bot->GetName().c_str(), qlocs.size());
+            RandomTeleport(bot, qlocs, /*hearth=*/false);
+            return;
+        }
+    }
+    else if (bot->GetLevel() >= 10
+             && roll < (sPlayerbotAIConfig.ProbTeleToQuestGivers + sPlayerbotAIConfig.ProbTeleToBankers) * 100)
     {
         std::vector<WorldLocation> locs = sTravelMgr.GetCityLocations(bot);
         if (!locs.empty())
         {
-            RandomTeleport(bot, locs, true);
+            RandomTeleport(bot, locs, /*hearth=*/true);
             return;
         }
     }
+
     std::vector<WorldLocation> locs = sTravelMgr.GetTeleportLocations(bot);
 
     if (sPlayerbotAIConfig.RandomBotConcentrateInPlayerZone && !locs.empty())
@@ -1866,38 +1930,21 @@ void RandomPlayerbotMgr::RandomTeleportForLevel(Player* bot)
 std::vector<WorldLocation> RandomPlayerbotMgr::GetPlayerZoneTeleportLocations(std::vector<WorldLocation> const& locs,
                                                                               Player* bot)
 {
-    std::set<uint32> playerMaps;
     std::set<std::pair<uint32, uint32>> playerMapZones;
-
-    // players only ever holds real (non random bot) players and is maintained on login/logout, so
-    // this is a pass over the online player list, not a world-wide scan.
-    for (Player* player : players)
     {
-        if (!player || !player->IsInWorld() || player->IsGameMaster())
-            continue;
-
-        Map* map = player->GetMap();
-        if (!map)
-            continue;
-
-        // Instanceable maps (dungeons, raids, battlegrounds, arenas) are never valid targets: a
-        // WorldLocation carries no instance id, so a bot would be sent to another instance of the
-        // same map rather than to the player.
-        if (map->Instanceable())
-            continue;
-
-        // Resolve the player zone the same way as the candidate locations below (unphased terrain),
-        // so a player standing in a phased area still matches its underlying zone.
-        uint32 zoneId = map->GetZoneId(PHASEMASK_NORMAL, player->GetPositionX(), player->GetPositionY(),
-                                       player->GetPositionZ());
-        playerMaps.insert(map->GetId());
-        playerMapZones.insert(std::make_pair(map->GetId(), zoneId));
+        std::lock_guard<std::mutex> lock(_playerZonesLock);
+        playerMapZones = _playerZones;
     }
 
     std::vector<WorldLocation> filtered;
     if (playerMapZones.empty())
         return filtered;
 
+    std::set<uint32> playerMaps;
+    for (auto const& mapZone : playerMapZones)
+        playerMaps.insert(mapZone.first);
+
+    PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     for (WorldLocation const& loc : locs)
     {
         if (playerMaps.find(loc.GetMapId()) == playerMaps.end())
@@ -1919,10 +1966,47 @@ std::vector<WorldLocation> RandomPlayerbotMgr::GetPlayerZoneTeleportLocations(st
                 continue;
         }
 
+        if (std::find(sPlayerbotAIConfig.RandomBotMaps.begin(), sPlayerbotAIConfig.RandomBotMaps.end(),
+                      loc.GetMapId()) == sPlayerbotAIConfig.RandomBotMaps.end())
+            continue;
+
+        if (botAI && !botAI->StarterLevelDistanceCheck(bot, loc, true))
+            continue;
+
         filtered.push_back(loc);
     }
 
     return filtered;
+}
+
+// World thread only.
+void RandomPlayerbotMgr::UpdatePlayerZones()
+{
+    std::set<std::pair<uint32, uint32>> playerMapZones;
+
+    for (Player* player : players)
+    {
+        if (!player || !player->IsInWorld() || player->IsGameMaster())
+            continue;
+
+        if (!IsRealPlayer(player) && !IsSelfBot(player))
+            continue;
+
+        Map* map = player->GetMap();
+        if (!map)
+            continue;
+
+        // WorldLocation has no instance id.
+        if (map->Instanceable())
+            continue;
+
+        uint32 zoneId =
+            map->GetZoneId(PHASEMASK_NORMAL, player->GetPositionX(), player->GetPositionY(), player->GetPositionZ());
+        playerMapZones.insert(std::make_pair(map->GetId(), zoneId));
+    }
+
+    std::lock_guard<std::mutex> lock(_playerZonesLock);
+    _playerZones = std::move(playerMapZones);
 }
 
 void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)

@@ -368,6 +368,56 @@ Playerbots.DisableMoveSplinePath = 0
 # Default: 3
 Playerbots.MaxMovementSearchTime = 3
 
+# Nav3D volumetric navigation (experimental; swimming and WMO-interior air).
+# When disabled, all movement uses the existing 2D mmap / straight-spline behaviour.
+Playerbots.Nav3D.Enabled = 0
+# Build a local graph on demand (P0b) instead of loading .n3t tiles.
+Playerbots.Nav3D.Lazy = 0
+# Enable liquid-volume cells. When off, only dry WMO/cave cells are navigable.
+Playerbots.Nav3D.Swim = 1
+# Grid cell size in yards. WMO interiors use this size; open water uses twice it.
+Playerbots.Nav3D.CellSize = 1.0
+# A* neighbour moves: 6 = cardinal, 18 = + edge diagonals, 26 = full 3D diagonals.
+Playerbots.Nav3D.Neighbors = 26
+# Directory (relative to DataDir) for precomputed .n3t tiles. Lazy mode ignores it.
+Playerbots.Nav3D.DataPath = nav3d
+# Maximum number of precomputed tiles kept in the shared LRU.
+Playerbots.Nav3D.TileCacheSize = 2048
+# Areas where the coarse (2x) grid is safe: open water without WMO tunnels. CSV of area ids.
+# Empty = rely on the WMO-floor heuristic only.
+Playerbots.Nav3D.OpenWaterAreas =
+# A* limits; keep these bounded on map threads.
+Playerbots.Nav3D.MaxNodes = 20000
+Playerbots.Nav3D.MaxSearchTimeMs = 50
+# Cooperative multi-tick path search: bound map-thread time per tick and let bots wait.
+Playerbots.Nav3D.Cooperative = 1
+# Dalaran/Wintergrasp restricted flight: allow one-way dives into a ground goal,
+# but reject transit paths that would be dismounted mid-route.
+Playerbots.Nav3D.RespectNoFlyZones = 1
+Playerbots.Nav3D.MaxRestrictedTransitMs = 7500
+Playerbots.Nav3D.PathTickBudgetMs = 1
+Playerbots.Nav3D.PathSliceUs = 200
+Playerbots.Nav3D.PathMaxActive = 64
+Playerbots.Nav3D.PathMaxAgeMs = 15000
+# Total pathfinding CPU across all map threads, in milliseconds per second.
+Playerbots.Nav3D.PathGlobalBudgetMs = 120
+Playerbots.Nav3D.PathMaxPending = 2048
+# Keep each map queue bounded; over the cap the bot uses its normal mover.
+Playerbots.Nav3D.PathMaxPerMap = 64
+# After a failed/timed-out cooperative path, wait before retrying.
+Playerbots.Nav3D.PathRetryMs = 2000
+# Promote a low-priority request that has waited this long (anti-starvation).
+Playerbots.Nav3D.PathAgeBoostMs = 3000
+# A bot waits this long for a route before falling back to its normal movement.
+Playerbots.Nav3D.PathWaitMs = 6000
+Playerbots.Nav3D.PathAirWaitMs = 12000
+# CPU budget per cooperative route. Keep this below what the per-map budget can
+# deliver inside PathWaitMs: 120 ms at 1 ms per 50 ms tick takes ~6 s.
+Playerbots.Nav3D.CoopSearchTimeMs = 120
+Playerbots.Nav3D.CoopDetailSearchTimeMs = 400
+# Cache failed start tiles so retries do not burn the global path budget.
+Playerbots.Nav3D.NegativeTtlMs = 30000
+
 # Action expiration time
 Playerbots.ExpireActionTime = 5000
 
@@ -1402,6 +1452,10 @@ Playerbots.AutoLearnTrainerSpells = 1
 # Default: 1 (enabled)
 Playerbots.AutoPickTalents = 1
 
+# Player-controlled bots (altbots and selfbots) automatically spend free talent points on levelup.
+# Default: 0 (disabled)
+Playerbots.AutoPickTalentsForPlayerControlledBots = 0
+
 # Spells every randombot will learn automatically and every altbot will learn with maintenance
 # Default: 54197 (Cold Weather Flying)
 Playerbots.RandomBotSpellIds = "54197"
@@ -1642,9 +1696,24 @@ Playerbots.ZoneBracket.4197 = 79,80
 # Defaults: 0 = Eastern Kingdoms, 1 = Kalimdor, 530 = Outland, 571 = Northrend
 Playerbots.RandomBotMaps = 0,1,530,571
 
+# When an idle bot picks a random destination it makes ONE weighted roll across three classes,
+# so each value is an exact share of the roll (peers, not nested gates):
+#     quest giver   : ProbTeleToQuestGivers
+#     city/banker   : ProbTeleToBankers (level >= 10 only; falls through below level 10)
+#     innkeeper/hub : 1 - ProbTeleToQuestGivers - ProbTeleToBankers (the remainder)
+# A branch that cannot produce a destination (no currently-valid quest giver, below level 10, or
+# an empty city cache) falls through to the innkeeper/hub path, which absorbs the unused share.
+
 # Probability bots teleport to banker (city)
 # Default: 0.25
 Playerbots.ProbTeleToBankers = 0.25
+
+# Probability an idle random bot's random move targets a quest giver it can accept a quest from
+# right now (level/faction valid, no unmet prereq, not in progress, quest-log + item room).
+# Falls through to the innkeeper/hub path when no valid giver exists. With
+# RandomBotConcentrateInPlayerZone, only givers in a player zone are used.
+# Default: 0 (off; set above 0 to enable quest-giver teleports)
+Playerbots.ProbTeleToQuestGivers = 0
 
 # Control probability weights for bots teleporting to Capital city bankers
 # Sum of weights need not be 100. Set to 0 to disable teleporting to the city.
@@ -1688,7 +1757,7 @@ Playerbots.AutoTeleportForLevel = 1
 # Enable battlegrounds/arenas for randombots
 Playerbots.RandomBotJoinBG = 1
 
-# Allow players to command random bots on their own team in the same battleground or arena.
+# Allow players to command random bots with no player master on their own team in the same battleground or arena.
 # Every such player gets the command access of a master without becoming the bot's master,
 # so the bot keeps playing the battleground.
 # Default: 0 (disabled)

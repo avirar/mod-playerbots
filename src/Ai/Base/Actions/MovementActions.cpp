@@ -15,6 +15,7 @@
 #include "MotionMaster.h"
 #include "MoveSplineInitArgs.h"
 #include "MovementGenerator.h"
+#include "Nav3DManager.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
 #include "PathGenerator.h"
@@ -93,6 +94,8 @@ bool MovementAction::MoveNear(WorldObject* target, float distance, MovementPrior
     distance += target->GetCombatReach();
 
     float followAngle = GetFollowAngle();
+    LOG_DEBUG("playerbots", "swim-trace {}: move-near enter target={} distance={:.2f} followAngle={:.2f}",
+              bot->GetName(), target->GetGUID().ToString(), distance, followAngle);
 
     for (float angle = followAngle; angle <= followAngle + static_cast<float>(2 * M_PI);
          angle += static_cast<float>(M_PI / 4.f))
@@ -106,14 +109,22 @@ bool MovementAction::MoveNear(WorldObject* target, float distance, MovementPrior
         // fallbacks through geometry.
         bot->UpdateAllowedPositionZ(x, y, z);
 
-        if (!bot->IsWithinLOS(x, y, z))
+        bool const los = bot->IsWithinLOS(x, y, z);
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-near angle={:.2f} point=({:.2f},{:.2f},{:.2f}) los={}",
+                  bot->GetName(), angle, x, y, z, los ? 1 : 0);
+        if (!los)
             continue;
 
         bool moved = MoveTo(target->GetMapId(), x, y, z, false, false, false, false, priority);
+        LOG_DEBUG("playerbots", "swim-trace {}: move-near angle={:.2f} moved={}", bot->GetName(), angle,
+                  moved ? 1 : 0);
         if (moved)
             return true;
     }
 
+    LOG_DEBUG("playerbots", "swim-trace {}: move-near target={} all angles failed", bot->GetName(),
+              target->GetGUID().ToString());
     return false;
 }
 
@@ -131,7 +142,11 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
     path.CalculatePath(x, y, z, false);
     PathType type = path.GetPathType();
     if (type != PATHFIND_NORMAL && type != PATHFIND_INCOMPLETE)
+    {
+        if (TryNav3DMove(x, y, z, MovementPriority::MOVEMENT_COMBAT, "los-no-2d"))
+            return true;
         return false;
+    }
 
     if (!ranged)
         return MoveTo((Unit*)target, target->GetCombatReach());
@@ -160,27 +175,248 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
 
     if (dest.isSet())
         return MoveTo(dest.mapId, dest.x, dest.y, dest.z);
-    else
-        botAI->TellError("All paths not in LOS");
+    if (TryNav3DMove(x, y, z, MovementPriority::MOVEMENT_COMBAT, "los-no-dest"))
+        return true;
+    botAI->TellError("All paths not in LOS");
 
     return false;
+}
+
+bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority priority, char const* reason)
+{
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
+        return false;
+    if (!bot || !bot->IsAlive() || !bot->GetMap() || bot->GetVehicle())
+        return false;
+    if (bot->IsFlying())
+        return TryNav3DFly(x, y, z, priority, reason);
+
+    float const distance = bot->GetExactDist(x, y, z);
+    if (distance < 0.5f || distance > 250.0f)
+        return false;
+
+    // Do not let a combat/travel re-path every tick restart the same spline. The caller's
+    // last-movement delay is deliberately short, but duplicate targets are ignored.
+    if (IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Position const goal(x, y, z);
+
+    PlayerbotAI::Nav3DPathState const pathState = botAI->GetNav3DPathState(x, y, z, false);
+    if (pathState == PlayerbotAI::Nav3DPathState::Pending)
+        return true;  // bot waits for the cooperative search instead of 2D fallback
+    if (pathState == PlayerbotAI::Nav3DPathState::None)
+        botAI->CancelNav3DPath();
+
+    Movement::PointsArray path;
+    float length = 0.0f;
+    uint32 elapsedMs = 0;
+    if (pathState == PlayerbotAI::Nav3DPathState::Ready)
+    {
+        if (!botAI->TakeNav3DPath(x, y, z, false, path, length, elapsedMs))
+            return true;
+    }
+    else
+    {
+        if (sPlayerbotAIConfig.Nav3DCooperative)
+        {
+            if (botAI->RequestNav3DPath(x, y, z, false, uint8(priority)))
+                return true;
+            return false;  // rejected (negative cache/backlog): use the 2D mover
+        }
+
+        Nav3DResult result;
+        if (!Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                               result) ||
+            path.size() < 2)
+            return false;
+        length = result.Length;
+        elapsedMs = result.ElapsedMs;
+    }
+
+    // Loot uses the same advisory rule: the A* route is the route through the breach/window,
+    // even when the body capsule reports a hull-edge clip. Log it so the clipping is visible.
+    bool const clear = Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
+
+    if (bot->IsMounted() && (bot->IsUnderWater() || !bot->IsOutdoors()))
+        bot->Dismount();
+
+    UpdateMovementState();
+    bot->StopMoving();
+    bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_NONE);
+
+    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, length * 250.0f));
+    AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: nav3d move reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
+              bot->GetName(), reason, clear ? 1 : 0, path.size(), length, elapsedMs, x, y, z);
+    return true;
+}
+
+bool MovementAction::TryNav3DFly(float x, float y, float z, MovementPriority priority, char const* reason)
+{
+    auto const fail = [&](char const* why)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: try-fly goal=({:.2f},{:.2f},{:.2f}) reason={} failed: {}",
+                  bot ? bot->GetName() : "?", x, y, z, reason, why);
+        return false;
+    };
+
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
+        return fail("nav3d disabled");
+    if (!bot || !bot->IsAlive() || !bot->GetMap() || !bot->IsFlying() || bot->GetVehicle())
+        return fail("invalid bot/flying/map/vehicle state");
+    if (!Nav3DManager::Instance().CanUseFlight(bot))
+        return fail("can-use-flight false");
+
+    // One-way entry: a goal inside Dalaran/Wintergrasp restricted airspace is allowed
+    // when it is a real ground landing point. Transit paths are checked after the path
+    // is built; see the restricted-flight budget below.
+    bool goalRestricted = false;
+    if (!Nav3DManager::Instance().CanLandAt(bot, Position(x, y, z), goalRestricted))
+        return fail("can-land-at false");
+
+    float const distance = bot->GetExactDist(x, y, z);
+    if (distance < 20.0f || distance > 12000.0f)
+        return fail("distance out of range");
+
+    bool const duplicate = IsDuplicateMove(x, y, z);
+    bool const waiting = IsWaitingForLastMove(priority);
+    if (duplicate || waiting)
+        return fail(duplicate ? "duplicate-move" : "waiting-for-last-move");
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Position const goal(x, y, z);
+
+    PlayerbotAI::Nav3DPathState const pathState = botAI->GetNav3DPathState(x, y, z, true);
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: try-fly goal=({:.2f},{:.2f},{:.2f}) dist={:.1f} path_state={} reason={}",
+              bot->GetName(), x, y, z, distance, int(pathState), reason);
+    if (pathState == PlayerbotAI::Nav3DPathState::Pending)
+        return true;  // hold position/altitude while the route is computed
+    if (pathState == PlayerbotAI::Nav3DPathState::None)
+        botAI->CancelNav3DPath();
+
+    Movement::PointsArray path;
+    float length = 0.0f;
+    uint32 elapsedMs = 0;
+    if (pathState == PlayerbotAI::Nav3DPathState::Ready)
+    {
+        if (!botAI->TakeNav3DPath(x, y, z, true, path, length, elapsedMs))
+            return fail("take-nav3d-path failed");
+    }
+    else
+    {
+        if (sPlayerbotAIConfig.Nav3DCooperative)
+        {
+            if (botAI->RequestNav3DPath(x, y, z, true, uint8(priority)))
+            {
+                LOG_DEBUG("playerbots", "swim-trace {}: try-fly requested cooperative path goal=({:.2f},{:.2f},{:.2f})",
+                          bot->GetName(), x, y, z);
+                return true;
+            }
+            return fail("request-nav3d-path rejected");
+        }
+
+        Nav3DResult result;
+        if (!Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                                  result) ||
+            path.size() < 2)
+            return fail("find-path-air failed");
+        length = result.Length;
+        elapsedMs = result.ElapsedMs;
+
+        uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+            bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+        if (!goalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d fly rejected: restricted transit {} ms > {} ms target=({:.1f},{:.1f},{:.1f})",
+                      restrictedMs, sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs, x, y, z);
+            return fail("restricted transit");
+        }
+    }
+
+    bool const clear = Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
+    UpdateMovementState();
+    bot->StopMoving();
+    bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_FLY);
+
+    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, length * 100.0f));
+    AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
+    LOG_DEBUG("playerbots",
+              "nav3d fly reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
+              reason, clear ? 1 : 0, path.size(), length, elapsedMs, x, y, z);
+    return true;
 }
 
 bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle*/, bool /*react*/, bool normal_only,
                             bool exact_waypoint, MovementPriority priority, bool lessDelay, bool backwards)
 {
     UpdateMovementState();
+    auto const fail = [&](char const* why)
+    {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-to map={} target=({:.2f},{:.2f},{:.2f}) priority={} exact={} "
+                  "flying={} failed: {}",
+                  bot ? bot->GetName() : "?", mapId, x, y, z, int(priority), exact_waypoint ? 1 : 0,
+                  bot && bot->IsFlying() ? 1 : 0, why);
+        return false;
+    };
+
+    // The descent/ascent watchdog owns movement. Letting a normal mover run here replaces the
+    // point movement with a chase and is how a low-air bot kept fighting underwater until it
+    // drowned. The ascent itself uses DoMovePoint directly.
+    if (botAI->diveSurfacing)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: surfacing blocked move to ({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), x, y, z);
+        return fail("dive-surfacing");
+    }
+
+    // While holding at the surface after an emergency ascent, allow attacks/actions but never
+    // let a mover take the bot back under water.
+    if (botAI->diveHoldSurface && botAI->diveSurfaceZ > -1000.0f && z < botAI->diveSurfaceZ - 1.0f)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: surface hold blocked move to z {:.2f} (surface {:.2f})",
+                  bot->GetName(), z, botAI->diveSurfaceZ);
+        return fail("surface-hold");
+    }
+
+    // Exact (pathless) swims are what tunnel through seabed ridges. Check the actual movement
+    // segment before issuing one. Short moves are exempt so normal combat positioning still works.
+    if (exact_waypoint && (bot->IsUnderWater() || bot->isSwimming()) && bot->GetExactDist(x, y, z) > 5.0f)
+    {
+        float worstClearance = 1.0e9f;
+        bool terrainChecked = false;
+        if (!IsSwimPathClear(x, y, z, worstClearance, terrainChecked))
+        {
+            if (TryNav3DMove(x, y, z, priority, "blocked-swim"))
+                return true;
+
+            LOG_DEBUG("playerbots",
+                      "swim-trace {}: refusing pathless swim move to ({:.1f},{:.1f},{:.1f}) "
+                      "worstClearance={:.2f} terrainChecked={} action={}",
+                      bot->GetName(), x, y, z, worstClearance, terrainChecked ? 1 : 0, getName());
+            return fail("pathless-swim-refused");
+        }
+    }
+
     if (!IsMovingAllowed())
-    {
-        return false;
-    }
+        return fail("moving-not-allowed");
     if (IsDuplicateMove(x, y, z))
-    {
-        return false;
-    }
+        return fail("duplicate-move");
     if (IsWaitingForLastMove(priority))
+        return fail("waiting-for-last-move");
+
+    if (bot->IsFlying() && mapId == bot->GetMapId())
     {
-        return false;
+        bool const flew = TryNav3DFly(x, y, z, priority, "fly-move");
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to fly-move={} target=({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), flew ? 1 : 0, x, y, z);
+        if (flew)
+            return true;
     }
 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
@@ -213,6 +449,21 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     }
     else if (exact_waypoint || disableMoveSplinePath || !generatePath)
     {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-to point-branch target=({:.2f},{:.2f},{:.2f}) exact={} disabled={} generate={}",
+                  bot->GetName(), x, y, z, exact_waypoint ? 1 : 0, disableMoveSplinePath ? 1 : 0,
+                  generatePath ? 1 : 0);
+        // Exact moves are used by RPG/travel and swim chunks. If the destination is inside a
+        // WMO (the 2D mmap cannot represent it), try the volumetric route before the straight
+        // point spline. Outdoor exact moves keep the cheap point move.
+        if (exact_waypoint && sPlayerbotAIConfig.Nav3DEnabled && !bot->IsFlying())
+        {
+            PositionFullTerrainStatus status;
+            bot->GetMap()->GetFullTerrainStatusForPosition(bot->GetPhaseMask(), x, y, z, 1.0f, status, {});
+            if (!status.outdoors && TryNav3DMove(x, y, z, priority, "exact-indoor"))
+                return true;
+        }
+
         float distance = bot->GetExactDist(x, y, z);
         if (distance > 0.01f)
         {
@@ -239,8 +490,14 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         Movement::PointsArray path =
             SearchForBestPath(x, y, z, modifiedZ, sPlayerbotAIConfig.MaxMovementSearchTime, normal_only);
         if (modifiedZ == INVALID_HEIGHT)
-            return false;
+        {
+            if (TryNav3DMove(x, y, z, priority, "no-2d-path"))
+                return true;
+            return fail("no-2d-path");
+        }
         float distance = bot->GetExactDist(x, y, modifiedZ);
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to 2d-path target=({:.2f},{:.2f},{:.2f}) dist={:.2f}",
+                  bot->GetName(), x, y, modifiedZ, distance);
         if (distance > 0.01f)
         {
             if (bot->IsSitState())
@@ -262,7 +519,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         }
     }
 
-    return false;
+    return fail("no-branch");
     //
     // // LOG_DEBUG("playerbots", "IsMovingAllowed {}", IsMovingAllowed());
     // bot->AddUnitMovementFlag()
@@ -792,6 +1049,7 @@ bool MovementAction::ReachCombatTo(Unit* target, float distance)
     if (!IsMovingAllowed(target))
         return false;
 
+    float const desiredDistance = distance;
     float tx = target->GetPositionX();
     float ty = target->GetPositionY();
     float tz = target->GetPositionZ();
@@ -827,7 +1085,13 @@ bool MovementAction::ReachCombatTo(Unit* target, float distance)
     PathType type = path.GetPathType();
     int typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_SHORTCUT;
     if (!(type & typeOk))
+    {
+        // No 2D route into the target's WMO/tunnel. Use the local volumetric route to the
+        // target's standoff point; the attack action can still cast while the spline runs.
+        if (MoveTo(target, desiredDistance + bot->GetCombatReach(), MovementPriority::MOVEMENT_COMBAT))
+            return true;
         return false;
+    }
     float shortenTo = distance;
 
     // Avoid walking too far when moving towards each other
@@ -895,6 +1159,12 @@ bool MovementAction::IsDuplicateMove(float x, float y, float z)
         lastMove.lastMoveShort.GetExactDist(x, y, z) > 0.01f)
         return false;
 
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: duplicate-move new=({:.2f},{:.2f},{:.2f}) last=({:.2f},{:.2f},{:.2f}) "
+              "age={}ms maxWait={}ms",
+              bot->GetName(), x, y, z, lastMove.lastMoveShort.GetPositionX(),
+              lastMove.lastMoveShort.GetPositionY(), lastMove.lastMoveShort.GetPositionZ(),
+              getMSTime() - lastMove.msTime, sPlayerbotAIConfig.MaxWaitForMove);
     return true;
 }
 
@@ -907,13 +1177,27 @@ bool MovementAction::IsWaitingForLastMove(MovementPriority priority)
 
     // heuristic 5s
     if (lastMove.lastdelayTime + lastMove.msTime > getMSTime())
+    {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: waiting-for-last-move priority={} lastPriority={} age={}ms delay={}ms "
+                  "remaining={}ms last=({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), int(priority), int(lastMove.priority), getMSTime() - lastMove.msTime,
+                  lastMove.lastdelayTime, int64(lastMove.lastdelayTime + lastMove.msTime) - int64(getMSTime()),
+                  lastMove.lastMoveShort.GetPositionX(), lastMove.lastMoveShort.GetPositionY(),
+                  lastMove.lastMoveShort.GetPositionZ());
         return true;
+    }
 
     return false;
 }
 
 bool MovementAction::IsMovingAllowed()
 {
+    // An emergency ascent owns the movement generator until the bot reaches air. Combat may
+    // still face and attack from here, but chasing would drag a low-air bot back down.
+    if (botAI->diveSurfacing || botAI->diveHoldSurface)
+        return false;
+
     return botAI->CanMove();
 }
 
@@ -1231,6 +1515,16 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
         return false;
     }
 
+    // A close follower behind a wall/hull cannot use MoveFollow. Let the normal target mover
+    // take a local 2D/3D route to the follow distance instead. If the mover is waiting for that
+    // path, do not fall through to MoveFollow and overwrite it.
+    if (!bot->IsWithinLOS(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ()))
+    {
+        if (MoveTo(target, sPlayerbotAIConfig.FollowDistance, MovementPriority::MOVEMENT_NORMAL))
+            return true;
+        return false;
+    }
+
     bot->HandleEmoteCommand(0);
 
     if (bot->IsSitState())
@@ -1277,6 +1571,16 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance)
 
     if (!bot->IsStandState())
         bot->SetStandState(UNIT_STAND_STATE_STAND);
+
+    // A live target behind a wall/hull has no LOS for MoveChase. Use the normal target mover so
+    // its local 2D/3D fallback can route through the WMO. If it is waiting for that path, do
+    // not fall through to MoveChase and overwrite the spline.
+    if (!bot->IsWithinLOS(obj->GetPositionX(), obj->GetPositionY(), obj->GetPositionZ()))
+    {
+        if (MoveTo(obj, distance, MovementPriority::MOVEMENT_COMBAT))
+            return true;
+        return false;
+    }
 
     bot->CastStop();
 
@@ -1698,6 +2002,7 @@ const Movement::PointsArray MovementAction::SearchForBestPath(float x, float y, 
     Movement::PointsArray result = gen.GetPath();
     float min_length = gen.getPathLength();
     int typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE;
+
     if ((gen.GetPathType() & typeOk) && abs(tempZ - z) < 0.5f)
     {
         modified_z = tempZ;
@@ -2595,16 +2900,676 @@ bool DisperseSetAction::Execute(Event event)
 
 bool RunAwayAction::Execute(Event /*event*/) { return Flee(AI_VALUE(Unit*, "group leader")); }
 
+bool SurfaceFromDiveAction::FindSurfacePoint()
+{
+    Map* map = bot->GetMap();
+    float const bx = bot->GetPositionX();
+    float const by = bot->GetPositionY();
+    float const bz = bot->GetPositionZ();
+
+    auto tryColumn = [&](float x, float y)
+    {
+        LiquidData const liquid = map->GetLiquidData(bot->GetPhaseMask(), x, y, bz + 2.0f,
+                                                     bot->GetCollisionHeight(), {});
+        float const level = liquid.Level;
+        if (level == INVALID_HEIGHT || level == VMAP_INVALID_HEIGHT_VALUE || level <= bz)
+            return false;
+
+        if (!bot->IsWithinLOS(x, y, level))
+            return false;
+
+        botAI->diveSurfaceX = x;
+        botAI->diveSurfaceY = y;
+        // Float exactly at the water level: anything above it reads as "not in water",
+        // which released the surface hold instantly and let move-to-loot re-dive on low air.
+        botAI->diveSurfaceZ = level;
+        return true;
+    };
+
+    if (tryColumn(bx, by))
+        return true;
+
+    for (float const distance : {5.0f, 10.0f, 15.0f, 20.0f, 30.0f, 40.0f})
+    {
+        for (uint8 i = 0; i < 8; ++i)
+        {
+            float const angle = (float(i) + 0.5f) * (2.0f * static_cast<float>(M_PI) / 8.0f);
+            if (tryColumn(bx + cos(angle) * distance, by + sin(angle) * distance))
+                return true;
+        }
+    }
+
+    // Enclosed cave: go straight up to the water level and let the movement watchdog bound it.
+    botAI->diveSurfaceX = bx;
+    botAI->diveSurfaceY = by;
+    LiquidData const blindLiquid = map->GetLiquidData(bot->GetPhaseMask(), bx, by, bz + 2.0f,
+                                                      bot->GetCollisionHeight(), {});
+    float const blindLevel = blindLiquid.Level;
+    botAI->diveSurfaceZ = (blindLevel == INVALID_HEIGHT || blindLevel == VMAP_INVALID_HEIGHT_VALUE) ? bz + 10.0f
+                                                                                                  : blindLevel;
+    return false;
+}
+
+bool SurfaceFromDiveAction::isUseful()
+{
+    return bot->IsAlive() && (bot->IsUnderWater() || botAI->diveSurfacing || botAI->diveHoldSurface);
+}
+
+bool SurfaceFromDiveAction::Execute(Event /*event*/)
+{
+    uint32 now = getMSTime();
+
+    if (!bot->IsUnderWater())
+    {
+        ClearNav3DEscape();
+        if (botAI->diveSurfacing)
+        {
+            LOG_DEBUG("playerbots", "swim-trace {}: surfaced, holding for air {:.0f}s", bot->GetName(),
+                      float(botAI->diveAirMs) / IN_MILLISECONDS);
+            botAI->diveSurfacing = false;
+            botAI->diveHoldSurface = true;
+        }
+        botAI->diveAscendIssueMs = 0;
+        botAI->diveAscendProgressMs = 0;
+        botAI->diveAscendStartMs = 0;
+        botAI->diveAscendLastZ = 0;
+        botAI->diveAscendRetries = 0;
+
+        if (!botAI->diveHoldSurface)
+            return true;
+
+        // Keep the bot in the surface band while the breath timer refills. If it is stable,
+        // return false so combat/actions can run; MoveTo refuses any move below the surface
+        // while this hold is active.
+        auto const liquid = bot->GetMap()->GetLiquidData(bot->GetPhaseMask(), bot->GetPositionX(),
+                                                         bot->GetPositionY(), bot->GetPositionZ(),
+                                                         bot->GetCollisionHeight(), {});
+        bool const dry = liquid.Level <= INVALID_HEIGHT || bot->GetPositionZ() >= liquid.Level + 0.5f;
+        if (dry)
+            return true;
+
+        // Float in the surface band without re-issuing movement every second: a point move that
+        // restarts continuously interrupts casts. Only climb back when the bot has sunk.
+        if (bot->GetPositionZ() >= botAI->diveSurfaceZ - 1.0f)
+            return false;
+
+        if (!bot->isMoving() || now - botAI->diveAscendIssueMs >= 3000)
+        {
+            UpdateMovementState();
+            DoMovePoint(bot, botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, false, false);
+            botAI->diveAscendIssueMs = now;
+            LOG_DEBUG("playerbots", "swim-trace {}: holding at surface ({:.1f}), air {:.0f}s", bot->GetName(),
+                      bot->GetPositionZ(), float(botAI->diveAirMs) / IN_MILLISECONDS);
+            return true;
+        }
+
+        return false;
+    }
+
+    if (!botAI->diveSurfacing)
+    {
+        botAI->diveSurfacing = true;
+        botAI->diveAscendStartMs = now;
+        bot->CastStop();
+        bot->AttackStop();
+        bool const withLOS = FindSurfacePoint();
+        botAI->diveAscendLastZ = bot->GetPositionZ();
+        botAI->diveAscendProgressMs = now;
+        botAI->diveAscendRetries = 0;
+        LOG_DEBUG("playerbots", "swim-trace {}: surfacing to {:.1f} {:.1f} {:.1f} ({})", bot->GetName(),
+                  botAI->diveSurfaceX, botAI->diveSurfaceY, botAI->diveSurfaceZ, withLOS ? "los" : "blocked");
+
+        // A blocked column is the obvious case. Inside a baked hull, a "LOS" column can still
+        // be a straight climb through the WMO roof, so prefer the tile-aware surface route
+        // whenever the bot is inside a solid tile.
+        bool const solidTile = Nav3DManager::Instance().HasSolidTileAt(
+            bot->GetMap(),
+            Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+        if (!withLOS || solidTile)
+            TryNav3DEscape();
+
+        // The surface search can take seconds. Do not compare its result against the timestamp
+        // captured before the search; that made a fresh escape path look eight seconds stale.
+        now = getMSTime();
+    }
+
+    // A spell cast keeps the point movement generator from starting; stop it every tick while
+    // the ascent owns movement. Attacks resume once the surface hold is active.
+    bot->CastStop();
+    bot->AttackStop();
+
+    if (botAI->nav3dEscapeActive)
+    {
+        if (FollowNav3DEscape(now))
+            return true;
+    }
+
+    float const z = bot->GetPositionZ();
+
+    // Robust progress accounting: only a real climb (1.5 yd) resets the stall budget. Small
+    // surface bobs used to reset it every tick, defeating the give-up path and drowning the bot.
+    if (z > botAI->diveAscendLastZ + 1.5f)
+    {
+        botAI->diveAscendLastZ = z;
+        botAI->diveAscendProgressMs = now;
+        botAI->diveAscendRetries = 0;
+    }
+    else if (!botAI->diveAscendProgressMs)
+    {
+        botAI->diveAscendProgressMs = now;
+    }
+
+    // Column stalled (8s without a real climb): try the volumetric route, then a
+    // clearance-checked sidestep. Never issue a straight spline through a WMO to force air.
+    constexpr uint32 diveColumnStallMs = 8000;
+    if (now - botAI->diveAscendProgressMs >= diveColumnStallMs)
+    {
+        botAI->diveAscendProgressMs = now;
+        botAI->diveAscendLastZ = z;
+        ++botAI->diveAscendRetries;
+
+        if (TryNav3DEscape())
+            return true;
+
+        float const dx = botAI->diveSurfaceX - bot->GetPositionX();
+        float const dy = botAI->diveSurfaceY - bot->GetPositionY();
+        float const len = std::sqrt(dx * dx + dy * dy);
+        if (len > 0.5f)
+        {
+            for (float const side : {4.0f, -4.0f, 8.0f, -8.0f})
+            {
+                float const px = -dy / len * side;
+                float const py = dx / len * side;
+                float const tx = bot->GetPositionX() + px;
+                float const ty = bot->GetPositionY() + py;
+                Movement::PointsArray sidePath = {{bot->GetPositionX(), bot->GetPositionY(), z}, {tx, ty, z}};
+                if (!Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), sidePath))
+                    continue;
+
+                LOG_DEBUG("playerbots", "swim-trace {}: ascent stalled, clear sidestep {:.0f} yd sideways",
+                          bot->GetName(), std::abs(side));
+                UpdateMovementState();
+                DoMovePoint(bot, tx, ty, z, false, false);
+                botAI->diveAscendIssueMs = now;
+                return true;
+            }
+        }
+
+        FindSurfacePoint();
+        return true;
+    }
+
+    // Staged ascent: climb toward the clear column in short steps.
+    float const stepZ = std::min(botAI->diveSurfaceZ, z + 8.0f);
+    bool const needIssue = !bot->isMoving() || now - botAI->diveAscendProgressMs >= 3000;
+    if (needIssue)
+    {
+        if (!bot->IsWithinLOS(botAI->diveSurfaceX, botAI->diveSurfaceY, stepZ))
+        {
+            if (FindSurfacePoint())
+                LOG_DEBUG("playerbots", "swim-trace {}: surface column obstructed, re-sampled", bot->GetName());
+        }
+
+        UpdateMovementState();
+        DoMovePoint(bot, botAI->diveSurfaceX, botAI->diveSurfaceY, stepZ, false, false);
+        botAI->diveAscendIssueMs = now;
+    }
+
+    return true;
+}
+
+bool SurfaceFromDiveAction::TryNav3DEscape()
+{
+    if (!sPlayerbotAIConfig.Nav3DEnabled)
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    Movement::PointsArray path;
+    Nav3DResult result;
+    if (!Nav3DManager::Instance().FindPathToSurface(bot->GetMap(), bot->GetPhaseMask(), start, path, result) ||
+        path.size() < 2 || !Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path))
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: no nav3d surface path (nodes {}, ms {}, best {:.1f})",
+                  bot->GetName(), result.Nodes, result.ElapsedMs, result.BestDistance);
+        return false;
+    }
+
+    botAI->nav3dEscapePath = path;
+    botAI->nav3dEscapeIndex = 1;
+    botAI->nav3dEscapeActive = true;
+    botAI->nav3dEscapeMap = bot->GetMapId();
+    botAI->nav3dEscapeProgressMs = getMSTime();
+    botAI->nav3dEscapeLastX = bot->GetPositionX();
+    botAI->nav3dEscapeLastY = bot->GetPositionY();
+    botAI->nav3dEscapeLastZ = bot->GetPositionZ();
+
+    G3D::Vector3 const& end = path.back();
+    botAI->diveSurfaceX = end.x;
+    botAI->diveSurfaceY = end.y;
+    botAI->diveSurfaceZ = end.z;
+
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: nav3d surface path points={} len={:.1f} nodes={} ms={} end=({:.1f},{:.1f},{:.1f})",
+              bot->GetName(), path.size(), result.Length, result.Nodes, result.ElapsedMs, end.x, end.y, end.z);
+    return true;
+}
+
+bool SurfaceFromDiveAction::FollowNav3DEscape(uint32 now)
+{
+    if (botAI->nav3dEscapeMap != bot->GetMapId() ||
+        botAI->nav3dEscapeIndex >= botAI->nav3dEscapePath.size())
+    {
+        ClearNav3DEscape();
+        return false;
+    }
+
+    float const px = bot->GetPositionX();
+    float const py = bot->GetPositionY();
+    float const pz = bot->GetPositionZ();
+    float const movedX = px - botAI->nav3dEscapeLastX;
+    float const movedY = py - botAI->nav3dEscapeLastY;
+    float const movedZ = pz - botAI->nav3dEscapeLastZ;
+    if (movedX * movedX + movedY * movedY + movedZ * movedZ > 1.5f * 1.5f)
+    {
+        botAI->nav3dEscapeLastX = px;
+        botAI->nav3dEscapeLastY = py;
+        botAI->nav3dEscapeLastZ = pz;
+        botAI->nav3dEscapeProgressMs = now;
+    }
+    else if (now - botAI->nav3dEscapeProgressMs >= 8000)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: nav3d surface path stalled", bot->GetName());
+        ClearNav3DEscape();
+        return false;
+    }
+
+    G3D::Vector3 const& target = botAI->nav3dEscapePath[botAI->nav3dEscapeIndex];
+    float const dx = target.x - px;
+    float const dy = target.y - py;
+    float const dz = target.z - pz;
+    if (dx * dx + dy * dy + dz * dz <= 2.0f * 2.0f)
+    {
+        ++botAI->nav3dEscapeIndex;
+        botAI->nav3dEscapeProgressMs = now;
+        botAI->nav3dEscapeLastX = px;
+        botAI->nav3dEscapeLastY = py;
+        botAI->nav3dEscapeLastZ = pz;
+        return true;
+    }
+
+    if (!bot->isMoving() || now - botAI->nav3dEscapeProgressMs >= 3000)
+    {
+        UpdateMovementState();
+        DoMovePoint(bot, target.x, target.y, target.z, false, false);
+        botAI->diveAscendIssueMs = now;
+        LOG_DEBUG("playerbots", "swim-trace {}: nav3d surface point {}/{} ({:.1f},{:.1f},{:.1f})", bot->GetName(),
+                  botAI->nav3dEscapeIndex, botAI->nav3dEscapePath.size(), target.x, target.y, target.z);
+    }
+
+    return true;
+}
+
+void SurfaceFromDiveAction::ClearNav3DEscape()
+{
+    botAI->nav3dEscapeActive = false;
+    botAI->nav3dEscapeIndex = 0;
+    botAI->nav3dEscapePath.clear();
+    botAI->nav3dEscapeMap = 0;
+    botAI->nav3dEscapeProgressMs = 0;
+}
+
+// A direct swim is a pathless spline, so it must be checked as a segment, not just at the
+// destination. The high-ray IsWithinLOS() used by the caller is raised by collision height and
+// can pass while the actual spline is under the seabed. Sample the movement Z instead, and cast a
+// low ray from the first point that clears the floor (a bot looting a floor-level object is often
+// already slightly inside the floor and has to be allowed to climb out).
+//
+// The terrain sampling is skipped when the bot is well below the terrain (underwater cave or WMO
+// hollow); there the low ray is the only geometry test, so a cave ceiling is not treated as a
+// floor. A small embedding (the normal floor-level looting state) is still sampled.
+bool MovementAction::IsSwimPathClear(float x, float y, float z, float& worstClearance,
+                                     bool& terrainChecked) const
+{
+    worstClearance = 1.0e9f;
+    terrainChecked = false;
+
+    Map* map = bot->GetMap();
+    if (!map)
+        return false;
+
+    uint32 const phase = bot->GetPhaseMask();
+    float const sx = bot->GetPositionX();
+    float const sy = bot->GetPositionY();
+    float const sz = bot->GetPositionZ();
+    float const dx = x - sx;
+    float const dy = y - sy;
+    float const dz = z - sz;
+    float const dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist < 0.01f)
+        return false;
+
+    float const terrainAtBot = map->GetHeight(phase, sx, sy, MAX_HEIGHT, false);
+    bool const nearTerrain = terrainAtBot <= -1000.0f || sz >= terrainAtBot - 2.5f;
+    terrainChecked = nearTerrain;
+
+    float rayX = sx;
+    float rayY = sy;
+    float rayZ = sz;
+
+    if (nearTerrain)
+    {
+        bool foundFloor = false;
+        // Cap the number of floor samples on long moves (the RPG travel guard can see 300+ yd
+        // segments); 32 samples is enough to catch a seabed ridge without a per-yard sweep.
+        float const step = std::max(1.0f, dist / 32.0f);
+        int const steps = std::max(1, int(std::ceil(dist / step)));
+        for (int i = 0; i <= steps; ++i)
+        {
+            float const t = dist * (float(i) / float(steps));
+            float const qx = sx + dx * (t / dist);
+            float const qy = sy + dy * (t / dist);
+            float const qz = sz + dz * (t / dist);
+            float const terrain = map->GetHeight(phase, qx, qy, MAX_HEIGHT, false);
+            if (terrain <= -1000.0f)
+            {
+                if (!foundFloor)
+                {
+                    foundFloor = true;
+                    rayX = qx;
+                    rayY = qy;
+                    rayZ = qz;
+                }
+                continue;
+            }
+
+            float const clearance = qz - terrain;
+            worstClearance = std::min(worstClearance, clearance);
+            if (!foundFloor)
+            {
+                // Still climbing out of the start embedding. The first point with clearance
+                // becomes the low-ray origin; everything after it must stay clear.
+                if (clearance >= 0.5f)
+                {
+                    foundFloor = true;
+                    rayX = qx;
+                    rayY = qy;
+                    rayZ = qz;
+                }
+                continue;
+            }
+
+            if (clearance < 0.5f)
+                return false;
+        }
+
+        if (!foundFloor)
+            return false;
+    }
+    else
+    {
+        // Cave / WMO hollow / already under the floor: start the low ray a little ahead so a
+        // start embedded in a wall is not automatically fatal, then test the rest of the path.
+        float const skip = std::min(2.0f, dist * 0.5f);
+        rayX = sx + dx * (skip / dist);
+        rayY = sy + dy * (skip / dist);
+        rayZ = sz + dz * (skip / dist);
+    }
+
+    return map->isInLineOfSight(rayX, rayY, rayZ, x, y, z, phase, LINEOFSIGHT_ALL_CHECKS,
+                                VMAP::ModelIgnoreFlags::Nothing);
+}
+
 bool MoveToLootAction::Execute(Event /*event*/)
 {
-    if (AI_VALUE(LootObjectStack*, "available loot")->IsLootPending() || bot->GetLootGUID())
+    LootObjectStack* availableLoot = AI_VALUE(LootObjectStack*, "available loot");
+    auto const clearNav3DLoot = [this]()
+    {
+        botAI->nav3dLootGuid.Clear();
+        botAI->nav3dLootUntilMs = 0;
+        botAI->nav3dLootIssuedMs = 0;
+    };
+
+    // A dive-safety ascent or a post-emergency surface hold owns movement; dropping the watchdog
+    // state here also gives the re-dive a fresh no-progress budget once the bot goes under again.
+    if (botAI->diveSurfacing || botAI->diveHoldSurface)
+    {
+        lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
+    }
+
+    if (availableLoot->IsLootPending() || bot->GetLootGUID())
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to-loot: pending or looting", bot->GetName());
+        lootWatchGuid.Clear();
+        clearNav3DLoot();
+        return false;
+    }
 
     LootObject loot = AI_VALUE(LootObject, "loot target");
     if (!loot.IsLootPossible(bot))
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to-loot: target {} not loot-possible", bot->GetName(),
+                  loot.guid.ToString());
+        lootWatchGuid.Clear();
+        clearNav3DLoot();
         return false;
+    }
 
-    return MoveNear(loot.GetWorldObject(bot), sPlayerbotAIConfig.ContactDistance);
+    // A new loot target invalidates the previous 3D spline.
+    if (!botAI->nav3dLootGuid.IsEmpty() && botAI->nav3dLootGuid != loot.guid)
+        clearNav3DLoot();
+
+    WorldObject* target = loot.GetWorldObject(bot);
+    if (!target)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to-loot: target {} has no world object", bot->GetName(),
+                  loot.guid.ToString());
+        return false;
+    }
+
+    float const distance = bot->GetDistance(target);
+    uint32 const nowMs = getMSTime();
+
+    constexpr uint32 evalGapMs = 10000;    // longer than the slowest out-of-combat tick (1-3 s)
+    constexpr uint32 noProgressMs = 5000;  // give up on a target after 5s without progress
+    constexpr float reachedMargin = 2.0f;  // near-target distance jitter margin
+
+    // A valid 3D spline is already heading to the target. Distance can grow while it rounds a
+    // corner, so the no-progress watchdog must not defer the target while the path is active.
+    bool const nav3dPathActive = !botAI->nav3dLootGuid.IsEmpty() &&
+                                 botAI->nav3dLootGuid == loot.guid && nowMs < botAI->nav3dLootUntilMs;
+
+    if (loot.guid != lootWatchGuid || nowMs - lootWatchLastEvalMs > evalGapMs)
+    {
+        lootWatchGuid = loot.guid;
+        lootWatchDistance = distance;
+        lootWatchMs = nowMs;
+    }
+    else if (distance < lootWatchDistance - 0.5f)
+    {
+        lootWatchDistance = distance;
+        lootWatchMs = nowMs;
+    }
+    lootWatchLastEvalMs = nowMs;
+
+    // While the 3D spline owns movement, keep the watchdog fresh. Distance can grow while the
+    // path rounds a corner; the path has its own expiry and the next tick re-paths if needed.
+    if (nav3dPathActive)
+        lootWatchMs = nowMs;
+
+    // Drop a target the bot is not getting closer to (blocked path, pulled elsewhere), so the next
+    // pickup chooses a closer reachable one.
+    if (!nav3dPathActive && distance > sPlayerbotAIConfig.ContactDistance + reachedMargin &&
+        nowMs - lootWatchMs >= noProgressMs)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: defer loot {} after no progress", bot->GetName(), loot.guid.ToString());
+        availableLoot->DeferLoot(loot.guid);
+        if (AI_VALUE(LootObject, "loot target").guid == loot.guid)
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+        lootWatchGuid.Clear();
+        clearNav3DLoot();
+        return false;
+    }
+
+    // No navmesh under water: move straight at the target while the direct swim has line of sight.
+    // The map query also covers a stale cached liquid state, e.g. right after a teleport.
+    float const collisionHeight = bot->GetCollisionHeight();
+    bool const botInWater = bot->IsInWater() || bot->IsUnderWater() ||
+                            bot->GetMap()->IsInWater(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(),
+                                                     bot->GetPositionZ(), collisionHeight) ||
+                            bot->GetMap()->IsUnderWater(bot->GetPhaseMask(), bot->GetPositionX(),
+                                                        bot->GetPositionY(), bot->GetPositionZ(), collisionHeight);
+    if (botInWater)
+    {
+        if (bot->IsMounted())
+            bot->Dismount();
+
+        Creature* creature = botAI->GetCreature(loot.guid);
+        GameObject* go = botAI->GetGameObject(loot.guid);
+        float const interactRange = creature ? INTERACTION_DISTANCE
+                                             : (go ? go->GetInteractionDistance() : INTERACTION_DISTANCE);
+        float const range = std::max(1.0f, interactRange - 1.0f);
+
+        float const dx = bot->GetPositionX() - target->GetPositionX();
+        float const dy = bot->GetPositionY() - target->GetPositionY();
+        float const dz = bot->GetPositionZ() - target->GetPositionZ();
+        float const dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Follow an already-issued 3D loot spline without recomputing/reissuing it every tick.
+        // The AI must keep ticking so the loot action can fire as soon as we are in range.
+        if (!botAI->nav3dLootGuid.IsEmpty())
+        {
+            if (botAI->nav3dLootGuid != loot.guid || nowMs >= botAI->nav3dLootUntilMs)
+                clearNav3DLoot();
+            // The movement flag can lag the launch by one tick; do not throw away a fresh
+            // 100-yd path just because isMoving() is not visible yet.
+            else if (nowMs - botAI->nav3dLootIssuedMs < 1000 || (dist > range && bot->isMoving()))
+                return true;
+            else
+                clearNav3DLoot();
+        }
+
+        if (dist <= range)
+        {
+            LOG_DEBUG("playerbots", "swim-trace {}: within swim range {:.1f} of target", bot->GetName(), dist);
+            clearNav3DLoot();
+            return false;
+        }
+
+        float const scale = (dist - range) / dist;
+        float const x = bot->GetPositionX() - dx * scale;
+        float const y = bot->GetPositionY() - dy * scale;
+        float z = bot->GetPositionZ() - dz * scale;
+
+        Map* map = bot->GetMap();
+        uint32 const phase = bot->GetPhaseMask();
+
+        // Keep the standoff point above the local floor. Use the floor just below the point
+        // (WMO-aware) so an underwater cave's ceiling is not mistaken for a floor. If the point
+        // is already inside a floor, the segment/low-ray checks below refuse the move instead of
+        // letting a pathless spline tunnel through it.
+        float const floorZ = map->GetHeight(phase, x, y, z + 0.5f, true, 5.0f);
+        if (floorZ > -1000.0f)
+            z = std::max(z, floorZ + 0.75f);
+
+        float const terrainAtBot = map->GetHeight(phase, bot->GetPositionX(), bot->GetPositionY(), MAX_HEIGHT, false);
+        bool const nearTerrain = terrainAtBot <= -1000.0f || bot->GetPositionZ() >= terrainAtBot - 2.5f;
+        float const terrainAtPoint = map->GetHeight(phase, x, y, MAX_HEIGHT, false);
+        if (nearTerrain && terrainAtPoint > -1000.0f)
+            z = std::max(z, terrainAtPoint + 0.75f);
+
+        float worstClearance = 1.0e9f;
+        bool terrainChecked = false;
+        bool const pathClear = IsSwimPathClear(x, y, z, worstClearance, terrainChecked);
+        bool const los = bot->IsWithinLOS(x, y, z);
+
+        // Inside a baked hull, a direct swim can slip through a gap that is too narrow for the
+        // body but still passes the point/segment check. Prefer the tile route there.
+        bool const solidTile = sPlayerbotAIConfig.Nav3DEnabled &&
+                               Nav3DManager::Instance().HasSolidTileAt(
+                                   map, Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+
+        if (!pathClear || !los || solidTile)
+        {
+            // The direct segment is blocked, but a wreck hold or tunnel room can still be
+            // reachable through the volumetric mesh. Try that before dropping the target.
+            if (sPlayerbotAIConfig.Nav3DEnabled)
+            {
+                Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                Position const goal(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
+                Movement::PointsArray path;
+                Nav3DResult result;
+                if (Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                                       result) &&
+                    path.size() >= 2)
+                {
+                    // The 662 chests are behind the wreck's breach/window. The body capsule
+                    // rejects the hull-edge samples even though the path follows the opening;
+                    // the last-night working run accepted this route. Keep the capsule advisory
+                    // for loot and reserve the strict check for the emergency surface ascent.
+                    bool const clear =
+                        Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
+                    bot->StopMoving();
+                    bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_NONE);
+                    // Do not sleep the AI here. The spline runs in the movement generator while
+                    // the AI keeps ticking, so LootAction can interact as soon as we are in
+                    // range. The state guard above prevents reissuing the same path.
+                    botAI->nav3dLootGuid = loot.guid;
+                    botAI->nav3dLootIssuedMs = nowMs;
+                    botAI->nav3dLootUntilMs =
+                        nowMs + uint32(std::min(60000.0f, std::max(3000.0f, result.Length * 250.0f + 5000.0f)));
+                    LOG_DEBUG("playerbots",
+                              "swim-trace {}: nav3d loot path target={} clear={} points={} len={:.1f} ms={}",
+                              bot->GetName(), loot.guid.ToString(), clear ? 1 : 0, path.size(), result.Length,
+                              result.ElapsedMs);
+                    for (size_t i = 0; i < path.size(); ++i)
+                        LOG_DEBUG("playerbots", "swim-trace {}: nav3d loot point[{}] = ({:.2f},{:.2f},{:.2f})",
+                                  bot->GetName(), i, path[i].x, path[i].y, path[i].z);
+                    lootWatchGuid = loot.guid;
+                    lootWatchDistance = distance;
+                    lootWatchMs = nowMs;
+                    return true;
+                }
+            }
+
+            LOG_DEBUG("playerbots",
+                      "swim-trace {}: refusing direct swim to ({:.1f},{:.1f},{:.1f}) los={} pathClear={} "
+                      "worstClearance={:.2f} terrainChecked={} target={}",
+                      bot->GetName(), x, y, z, los ? 1 : 0, pathClear ? 1 : 0, worstClearance,
+                      terrainChecked ? 1 : 0, loot.guid.ToString());
+            availableLoot->DeferLoot(loot.guid);
+            if (AI_VALUE(LootObject, "loot target").guid == loot.guid)
+                context->GetValue<LootObject>("loot target")->Set(LootObject());
+            lootWatchGuid.Clear();
+            clearNav3DLoot();
+            return false;
+        }
+
+        LOG_DEBUG("playerbots", "swim-trace {}: direct swim to {:.1f} {:.1f} {:.1f} (dist {:.1f})", bot->GetName(), x, y,
+                  z, dist);
+        // exact_waypoint forces a direct point move: a generated path under water has no navmesh
+        return MoveTo(bot->GetMapId(), x, y, z, false, false, false, true);
+    }
+
+    {
+        float const px = bot->GetPositionX();
+        float const py = bot->GetPositionY();
+        float const pz = bot->GetPositionZ();
+        auto const liquid = bot->GetMap()->GetLiquidData(bot->GetPhaseMask(), px, py, pz, collisionHeight, {});
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: land approach (not in water) MoveNear {} IsInWater={} IsUnderWater={} "
+                  "mapInWater={} mapUnderWater={} liquidStatus={} liquidLevel={:.2f} liquidDepth={:.2f} "
+                  "bot=({:.2f},{:.2f},{:.2f}) target=({:.2f},{:.2f},{:.2f}) falling={} swimFlag={}",
+                  bot->GetName(), loot.guid.ToString(), bot->IsInWater() ? 1 : 0, bot->IsUnderWater() ? 1 : 0,
+                  bot->GetMap()->IsInWater(bot->GetPhaseMask(), px, py, pz, collisionHeight) ? 1 : 0,
+                  bot->GetMap()->IsUnderWater(bot->GetPhaseMask(), px, py, pz, collisionHeight) ? 1 : 0,
+                  uint32(liquid.Status), liquid.Level, liquid.DepthLevel, px, py, pz, target->GetPositionX(),
+                  target->GetPositionY(), target->GetPositionZ(),
+                  bot->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) ? 1 : 0,
+                  bot->HasUnitMovementFlag(MOVEMENTFLAG_SWIMMING) ? 1 : 0);
+    }
+    return MoveNear(target, sPlayerbotAIConfig.ContactDistance);
 }
 
 bool MoveOutOfEnemyContactAction::Execute(Event /*event*/)

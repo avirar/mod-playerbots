@@ -21,6 +21,7 @@ public:
         creators["unlock items"] = &ChatTriggerContext::unlock_items;
         creators["unlock traded item"] = &ChatTriggerContext::unlock_traded_item;
         creators["quests"] = &ChatTriggerContext::quests;
+        creators["qgo"] = &ChatTriggerContext::qgo;
         creators["stats"] = &ChatTriggerContext::stats;
         creators["leave"] = &ChatTriggerContext::leave;
         creators["rep"] = &ChatTriggerContext::reputation;
@@ -126,6 +127,7 @@ public:
         creators["rebuff"] = &ChatTriggerContext::rebuff;
         creators["debug"] = &ChatTriggerContext::debug;
         creators["cdebug"] = &ChatTriggerContext::cdebug;
+        creators["nav3d"] = &ChatTriggerContext::nav3d;
         creators["cs"] = &ChatTriggerContext::cs;
         creators["wts"] = &ChatTriggerContext::wts;
         // creators["hire"] = &ChatTriggerContext::hire;  // Not correctly implemented at this time, would cause crash and other issues.
@@ -159,6 +161,7 @@ public:
 
 private:
     static Trigger* open_items(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "open items"); }
+    static Trigger* qgo(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "qgo"); }
     static Trigger* unlock_items(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "unlock items"); }
     static Trigger* unlock_traded_item(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "unlock traded item"); }
     static Trigger* ra(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "ra"); }
@@ -170,6 +173,7 @@ private:
     static Trigger* cs(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "cs"); }
     static Trigger* debug(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "debug"); }
     static Trigger* cdebug(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "cdebug"); }
+    static Trigger* nav3d(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "nav3d"); }
     static Trigger* go(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "go"); }
     static Trigger* outfit(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "outfit"); }
     static Trigger* mail(PlayerbotAI* botAI) { return new ChatCommandTrigger(botAI, "mail"); }

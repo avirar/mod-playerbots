@@ -153,6 +153,7 @@ public:
         creators["not facing target"] = &TriggerContext::not_facing_target;
         creators["far from master"] = &TriggerContext::far_from_master;
         creators["far from loot target"] = &TriggerContext::far_from_loot_target;
+        creators["underwater safety"] = &TriggerContext::underwater_safety;
         creators["can loot"] = &TriggerContext::can_loot;
         creators["swimming"] = &TriggerContext::swimming;
         creators["target changed"] = &TriggerContext::target_changed;
@@ -192,6 +193,9 @@ public:
         creators["team has flag"] = &TriggerContext::team_has_flag;
         creators["enemy team has flag"] = &TriggerContext::enemy_team_has_flag;
         creators["enemy flagcarrier near"] = &TriggerContext::enemy_flagcarrier_near;
+        creators["wsg flag state changed"] = &TriggerContext::wsg_flag_state_changed;
+        creators["wsg support threat"] = &TriggerContext::wsg_support_threat;
+        creators["wsg escort separated"] = &TriggerContext::wsg_escort_separated;
         creators["in Battleground"] = &TriggerContext::player_is_in_BATTLEGROUND;
         creators["in Battleground without flag"] = &TriggerContext::player_is_in_BATTLEGROUND_no_flag;
         creators["wants in bg"] = &TriggerContext::player_wants_in_bg;
@@ -298,6 +302,7 @@ private:
     static Trigger* return_to_pull_position(PlayerbotAI* botAI) { return new ReturnToPullPositionTrigger(botAI); }
     static Trigger* can_loot(PlayerbotAI* botAI) { return new CanLootTrigger(botAI); }
     static Trigger* far_from_loot_target(PlayerbotAI* botAI) { return new FarFromCurrentLootTrigger(botAI); }
+    static Trigger* underwater_safety(PlayerbotAI* botAI) { return new UnderwaterSafetyTrigger(botAI); }
     static Trigger* far_from_master(PlayerbotAI* botAI) { return new FarFromMasterTrigger(botAI); }
     static Trigger* behind_target(PlayerbotAI* botAI) { return new IsBehindTargetTrigger(botAI); }
     static Trigger* not_behind_target(PlayerbotAI* botAI) { return new IsNotBehindTargetTrigger(botAI); }
@@ -342,6 +347,8 @@ private:
     static Trigger* not_dps_target_active(PlayerbotAI* botAI) { return new NotDpsTargetActiveTrigger(botAI); }
     static Trigger* not_dps_aoe_target_active(PlayerbotAI* botAI) { return new NotDpsAoeTargetActiveTrigger(botAI); }
     static Trigger* enemy_player_near(PlayerbotAI* botAI) { return new EnemyPlayerNear(botAI); }
+    static Trigger* wsg_support_threat(PlayerbotAI* botAI) { return new WsgSupportThreat(botAI); }
+    static Trigger* wsg_escort_separated(PlayerbotAI* botAI) { return new WsgEscortSeparated(botAI); }
     static Trigger* Random(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "random", 20); }
     static Trigger* seldom(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "seldom", 300); }
     static Trigger* often(PlayerbotAI* botAI) { return new RandomTrigger(botAI, "often", 5); }
@@ -412,6 +419,7 @@ private:
     static Trigger* team_has_flag(PlayerbotAI* botAI) { return new TeamHasFlag(botAI); }
     static Trigger* enemy_team_has_flag(PlayerbotAI* botAI) { return new EnemyTeamHasFlag(botAI); }
     static Trigger* enemy_flagcarrier_near(PlayerbotAI* botAI) { return new EnemyFlagCarrierNear(botAI); }
+    static Trigger* wsg_flag_state_changed(PlayerbotAI* botAI) { return new WsgFlagStateChanged(botAI); }
     static Trigger* player_is_in_BATTLEGROUND(PlayerbotAI* botAI) { return new PlayerIsInBattleground(botAI); }
     static Trigger* player_is_in_BATTLEGROUND_no_flag(PlayerbotAI* botAI) { return new PlayerIsInBattlegroundWithoutFlag(botAI); }
     static Trigger* mounted(PlayerbotAI* botAI) { return new IsMountedTrigger(botAI); }

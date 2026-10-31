@@ -194,6 +194,11 @@ bool CheckMountStateAction::isUseful()
     if (bot->HasAuraType(SPELL_AURA_TRANSFORM) && bot->IsInDisallowedMountForm())
         return false;
 
+    // Mount attempts stop movement, including active jumps.
+    if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == EFFECT_MOTION_TYPE && bot->movespline &&
+        !bot->movespline->Finalized())
+        return false;
+
     // BG Logic
     if (bot->InBattleground())
     {
@@ -259,8 +264,29 @@ bool CheckMountStateAction::Mount()
     return false;
 }
 
+bool CheckMountStateAction::CanDismountSafely() const
+{
+    if (!bot->IsFlying())
+        return true;
+
+    float const ground =
+        bot->GetMapWaterOrGroundLevel(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    if (ground == INVALID_HEIGHT || ground == VMAP_INVALID_HEIGHT_VALUE)
+        return false;
+
+    // Gravity takes over on a dismount. Keep the mount until the flight is down to a
+    // survivable height; the movement path is responsible for the descent.
+    return bot->GetPositionZ() - ground <= 5.0f;
+}
+
 void CheckMountStateAction::Dismount()
 {
+    if (!CanDismountSafely())
+    {
+        LOG_DEBUG("playerbots", "mount-trace {}: refusing to dismount at altitude", bot->GetName());
+        return;
+    }
+
     if (bot->isMoving())
         bot->StopMoving();
 

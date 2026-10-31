@@ -17,9 +17,11 @@
 #include "RandomPlayerbotMgr.h"
 #include "Talentspec.h"
 #include "TravelMgr.h"
+#include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <sstream>
+#include <utility>
 
 template <class T>
 void LoadList(std::string const value, T& list)
@@ -91,6 +93,57 @@ bool PlayerbotAIConfig::Initialize()
     MaxWaitForMove = sConfigMgr->GetOption<int32>("Playerbots.MaxWaitForMove", 5000);
     DisableMoveSplinePath = sConfigMgr->GetOption<int32>("Playerbots.DisableMoveSplinePath", 0);
     MaxMovementSearchTime = sConfigMgr->GetOption<int32>("Playerbots.MaxMovementSearchTime", 3);
+    Nav3DEnabled = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Enabled", false);
+    Nav3DLazy = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Lazy", false);
+    Nav3DSwim = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Swim", true);
+    Nav3DCellSize = sConfigMgr->GetOption<float>("Playerbots.Nav3D.CellSize", 1.0f);
+    Nav3DNeighbors = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.Neighbors", 26);
+    if (Nav3DNeighbors != 6 && Nav3DNeighbors != 18 && Nav3DNeighbors != 26)
+        Nav3DNeighbors = 26;
+    Nav3DDataPath = sConfigMgr->GetOption<std::string>("Playerbots.Nav3D.DataPath", "nav3d");
+    Nav3DTileCacheSize = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.TileCacheSize", 64);
+    if (Nav3DTileCacheSize < 1)
+        Nav3DTileCacheSize = 1;
+    Nav3DMaxNodes = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxNodes", 20000);
+    Nav3DMaxSearchTimeMs = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxSearchTimeMs", 50);
+    Nav3DCooperative = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Cooperative", true);
+    Nav3DRespectNoFlyZones = sConfigMgr->GetOption<bool>(
+        "Playerbots.Nav3D.RespectNoFlyZones", true);
+    Nav3DMaxRestrictedTransitMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.MaxRestrictedTransitMs", 7500));
+    Nav3DPathBudgetMs = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathTickBudgetMs", 1));
+    Nav3DPathSliceUs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathSliceUs", 200));
+    Nav3DPathMaxActive = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxActive", 64));
+    Nav3DPathMaxAgeMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxAgeMs", 15000));
+    Nav3DPathGlobalBudgetMs = std::max<int32>(10, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathGlobalBudgetMs", 120));
+    Nav3DPathMaxPending = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxPending", 2048));
+    Nav3DPathMaxPerMap = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxPerMap", 64));
+    Nav3DPathRetryMs = std::max<int32>(100, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathRetryMs", 2000));
+    Nav3DPathAgeBoostMs = std::max<int32>(500, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathAgeBoostMs", 3000));
+    Nav3DPathWaitMs = std::max<int32>(200, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathWaitMs", 6000));
+    Nav3DPathAirWaitMs = std::max<int32>(200, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathAirWaitMs", 12000));
+    Nav3DCoopSearchTimeMs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.CoopSearchTimeMs", 120));
+    Nav3DCoopDetailSearchTimeMs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.CoopDetailSearchTimeMs", 400));
+    Nav3DNegativeTtlMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.NegativeTtlMs", 30000));
+    Nav3DOpenWaterAreas.clear();
+    LoadList<std::vector<uint32>>(
+        sConfigMgr->GetOption<std::string>("Playerbots.Nav3D.OpenWaterAreas", ""), Nav3DOpenWaterAreas);
+    Nav3DOpenWaterAreas.erase(
+        std::remove(Nav3DOpenWaterAreas.begin(), Nav3DOpenWaterAreas.end(), 0), Nav3DOpenWaterAreas.end());
     ExpireActionTime = sConfigMgr->GetOption<int32>("Playerbots.ExpireActionTime", 5000);
     DispelAuraDuration = sConfigMgr->GetOption<int32>("Playerbots.DispelAuraDuration", 700);
     ReactDelay = sConfigMgr->GetOption<int32>("Playerbots.ReactDelay", 100);
@@ -198,6 +251,8 @@ bool PlayerbotAIConfig::Initialize()
     RandomBotMapsAsString = sConfigMgr->GetOption<std::string>("Playerbots.RandomBotMaps", "0,1,530,571");
     LoadList<std::vector<uint32>>(RandomBotMapsAsString, RandomBotMaps);
     ProbTeleToBankers = sConfigMgr->GetOption<float>("Playerbots.ProbTeleToBankers", 0.25f);
+    ProbTeleToQuestGivers = sConfigMgr->GetOption<float>("Playerbots.ProbTeleToQuestGivers", 0.0f);
+
     EnableWeightTeleToCityBankers = sConfigMgr->GetOption<bool>("Playerbots.EnableWeightTeleToCityBankers", false);
     WeightTeleToStormwind = sConfigMgr->GetOption<int>("Playerbots.TeleToStormwindWeight", 2);
     WeightTeleToIronforge = sConfigMgr->GetOption<int>("Playerbots.TeleToIronforgeWeight", 1);
@@ -250,6 +305,14 @@ bool PlayerbotAIConfig::Initialize()
     RandomBotAutologin = sConfigMgr->GetOption<bool>("Playerbots.RandomBotAutologin", true);
     MinRandomBots = sConfigMgr->GetOption<int32>("Playerbots.MinRandomBots", 500);
     MaxRandomBots = sConfigMgr->GetOption<int32>("Playerbots.MaxRandomBots", 500);
+    // An inverted range aborts the worldserver on the first population tick, since urand asserts on it.
+    if (MinRandomBots > MaxRandomBots)
+    {
+        LOG_ERROR("server.loading",
+                  "Playerbots.MinRandomBots ({}) is higher than Playerbots.MaxRandomBots ({}). Swapping them.",
+                  MinRandomBots, MaxRandomBots);
+        std::swap(MinRandomBots, MaxRandomBots);
+    }
     RandomBotUpdateInterval = sConfigMgr->GetOption<int32>("Playerbots.RandomBotUpdateInterval", 20);
     RandomBotCountChangeMinInterval =
         sConfigMgr->GetOption<int32>("Playerbots.RandomBotCountChangeMinInterval", 30 * MINUTE);
@@ -687,6 +750,13 @@ bool PlayerbotAIConfig::Initialize()
     RandomBotXPRate = sConfigMgr->GetOption<float>("Playerbots.RandomBotXPRate", 1.0);
     RandomBotAllianceRatio = sConfigMgr->GetOption<int32>("Playerbots.RandomBotAllianceRatio", 50);
     RandomBotHordeRatio = sConfigMgr->GetOption<int32>("Playerbots.RandomBotHordeRatio", 50);
+    if (!RandomBotAllianceRatio && !RandomBotHordeRatio)    // AddRandomBots() divides by 0 if both ratio = 0
+    {
+        LOG_ERROR("server.loading",
+                  "Playerbots.RandomBotAllianceRatio and Playerbots.RandomBotHordeRatio are both 0. Using 50/50.");
+        RandomBotAllianceRatio = 50;
+        RandomBotHordeRatio = 50;
+    }
     DisableDeathKnightLogin = sConfigMgr->GetOption<bool>("Playerbots.DisableDeathKnightLogin", 0);
     LimitTalentsExpansion = sConfigMgr->GetOption<bool>("Playerbots.LimitTalentsExpansion", 0);
     BotActiveAlone = sConfigMgr->GetOption<int32>("Playerbots.BotActiveAlone", 10);
@@ -729,6 +799,7 @@ bool PlayerbotAIConfig::Initialize()
     DropObsoleteQuests = sConfigMgr->GetOption<bool>("Playerbots.DropObsoleteQuests", true);
     AllowLearnTrainerSpells = sConfigMgr->GetOption<bool>("Playerbots.AllowLearnTrainerSpells", true);
     AutoPickTalents = sConfigMgr->GetOption<bool>("Playerbots.AutoPickTalents", true);
+    AutoPickTalentsForPlayerControlledBots = sConfigMgr->GetOption<bool>("Playerbots.AutoPickTalentsForPlayerControlledBots", false);
     AutoUpgradeEquip = sConfigMgr->GetOption<bool>("Playerbots.AutoUpgradeEquip", true);
     HunterWolfPet = sConfigMgr->GetOption<int32>("Playerbots.HunterWolfPet", 0);
     DefaultPetStance = sConfigMgr->GetOption<int32>("Playerbots.DefaultPetStance", 1);
@@ -766,6 +837,7 @@ bool PlayerbotAIConfig::Initialize()
 
     SelfBotLevel = sConfigMgr->GetOption<int32>("Playerbots.SelfBotLevel", 1);
 
+    RandomPlayerbotFactory::LoadLocalizedNameColumns();
     RandomPlayerbotFactory::CreateRandomBots();
     if (World::IsStopped())
     {

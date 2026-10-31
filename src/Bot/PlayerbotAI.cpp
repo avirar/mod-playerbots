@@ -29,6 +29,7 @@
 #include "MapMgr.h"
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
+#include "Nav3DManager.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -51,10 +52,12 @@
 #include "SocialMgr.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
+#include "WsgRouteState.h"
 #include <cmath>
 #include <mutex>
 #include <sstream>
@@ -247,6 +250,139 @@ PlayerbotAI::~PlayerbotAI()
         PlayerbotsMgr::instance().RemovePlayerBotData(bot->GetGUID(), true);
 }
 
+PlayerbotAI::Nav3DPathState PlayerbotAI::GetNav3DPathState(float x, float y, float z,
+                                                                 bool air) const
+{
+    if (!nav3dPathHandle && !nav3dPathReady)
+        return Nav3DPathState::None;
+    if (nav3dPathMap != bot->GetMapId() || nav3dPathAir != air)
+        return Nav3DPathState::None;
+
+    float const dx = x - nav3dPathX;
+    float const dy = y - nav3dPathY;
+    float const dz = z - nav3dPathZ;
+    if (dx * dx + dy * dy + dz * dz > 4.0f)
+        return Nav3DPathState::None;
+
+    return nav3dPathReady ? Nav3DPathState::Ready : Nav3DPathState::Pending;
+}
+
+bool PlayerbotAI::RequestNav3DPath(float x, float y, float z, bool air, uint8 priority)
+{
+    if (getMSTime() < nav3dPathRetryAfterMs)
+        return false;
+    CancelNav3DPath();
+    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DCooperative)
+        return false;
+    if (!bot || !bot->IsInWorld() || !bot->IsAlive() || !bot->GetMap())
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    uint64 const handle = Nav3DManager::Instance().RequestPath(bot->GetMap(), bot->GetPhaseMask(),
+                                                                start, Position(x, y, z), air, priority);
+    if (!handle)
+        return false;
+
+    nav3dPathHandle = handle;
+    nav3dPathMap = bot->GetMapId();
+    nav3dPathStartMs = getMSTime();
+    nav3dPathX = x;
+    nav3dPathY = y;
+    nav3dPathZ = z;
+    nav3dPathAir = air;
+    nav3dPathReady = false;
+    nav3dPathGoalRestricted = Nav3DManager::Instance().IsRestrictedFlightAt(
+        bot->GetMap(), bot->GetPhaseMask(), Position(x, y, z));
+    nav3dPath.clear();
+    return true;
+}
+
+bool PlayerbotAI::TakeNav3DPath(float x, float y, float z, bool air, Movement::PointsArray& path,
+                                float& length, uint32& elapsedMs)
+{
+    if (GetNav3DPathState(x, y, z, air) != Nav3DPathState::Ready)
+        return false;
+
+    path = std::move(nav3dPath);
+    length = nav3dPathLength;
+    elapsedMs = nav3dPathElapsedMs;
+    nav3dPath.clear();
+    nav3dPathReady = false;
+    nav3dPathHandle = 0;
+    return path.size() >= 2;
+}
+
+void PlayerbotAI::CancelNav3DPath()
+{
+    if (nav3dPathHandle)
+        Nav3DManager::Instance().CancelPath(nav3dPathHandle);
+    nav3dPathHandle = 0;
+    nav3dPathReady = false;
+    nav3dPathGoalRestricted = false;
+    nav3dPath.clear();
+    nav3dPathLength = 0.0f;
+    nav3dPathElapsedMs = 0;
+}
+
+void PlayerbotAI::UpdateNav3DPath()
+{
+    if (!nav3dPathHandle)
+        return;
+
+    if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported() || !bot->IsAlive() ||
+        nav3dPathMap != bot->GetMapId())
+    {
+        CancelNav3DPath();
+        return;
+    }
+
+    Movement::PointsArray path;
+    Nav3DResult result;
+    Nav3DPathPoll const poll =
+        Nav3DManager::Instance().PollPath(nav3dPathHandle, bot->GetMap(), path, result);
+    if (poll == Nav3DPathPoll::Pending)
+    {
+        // Never make a bot stand still indefinitely: after this long the normal mover wins.
+        uint32 const waitMs = nav3dPathAir ? sPlayerbotAIConfig.Nav3DPathAirWaitMs
+                                           : sPlayerbotAIConfig.Nav3DPathWaitMs;
+        if (getMSTime() - nav3dPathStartMs > waitMs)
+        {
+            CancelNav3DPath();
+            nav3dPathRetryAfterMs = getMSTime() + sPlayerbotAIConfig.Nav3DPathRetryMs;
+        }
+        return;
+    }
+
+    nav3dPathHandle = 0;
+    if (poll == Nav3DPathPoll::Found && path.size() >= 2)
+    {
+        nav3dPathRetryAfterMs = 0;
+        uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+            bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+        if (!nav3dPathGoalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d coop rejected: restricted transit {} ms > {} ms goal=({:.1f},{:.1f},{:.1f})",
+                      restrictedMs, sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs, nav3dPathX,
+                      nav3dPathY, nav3dPathZ);
+            nav3dPathReady = false;
+            nav3dPath.clear();
+            return;
+        }
+        nav3dPath = std::move(path);
+        nav3dPathLength = result.Length;
+        nav3dPathElapsedMs = result.ElapsedMs;
+        nav3dPathReady = true;
+        LOG_DEBUG("playerbots",
+                  "nav3d coop path goal_restricted={} restricted_ms={} points={} len={:.1f}",
+                  nav3dPathGoalRestricted ? 1 : 0, restrictedMs, nav3dPath.size(), nav3dPathLength);
+        return;
+    }
+
+    nav3dPathReady = false;
+    nav3dPath.clear();
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // Handle the AI check delay
@@ -259,6 +395,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!bot || !bot->GetSession() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
         bot->GetSession()->IsLoggingOut() || bot->IsDuringRemoveFromWorld())
         return;
+
+    // Advance a cooperative Nav3D request before any AI delay/reaction gate: the map thread
+    // spends a bounded slice here and the bot keeps its movement action waiting meanwhile.
+    UpdateNav3DPath();
 
     // Bots send no movement opcodes, so m_lastFallZ stays frozen and Player::IsFalling() (a Z test
     // against it) blocks LFG teleports. Unit::IsFalling() is the flag test, so real falls keep theirs.
@@ -285,8 +425,14 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     bool isCasting = bot->IsNonMeleeSpellCast(true);
     if (bot->IsInCombat())
     {
-        if (!inCombat && !isCasting)
-            ResetActionDuration();
+        if (!inCombat)
+        {
+            // "attackers" is cached for 1 s; refresh it so the assist actions see the new attacker
+            // this tick.
+            aiObjectContext->GetValue<GuidVector>("attackers")->Reset();
+            if (!isCasting)
+                ResetActionDuration();
+        }
 
         inCombat = true;
     }
@@ -550,6 +696,32 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
 
     if (!bot->GetMap())
         return; // instances are created and destroyed on demand
+
+    // A dead bot must not keep dive state: the corpse timer would otherwise drain the air model
+    // across the whole death and the next dive would start at negative air.
+    if (!bot->IsAlive() && diveAirMs != INT32_MAX)
+    {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: died at ({:.2f},{:.2f},{:.2f}) terrain={:.2f} water={:.2f} with dive air "
+                  "{:.0f}s, submerged {:.0f}s",
+                  bot->GetName(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+                  bot->GetMap()->GetHeight(bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(), MAX_HEIGHT,
+                                           true),
+                  bot->GetMap()->GetWaterLevel(bot->GetPositionX(), bot->GetPositionY()),
+                  float(diveAirMs) / IN_MILLISECONDS,
+                  diveSubmergedSince ? float(getMSTime() - diveSubmergedSince) / IN_MILLISECONDS : 0.0f);
+        diveAirMs = INT32_MAX;
+        diveSubmergedSince = 0;
+        diveLastTickMs = 0;
+        diveIdleSince = 0;
+        diveSurfacing = false;
+        diveHoldSurface = false;
+        diveAscendIssueMs = 0;
+        diveAscendProgressMs = 0;
+        diveAscendStartMs = 0;
+        diveAscendLastZ = 0;
+        diveAscendRetries = 0;
+    }
 
     // kinda expensive call to make on every single updateAI, do we really need this information?
     std::string const mapString = WorldPosition(bot).isOverworld() ? std::to_string(bot->GetMapId()) : "I";
@@ -1586,6 +1758,11 @@ void PlayerbotAI::DoNextAction(bool min)
         aiObjectContext->GetValue<ObjectGuid>("pull target")->Set(ObjectGuid::Empty);
         aiObjectContext->GetValue<ObjectGuid>("pull strategy target")->Set(ObjectGuid::Empty);
         aiObjectContext->GetValue<LootObject>("loot target")->Set(LootObject());
+
+        // The dead engine has no battleground strategy, so its "dead" trigger cannot reset this route.
+        if (Battleground* bg = bot->GetBattleground())
+            if (bg->GetBgTypeID(true) == BATTLEGROUND_WS)
+                aiObjectContext->GetValue<WsgRouteState>("wsg route")->Reset();
 
         ChangeEngine(BOT_STATE_DEAD);
         return;
@@ -5360,6 +5537,20 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
             << target->GetMapId() << " " << target->GetOrientation();
         return out.str();
     }
+    else if (command == "mount")
+    {
+        std::ostringstream out;
+        out << "mounted=" << (bot->IsMounted() ? 1 : 0)
+            << " mountSpell=" << bot->GetMountBlockId()
+            << " mountDisplay=" << bot->GetMountID()
+            << " flying=" << (bot->IsFlying() ? 1 : 0)
+            << " canFlyFlag=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) ? 1 : 0)
+            << " gravityOff=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) ? 1 : 0)
+            << " flyingFlag=" << (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING) ? 1 : 0)
+            << " flightAura=" << (bot->HasIncreaseMountedFlightSpeedAura() ? 1 : 0)
+            << " flyAura=" << (bot->HasFlyAura() ? 1 : 0);
+        return out.str();
+    }
     else if (command == "movement")
     {
         LastMovement& data = *GetAiObjectContext()->GetValue<LastMovement&>("last movement");
@@ -5701,44 +5892,52 @@ Item* PlayerbotAI::FindStoneFor(Item* weapon) const
     if (!item_template)
         return nullptr;
 
-    static const std::vector<uint32_t> uPrioritizedSharpStoneIds = {
+    // Stones apply to weapons only. Armor shares subclass numbers with weapons (a shield's
+    // SHIELD == 6 == POLEARM), so an offhand shield would otherwise match the bladed list
+    // and a sharpening stone would be cast at it (core: "Must have an Axe equipped").
+    if (item_template->Class != ITEM_CLASS_WEAPON)
+        return nullptr;
+
+    static const std::vector<uint32_t> uPrioritizedStoneIds = {
         ADAMANTITE_SHARPENING_STONE, FEL_SHARPENING_STONE,   ELEMENTAL_SHARPENING_STONE, DENSE_SHARPENING_STONE,
-        SOLID_SHARPENING_STONE,      HEAVY_SHARPENING_STONE, COARSE_SHARPENING_STONE,    ROUGH_SHARPENING_STONE};
+        SOLID_SHARPENING_STONE,      HEAVY_SHARPENING_STONE, COARSE_SHARPENING_STONE,    ROUGH_SHARPENING_STONE,
+        ADAMANTITE_WEIGHTSTONE,      FEL_WEIGHTSTONE,        DENSE_WEIGHTSTONE,          SOLID_WEIGHTSTONE,
+        HEAVY_WEIGHTSTONE,           COARSE_WEIGHTSTONE,     ROUGH_WEIGHTSTONE};
 
-    static const std::vector<uint32_t> uPrioritizedWeightStoneIds = {
-        ADAMANTITE_WEIGHTSTONE, FEL_WEIGHTSTONE,    ELEMENTAL_SHARPENING_STONE, DENSE_WEIGHTSTONE, SOLID_WEIGHTSTONE,
-        HEAVY_WEIGHTSTONE,      COARSE_WEIGHTSTONE, ROUGH_WEIGHTSTONE};
-
-    Item* stone = nullptr;
-    ItemTemplate const* pProto = weapon->GetTemplate();
-    if (pProto && (pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD || pProto->SubClass == ITEM_SUBCLASS_WEAPON_SWORD2 ||
-                   pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_AXE2 ||
-                   pProto->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER || pProto->SubClass == ITEM_SUBCLASS_WEAPON_POLEARM))
+    // The use spell carries the real weapon rule: sharpening stones are bladed-only, the
+    // Elemental Sharpening Stone's spell is generic, and weightstones are blunt-only. Item
+    // names and hand-kept weapon lists get these wrong, so ask the spell.
+    uint32 const subclassBit = 1u << item_template->SubClass;
+    for (uint32_t stoneId : uPrioritizedStoneIds)
     {
-        for (uint8 i = 0; i < std::size(uPrioritizedSharpStoneIds); ++i)
+        Item* stone = FindConsumable(stoneId);
+        if (!stone)
+            continue;
+
+        ItemTemplate const* stoneProto = stone->GetTemplate();
+        bool fits = false;
+        for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS && !fits; ++i)
         {
-            stone = FindConsumable(uPrioritizedSharpStoneIds[i]);
-            if (stone)
-            {
-                return stone;
-            }
+            uint32 const spellId = stoneProto->Spells[i].SpellId;
+            if (!spellId)
+                continue;
+
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (!spellInfo)
+                continue;
+
+            if (spellInfo->EquippedItemClass != -1 && spellInfo->EquippedItemClass != ITEM_CLASS_WEAPON)
+                continue;
+
+            fits = spellInfo->EquippedItemSubClassMask == 0 ||
+                   (spellInfo->EquippedItemSubClassMask & subclassBit) != 0;
         }
-    }
-    else if (pProto &&
-             (pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE || pProto->SubClass == ITEM_SUBCLASS_WEAPON_MACE2 ||
-              pProto->SubClass == ITEM_SUBCLASS_WEAPON_STAFF || pProto->SubClass == ITEM_SUBCLASS_WEAPON_FIST))
-    {
-        for (uint8 i = 0; i < std::size(uPrioritizedWeightStoneIds); ++i)
-        {
-            stone = FindConsumable(uPrioritizedWeightStoneIds[i]);
-            if (stone)
-            {
-                return stone;
-            }
-        }
+
+        if (fits)
+            return stone;
     }
 
-    return stone;
+    return nullptr;
 }
 
 Item* PlayerbotAI::FindOilFor(Item* weapon) const
@@ -5748,6 +5947,11 @@ Item* PlayerbotAI::FindOilFor(Item* weapon) const
 
     ItemTemplate const* item_template = weapon->GetTemplate();
     if (!item_template)
+        return nullptr;
+
+    // Oils apply to weapons only; shields share subclass numbers with weapons and would
+    // otherwise match the caster-weapon lists below.
+    if (item_template->Class != ITEM_CLASS_WEAPON)
         return nullptr;
 
     static const std::vector<uint32_t> uPrioritizedWizardOilIds = {
