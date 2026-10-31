@@ -7,6 +7,8 @@
 #include "Nav3DManager.h"
 
 #include "AreaDefines.h"
+#include "Battlefield.h"
+#include "BattlefieldMgr.h"
 #include "DBCStores.h"
 #include "Log.h"
 #include "Map.h"
@@ -17,6 +19,8 @@
 #include "World.h"
 
 #include <algorithm>
+#include <chrono>
+#include <optional>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -53,6 +57,12 @@ namespace
     constexpr float kDuplicateEpsilon = 0.05f;
     constexpr float kPartialAcceptDistance = 5.0f;  // interaction range
     constexpr float kEarlyPartialDistance = 2.0f;   // stop as soon as a chest is in reach
+    // The straight-line pre-check samples collision every 0.5 yd. Long air/water routes are
+    // left to A* (which is time-sliced) instead of blocking the map thread on one huge LOS.
+    constexpr float kMaxDirectCheckDistance = 300.0f;
+    // Transit paths prefer legal air over a no-fly crossing. The multiplier only
+    // biases A*; the post-path exposure check is the final gate.
+    constexpr float kRestrictedAirPenalty = 8.0f;
     // A lazy 3D route this dense is a sign the search wandered through a huge open volume.
     // Reject it before the O(n^2) smoothing and capsule pass can stall the map thread.
     constexpr size_t kMaxPathPoints = 2000;
@@ -97,6 +107,7 @@ namespace
         bool Closed = false;
         bool HasParent = false;
         int8 Nav = 0;
+        int8 Restricted = 0;
     };
 
     struct QueueNode
@@ -388,7 +399,11 @@ namespace
     {
         if (!TileLineClear(tile, from, to, kTileBodyRadius))
             return false;
-        if (tile->Header().Flags & Nav3D::FlagLiveLos)
+        // Local air-detail tiles are 4-yd WMO/cave boxes. Their baked air spans can leak
+        // through thin WMO shells (Grizzlemaw's tree wall), so a detail edge must always
+        // pass the live VMAP check as well, regardless of the tile flag.
+        if ((tile->Header().Flags & Nav3D::FlagLiveLos) ||
+            tile->Header().Medium == Nav3D::MediumAirDetail)
             return LineClear(map, phase, from, to);
         return true;
     }
@@ -508,6 +523,34 @@ namespace
     // A swimmer has a body. The planner's single ray can pass while the model clips a wall or
     // floor, so validate the final path with a short capsule: terrain/floor clearance plus
     // offset rays at the player radius.
+    // One capsule sample. Split out of SegmentClear so the cooperative search can yield
+    // between samples instead of blocking the map thread on a long swim.
+    bool SegmentPointClear(Map* map, uint32 phase, G3D::Vector3 const& point, float radius)
+    {
+        static G3D::Vector3 const offsets[] = {
+            {0.5f, 0.0f, 0.0f},   {-0.5f, 0.0f, 0.0f},  {0.0f, 0.5f, 0.0f},
+            {0.0f, -0.5f, 0.0f},  {0.3535f, 0.3535f, 0.0f}, {-0.3535f, 0.3535f, 0.0f},
+            {0.3535f, -0.3535f, 0.0f}, {-0.3535f, -0.3535f, 0.0f},
+            {0.0f, 0.0f, 1.0f},   {0.0f, 0.0f, -1.0f}};
+
+        // floorZ is terrain- and WMO-aware and ignores an outdoor surface above a cave
+        // hollow, so a swimmer below the seabed's outside terrain is not treated as
+        // embedded in it.
+        PositionFullTerrainStatus status;
+        map->GetFullTerrainStatusForPosition(phase, point.x, point.y, point.z, 1.0f, status, {});
+        if (status.floorZ > INVALID_HEIGHT && point.z - status.floorZ < kCapsuleFloorClearance)
+            return false;
+
+        for (G3D::Vector3 const& offset : offsets)
+        {
+            G3D::Vector3 const probe = point + offset * (radius / 0.5f);
+            if (!map->isInLineOfSight(point.x, point.y, point.z, probe.x, probe.y, probe.z, phase,
+                                      LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
+                return false;
+        }
+        return true;
+    }
+
     bool SegmentClear(Map* map, uint32 phase, G3D::Vector3 const& from, G3D::Vector3 const& to,
                       float radius)
     {
@@ -517,32 +560,12 @@ namespace
         float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
         int const steps = std::max(1, int(std::ceil(distance / 0.5f)));
 
-        static G3D::Vector3 const offsets[] = {
-            {0.5f, 0.0f, 0.0f},   {-0.5f, 0.0f, 0.0f},  {0.0f, 0.5f, 0.0f},
-            {0.0f, -0.5f, 0.0f},  {0.3535f, 0.3535f, 0.0f}, {-0.3535f, 0.3535f, 0.0f},
-            {0.3535f, -0.3535f, 0.0f}, {-0.3535f, -0.3535f, 0.0f},
-            {0.0f, 0.0f, 1.0f},   {0.0f, 0.0f, -1.0f}};
-
         for (int i = 0; i <= steps; ++i)
         {
             float const t = float(i) / float(steps);
             G3D::Vector3 const point = from + (to - from) * t;
-
-            // floorZ is terrain- and WMO-aware and ignores an outdoor surface above a cave
-            // hollow, so a swimmer below the seabed's outside terrain is not treated as
-            // embedded in it.
-            PositionFullTerrainStatus status;
-            map->GetFullTerrainStatusForPosition(phase, point.x, point.y, point.z, 1.0f, status, {});
-            if (status.floorZ > INVALID_HEIGHT && point.z - status.floorZ < kCapsuleFloorClearance)
+            if (!SegmentPointClear(map, phase, point, radius))
                 return false;
-
-            for (G3D::Vector3 const& offset : offsets)
-            {
-                G3D::Vector3 const probe = point + offset * (radius / 0.5f);
-                if (!map->isInLineOfSight(point.x, point.y, point.z, probe.x, probe.y, probe.z, phase,
-                                          LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
-                    return false;
-            }
         }
 
         return true;
@@ -616,6 +639,12 @@ namespace
 
         if (navigable && TileBlocks(grid, x, y, z))
             navigable = false;
+
+        bool const airGrid =
+            grid.Air || (grid.Tile && (grid.Tile->Header().Medium == Nav3D::MediumAir ||
+                                       grid.Tile->Header().Medium == Nav3D::MediumAirDetail));
+        if (airGrid)
+            state.Restricted = Nav3DManager::IsRestrictedFlightAt(grid.MapPtr, grid.Phase, center) ? 1 : -1;
 
         state.Nav = navigable ? 1 : -1;
         return navigable;
@@ -860,7 +889,1202 @@ namespace
 
         return true;
     }
+
+    // Candidate order mirrors FindNearestNavigable exactly, but the caller can iterate it
+    // across ticks instead of resolving every candidate in one constructor call.
+    std::vector<GridNode> BuildNearestCandidates(Grid const& grid, Position const& position)
+    {
+        std::vector<GridNode> candidates;
+        GridNode const snapped = grid.Snap(position);
+        auto const add = [&candidates, &grid](GridNode const& candidate)
+        {
+            if (grid.Contains(candidate))
+                candidates.push_back(candidate);
+        };
+
+        if (grid.PreferUp)
+        {
+            for (int32 zoff = 0; zoff <= 4; ++zoff)
+            {
+                for (int32 radius = 0; radius <= 2; ++radius)
+                {
+                    for (int32 dx = -radius; dx <= radius; ++dx)
+                    {
+                        for (int32 dy = -radius; dy <= radius; ++dy)
+                        {
+                            if (std::max(std::abs(dx), std::abs(dy)) != radius)
+                                continue;
+                            add({snapped.X + dx, snapped.Y + dy, snapped.Z + zoff});
+                        }
+                    }
+                }
+            }
+        }
+
+        static constexpr int32 preferUpZ[5] = {0, 1, -1, 2, -2};
+        for (int32 radius = 0; radius <= 2; ++radius)
+        {
+            for (int32 dx = -radius; dx <= radius; ++dx)
+            {
+                for (int32 dy = -radius; dy <= radius; ++dy)
+                {
+                    for (int32 zi = 0; zi < 5; ++zi)
+                    {
+                        int32 const dz = grid.PreferUp ? preferUpZ[zi] : (zi - 2);
+                        if (std::max({std::abs(dx), std::abs(dy), std::abs(dz)}) != radius)
+                            continue;
+                        add({snapped.X + dx, snapped.Y + dy, snapped.Z + dz});
+                    }
+                }
+            }
+        }
+
+        return candidates;
+    }
+
+// Resumable A* core. The constructor performs the bounded grid/setup work; Step()
+// expands whole nodes until the caller's microsecond budget is exhausted. The
+// search never calls Map/vmap from a worker: it only runs on the requesting map
+// thread (or on an immutable tile-only worker).
+class Nav3DSearch
+{
+public:
+    Nav3DSearch(Map* map, uint32 phase, Position const& start, Position const& goal,
+                std::shared_ptr<Nav3DTile> tile, bool airComposite, float overrideCellSize,
+                Nav3DSearchBounds const* bounds, bool penalizeRestricted = false)
+        : _map(map), _phase(phase), _start(start), _goal(goal), _tile(std::move(tile)),
+          _airComposite(airComposite), _overrideCellSize(overrideCellSize),
+          _penalizeRestricted(penalizeRestricted)
+    {
+        struct SetupGuard
+        {
+            std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+            uint64& Out;
+            explicit SetupGuard(uint64& out) : Out(out) {}
+            ~SetupGuard()
+            {
+                Out += uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                     std::chrono::steady_clock::now() - Start)
+                                                     .count()));
+            }
+        } setupGuard{_setupUs};
+
+        if (bounds)
+            _bounds = *bounds;
+        _result = {};
+        if (!_map || !sPlayerbotAIConfig.Nav3DEnabled)
+        {
+            _done = true;
+            return;
+        }
+
+        bool const openWater = !_tile && !_airComposite && IsOpenWaterArea(_map, _phase, _start) &&
+                               IsOpenWaterArea(_map, _phase, _goal);
+
+        _grid.MapPtr = _map;
+        _grid.Phase = _phase;
+
+        if (_tile)
+        {
+            Nav3DTileHeader const& header = _tile->Header();
+            float const tileMaxX = header.OriginX + float(header.SizeX) * header.CellSize;
+            float const tileMaxY = header.OriginY + float(header.SizeY) * header.CellSize;
+            float const tileMaxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
+
+            _grid.Tile = _tile.get();
+            float const searchCell = _overrideCellSize > 0.0f ? _overrideCellSize : header.CellSize;
+            _grid.Cell = searchCell;
+            _grid.PreferUp = header.Medium == Nav3D::MediumAir || header.Medium == Nav3D::MediumAirDetail;
+
+            auto const alignDown = [searchCell](float value, float origin)
+            {
+                return origin + std::floor((value - origin) / searchCell) * searchCell;
+            };
+
+            if (header.Medium == Nav3D::MediumAirDetail)
+            {
+                float const minX = _bounds ? std::max(header.OriginX, _bounds->MinX) : header.OriginX;
+                float const minY = _bounds ? std::max(header.OriginY, _bounds->MinY) : header.OriginY;
+                float const minZ = _bounds ? std::max(header.OriginZ, _bounds->MinZ) : header.OriginZ;
+                float const maxX = _bounds ? std::min(tileMaxX, _bounds->MaxX) : tileMaxX;
+                float const maxY = _bounds ? std::min(tileMaxY, _bounds->MaxY) : tileMaxY;
+                float const maxZ = _bounds ? std::min(tileMaxZ, _bounds->MaxZ) : tileMaxZ;
+                _grid.MinX = alignDown(minX, header.OriginX);
+                _grid.MinY = alignDown(minY, header.OriginY);
+                _grid.MinZ = alignDown(minZ, header.OriginZ);
+                _grid.SizeX = std::max(1, int32(std::ceil((maxX - _grid.MinX) / searchCell)));
+                _grid.SizeY = std::max(1, int32(std::ceil((maxY - _grid.MinY) / searchCell)));
+                _grid.SizeZ = std::max(1, int32(std::ceil((maxZ - _grid.MinZ) / searchCell)));
+            }
+            else
+            {
+                _grid.MinX = alignDown(std::max(header.OriginX,
+                                                std::min(_start.GetPositionX(), _goal.GetPositionX()) - kXYPad),
+                                       header.OriginX);
+                _grid.MinY = alignDown(std::max(header.OriginY,
+                                                std::min(_start.GetPositionY(), _goal.GetPositionY()) - kXYPad),
+                                       header.OriginY);
+                _grid.MinZ = alignDown(std::max(header.OriginZ,
+                                                std::min(_start.GetPositionZ(), _goal.GetPositionZ()) - kZPad),
+                                       header.OriginZ);
+                float const maxX = std::min(tileMaxX,
+                                            std::max(_start.GetPositionX(), _goal.GetPositionX()) + kXYPad);
+                float const maxY = std::min(tileMaxY,
+                                            std::max(_start.GetPositionY(), _goal.GetPositionY()) + kXYPad);
+                float const maxZ = std::min(tileMaxZ,
+                                            std::max(_start.GetPositionZ(), _goal.GetPositionZ()) + kZPad);
+                _grid.SizeX = std::max(1, int32(std::ceil((maxX - _grid.MinX) / searchCell)));
+                _grid.SizeY = std::max(1, int32(std::ceil((maxY - _grid.MinY) / searchCell)));
+                _grid.SizeZ = std::max(1, int32(std::ceil((maxZ - _grid.MinZ) / searchCell)));
+            }
+            _result.CellSize = searchCell;
+        }
+        else if (_airComposite)
+        {
+            _grid.Air = true;
+            _grid.PreferUp = true;
+            _grid.Cell = kAirCompositeCell;
+            _result.CellSize = kAirCompositeCell;
+
+            float const dx = _goal.GetPositionX() - _start.GetPositionX();
+            float const dy = _goal.GetPositionY() - _start.GetPositionY();
+            float const horizontal = std::sqrt(dx * dx + dy * dy);
+            float const margin = std::clamp(horizontal * 0.05f, 40.0f, 250.0f);
+            float const minX = std::min(_start.GetPositionX(), _goal.GetPositionX()) - margin;
+            float const minY = std::min(_start.GetPositionY(), _goal.GetPositionY()) - margin;
+            float const maxX = std::max(_start.GetPositionX(), _goal.GetPositionX()) + margin;
+            float const maxY = std::max(_start.GetPositionY(), _goal.GetPositionY()) + margin;
+
+            float minZ = std::min(_start.GetPositionZ(), _goal.GetPositionZ()) - 150.0f;
+            float maxZ = std::max(_start.GetPositionZ(), _goal.GetPositionZ()) + 150.0f;
+            // Cap the height sampling: a 12,000-yd route used 240 vmap GetHeight calls
+            // in the constructor. 100-yd spacing and a hard 32-sample cap are enough to
+            // bound the composite grid without turning the constructor into a stall.
+            int const samples = std::max(2, std::min(32, int(std::ceil(horizontal / 100.0f))));
+            for (int i = 0; i <= samples; ++i)
+            {
+                float const t = float(i) / float(samples);
+                float const x = _start.GetPositionX() + dx * t;
+                float const y = _start.GetPositionY() + dy * t;
+                float const ground = _map->GetHeight(_phase, x, y, 4000.0f, true, 4000.0f);
+                if (ground > -1000.0f)
+                    maxZ = std::max(maxZ, ground + 150.0f);
+            }
+            minZ = std::max(-1000.0f, minZ);
+            maxZ = std::min(4000.0f, maxZ);
+
+            auto const alignDown = [](float value)
+            { return std::floor(value / kAirCompositeCell) * kAirCompositeCell; };
+            _grid.MinX = alignDown(minX);
+            _grid.MinY = alignDown(minY);
+            _grid.MinZ = alignDown(minZ);
+            _grid.SizeX = std::max(1, int32(std::ceil((maxX - _grid.MinX) / kAirCompositeCell)));
+            _grid.SizeY = std::max(1, int32(std::ceil((maxY - _grid.MinY) / kAirCompositeCell)));
+            _grid.SizeZ = std::max(1, int32(std::ceil((maxZ - _grid.MinZ) / kAirCompositeCell)));
+            if (_grid.SizeX > kMaxAirCellsPerAxis || _grid.SizeY > kMaxAirCellsPerAxis ||
+                _grid.SizeZ > kMaxAirCellsPerAxis)
+            {
+                _done = true;
+                return;
+            }
+        }
+        else
+        {
+            bool const detailGrid = !openWater &&
+                (NeedsDetailGrid(_map, _phase, _start) || NeedsDetailGrid(_map, _phase, _goal));
+            float const detailCellSize = std::clamp(sPlayerbotAIConfig.Nav3DCellSize, kMinCellSize, kMaxCellSize);
+            float const cellSize = detailGrid ? detailCellSize : std::min(kMaxCellSize, detailCellSize * 2.0f);
+            _result.CellSize = cellSize;
+
+            _grid.Cell = cellSize;
+            float const minX = std::min(_start.GetPositionX(), _goal.GetPositionX()) - kXYPad;
+            float const minY = std::min(_start.GetPositionY(), _goal.GetPositionY()) - kXYPad;
+            float const minZ = std::min(_start.GetPositionZ(), _goal.GetPositionZ()) - kZPad;
+            float const maxX = std::max(_start.GetPositionX(), _goal.GetPositionX()) + kXYPad;
+            float const maxY = std::max(_start.GetPositionY(), _goal.GetPositionY()) + kXYPad;
+            float const maxZ = std::max(_start.GetPositionZ(), _goal.GetPositionZ()) + kZPad;
+
+            _grid.MinX = minX;
+            _grid.MinY = minY;
+            _grid.MinZ = minZ;
+            _grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxX - minX) / cellSize))));
+            _grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxY - minY) / cellSize))));
+            _grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxZ - minZ) / cellSize))));
+
+            float const startLevel = _map->GetWaterLevel(_start.GetPositionX(), _start.GetPositionY());
+            bool const startInWater =
+                _map->IsUnderWater(_phase, _start.GetPositionX(), _start.GetPositionY(),
+                                   _start.GetPositionZ(), 1.0f) ||
+                _map->IsInWater(_phase, _start.GetPositionX(), _start.GetPositionY(),
+                                _start.GetPositionZ(), 1.0f) ||
+                (startLevel > INVALID_HEIGHT && _start.GetPositionZ() <= startLevel + kSurfaceMargin);
+            _grid.RestrictSky = startInWater;
+        }
+
+        if (!_tile && !_airComposite)
+        {
+            _grid.SolidTile = ResolveSolidTile(_map, _start);
+            if (!_grid.SolidTile)
+                _grid.SolidTile = ResolveSolidTile(_map, _goal);
+        }
+
+        auto const inside = [this](Position const& position)
+        {
+            return position.GetPositionX() >= _grid.MinX &&
+                   position.GetPositionX() <= _grid.MinX + _grid.SizeX * _grid.Cell &&
+                   position.GetPositionY() >= _grid.MinY &&
+                   position.GetPositionY() <= _grid.MinY + _grid.SizeY * _grid.Cell &&
+                   position.GetPositionZ() >= _grid.MinZ &&
+                   position.GetPositionZ() <= _grid.MinZ + _grid.SizeZ * _grid.Cell;
+        };
+        if (!inside(_start) || !inside(_goal))
+        {
+            _done = true;
+            return;
+        }
+
+        _maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
+        _maxTimeMs = std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
+        if (_airComposite)
+        {
+            _maxTimeMs = std::min<uint32>(_maxTimeMs, 300);
+            _maxNodes = std::min<uint32>(_maxNodes, 300000);
+        }
+
+        _states.reserve(4096);
+        _startCandidates = BuildNearestCandidates(_grid, _start);
+        _goalCandidates = BuildNearestCandidates(_grid, _goal);
+        _stage = Stage::NearestStart;
+    }
+
+    using Clock = std::chrono::steady_clock;
+
+    bool StepCandidates(std::vector<GridNode> const& candidates, size_t& cursor,
+                        GridNode& result, bool& found, Clock::time_point deadline)
+    {
+        while (cursor < candidates.size())
+        {
+            GridNode const candidate = candidates[cursor];
+            NodeState& state = _states[candidate];
+            if (IsNavigable(_grid, candidate, state))
+            {
+                result = candidate;
+                found = true;
+                return true;
+            }
+            ++cursor;
+            if (Clock::now() >= deadline)
+                return false;
+        }
+        found = false;
+        return true;
+    }
+
+    bool StepNearest(uint64 budgetUs)
+    {
+        Clock::time_point const deadline = Clock::now() + std::chrono::microseconds(budgetUs);
+        if (_stage == Stage::NearestStart)
+        {
+            bool found = false;
+            if (!StepCandidates(_startCandidates, _startCursor, _startNode, found, deadline))
+                return false;
+            if (!found)
+            {
+                FailNearest();
+                return true;
+            }
+            _stage = Stage::NearestGoal;
+        }
+
+        if (_stage == Stage::NearestGoal)
+        {
+            bool found = false;
+            if (!StepCandidates(_goalCandidates, _goalCursor, _goalNode, found, deadline))
+                return false;
+            if (!found)
+            {
+                FailNearest();
+                return true;
+            }
+            _stage = Stage::Direct;
+            InitDirect();
+        }
+        return true;
+    }
+
+    void FailNearest()
+    {
+        LOG_DEBUG("playerbots",
+                  "nav3d nearest navigable failed map {} tile={} start=({:.1f},{:.1f},{:.1f}) "
+                  "goal=({:.1f},{:.1f},{:.1f})",
+                  _map->GetId(), _tile ? 1 : 0, _start.GetPositionX(), _start.GetPositionY(),
+                  _start.GetPositionZ(), _goal.GetPositionX(), _goal.GetPositionY(), _goal.GetPositionZ());
+        _done = true;
+        _stage = Stage::Done;
+    }
+
+    void InitDirect()
+    {
+        _directFrom = {_start.GetPositionX(), _start.GetPositionY(), _start.GetPositionZ()};
+        _directTo = {_goal.GetPositionX(), _goal.GetPositionY(), _goal.GetPositionZ()};
+        float const distance = Distance(_start, _goal);
+        if (distance > kMaxDirectCheckDistance)
+        {
+            InitAStar();
+            return;
+        }
+        float const stepSize = _airComposite ? 1.0f : 0.5f;
+        _directSteps = std::max(1, int(std::ceil(distance / stepSize)));
+        _directIndex = 0;
+    }
+
+    bool StepDirect(uint64 budgetUs)
+    {
+        Clock::time_point const deadline = Clock::now() + std::chrono::microseconds(budgetUs);
+        bool first = true;
+        while (_directIndex <= _directSteps)
+        {
+            float const t = float(_directIndex) / float(_directSteps);
+            G3D::Vector3 const point = _directFrom + (_directTo - _directFrom) * t;
+            bool clear = true;
+            if (_tile)
+                clear = _tile->IsNavigable(point.x, point.y, point.z, kTileBodyRadius);
+            else if (_airComposite)
+            {
+                std::shared_ptr<Nav3DTile> airTile = GetAirTileAt(_grid, point.x, point.y);
+                clear = AirTileUsable(airTile.get()) &&
+                        airTile->IsNavigable(point.x, point.y, point.z, kTileBodyRadius);
+            }
+            else
+                clear = SegmentPointClear(_map, _phase, point, 0.5f);
+
+            if (!clear)
+            {
+                InitAStar();
+                return true;
+            }
+            ++_directIndex;
+            if (!first && Clock::now() >= deadline)
+                return false;
+            first = false;
+        }
+
+        bool clear = true;
+        if (_tile)
+            clear = !(_tile->Header().Flags & Nav3D::FlagLiveLos) ||
+                    LineClear(_map, _phase, _directFrom, _directTo);
+        else if (_airComposite)
+            clear = LineClear(_map, _phase, _directFrom, _directTo);
+
+        if (!clear)
+        {
+            InitAStar();
+            return true;
+        }
+
+        _path.push_back(_directFrom);
+        _path.push_back(_directTo);
+        _result.Found = true;
+        _result.Direct = true;
+        _result.Nodes = uint32(_states.size());
+        _result.ElapsedMs = uint32(_workUs / 1000);
+        _result.Length = Distance(_start, _goal);
+        _done = true;
+        _found = true;
+        _stage = Stage::Done;
+        return true;
+    }
+
+    void InitAStar()
+    {
+        if (_airComposite)
+            _grid.AirLos = false;
+
+        _heuristicWeight =
+            (_grid.Tile && _grid.Tile->Header().Medium == Nav3D::MediumAirDetail) ? 1.0f
+            : (_grid.Tile || _grid.Air)                                             ? 2.0f
+                                                                                    : 1.0f;
+
+        NodeState& startState = _states[_startNode];
+        startState.G = 0.0f;
+        startState.F = Heuristic(_startNode) * _heuristicWeight;
+        startState.HasParent = false;
+        _open.push({startState.F, 0.0f, _startNode});
+        _neighbors = BuildNeighborOffsets(Nav3DNeighborCount());
+        _startedMs = getMSTime();
+        _result.BestDistance = std::numeric_limits<float>::max();
+        _expanding = false;
+        _expandingEdge = 0;
+        _stage = Stage::AStar;
+    }
+
+    void SetTimeBudget(uint32 ms)
+    {
+        _maxTimeMs = std::min<uint32>(_maxTimeMs,
+                                      std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, ms)));
+    }
+
+    bool Step(uint64 budgetUs)
+    {
+        if (_done)
+            return true;
+        if (!budgetUs)
+            return false;
+
+        Clock::time_point const started = Clock::now();
+        bool const finished = StepInternal(budgetUs);
+        _workUs += uint64(std::max<int64>(
+            0, std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - started).count()));
+        return finished;
+    }
+
+    // Expand one A* node's neighbour list, resuming from _expandingEdge. A single air
+    // composite node can contain 26 live-LOS edges; checking the deadline only between
+    // nodes let one node run for tens of milliseconds.
+    bool ExpandCurrentNode(Clock::time_point deadline)
+    {
+        NodeState& currentState = _states[_expandingNode];
+        Position const center = _expandingCenter;
+        auto const timeUp = [&deadline]() { return Clock::now() >= deadline; };
+
+        while (_expandingEdge < _neighbors.size())
+        {
+            NeighborOffset const offset = _neighbors[_expandingEdge++];
+            GridNode const neighbor{_expandingNode.X + offset.X, _expandingNode.Y + offset.Y,
+                                    _expandingNode.Z + offset.Z};
+            if (!_grid.Contains(neighbor))
+            {
+                if (timeUp())
+                    return false;
+                continue;
+            }
+
+            auto const known = _states.find(neighbor);
+            if (known != _states.end() && known->second.Closed)
+            {
+                if (timeUp())
+                    return false;
+                continue;
+            }
+
+            Position const neighborCenter = _grid.Center(neighbor);
+            NodeState probe;
+            if (known != _states.end())
+                probe = known->second;
+            if (!IsNavigable(_grid, neighbor, probe))
+            {
+                if (known != _states.end())
+                    known->second.Nav = -1;
+                if (timeUp())
+                    return false;
+                continue;
+            }
+
+            float edgeCost = Distance(center, neighborCenter);
+            if (_penalizeRestricted && probe.Restricted > 0)
+                edgeCost *= kRestrictedAirPenalty;
+            float const tentative = currentState.G + edgeCost;
+            if (known != _states.end() && tentative >= known->second.G)
+            {
+                if (timeUp())
+                    return false;
+                continue;
+            }
+
+            if (!GridLineClear(_grid, _map, _phase, center, neighborCenter))
+            {
+                if (timeUp())
+                    return false;
+                continue;
+            }
+
+            NodeState& neighborState = (known != _states.end()) ? known->second : _states[neighbor];
+            neighborState.G = tentative;
+            neighborState.Parent = _expandingNode;
+            neighborState.HasParent = true;
+            neighborState.Nav = 1;
+            neighborState.F = tentative + Heuristic(neighbor) * _heuristicWeight;
+            _open.push({neighborState.F, tentative, neighbor});
+
+            if (timeUp())
+                return false;
+        }
+
+        _expanding = false;
+        _expandingEdge = 0;
+        return true;
+    }
+
+    bool StepInternal(uint64 budgetUs)
+    {
+        if (_stage == Stage::NearestStart || _stage == Stage::NearestGoal)
+        {
+            auto const phaseStart = Clock::now();
+            bool const ok = StepNearest(budgetUs);
+            _nearestUs += uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                         Clock::now() - phaseStart)
+                                                         .count()));
+            if (!ok)
+                return false;
+        }
+        if (_stage == Stage::Direct)
+        {
+            auto const phaseStart = Clock::now();
+            bool const ok = StepDirect(budgetUs);
+            _directUs += uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                        Clock::now() - phaseStart)
+                                                        .count()));
+            if (!ok)
+                return false;
+        }
+        if (_stage != Stage::AStar)
+            return _done;
+
+        if (_open.empty())
+        {
+            Finish();
+            return _done;
+        }
+
+        struct AStarGuard
+        {
+            std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+            uint64& Out;
+            explicit AStarGuard(uint64& out) : Out(out) {}
+            ~AStarGuard()
+            {
+                Out += uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                     std::chrono::steady_clock::now() - Start)
+                                                     .count()));
+            }
+        } astarGuard{_astarUs};
+
+        auto const deadline = std::chrono::steady_clock::now() +
+                              std::chrono::microseconds(budgetUs);
+        // Always make at least one expansion: the caller's slice can be consumed by the
+        // clock read itself, and a zero-progress step must never spin the scheduler.
+        bool first = true;
+        while (!_done && (first || std::chrono::steady_clock::now() < deadline))
+        {
+            first = false;
+            if (_workUs >= uint64(_maxTimeMs) * 1000 || _expanded >= _maxNodes)
+            {
+                Finish();
+                break;
+            }
+
+            if (_expanding)
+            {
+                if (!ExpandCurrentNode(deadline))
+                    return false;
+                continue;
+            }
+
+            if (_open.empty())
+            {
+                Finish();
+                break;
+            }
+
+            QueueNode const current = _open.top();
+            _open.pop();
+            NodeState& currentState = _states[current.Node];
+            if (currentState.Closed)
+                continue;
+
+            currentState.Closed = true;
+            ++_expanded;
+
+            float const currentDistance = Heuristic(current.Node);
+            if (currentDistance < _result.BestDistance)
+            {
+                _result.BestDistance = currentDistance;
+                Position const best = _grid.Center(current.Node);
+                _result.BestX = best.GetPositionX();
+                _result.BestY = best.GetPositionY();
+                _result.BestZ = best.GetPositionZ();
+                _bestNode = current.Node;
+                _hasBest = true;
+            }
+
+            if (current.Node == _goalNode)
+            {
+                _found = true;
+                Finish();
+                break;
+            }
+
+            if (currentDistance <= kEarlyPartialDistance)
+            {
+                _found = true;
+                _result.Partial = true;
+                _result.Direct = false;
+                _result.BestDistance = currentDistance;
+                Position const best = _grid.Center(current.Node);
+                _result.BestX = best.GetPositionX();
+                _result.BestY = best.GetPositionY();
+                _result.BestZ = best.GetPositionZ();
+                _goalNode = current.Node;
+                Finish();
+                break;
+            }
+
+            _expanding = true;
+            _expandingNode = current.Node;
+            _expandingCenter = _grid.Center(current.Node);
+            _expandingEdge = 0;
+            if (!ExpandCurrentNode(deadline))
+                return false;
+        }
+
+        if (!_done && _open.empty())
+            Finish();
+        return _done;
+    }
+
+    [[nodiscard]] bool Done() const { return _done; }
+    [[nodiscard]] bool Found() const { return _found; }
+    [[nodiscard]] uint32 Expanded() const { return _expanded; }
+    [[nodiscard]] uint32 Nodes() const { return uint32(_states.size()); }
+    [[nodiscard]] uint64 WorkUs() const { return _workUs; }
+    [[nodiscard]] uint64 SetupUs() const { return _setupUs; }
+    [[nodiscard]] uint64 NearestUs() const { return _nearestUs; }
+    [[nodiscard]] uint64 DirectUs() const { return _directUs; }
+    [[nodiscard]] uint64 AStarUs() const { return _astarUs; }
+    [[nodiscard]] uint64 FinishUs() const { return _finishUs; }
+    [[nodiscard]] Map* GetMap() const { return _map; }
+    [[nodiscard]] uint32 CreatedMs() const { return _createdMs; }
+    [[nodiscard]] Movement::PointsArray const& Path() const { return _path; }
+    [[nodiscard]] Nav3DResult const& Result() const { return _result; }
+
+private:
+    float Heuristic(GridNode const& node) const
+    {
+        G3D::Vector3 const center{_grid.Center(node).GetPositionX(), _grid.Center(node).GetPositionY(),
+                                  _grid.Center(node).GetPositionZ()};
+        return Octile3D(center, _goal);
+    }
+
+    void Finish()
+    {
+        if (_done)
+            return;
+
+        _expanding = false;
+        _expandingEdge = 0;
+
+        struct FinishGuard
+        {
+            std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
+            uint64& Out;
+            explicit FinishGuard(uint64& out) : Out(out) {}
+            ~FinishGuard()
+            {
+                Out += uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                     std::chrono::steady_clock::now() - Start)
+                                                     .count()));
+            }
+        } finishGuard{_finishUs};
+        _result.Nodes = uint32(_states.size());
+        _result.Expanded = _expanded;
+        _result.ElapsedMs = uint32(_workUs / 1000);
+        if (_result.BestDistance == std::numeric_limits<float>::max())
+            _result.BestDistance = 0.0f;
+
+        if (!_found && _hasBest && _result.BestDistance <= kPartialAcceptDistance)
+        {
+            _found = true;
+            _result.Partial = true;
+            _result.Direct = false;
+            _goalNode = _bestNode;
+        }
+
+        if (!_found)
+        {
+            LOG_DEBUG("playerbots", "nav3d search failed map {} tile={} air={} expanded={} best={:.1f}",
+                      _map->GetId(), _tile ? 1 : 0, _airComposite ? 1 : 0, _expanded,
+                      _result.BestDistance);
+            _done = true;
+            return;
+        }
+
+        if (_airComposite)
+            _grid.AirLos = true;
+
+        if (!BuildPath(_grid, _states, _startNode, _goalNode, _start, _goal, _result.Partial, _path,
+                       _result))
+        {
+            LOG_DEBUG("playerbots", "nav3d buildpath failed map {} tile={} air={} points={}",
+                      _map->GetId(), _tile ? 1 : 0, _airComposite ? 1 : 0, _path.size());
+            _found = false;
+            _done = true;
+            return;
+        }
+
+        _result.Found = true;
+        _done = true;
+    }
+
+    Map* _map = nullptr;
+    uint32 _phase = 0;
+    Position _start;
+    Position _goal;
+    enum class Stage
+    {
+        None,
+        NearestStart,
+        NearestGoal,
+        Direct,
+        AStar,
+        Done,
+    };
+
+    std::shared_ptr<Nav3DTile> _tile;
+    bool _airComposite = false;
+    bool _penalizeRestricted = false;
+    float _overrideCellSize = 0.0f;
+    std::optional<Nav3DSearchBounds> _bounds;
+    Stage _stage = Stage::None;
+    std::vector<GridNode> _startCandidates;
+    std::vector<GridNode> _goalCandidates;
+    size_t _startCursor = 0;
+    size_t _goalCursor = 0;
+    G3D::Vector3 _directFrom;
+    G3D::Vector3 _directTo;
+    int _directSteps = 0;
+    int _directIndex = 0;
+    Grid _grid;
+    std::unordered_map<GridNode, NodeState, GridNodeHash> _states;
+    std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> _open;
+    GridNode _startNode{};
+    GridNode _goalNode{};
+    GridNode _bestNode{};
+    GridNode _expandingNode{};
+    Position _expandingCenter;
+    size_t _expandingEdge = 0;
+    bool _hasBest = false;
+    bool _expanding = false;
+    bool _found = false;
+    bool _done = false;
+    uint32 _expanded = 0;
+    uint32 _maxNodes = 0;
+    uint32 _maxTimeMs = 0;
+    uint32 _startedMs = 0;
+    uint64 _workUs = 0;
+    uint64 _setupUs = 0;
+    uint64 _nearestUs = 0;
+    uint64 _directUs = 0;
+    uint64 _astarUs = 0;
+    uint64 _finishUs = 0;
+    uint32 _createdMs = getMSTime();
+    float _heuristicWeight = 1.0f;
+    std::vector<NeighborOffset> _neighbors;
+    Movement::PointsArray _path;
+    Nav3DResult _result;
+};
+
+
 }
+struct Nav3DPathJob
+{
+    Nav3DPathJob(Map* map, uint32 phase, Position const& start, Position const& goal, bool air,
+                 uint64 key)
+        : MapPtr(map), Phase(phase), Start(start), Goal(goal), Air(air), Key(key),
+          CreatedMs(getMSTime())
+    {
+        GoalRestricted = Nav3DManager::IsRestrictedFlightAt(MapPtr, Phase, Goal);
+    }
+
+    bool Step(uint32 budgetUs)
+    {
+        if (Done)
+            return true;
+        if (!budgetUs)
+            return false;
+
+        auto const deadline = std::chrono::steady_clock::now() +
+                              std::chrono::microseconds(budgetUs);
+        while (!Done)
+        {
+            if (Search)
+            {
+                auto const left = std::chrono::duration_cast<std::chrono::microseconds>(
+                                      deadline - std::chrono::steady_clock::now())
+                                      .count();
+                if (left <= 0)
+                    return false;
+                bool const finished = Search->Step(uint64(left));
+                if (!finished)
+                    return false;
+                OnSearchDone();
+                continue;
+            }
+
+            auto const left = std::chrono::duration_cast<std::chrono::microseconds>(
+                                  deadline - std::chrono::steady_clock::now())
+                                  .count();
+            if (left <= 0)
+                return false;
+
+            switch (StageNow)
+            {
+                case Stage::Tile: SetupTile(); break;
+                case Stage::Lazy: Reverse = false; BeginSearch(nullptr); break;
+                case Stage::ReverseLazy: Reverse = true; BeginSearch(nullptr); break;
+                case Stage::AirDetail: SetupAirDetail(); break;
+                case Stage::AirTile: SetupAirTile(); break;
+                case Stage::AirComposite: Reverse = false; BeginSearch(nullptr, true); break;
+                case Stage::DetailRefine: SetupRefineLeg(); break;
+                case Stage::Cruise: StepCruise(); break;
+                case Stage::Done: Done = true; break;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool IsDone() const { return Done; }
+
+    [[nodiscard]] char const* StageName() const
+    {
+        switch (StageNow)
+        {
+            case Stage::Tile: return "tile";
+            case Stage::Lazy: return "lazy";
+            case Stage::ReverseLazy: return "reverse-lazy";
+            case Stage::AirDetail: return "air-detail";
+            case Stage::AirTile: return "air-tile";
+            case Stage::AirComposite: return "air-composite";
+            case Stage::DetailRefine: return "detail-refine";
+            case Stage::Cruise: return "cruise";
+            case Stage::Done: return "done";
+        }
+        return "?";
+    }
+
+    [[nodiscard]] uint32 SearchExpanded() const { return Search ? Search->Expanded() : 0; }
+    [[nodiscard]] uint64 SearchWorkUs() const { return Search ? Search->WorkUs() : 0; }
+    [[nodiscard]] uint64 SearchSetupUs() const { return Search ? Search->SetupUs() : 0; }
+    [[nodiscard]] uint64 SearchNearestUs() const { return Search ? Search->NearestUs() : 0; }
+    [[nodiscard]] uint64 SearchDirectUs() const { return Search ? Search->DirectUs() : 0; }
+    [[nodiscard]] uint64 SearchAStarUs() const { return Search ? Search->AStarUs() : 0; }
+    [[nodiscard]] uint64 SearchFinishUs() const { return Search ? Search->FinishUs() : 0; }
+
+    Map* MapPtr = nullptr;
+    uint32 Phase = 0;
+    Position Start;
+    Position Goal;
+    bool Air = false;
+    bool GoalRestricted = false;
+    uint64 Key = 0;
+    uint32 CreatedMs = 0;
+    bool Done = false;
+    bool Cancelled = false;
+    bool Reverse = false;
+    Movement::PointsArray Path;
+    Nav3DResult Result;
+
+private:
+    enum class Stage
+    {
+        Tile,
+        Lazy,
+        ReverseLazy,
+        AirDetail,
+        AirTile,
+        AirComposite,
+        DetailRefine,
+        Cruise,
+        Done,
+    };
+
+    static bool Inside(Nav3DTile const& tile, Position const& position)
+    {
+        Nav3DTileHeader const& header = tile.Header();
+        return position.GetPositionX() >= header.OriginX &&
+               position.GetPositionX() <= header.OriginX + float(header.SizeX) * header.CellSize &&
+               position.GetPositionY() >= header.OriginY &&
+               position.GetPositionY() <= header.OriginY + float(header.SizeY) * header.CellSize &&
+               position.GetPositionZ() >= header.OriginZ &&
+               position.GetPositionZ() <= header.OriginZ + float(header.SizeZ) * header.CellSize;
+    }
+
+    std::shared_ptr<Nav3DTile> TileAt(uint8 medium) const
+    {
+        constexpr float gridSize = 533.3333f;
+        uint16 const tileX =
+            uint16(std::max<int32>(0, int32(std::floor(32.0f - Start.GetPositionX() / gridSize))));
+        uint16 const tileY =
+            uint16(std::max<int32>(0, int32(std::floor(32.0f - Start.GetPositionY() / gridSize))));
+        return Nav3DManager::Instance().GetTile(MapPtr->GetId(), tileX, tileY, medium);
+    }
+
+    void BeginSearch(std::shared_ptr<Nav3DTile> tile, bool airComposite = false,
+                     float overrideCellSize = 0.0f, Nav3DSearchBounds const* bounds = nullptr)
+    {
+        Position const& from = Reverse ? Goal : Start;
+        Position const& to = Reverse ? Start : Goal;
+        Search = std::make_unique<Nav3DSearch>(MapPtr, Phase, from, to, std::move(tile), airComposite,
+                                               overrideCellSize, bounds, !GoalRestricted);
+        bool const detail = CoarseNeeded || StageNow == Stage::DetailRefine ||
+                            StageNow == Stage::AirDetail;
+        uint32 const cap = detail ? sPlayerbotAIConfig.Nav3DCoopDetailSearchTimeMs
+                                  : sPlayerbotAIConfig.Nav3DCoopSearchTimeMs;
+        Search->SetTimeBudget(std::min<uint32>(sPlayerbotAIConfig.Nav3DMaxSearchTimeMs, cap));
+    }
+
+    void SetupTile()
+    {
+        std::shared_ptr<Nav3DTile> tile = TileAt(Nav3D::MediumWater);
+        if (tile)
+        {
+            Nav3DTileHeader const& header = tile->Header();
+            if ((header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 3 &&
+                Inside(*tile, Start) && Inside(*tile, Goal))
+            {
+                DetailCell = header.CellSize;
+                BeginSearch(tile);
+                return;
+            }
+        }
+        StageNow = Stage::Lazy;
+    }
+
+    void SetupAirDetail()
+    {
+        std::shared_ptr<Nav3DTile> tile = TileAt(Nav3D::MediumAirDetail);
+        if (tile)
+        {
+            Nav3DTileHeader const& header = tile->Header();
+            if ((header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 6 &&
+                Inside(*tile, Start) && Inside(*tile, Goal))
+            {
+                DetailTile = tile;
+                DetailCell = header.CellSize;
+                // A 1-yd detail tile is too large for one A* pass: run the validated 4-yd
+                // coarse search first, then refine each coarse leg at the native size.
+                CoarseNeeded = header.CellSize < 4.0f;
+                BeginSearch(tile, false, CoarseNeeded ? 4.0f : 0.0f);
+                return;
+            }
+        }
+        StageNow = Stage::AirTile;
+    }
+
+    void SetupAirTile()
+    {
+        std::shared_ptr<Nav3DTile> tile = TileAt(Nav3D::MediumAir);
+        if (tile)
+        {
+            Nav3DTileHeader const& header = tile->Header();
+            if ((header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 3 &&
+                Inside(*tile, Start) && Inside(*tile, Goal))
+            {
+                AirTile = tile;
+                BeginSearch(tile);
+                return;
+            }
+        }
+        StageNow = Stage::AirComposite;
+    }
+
+    void SetupRefineLeg()
+    {
+        // Refinement is bounded like the old synchronous pass: if it cannot finish, the
+        // validated coarse route is still a usable answer.
+        if (RefineIndex >= CoarsePath.size() || getMSTime() - RefineStartMs >= kRefineBudgetMs)
+        {
+            FinishWithCoarse();
+            return;
+        }
+
+        constexpr float kRefinePad = 16.0f;
+        G3D::Vector3 const& from = CoarsePath[RefineIndex - 1];
+        G3D::Vector3 const& to = CoarsePath[RefineIndex];
+        RefineBounds.MinX = std::min(from.x, to.x) - kRefinePad;
+        RefineBounds.MaxX = std::max(from.x, to.x) + kRefinePad;
+        RefineBounds.MinY = std::min(from.y, to.y) - kRefinePad;
+        RefineBounds.MaxY = std::max(from.y, to.y) + kRefinePad;
+        RefineBounds.MinZ = std::min(from.z, to.z) - kRefinePad;
+        RefineBounds.MaxZ = std::max(from.z, to.z) + kRefinePad;
+
+        BeginSearch(DetailTile, false, 0.0f, &RefineBounds);
+    }
+
+    static void AppendUnique(Movement::PointsArray& points, G3D::Vector3 const& point)
+    {
+        if (points.empty() || Distance(points.back(), point) > kDuplicateEpsilon)
+            points.push_back(point);
+    }
+
+    void FinishWithCoarse()
+    {
+        Path = CoarsePath;
+        Result = CoarseResult;
+        Result.CellSize = 4.0f;
+        Done = true;
+        StageNow = Stage::Done;
+    }
+
+    void OnSearchDone()
+    {
+        bool const found = Search->Found();
+        Movement::PointsArray searchPath = Search->Path();
+        Nav3DResult const searchResult = Search->Result();
+        Search.reset();
+
+        if (!found)
+        {
+            switch (StageNow)
+            {
+                case Stage::Tile: StageNow = Stage::Lazy; break;
+                case Stage::Lazy: StageNow = Stage::ReverseLazy; break;
+                case Stage::ReverseLazy: StageNow = Stage::Done; break;
+                case Stage::AirDetail: StageNow = Stage::AirTile; break;
+                case Stage::AirTile: StageNow = Stage::AirComposite; break;
+                case Stage::AirComposite: StageNow = Stage::Cruise; break;
+                case Stage::DetailRefine: FinishWithCoarse(); break;
+                case Stage::Cruise:
+                case Stage::Done: Done = true; break;
+            }
+            return;
+        }
+
+        Path = std::move(searchPath);
+        Result = searchResult;
+        if (Reverse)
+        {
+            std::reverse(Path.begin(), Path.end());
+            Result.Reversed = true;
+        }
+
+        if (StageNow == Stage::DetailRefine)
+        {
+            for (G3D::Vector3 const& point : Path)
+                AppendUnique(RefinedPath, point);
+            RefineMs += Result.ElapsedMs;
+            RefineNodes += Result.Nodes;
+            RefineExpanded += Result.Expanded;
+            ++RefineIndex;
+            if (RefineIndex >= CoarsePath.size())
+            {
+                if (RefinedPath.size() < 2)
+                {
+                    FinishWithCoarse();
+                    return;
+                }
+                Path = RefinedPath;
+                Result = {};
+                Result.Found = true;
+                Result.CellSize = DetailCell;
+                Result.ElapsedMs = RefineMs;
+                Result.Nodes = RefineNodes;
+                Result.Expanded = RefineExpanded;
+                Result.Length = 0.0f;
+                for (size_t i = 1; i < Path.size(); ++i)
+                    Result.Length += Distance(Path[i - 1], Path[i]);
+                Done = true;
+                StageNow = Stage::Done;
+            }
+            return;
+        }
+
+        if (StageNow == Stage::Tile)
+            Result.CellSize = DetailCell;
+        else if (StageNow == Stage::AirTile)
+            Result.CellSize = AirTile ? AirTile->Header().CellSize : Result.CellSize;
+        else if (StageNow == Stage::AirDetail && CoarseNeeded)
+        {
+            CoarsePath = Path;
+            CoarseResult = Result;
+            RefinedPath.clear();
+            RefinedPath.push_back(CoarsePath.front());
+            RefineIndex = 1;
+            RefineStartMs = getMSTime();
+            RefineMs = 0;
+            RefineNodes = 0;
+            RefineExpanded = 0;
+            StageNow = Stage::DetailRefine;
+            return;
+        }
+        else if (StageNow == Stage::AirDetail)
+            Result.CellSize = DetailCell;
+
+        Done = true;
+        StageNow = Stage::Done;
+    }
+
+    void StepCruise()
+    {
+        if (CruiseAttempt == 0)
+        {
+            CruiseAltitude = std::max(Start.GetPositionZ(), Goal.GetPositionZ());
+            float const dx = Goal.GetPositionX() - Start.GetPositionX();
+            float const dy = Goal.GetPositionY() - Start.GetPositionY();
+            float const horizontal = std::sqrt(dx * dx + dy * dy);
+            int const samples = std::max(2, int(std::ceil(horizontal / 25.0f)));
+            for (int i = 0; i <= samples; ++i)
+            {
+                float const t = float(i) / float(samples);
+                float const x = Start.GetPositionX() + dx * t;
+                float const y = Start.GetPositionY() + dy * t;
+                float const ground = MapPtr->GetHeight(Phase, x, y, 4000.0f, true, 4000.0f);
+                if (ground > -1000.0f)
+                    CruiseAltitude = std::max(CruiseAltitude, ground + 80.0f);
+            }
+        }
+
+        if (CruiseAttempt >= 4)
+        {
+            Done = true;
+            StageNow = Stage::Done;
+            return;
+        }
+
+        float const cruise = CruiseAltitude + float(CruiseAttempt) * 150.0f;
+        G3D::Vector3 const a{Start.GetPositionX(), Start.GetPositionY(), Start.GetPositionZ()};
+        G3D::Vector3 const b{Start.GetPositionX(), Start.GetPositionY(), cruise};
+        G3D::Vector3 const c{Goal.GetPositionX(), Goal.GetPositionY(), cruise};
+        G3D::Vector3 const d{Goal.GetPositionX(), Goal.GetPositionY(), Goal.GetPositionZ()};
+        ++CruiseAttempt;
+
+        if (!LineClear(MapPtr, Phase, a, b) || !LineClear(MapPtr, Phase, b, c) ||
+            !LineClear(MapPtr, Phase, c, d))
+            return;
+
+        Path = {a, b, c, d};
+        RemoveCollinear(Path);
+        Result = {};
+        Result.Found = true;
+        Result.Direct = true;
+        Result.Length = 0.0f;
+        for (size_t i = 1; i < Path.size(); ++i)
+            Result.Length += Distance(Path[i - 1], Path[i]);
+        Done = true;
+        StageNow = Stage::Done;
+    }
+
+    static constexpr uint32 kRefineBudgetMs = 5000;
+
+    Stage StageNow = Air ? Stage::AirDetail : Stage::Tile;
+    std::unique_ptr<Nav3DSearch> Search;
+
+    std::shared_ptr<Nav3DTile> DetailTile;
+    float DetailCell = 0.0f;
+    bool CoarseNeeded = false;
+    Movement::PointsArray CoarsePath;
+    Movement::PointsArray RefinedPath;
+    Nav3DResult CoarseResult;
+    Nav3DSearchBounds RefineBounds;
+    size_t RefineIndex = 0;
+    uint32 RefineStartMs = 0;
+    uint32 RefineMs = 0;
+    uint32 RefineNodes = 0;
+    uint32 RefineExpanded = 0;
+
+    std::shared_ptr<Nav3DTile> AirTile;
+    float CruiseAltitude = 0.0f;
+    uint32 CruiseAttempt = 0;
+};
 
 Nav3DManager& Nav3DManager::Instance()
 {
@@ -980,32 +2204,78 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
     if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
         return false;
 
+    bool const goalRestricted = IsRestrictedFlightAt(map, phase, goal);
+    bool const penalizeRestricted = !goalRestricted;
+
     constexpr float gridSize = 533.3333f;
     uint16 const tileX =
         uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionX() / gridSize))));
     uint16 const tileY =
         uint16(std::max<int32>(0, int32(std::floor(32.0f - start.GetPositionY() / gridSize))));
-    // Prefer a local 1-yd air-detail tile (WMO/cave corridors) when both endpoints
-    // are inside its box. The 4-yd full tile and composite search remain the fallback.
-    std::shared_ptr<Nav3DTile> detail = GetTile(map->GetId(), tileX, tileY,
-                                                Nav3D::MediumAirDetail);
+
+    auto const insideTile = [](Nav3DTile const& tile, Position const& position)
+    {
+        Nav3DTileHeader const& header = tile.Header();
+        return position.GetPositionX() >= header.OriginX &&
+               position.GetPositionX() <= header.OriginX + float(header.SizeX) * header.CellSize &&
+               position.GetPositionY() >= header.OriginY &&
+               position.GetPositionY() <= header.OriginY + float(header.SizeY) * header.CellSize &&
+               position.GetPositionZ() >= header.OriginZ &&
+               position.GetPositionZ() <= header.OriginZ + float(header.SizeZ) * header.CellSize;
+    };
+
+    auto const tileOf = [gridSize](Position const& position)
+    {
+        int32 const tx = std::clamp(int32(std::floor(32.0f - position.GetPositionX() / gridSize)), 0, 63);
+        int32 const ty = std::clamp(int32(std::floor(32.0f - position.GetPositionY() / gridSize)), 0, 63);
+        return std::make_pair(tx, ty);
+    };
+
+    // A local detail tile may extend across ADT tile boundaries (the Dalaran core does
+    // this for the sewer/Krasus route). Try both endpoint tiles and their neighbours and
+    // prefer the finest cell size that contains both endpoints.
+    std::vector<std::pair<int32, int32>> candidates;
+    auto const addCandidate = [&candidates](int32 tx, int32 ty)
+    {
+        if (tx < 0 || ty < 0 || tx >= 64 || ty >= 64)
+            return;
+        std::pair<int32, int32> const key{tx, ty};
+        if (std::find(candidates.begin(), candidates.end(), key) == candidates.end())
+            candidates.push_back(key);
+    };
+    auto const startTile = tileOf(start);
+    auto const goalTile = tileOf(goal);
+    addCandidate(startTile.first, startTile.second);
+    addCandidate(goalTile.first, goalTile.second);
+    for (int32 dx = -1; dx <= 1; ++dx)
+    {
+        for (int32 dy = -1; dy <= 1; ++dy)
+        {
+            addCandidate(startTile.first + dx, startTile.second + dy);
+            addCandidate(goalTile.first + dx, goalTile.second + dy);
+        }
+    }
+
+    std::shared_ptr<Nav3DTile> detail;
+    for (auto const& [tx, ty] : candidates)
+    {
+        std::shared_ptr<Nav3DTile> tile = GetTile(map->GetId(), uint16(tx), uint16(ty),
+                                                 Nav3D::MediumAirDetail);
+        if (!tile)
+            continue;
+        Nav3DTileHeader const& header = tile->Header();
+        if (!(header.Flags & Nav3D::FlagHasSolid) || header.GeneratorVersion < 6)
+            continue;
+        if (!insideTile(*tile, start) || !insideTile(*tile, goal))
+            continue;
+        if (!detail || header.CellSize < detail->Header().CellSize)
+            detail = tile;
+    }
+
     if (detail)
     {
         Nav3DTileHeader const& header = detail->Header();
-        if ((header.Flags & Nav3D::FlagHasSolid) && header.GeneratorVersion >= 6)
         {
-            float const maxX = header.OriginX + float(header.SizeX) * header.CellSize;
-            float const maxY = header.OriginY + float(header.SizeY) * header.CellSize;
-            float const maxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
-            auto const inside = [&header, maxX, maxY, maxZ](Position const& position)
-            {
-                return position.GetPositionX() >= header.OriginX &&
-                       position.GetPositionX() <= maxX && position.GetPositionY() >= header.OriginY &&
-                       position.GetPositionY() <= maxY && position.GetPositionZ() >= header.OriginZ &&
-                       position.GetPositionZ() <= maxZ;
-            };
-            if (inside(start) && inside(goal))
-            {
                 // Fine detail tiles (1-yd, 2-yd) are too large for a full cell A* within the
                 // runtime budget. Run a 4-yd pass over the same fine tile first (the validated
                 // Uldis route), then refine each coarse leg at the native cell size in a local
@@ -1018,7 +2288,8 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
                 if (needsCoarse)
                 {
                     detailFound = FindPathDirected(map, phase, start, goal, detailPath, detailResult,
-                                                   detail.get(), false, coarseCell);
+                                                   detail.get(), false, coarseCell, nullptr,
+                                                   penalizeRestricted);
                     LOG_DEBUG("playerbots",
                               "nav3d detail coarse map {} found={} points={} ms={} nodes={} expanded={} best={:.1f}",
                               map->GetId(), detailFound ? 1 : 0, detailPath.size(),
@@ -1050,7 +2321,8 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
                 else
                 {
                     detailFound = FindPathDirected(map, phase, start, goal, detailPath, detailResult,
-                                                   detail.get());
+                                                   detail.get(), false, 0.0f, nullptr,
+                                                   penalizeRestricted);
                 }
                 LOG_DEBUG("playerbots",
                           "nav3d detail map {} start=({:.1f},{:.1f},{:.1f}) goal=({:.1f},{:.1f},{:.1f}) "
@@ -1072,7 +2344,6 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
                 }
             }
         }
-    }
 
     std::shared_ptr<Nav3DTile> tile = GetTile(map->GetId(), tileX, tileY, Nav3D::MediumAir);
 
@@ -1093,7 +2364,8 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
             if (inside(start) && inside(goal))
             {
                 Nav3DResult tileResult;
-                if (FindPathDirected(map, phase, start, goal, path, tileResult, tile.get()))
+                if (FindPathDirected(map, phase, start, goal, path, tileResult, tile.get(), false,
+                                     0.0f, nullptr, penalizeRestricted))
                 {
                     result = tileResult;
                     result.CellSize = header.CellSize;
@@ -1107,7 +2379,8 @@ bool Nav3DManager::FindPathAir(Map* map, uint32 phase, Position const& start, Po
     // Each node samples the aligned air tile at its world position, so WMO floors/ceilings and
     // terrain stay in the search across tile boundaries.
     Nav3DResult airResult;
-    if (FindPathDirected(map, phase, start, goal, path, airResult, nullptr, true))
+    if (FindPathDirected(map, phase, start, goal, path, airResult, nullptr, true, 0.0f, nullptr,
+                         penalizeRestricted))
     {
         result = airResult;
         result.CellSize = kAirCompositeCell;
@@ -1202,393 +2475,311 @@ bool Nav3DManager::FindPath(Map* map, uint32 phase, Position const& start, Posit
     return true;
 }
 
+
+namespace
+{
+    uint64 PathKey(Map* map, Position const& position, bool air)
+    {
+        constexpr float gridSize = 533.3333f;
+        int32 const tileX = std::clamp(
+            int32(std::floor(32.0f - position.GetPositionX() / gridSize)), 0, 63);
+        int32 const tileY = std::clamp(
+            int32(std::floor(32.0f - position.GetPositionY() / gridSize)), 0, 63);
+        return (uint64(map->GetId()) << 32) | (uint64(uint32(tileX)) << 8) |
+               (uint64(uint32(tileY)) << 1) | (air ? 1u : 0u);
+    }
+}
+
+void Nav3DManager::RecordNegativeLocked(uint64 key, uint32 now)
+{
+    if (_coopNegative.size() > 4096)
+    {
+        for (auto it = _coopNegative.begin(); it != _coopNegative.end();)
+        {
+            if (it->second <= now)
+                it = _coopNegative.erase(it);
+            else
+                ++it;
+        }
+    }
+    _coopNegative[key] = now + sPlayerbotAIConfig.Nav3DNegativeTtlMs;
+}
+
+Nav3DPathHandle Nav3DManager::RequestPath(Map* map, uint32 phase, Position const& start,
+                                          Position const& goal, bool air, uint8 priority)
+{
+    if (!map || !sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DCooperative)
+        return 0;
+
+    uint64 const key = PathKey(map, start, air);
+    QueuePrefetch(map, start, goal, air);
+    std::scoped_lock lock(_pathJobsMutex);
+    if (_pathJobs.size() >= sPlayerbotAIConfig.Nav3DPathMaxPending)
+        return 0;
+
+    uint32 const now = getMSTime();
+    auto const negative = _coopNegative.find(key);
+    if (negative != _coopNegative.end())
+    {
+        if (negative->second > now)
+            return 0;
+        _coopNegative.erase(negative);
+    }
+
+    PathScheduler& scheduler = _pathSchedulers[map];
+    if (scheduler.Queue.size() >= uint32(sPlayerbotAIConfig.Nav3DPathMaxPerMap))
+        return 0;
+
+    auto job = std::make_shared<Nav3DPathJob>(map, phase, start, goal, air, key);
+    uint64 const handle = _nextPathHandle++;
+    _pathJobs.emplace(handle, std::move(job));
+
+    PathQueueEntry entry{handle, priority, now};
+    if (priority >= 3)
+    {
+        // Combat/forced paths go before travel/loot, but keep FIFO within the high tier.
+        auto const it = std::find_if(scheduler.Queue.begin(), scheduler.Queue.end(),
+                                     [](PathQueueEntry const& queued) { return queued.Priority < 3; });
+        scheduler.Queue.insert(it, entry);
+    }
+    else
+        scheduler.Queue.push_back(entry);
+
+    ++_coopRequested;
+    return handle;
+}
+
+uint64 Nav3DManager::ClaimGlobalPathBudget(uint32 now)
+{
+    std::scoped_lock lock(_globalPathMutex);
+    if (!_globalPathLastMs)
+        _globalPathLastMs = now;
+    if (now > _globalPathLastMs)
+    {
+        uint64 const cap = uint64(sPlayerbotAIConfig.Nav3DPathGlobalBudgetMs) * 1000;
+        uint64 const refill = uint64(now - _globalPathLastMs) * cap / 1000;
+        _globalPathBudgetUs = std::min<uint64>(cap, _globalPathBudgetUs + refill);
+        _globalPathLastMs = now;
+    }
+    return _globalPathBudgetUs;
+}
+
+void Nav3DManager::ConsumeGlobalPathBudget(uint64 usedUs)
+{
+    std::scoped_lock lock(_globalPathMutex);
+    _globalPathBudgetUs -= std::min(_globalPathBudgetUs, usedUs);
+}
+
+void Nav3DManager::PumpPaths(Map* map, PathScheduler& scheduler, uint32 now)
+{
+    // Only the map thread that owns this scheduler touches its queue and budget, so the
+    // per-map state needs no lock. The global token bucket is shared, but is held only for
+    // the accounting calls, never while a search step runs.
+    if (!scheduler.LastMs)
+        scheduler.LastMs = now;
+    if (now > scheduler.LastMs)
+    {
+        uint64 const cap = uint64(sPlayerbotAIConfig.Nav3DPathBudgetMs) * 1000;
+        uint64 const refill = uint64(now - scheduler.LastMs) * cap / 50;
+        scheduler.BudgetUs = std::min<uint64>(cap, scheduler.BudgetUs + refill);
+        scheduler.LastMs = now;
+    }
+
+    // Anti-starvation: promote one low-priority entry that has waited too long.
+    if (scheduler.Queue.size() > 1)
+    {
+        auto const boost = std::find_if(
+            scheduler.Queue.begin(), scheduler.Queue.end(),
+            [now](PathQueueEntry const& entry)
+            {
+                return entry.Priority < 3 &&
+                       now - entry.CreatedMs >= uint32(sPlayerbotAIConfig.Nav3DPathAgeBoostMs);
+            });
+        if (boost != scheduler.Queue.end() && boost != scheduler.Queue.begin())
+        {
+            PathQueueEntry const promoted = *boost;
+            scheduler.Queue.erase(boost);
+            scheduler.Queue.push_front(promoted);
+        }
+    }
+
+    uint64 const slice = std::max<uint64>(50, sPlayerbotAIConfig.Nav3DPathSliceUs);
+    uint32 iterations = 0;
+    while (!scheduler.Queue.empty() && iterations++ < 16)
+    {
+        uint64 const handle = scheduler.Queue.front().Handle;
+        std::shared_ptr<Nav3DPathJob> job;
+        {
+            std::scoped_lock lock(_pathJobsMutex);
+            auto const it = _pathJobs.find(handle);
+            if (it == _pathJobs.end())
+            {
+                scheduler.Queue.pop_front();
+                continue;
+            }
+            job = it->second;
+        }
+
+        if (now - job->CreatedMs > sPlayerbotAIConfig.Nav3DPathMaxAgeMs)
+        {
+            std::scoped_lock lock(_pathJobsMutex);
+            _pathJobs.erase(handle);
+            ++_coopExpired;
+            scheduler.Queue.pop_front();
+            continue;
+        }
+        if (job->IsDone())
+        {
+            // The owner has not collected the result yet; leave it in the job map.
+            scheduler.Queue.pop_front();
+            continue;
+        }
+
+        uint64 const budget = std::min(scheduler.BudgetUs, ClaimGlobalPathBudget(now));
+        if (budget < 50)
+            break;
+
+        uint32 const stepUs = uint32(std::min<uint64>(budget, slice));
+        char const* const stage = job->StageName();
+        uint32 const expanded = job->SearchExpanded();
+        auto const started = std::chrono::steady_clock::now();
+        bool const finished = job->Step(stepUs);
+        uint64 const used = uint64(std::max<int64>(0, std::chrono::duration_cast<std::chrono::microseconds>(
+                                                          std::chrono::steady_clock::now() - started)
+                                                          .count()));
+        if (used > 10000)
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d slow-step map={} stage={} expanded={} step_us={} used_us={} finished={} "
+                      "queue={} work_us={} setup_us={} nearest_us={} direct_us={} astar_us={} finish_us={}",
+                      map->GetId(), stage, expanded, stepUs, used, finished ? 1 : 0,
+                      scheduler.Queue.size(), job->SearchWorkUs(), job->SearchSetupUs(),
+                      job->SearchNearestUs(), job->SearchDirectUs(), job->SearchAStarUs(),
+                      job->SearchFinishUs());
+        }
+        scheduler.BudgetUs -= std::min(scheduler.BudgetUs, used);
+        ConsumeGlobalPathBudget(used);
+        _coopStepUs.fetch_add(used, std::memory_order_relaxed);
+        uint64 previous = _coopStepMaxUs.load(std::memory_order_relaxed);
+        while (used > previous &&
+               !_coopStepMaxUs.compare_exchange_weak(previous, used, std::memory_order_relaxed))
+        {
+        }
+
+        if (finished)
+        {
+            if (!job->Result.Found)
+            {
+                std::scoped_lock lock(_pathJobsMutex);
+                RecordNegativeLocked(job->Key, now);
+            }
+            if (job->Cancelled)
+            {
+                std::scoped_lock lock(_pathJobsMutex);
+                _pathJobs.erase(handle);
+            }
+            scheduler.Queue.pop_front();
+        }
+        else if (used >= budget || used < 20)
+            break;
+    }
+}
+
+Nav3DPathPoll Nav3DManager::PollPath(Nav3DPathHandle handle, Map* map, Movement::PointsArray& path,
+                                     Nav3DResult& result)
+{
+    if (!handle || !map)
+        return Nav3DPathPoll::Failed;
+
+    PathScheduler* scheduler = nullptr;
+    {
+        std::scoped_lock lock(_pathJobsMutex);
+        auto const it = _pathJobs.find(handle);
+        if (it == _pathJobs.end())
+            return Nav3DPathPoll::Failed;
+
+        std::shared_ptr<Nav3DPathJob> const& job = it->second;
+        uint32 const now = getMSTime();
+        if (job->Cancelled)
+        {
+            _pathJobs.erase(it);
+            return Nav3DPathPoll::Failed;
+        }
+        if (job->MapPtr != map || now - job->CreatedMs > sPlayerbotAIConfig.Nav3DPathMaxAgeMs)
+        {
+            _pathJobs.erase(it);
+            ++_coopExpired;
+            return Nav3DPathPoll::Failed;
+        }
+        scheduler = &_pathSchedulers[map];
+    }
+
+    PumpPaths(map, *scheduler, getMSTime());
+
+    std::scoped_lock lock(_pathJobsMutex);
+    auto const it = _pathJobs.find(handle);
+    if (it == _pathJobs.end())
+        return Nav3DPathPoll::Failed;
+    if (!it->second->IsDone())
+        return Nav3DPathPoll::Pending;
+
+    std::shared_ptr<Nav3DPathJob> const done = it->second;
+    path = done->Path;
+    result = done->Result;
+    _pathJobs.erase(it);
+    if (done->Result.Found)
+        ++_coopFound;
+    else
+    {
+        ++_coopFailed;
+        RecordNegativeLocked(done->Key, getMSTime());
+    }
+
+    uint32 const now = getMSTime();
+    if (!_coopLastLogMs)
+        _coopLastLogMs = now;
+    if (now - _coopLastLogMs >= 10000)
+    {
+        LOG_DEBUG("playerbots",
+                 "nav3d coop: req={} pending={} found={} failed={} expired={} step_ms={} max_step_ms={}",
+                 _coopRequested, _pathJobs.size(), _coopFound, _coopFailed, _coopExpired,
+                 _coopStepUs.exchange(0, std::memory_order_relaxed) / 1000,
+                 _coopStepMaxUs.exchange(0, std::memory_order_relaxed) / 1000);
+        if (auto const mapIt = _pathSchedulers.find(map); mapIt != _pathSchedulers.end())
+            LOG_DEBUG("playerbots", "nav3d sched map={} queue={} budget_us={}",
+                      map->GetId(), mapIt->second.Queue.size(), mapIt->second.BudgetUs);
+        _coopLastLogMs = now;
+    }
+    return done->Result.Found ? Nav3DPathPoll::Found : Nav3DPathPoll::Failed;
+}
+
+void Nav3DManager::CancelPath(Nav3DPathHandle handle)
+{
+    if (!handle)
+        return;
+    std::scoped_lock lock(_pathJobsMutex);
+    auto const it = _pathJobs.find(handle);
+    if (it != _pathJobs.end())
+        it->second->Cancelled = true;
+}
+
 bool Nav3DManager::FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                                     Movement::PointsArray& path, Nav3DResult& result,
                                     Nav3DTile const* tile, bool airComposite,
-                                    float overrideCellSize, Nav3DSearchBounds const* bounds)
+                                    float overrideCellSize, Nav3DSearchBounds const* bounds,
+                                    bool penalizeRestricted)
 {
-    result = {};
-    path.clear();
-
-    if (!map || !sPlayerbotAIConfig.Nav3DEnabled)
-        return false;
-
-    bool const openWater =
-        !tile && !airComposite && IsOpenWaterArea(map, phase, start) && IsOpenWaterArea(map, phase, goal);
-
-    Grid grid;
-    grid.MapPtr = map;
-    grid.Phase = phase;
-
+    std::shared_ptr<Nav3DTile> tileRef;
     if (tile)
+        tileRef = std::shared_ptr<Nav3DTile>(const_cast<Nav3DTile*>(tile), [](Nav3DTile*) {});
+    Nav3DSearch search(map, phase, start, goal, tileRef, airComposite, overrideCellSize, bounds,
+                       penalizeRestricted);
+    while (!search.Step(std::numeric_limits<uint64>::max()))
     {
-        Nav3DTileHeader const& header = tile->Header();
-        float const tileMaxX = header.OriginX + float(header.SizeX) * header.CellSize;
-        float const tileMaxY = header.OriginY + float(header.SizeY) * header.CellSize;
-        float const tileMaxZ = header.OriginZ + float(header.SizeZ) * header.CellSize;
-
-        grid.Tile = tile;
-        float const searchCell = overrideCellSize > 0.0f ? overrideCellSize : header.CellSize;
-        grid.Cell = searchCell;
-        grid.PreferUp = header.Medium == Nav3D::MediumAir || header.Medium == Nav3D::MediumAirDetail;
-
-        auto const alignDown = [searchCell](float value, float origin)
-        {
-            return origin + std::floor((value - origin) / searchCell) * searchCell;
-        };
-
-        if (header.Medium == Nav3D::MediumAirDetail)
-        {
-            // A detail tile is a local cave/tunnel box, and the real route may detour far
-            // outside the straight start-goal band (Uldis: ~155 yd north to the tunnel
-            // mouth). Search the whole baked box (or the caller's local refinement box)
-            // instead of a narrow pad around the line.
-            float const minX = bounds ? std::max(header.OriginX, bounds->MinX) : header.OriginX;
-            float const minY = bounds ? std::max(header.OriginY, bounds->MinY) : header.OriginY;
-            float const minZ = bounds ? std::max(header.OriginZ, bounds->MinZ) : header.OriginZ;
-            float const maxX = bounds ? std::min(tileMaxX, bounds->MaxX) : tileMaxX;
-            float const maxY = bounds ? std::min(tileMaxY, bounds->MaxY) : tileMaxY;
-            float const maxZ = bounds ? std::min(tileMaxZ, bounds->MaxZ) : tileMaxZ;
-            grid.MinX = alignDown(minX, header.OriginX);
-            grid.MinY = alignDown(minY, header.OriginY);
-            grid.MinZ = alignDown(minZ, header.OriginZ);
-            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / searchCell)));
-            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / searchCell)));
-            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / searchCell)));
-        }
-        else
-        {
-            // Align the search grid to the tile cell centres. Otherwise a node centre is offset
-            // from the baked cell it samples, and a one-cell-wide hull window can fall between
-            // the goal node and the tile, making a navigable window look unreachable.
-            grid.MinX = alignDown(std::max(header.OriginX,
-                                           std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad),
-                                  header.OriginX);
-            grid.MinY = alignDown(std::max(header.OriginY,
-                                           std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad),
-                                  header.OriginY);
-            grid.MinZ = alignDown(std::max(header.OriginZ,
-                                           std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad),
-                                  header.OriginZ);
-            float const maxX = std::min(tileMaxX,
-                                        std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad);
-            float const maxY = std::min(tileMaxY,
-                                        std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad);
-            float const maxZ = std::min(tileMaxZ,
-                                        std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad);
-            grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / searchCell)));
-            grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / searchCell)));
-            grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / searchCell)));
-        }
-        result.CellSize = searchCell;
     }
-    else if (airComposite)
-    {
-        grid.Air = true;
-        grid.PreferUp = true;
-        grid.Cell = kAirCompositeCell;
-        result.CellSize = kAirCompositeCell;
-
-        float const dx = goal.GetPositionX() - start.GetPositionX();
-        float const dy = goal.GetPositionY() - start.GetPositionY();
-        float const horizontal = std::sqrt(dx * dx + dy * dy);
-        float const margin = std::clamp(horizontal * 0.05f, 40.0f, 250.0f);
-        float const minX = std::min(start.GetPositionX(), goal.GetPositionX()) - margin;
-        float const minY = std::min(start.GetPositionY(), goal.GetPositionY()) - margin;
-        float const maxX = std::max(start.GetPositionX(), goal.GetPositionX()) + margin;
-        float const maxY = std::max(start.GetPositionY(), goal.GetPositionY()) + margin;
-
-        // Allow the route to climb over the highest terrain/WMO between the endpoints. A
-        // fixed ceiling is either needlessly high or too low; sample the ground at 50 yd.
-        float minZ = std::min(start.GetPositionZ(), goal.GetPositionZ()) - 150.0f;
-        float maxZ = std::max(start.GetPositionZ(), goal.GetPositionZ()) + 150.0f;
-        int const samples = std::max(2, int(std::ceil(horizontal / 50.0f)));
-        for (int i = 0; i <= samples; ++i)
-        {
-            float const t = float(i) / float(samples);
-            float const x = start.GetPositionX() + dx * t;
-            float const y = start.GetPositionY() + dy * t;
-            float const ground = map->GetHeight(phase, x, y, 4000.0f, true, 4000.0f);
-            if (ground > -1000.0f)
-                maxZ = std::max(maxZ, ground + 150.0f);
-        }
-        minZ = std::max(-1000.0f, minZ);
-        maxZ = std::min(4000.0f, maxZ);
-
-        auto const alignDown = [](float value)
-        { return std::floor(value / kAirCompositeCell) * kAirCompositeCell; };
-        grid.MinX = alignDown(minX);
-        grid.MinY = alignDown(minY);
-        grid.MinZ = alignDown(minZ);
-        grid.SizeX = std::max(1, int32(std::ceil((maxX - grid.MinX) / kAirCompositeCell)));
-        grid.SizeY = std::max(1, int32(std::ceil((maxY - grid.MinY) / kAirCompositeCell)));
-        grid.SizeZ = std::max(1, int32(std::ceil((maxZ - grid.MinZ) / kAirCompositeCell)));
-        if (grid.SizeX > kMaxAirCellsPerAxis || grid.SizeY > kMaxAirCellsPerAxis ||
-            grid.SizeZ > kMaxAirCellsPerAxis)
-            return false;
-    }
-    else
-    {
-        bool const detailGrid =
-            !openWater && (NeedsDetailGrid(map, phase, start) || NeedsDetailGrid(map, phase, goal));
-        float const detailCellSize = std::clamp(sPlayerbotAIConfig.Nav3DCellSize, kMinCellSize, kMaxCellSize);
-        float const cellSize = detailGrid ? detailCellSize : std::min(kMaxCellSize, detailCellSize * 2.0f);
-        result.CellSize = cellSize;
-
-        grid.Cell = cellSize;
-        float const minX = std::min(start.GetPositionX(), goal.GetPositionX()) - kXYPad;
-        float const minY = std::min(start.GetPositionY(), goal.GetPositionY()) - kXYPad;
-        float const minZ = std::min(start.GetPositionZ(), goal.GetPositionZ()) - kZPad;
-        float const maxX = std::max(start.GetPositionX(), goal.GetPositionX()) + kXYPad;
-        float const maxY = std::max(start.GetPositionY(), goal.GetPositionY()) + kXYPad;
-        float const maxZ = std::max(start.GetPositionZ(), goal.GetPositionZ()) + kZPad;
-
-        grid.MinX = minX;
-        grid.MinY = minY;
-        grid.MinZ = minZ;
-        grid.SizeX = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxX - minX) / cellSize))));
-        grid.SizeY = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxY - minY) / cellSize))));
-        grid.SizeZ = std::max(1, std::min(kMaxCellsPerAxis, int32(std::ceil((maxZ - minZ) / cellSize))));
-
-        float const startLevel = map->GetWaterLevel(start.GetPositionX(), start.GetPositionY());
-        bool const startInWater =
-            map->IsUnderWater(phase, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), 1.0f) ||
-            map->IsInWater(phase, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(), 1.0f) ||
-            (startLevel > INVALID_HEIGHT && start.GetPositionZ() <= startLevel + kSurfaceMargin);
-        grid.RestrictSky = startInWater;
-    }
-
-    if (!tile && !airComposite)
-    {
-        grid.SolidTile = ResolveSolidTile(map, start);
-        if (!grid.SolidTile)
-            grid.SolidTile = ResolveSolidTile(map, goal);
-    }
-
-    auto const inside = [&grid](Position const& position)
-    {
-        return position.GetPositionX() >= grid.MinX &&
-               position.GetPositionX() <= grid.MinX + grid.SizeX * grid.Cell &&
-               position.GetPositionY() >= grid.MinY &&
-               position.GetPositionY() <= grid.MinY + grid.SizeY * grid.Cell &&
-               position.GetPositionZ() >= grid.MinZ &&
-               position.GetPositionZ() <= grid.MinZ + grid.SizeZ * grid.Cell;
-    };
-    if (!inside(start) || !inside(goal))
-        return false;
-
-    uint32 maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
-    uint32 maxTimeMs =
-        std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
-    if (airComposite)
-    {
-        // This search runs on the map thread. A long route must never freeze every bot while
-        // A* explores; bound it hard and let the caller fall back to the cruise corridor.
-        maxTimeMs = std::min<uint32>(maxTimeMs, 300);
-        maxNodes = std::min<uint32>(maxNodes, 300000);
-    }
-
-    std::unordered_map<GridNode, NodeState, GridNodeHash> states;
-    states.reserve(4096);
-
-    GridNode startNode;
-    GridNode goalNode;
-    if (!FindNearestNavigable(grid, start, startNode, states) ||
-        !FindNearestNavigable(grid, goal, goalNode, states))
-    {
-        LOG_DEBUG("playerbots", "nav3d nearest navigable failed map {} tile={} start=({:.1f},{:.1f},{:.1f}) goal=({:.1f},{:.1f},{:.1f})",
-                  map->GetId(), tile ? 1 : 0, start.GetPositionX(), start.GetPositionY(), start.GetPositionZ(),
-                  goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ());
-        return false;
-    }
-
-    G3D::Vector3 const startPoint{start.GetPositionX(), start.GetPositionY(), start.GetPositionZ()};
-    G3D::Vector3 const goalPoint{goal.GetPositionX(), goal.GetPositionY(), goal.GetPositionZ()};
-    bool const directClear = tile ? TileLineClearLive(tile, map, phase, startPoint, goalPoint)
-                                  : airComposite
-                                        ? AirLineClearLive(grid, startPoint, goalPoint)
-                                        : SegmentClear(map, phase, startPoint, goalPoint, 0.5f);
-    if (directClear)
-    {
-        path.push_back(startPoint);
-        path.push_back(goalPoint);
-        result.Found = true;
-        result.Direct = true;
-        result.Nodes = uint32(states.size());
-        result.ElapsedMs = 0;
-        result.Length = Distance(start, goal);
-        return true;
-    }
-
-    // The tile volume already contains WMO floors/ceilings and terrain. Skip the expensive
-    // VMAP line check on every A* edge; BuildPath re-validates the final path with full LOS.
-    if (airComposite)
-        grid.AirLos = false;
-
-    auto const heuristic = [&grid, &goal](GridNode const& node)
-    {
-        G3D::Vector3 const center{grid.Center(node).GetPositionX(), grid.Center(node).GetPositionY(),
-                                  grid.Center(node).GetPositionZ()};
-        return Octile3D(center, goal);
-    };
-    // The tile has narrow one-cell hull windows. A pure Dijkstra-like heuristic expands most
-    // of the open-water volume before it finds the window; a greedy tile search is still safe
-    // because every visited cell has been clearance-checked, and it is much cheaper.
-    // A greedy 2x heuristic is fine for open water, but a cave route often goes away
-    // from the goal before it can descend. Keep detail-air searches admissible so A*
-    // backtracks out of dead-end pockets instead of burning the node budget there.
-    float const heuristicWeight =
-        (grid.Tile && grid.Tile->Header().Medium == Nav3D::MediumAirDetail) ? 1.0f
-        : (grid.Tile || grid.Air)                                             ? 2.0f
-                                                                              : 1.0f;
-
-    NodeState& startState = states[startNode];
-    startState.G = 0.0f;
-    startState.F = heuristic(startNode) * heuristicWeight;
-    startState.HasParent = false;
-
-    std::priority_queue<QueueNode, std::vector<QueueNode>, std::greater<QueueNode>> open;
-    open.push({startState.F, 0.0f, startNode});
-
-    uint32 const startedMs = getMSTime();
-    uint32 expanded = 0;
-    bool found = false;
-    GridNode bestNode{};
-    bool hasBest = false;
-    result.BestDistance = std::numeric_limits<float>::max();
-    std::vector<NeighborOffset> const neighborOffsets = BuildNeighborOffsets(Nav3DNeighborCount());
-
-    while (!open.empty())
-    {
-        if ((expanded & kTimeCheckMask) == 0 && getMSTime() - startedMs >= maxTimeMs)
-            break;
-
-        QueueNode const current = open.top();
-        open.pop();
-
-        NodeState& currentState = states[current.Node];
-        if (currentState.Closed)
-            continue;
-
-        currentState.Closed = true;
-        ++expanded;
-
-        float const currentDistance = heuristic(current.Node);
-        if (currentDistance < result.BestDistance)
-        {
-            result.BestDistance = currentDistance;
-            Position const best = grid.Center(current.Node);
-            result.BestX = best.GetPositionX();
-            result.BestY = best.GetPositionY();
-            result.BestZ = best.GetPositionZ();
-            bestNode = current.Node;
-            hasBest = true;
-        }
-
-        if (current.Node == goalNode)
-        {
-            found = true;
-            break;
-        }
-
-        // A chest can sit just under the navmesh surface. Exhausting the whole component to
-        // prove the exact cell is unreachable is wasteful; if a reachable node is already
-        // within interaction range, stop and let the caller interact from there.
-        if (currentDistance <= kEarlyPartialDistance)
-        {
-            found = true;
-            result.Partial = true;
-            result.Direct = false;
-            result.BestDistance = currentDistance;
-            Position const best = grid.Center(current.Node);
-            result.BestX = best.GetPositionX();
-            result.BestY = best.GetPositionY();
-            result.BestZ = best.GetPositionZ();
-            goalNode = current.Node;
-            break;
-        }
-
-        if (expanded >= maxNodes)
-            break;
-
-        Position const currentCenter = grid.Center(current.Node);
-        for (NeighborOffset const& offset : neighborOffsets)
-        {
-            GridNode const neighbor{current.Node.X + offset.X, current.Node.Y + offset.Y,
-                                    current.Node.Z + offset.Z};
-            if (!grid.Contains(neighbor))
-                continue;
-
-            auto const known = states.find(neighbor);
-            if (known != states.end() && known->second.Closed)
-                continue;
-
-            Position const neighborCenter = grid.Center(neighbor);
-            float const tentative = currentState.G + Distance(currentCenter, neighborCenter);
-            if (known != states.end() && tentative >= known->second.G)
-                continue;
-
-            // Do not insert a hash entry for a solid neighbor just to remember it. The
-            // old states[neighbor] touched all 26 neighbours on every expansion, which
-            // bloated the map and rehashed it millions of times per query.
-            NodeState probe;
-            if (known != states.end())
-                probe = known->second;
-            if (!IsNavigable(grid, neighbor, probe))
-            {
-                if (known != states.end())
-                    known->second.Nav = -1;
-                continue;
-            }
-
-            if (!GridLineClear(grid, map, phase, currentCenter, neighborCenter))
-                continue;
-
-            NodeState& neighborState = (known != states.end()) ? known->second : states[neighbor];
-            neighborState.G = tentative;
-            neighborState.Parent = current.Node;
-            neighborState.HasParent = true;
-            neighborState.Nav = 1;
-            neighborState.F = tentative + heuristic(neighbor) * heuristicWeight;
-            open.push({neighborState.F, tentative, neighbor});
-        }
-    }
-
-    result.Nodes = uint32(states.size());
-    result.Expanded = expanded;
-    result.ElapsedMs = getMSTime() - startedMs;
-    if (result.BestDistance == std::numeric_limits<float>::max())
-        result.BestDistance = 0.0f;
-
-    // Accept a path that ends within interaction range of an unreachable exact cell (a chest
-    // embedded in the hull/floor). The bot can interact from the best reachable node.
-    if (!found && hasBest && result.BestDistance <= kPartialAcceptDistance)
-    {
-        found = true;
-        result.Partial = true;
-        result.Direct = false;
-        goalNode = bestNode;
-    }
-
-    if (!found)
-    {
-        LOG_DEBUG("playerbots", "nav3d search failed map {} tile={} air={} expanded={} best={:.1f}",
-                  map->GetId(), tile ? 1 : 0, airComposite ? 1 : 0, expanded, result.BestDistance);
-        return false;
-    }
-
-    if (airComposite)
-        grid.AirLos = true;
-
-    if (!BuildPath(grid, states, startNode, goalNode, start, goal, result.Partial, path, result))
-    {
-        LOG_DEBUG("playerbots", "nav3d buildpath failed map {} tile={} air={} points={}",
-                  map->GetId(), tile ? 1 : 0, airComposite ? 1 : 0, path.size());
-        return false;
-    }
-
-    result.Found = true;
-    return true;
+    path = search.Path();
+    result = search.Result();
+    return search.Found();
 }
 
 bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& start,
@@ -1630,8 +2821,10 @@ bool Nav3DManager::FindPathToSurface(Map* map, uint32 phase, Position const& sta
     grid.RestrictSky = startInWater;
 
     uint32 const maxNodes = std::max<uint32>(1, std::min<uint32>(kHardMaxNodes, sPlayerbotAIConfig.Nav3DMaxNodes));
-    uint32 const maxTimeMs =
-        std::max<uint32>(1, std::min<uint32>(kHardMaxTimeMs, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
+    // Emergency ascent: this path is issued synchronously from the dive action, so keep the
+    // one-shot budget short. The bot re-samples the surface column on the next attempt.
+    uint32 const maxTimeMs = std::max<uint32>(
+        25, std::min<uint32>(250, sPlayerbotAIConfig.Nav3DMaxSearchTimeMs));
 
     std::unordered_map<GridNode, NodeState, GridNodeHash> states;
     states.reserve(4096);
@@ -1747,16 +2940,114 @@ bool Nav3DManager::IsPathClear(Map* map, uint32 phase, Movement::PointsArray con
     return true;
 }
 
+Nav3DManager::~Nav3DManager()
+{
+    {
+        std::scoped_lock lock(_prefetchMutex);
+        _prefetchStop = true;
+    }
+    _prefetchCv.notify_all();
+    if (_prefetchThread.joinable())
+        _prefetchThread.join();
+}
+
+void Nav3DManager::QueuePrefetch(Map* map, Position const& start, Position const& goal, bool air)
+{
+    if (!map)
+        return;
+
+    constexpr float gridSize = 533.3333f;
+    auto const tileOf = [](Position const& position)
+    {
+        int32 const tx = std::clamp(int32(std::floor(32.0f - position.GetPositionX() / gridSize)), 0, 63);
+        int32 const ty = std::clamp(int32(std::floor(32.0f - position.GetPositionY() / gridSize)), 0, 63);
+        return std::make_pair(tx, ty);
+    };
+
+    std::vector<PrefetchRequest> requests;
+    auto const add = [&](Position const& position, uint8 medium)
+    {
+        auto const [tx, ty] = tileOf(position);
+        for (int32 dx = -1; dx <= 1; ++dx)
+        {
+            for (int32 dy = -1; dy <= 1; ++dy)
+            {
+                int32 const x = tx + dx;
+                int32 const y = ty + dy;
+                if (x < 0 || y < 0 || x >= 64 || y >= 64)
+                    continue;
+                requests.push_back({map->GetId(), uint16(x), uint16(y), medium});
+            }
+        }
+    };
+
+    if (air)
+    {
+        add(start, Nav3D::MediumAir);
+        add(goal, Nav3D::MediumAir);
+        add(start, Nav3D::MediumAirDetail);
+        add(goal, Nav3D::MediumAirDetail);
+    }
+    else
+    {
+        add(start, Nav3D::MediumWater);
+        add(goal, Nav3D::MediumWater);
+    }
+
+    std::scoped_lock lock(_prefetchMutex);
+    if (!_prefetchStarted)
+    {
+        _prefetchStarted = true;
+        _prefetchThread = std::thread([this]() { PrefetchLoop(); });
+    }
+
+    for (PrefetchRequest const& request : requests)
+    {
+        uint64 const key = (uint64(request.MapId) << 32) | (uint64(request.TileX) << 16) |
+                           (uint64(request.TileY) << 8) | request.Medium;
+        if (_prefetchQueue.size() >= 4096)
+            break;
+        if (_prefetchQueued.insert(key).second)
+            _prefetchQueue.push_back(request);
+    }
+    _prefetchCv.notify_one();
+}
+
+void Nav3DManager::PrefetchLoop()
+{
+    while (true)
+    {
+        PrefetchRequest request;
+        {
+            std::unique_lock lock(_prefetchMutex);
+            _prefetchCv.wait(lock, [this]() { return _prefetchStop || !_prefetchQueue.empty(); });
+            if (_prefetchStop)
+                return;
+
+            request = _prefetchQueue.front();
+            _prefetchQueue.pop_front();
+            uint64 const key = (uint64(request.MapId) << 32) | (uint64(request.TileX) << 16) |
+                               (uint64(request.TileY) << 8) | request.Medium;
+            _prefetchQueued.erase(key);
+        }
+
+        // File I/O and decompression only; no Map/vmap access.
+        GetTile(request.MapId, request.TileX, request.TileY, request.Medium);
+    }
+}
+
 std::shared_ptr<Nav3DTile> Nav3DManager::GetTile(uint32 mapId, uint16 tileX, uint16 tileY, uint8 medium)
 {
     uint64 const key = (uint64(mapId) << 32) | (uint64(tileX) << 16) | (uint64(tileY) << 8) | medium;
 
-    std::scoped_lock lock(_tileCacheMutex);
-    auto const cached = _tileCache.find(key);
-    if (cached != _tileCache.end())
     {
-        _tileLru.splice(_tileLru.begin(), _tileLru, cached->second);
-        return cached->second->Tile;
+        std::scoped_lock lock(_tileCacheMutex);
+        auto const cached = _tileCache.find(key);
+        if (cached != _tileCache.end())
+        {
+            _tileLru.splice(_tileLru.begin(), _tileLru, cached->second);
+            return cached->second->Tile;
+        }
     }
 
     std::string dataPath = sWorld ? sWorld->GetDataPath() : std::string();
@@ -1781,6 +3072,15 @@ std::shared_ptr<Nav3DTile> Nav3DManager::GetTile(uint32 mapId, uint16 tileX, uin
         return nullptr;
     }
 
+    // Another map thread may have loaded the same tile while this one was reading it.
+    std::scoped_lock lock(_tileCacheMutex);
+    auto const cached = _tileCache.find(key);
+    if (cached != _tileCache.end())
+    {
+        _tileLru.splice(_tileLru.begin(), _tileLru, cached->second);
+        return cached->second->Tile;
+    }
+
     _tileLru.push_front({key, tile});
     _tileCache[key] = _tileLru.begin();
 
@@ -1802,6 +3102,81 @@ bool Nav3DManager::CanUseFlight(Player const* bot)
     return CanUseFlightAt(bot, Position(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
 }
 
+bool Nav3DManager::IsRestrictedFlightAt(Map* map, uint32 phase, Position const& position)
+{
+    if (!sPlayerbotAIConfig.Nav3DRespectNoFlyZones || !map)
+        return false;
+
+    uint32 const areaId = map->GetAreaId(phase, position.GetPositionX(), position.GetPositionY(),
+                                         position.GetPositionZ());
+    AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
+    if (area && (area->flags & AREA_FLAG_NO_FLY_ZONE))
+        return true;
+
+    // Wintergrasp is flyable between battles. Spell 58730 applies the restricted
+    // flight aura only while the battlefield is active.
+    uint32 const zoneId = map->GetZoneId(phase, position.GetPositionX(), position.GetPositionY(),
+                                         position.GetPositionZ());
+    if (Battlefield* battlefield = sBattlefieldMgr->GetBattlefieldToZoneId(zoneId))
+        if (!battlefield->CanFlyIn())
+            return true;
+
+    return false;
+}
+
+bool Nav3DManager::CanLandAt(Player const* bot, Position const& goal, bool& restricted) const
+{
+    restricted = false;
+    if (!bot || !bot->GetMap())
+        return false;
+
+    restricted = IsRestrictedFlightAt(bot->GetMap(), bot->GetPhaseMask(), goal);
+    if (!restricted)
+        return CanUseFlightAt(bot, goal);
+
+    // One-way entry: allow a goal inside a restricted area only if it is a real
+    // ground landing point. The parachute handles a timer expiry on the way down.
+    PositionFullTerrainStatus status;
+    bot->GetMap()->GetFullTerrainStatusForPosition(bot->GetPhaseMask(), goal.GetPositionX(),
+                                                   goal.GetPositionY(), goal.GetPositionZ(), 1.0f,
+                                                   status, {});
+    if (status.floorZ <= INVALID_HEIGHT)
+        return false;
+
+    float const clearance = goal.GetPositionZ() - status.floorZ;
+    return clearance >= -1.0f && clearance <= 5.0f;
+}
+
+uint32 Nav3DManager::RestrictedFlightMs(Map* map, uint32 phase, Movement::PointsArray const& path,
+                                        float speed) const
+{
+    if (!map || path.size() < 2 || !sPlayerbotAIConfig.Nav3DRespectNoFlyZones)
+        return 0;
+
+    constexpr float kSampleStep = 4.0f;
+    float const safeSpeed = std::max(7.0f, speed);
+    uint32 totalMs = 0;
+    for (size_t i = 1; i < path.size(); ++i)
+    {
+        G3D::Vector3 const& from = path[i - 1];
+        G3D::Vector3 const& to = path[i];
+        float const dx = to.x - from.x;
+        float const dy = to.y - from.y;
+        float const dz = to.z - from.z;
+        float const distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        int const steps = std::max(1, int(std::ceil(distance / kSampleStep)));
+        float const stepDistance = distance / float(steps);
+        for (int step = 0; step < steps; ++step)
+        {
+            float const t = (float(step) + 0.5f) / float(steps);
+            G3D::Vector3 const point = from + (to - from) * t;
+            if (IsRestrictedFlightAt(map, phase, Position(point.x, point.y, point.z)))
+                totalMs += uint32(stepDistance / safeSpeed * 1000.0f + 0.5f);
+        }
+    }
+    return totalMs;
+}
+
 bool Nav3DManager::CanUseFlightAt(Player const* bot, Position const& position)
 {
     if (!bot || !bot->GetMap())
@@ -1812,7 +3187,9 @@ bool Nav3DManager::CanUseFlightAt(Player const* bot, Position const& position)
     uint32 const areaId = bot->GetMap()->GetAreaId(bot->GetPhaseMask(), position.GetPositionX(),
                                                    position.GetPositionY(), position.GetPositionZ());
     AreaTableEntry const* area = sAreaTableStore.LookupEntry(areaId);
-    if (!area || !area->IsFlyable() || (area->flags & AREA_FLAG_NO_FLY_ZONE))
+    if (!area || !area->IsFlyable())
+        return false;
+    if (IsRestrictedFlightAt(bot->GetMap(), bot->GetPhaseMask(), position))
         return false;
 
     uint32 const vmap = GetVirtualMapForMapAndZone(bot->GetMapId(), bot->GetZoneId());
@@ -1842,6 +3219,11 @@ bool Nav3DManager::HasSolidTileAt(Map* map, Position const& position)
 
 void Nav3DManager::ClearTileCache()
 {
+    {
+        std::scoped_lock lock(_prefetchMutex);
+        _prefetchQueue.clear();
+        _prefetchQueued.clear();
+    }
     std::scoped_lock lock(_tileCacheMutex);
     _tileCache.clear();
     _tileLru.clear();

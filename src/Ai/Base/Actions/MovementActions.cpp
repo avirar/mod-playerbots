@@ -94,6 +94,8 @@ bool MovementAction::MoveNear(WorldObject* target, float distance, MovementPrior
     distance += target->GetCombatReach();
 
     float followAngle = GetFollowAngle();
+    LOG_DEBUG("playerbots", "swim-trace {}: move-near enter target={} distance={:.2f} followAngle={:.2f}",
+              bot->GetName(), target->GetGUID().ToString(), distance, followAngle);
 
     for (float angle = followAngle; angle <= followAngle + static_cast<float>(2 * M_PI);
          angle += static_cast<float>(M_PI / 4.f))
@@ -107,14 +109,22 @@ bool MovementAction::MoveNear(WorldObject* target, float distance, MovementPrior
         // fallbacks through geometry.
         bot->UpdateAllowedPositionZ(x, y, z);
 
-        if (!bot->IsWithinLOS(x, y, z))
+        bool const los = bot->IsWithinLOS(x, y, z);
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-near angle={:.2f} point=({:.2f},{:.2f},{:.2f}) los={}",
+                  bot->GetName(), angle, x, y, z, los ? 1 : 0);
+        if (!los)
             continue;
 
         bool moved = MoveTo(target->GetMapId(), x, y, z, false, false, false, false, priority);
+        LOG_DEBUG("playerbots", "swim-trace {}: move-near angle={:.2f} moved={}", bot->GetName(), angle,
+                  moved ? 1 : 0);
         if (moved)
             return true;
     }
 
+    LOG_DEBUG("playerbots", "swim-trace {}: move-near target={} all angles failed", bot->GetName(),
+              target->GetGUID().ToString());
     return false;
 }
 
@@ -192,11 +202,38 @@ bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority pr
 
     Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     Position const goal(x, y, z);
+
+    PlayerbotAI::Nav3DPathState const pathState = botAI->GetNav3DPathState(x, y, z, false);
+    if (pathState == PlayerbotAI::Nav3DPathState::Pending)
+        return true;  // bot waits for the cooperative search instead of 2D fallback
+    if (pathState == PlayerbotAI::Nav3DPathState::None)
+        botAI->CancelNav3DPath();
+
     Movement::PointsArray path;
-    Nav3DResult result;
-    if (!Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path, result) ||
-        path.size() < 2)
-        return false;
+    float length = 0.0f;
+    uint32 elapsedMs = 0;
+    if (pathState == PlayerbotAI::Nav3DPathState::Ready)
+    {
+        if (!botAI->TakeNav3DPath(x, y, z, false, path, length, elapsedMs))
+            return true;
+    }
+    else
+    {
+        if (sPlayerbotAIConfig.Nav3DCooperative)
+        {
+            if (botAI->RequestNav3DPath(x, y, z, false, uint8(priority)))
+                return true;
+            return false;  // rejected (negative cache/backlog): use the 2D mover
+        }
+
+        Nav3DResult result;
+        if (!Nav3DManager::Instance().FindPath(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                               result) ||
+            path.size() < 2)
+            return false;
+        length = result.Length;
+        elapsedMs = result.ElapsedMs;
+    }
 
     // Loot uses the same advisory rule: the A* route is the route through the breach/window,
     // even when the body capsule reports a hull-edge clip. Log it so the clipping is visible.
@@ -209,48 +246,108 @@ bool MovementAction::TryNav3DMove(float x, float y, float z, MovementPriority pr
     bot->StopMoving();
     bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_NONE);
 
-    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, result.Length * 250.0f));
+    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, length * 250.0f));
     AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
     LOG_DEBUG("playerbots",
               "swim-trace {}: nav3d move reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
-              bot->GetName(), reason, clear ? 1 : 0, path.size(), result.Length, result.ElapsedMs, x, y, z);
+              bot->GetName(), reason, clear ? 1 : 0, path.size(), length, elapsedMs, x, y, z);
     return true;
 }
 
 bool MovementAction::TryNav3DFly(float x, float y, float z, MovementPriority priority, char const* reason)
 {
+    auto const fail = [&](char const* why)
+    {
+        LOG_DEBUG("playerbots", "swim-trace {}: try-fly goal=({:.2f},{:.2f},{:.2f}) reason={} failed: {}",
+                  bot ? bot->GetName() : "?", x, y, z, reason, why);
+        return false;
+    };
+
     if (!sPlayerbotAIConfig.Nav3DEnabled)
-        return false;
+        return fail("nav3d disabled");
     if (!bot || !bot->IsAlive() || !bot->GetMap() || !bot->IsFlying() || bot->GetVehicle())
-        return false;
-    if (!Nav3DManager::Instance().CanUseFlight(bot) ||
-        !Nav3DManager::Instance().CanUseFlightAt(bot, Position(x, y, z)))
-        return false;
+        return fail("invalid bot/flying/map/vehicle state");
+    if (!Nav3DManager::Instance().CanUseFlight(bot))
+        return fail("can-use-flight false");
+
+    // One-way entry: a goal inside Dalaran/Wintergrasp restricted airspace is allowed
+    // when it is a real ground landing point. Transit paths are checked after the path
+    // is built; see the restricted-flight budget below.
+    bool goalRestricted = false;
+    if (!Nav3DManager::Instance().CanLandAt(bot, Position(x, y, z), goalRestricted))
+        return fail("can-land-at false");
 
     float const distance = bot->GetExactDist(x, y, z);
     if (distance < 20.0f || distance > 12000.0f)
-        return false;
-    if (IsDuplicateMove(x, y, z) || IsWaitingForLastMove(priority))
-        return false;
+        return fail("distance out of range");
+
+    bool const duplicate = IsDuplicateMove(x, y, z);
+    bool const waiting = IsWaitingForLastMove(priority);
+    if (duplicate || waiting)
+        return fail(duplicate ? "duplicate-move" : "waiting-for-last-move");
 
     Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     Position const goal(x, y, z);
+
+    PlayerbotAI::Nav3DPathState const pathState = botAI->GetNav3DPathState(x, y, z, true);
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: try-fly goal=({:.2f},{:.2f},{:.2f}) dist={:.1f} path_state={} reason={}",
+              bot->GetName(), x, y, z, distance, int(pathState), reason);
+    if (pathState == PlayerbotAI::Nav3DPathState::Pending)
+        return true;  // hold position/altitude while the route is computed
+    if (pathState == PlayerbotAI::Nav3DPathState::None)
+        botAI->CancelNav3DPath();
+
     Movement::PointsArray path;
-    Nav3DResult result;
-    if (!Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), start, goal, path, result) ||
-        path.size() < 2)
-        return false;
+    float length = 0.0f;
+    uint32 elapsedMs = 0;
+    if (pathState == PlayerbotAI::Nav3DPathState::Ready)
+    {
+        if (!botAI->TakeNav3DPath(x, y, z, true, path, length, elapsedMs))
+            return fail("take-nav3d-path failed");
+    }
+    else
+    {
+        if (sPlayerbotAIConfig.Nav3DCooperative)
+        {
+            if (botAI->RequestNav3DPath(x, y, z, true, uint8(priority)))
+            {
+                LOG_DEBUG("playerbots", "swim-trace {}: try-fly requested cooperative path goal=({:.2f},{:.2f},{:.2f})",
+                          bot->GetName(), x, y, z);
+                return true;
+            }
+            return fail("request-nav3d-path rejected");
+        }
+
+        Nav3DResult result;
+        if (!Nav3DManager::Instance().FindPathAir(bot->GetMap(), bot->GetPhaseMask(), start, goal, path,
+                                                  result) ||
+            path.size() < 2)
+            return fail("find-path-air failed");
+        length = result.Length;
+        elapsedMs = result.ElapsedMs;
+
+        uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+            bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+        if (!goalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d fly rejected: restricted transit {} ms > {} ms target=({:.1f},{:.1f},{:.1f})",
+                      restrictedMs, sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs, x, y, z);
+            return fail("restricted transit");
+        }
+    }
 
     bool const clear = Nav3DManager::Instance().IsPathClear(bot->GetMap(), bot->GetPhaseMask(), path);
     UpdateMovementState();
     bot->StopMoving();
     bot->GetMotionMaster()->MoveSplinePath(&path, FORCED_MOVEMENT_FLY);
 
-    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, result.Length * 100.0f));
+    float const delay = std::min<float>(3000.0f, std::max<float>(500.0f, length * 100.0f));
     AI_VALUE(LastMovement&, "last movement").Set(bot->GetMapId(), x, y, z, bot->GetOrientation(), delay, priority);
     LOG_DEBUG("playerbots",
               "nav3d fly reason={} clear={} points={} len={:.1f} ms={} target=({:.1f},{:.1f},{:.1f})",
-              reason, clear ? 1 : 0, path.size(), result.Length, result.ElapsedMs, x, y, z);
+              reason, clear ? 1 : 0, path.size(), length, elapsedMs, x, y, z);
     return true;
 }
 
@@ -258,6 +355,15 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
                             bool exact_waypoint, MovementPriority priority, bool lessDelay, bool backwards)
 {
     UpdateMovementState();
+    auto const fail = [&](char const* why)
+    {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-to map={} target=({:.2f},{:.2f},{:.2f}) priority={} exact={} "
+                  "flying={} failed: {}",
+                  bot ? bot->GetName() : "?", mapId, x, y, z, int(priority), exact_waypoint ? 1 : 0,
+                  bot && bot->IsFlying() ? 1 : 0, why);
+        return false;
+    };
 
     // The descent/ascent watchdog owns movement. Letting a normal mover run here replaces the
     // point movement with a chase and is how a low-air bot kept fighting underwater until it
@@ -266,7 +372,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     {
         LOG_DEBUG("playerbots", "swim-trace {}: surfacing blocked move to ({:.2f},{:.2f},{:.2f})",
                   bot->GetName(), x, y, z);
-        return false;
+        return fail("dive-surfacing");
     }
 
     // While holding at the surface after an emergency ascent, allow attacks/actions but never
@@ -275,7 +381,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     {
         LOG_DEBUG("playerbots", "swim-trace {}: surface hold blocked move to z {:.2f} (surface {:.2f})",
                   bot->GetName(), z, botAI->diveSurfaceZ);
-        return false;
+        return fail("surface-hold");
     }
 
     // Exact (pathless) swims are what tunnel through seabed ridges. Check the actual movement
@@ -293,26 +399,25 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
                       "swim-trace {}: refusing pathless swim move to ({:.1f},{:.1f},{:.1f}) "
                       "worstClearance={:.2f} terrainChecked={} action={}",
                       bot->GetName(), x, y, z, worstClearance, terrainChecked ? 1 : 0, getName());
-            return false;
+            return fail("pathless-swim-refused");
         }
     }
 
     if (!IsMovingAllowed())
-    {
-        return false;
-    }
+        return fail("moving-not-allowed");
     if (IsDuplicateMove(x, y, z))
-    {
-        return false;
-    }
+        return fail("duplicate-move");
     if (IsWaitingForLastMove(priority))
-    {
-        return false;
-    }
+        return fail("waiting-for-last-move");
 
-    if (bot->IsFlying() && mapId == bot->GetMapId() &&
-        TryNav3DFly(x, y, z, priority, "fly-move"))
-        return true;
+    if (bot->IsFlying() && mapId == bot->GetMapId())
+    {
+        bool const flew = TryNav3DFly(x, y, z, priority, "fly-move");
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to fly-move={} target=({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), flew ? 1 : 0, x, y, z);
+        if (flew)
+            return true;
+    }
 
     bool generatePath = !bot->IsFlying() && !bot->isSwimming();
     bool disableMoveSplinePath =
@@ -344,6 +449,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
     }
     else if (exact_waypoint || disableMoveSplinePath || !generatePath)
     {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: move-to point-branch target=({:.2f},{:.2f},{:.2f}) exact={} disabled={} generate={}",
+                  bot->GetName(), x, y, z, exact_waypoint ? 1 : 0, disableMoveSplinePath ? 1 : 0,
+                  generatePath ? 1 : 0);
         // Exact moves are used by RPG/travel and swim chunks. If the destination is inside a
         // WMO (the 2D mmap cannot represent it), try the volumetric route before the straight
         // point spline. Outdoor exact moves keep the cheap point move.
@@ -384,9 +493,11 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         {
             if (TryNav3DMove(x, y, z, priority, "no-2d-path"))
                 return true;
-            return false;
+            return fail("no-2d-path");
         }
         float distance = bot->GetExactDist(x, y, modifiedZ);
+        LOG_DEBUG("playerbots", "swim-trace {}: move-to 2d-path target=({:.2f},{:.2f},{:.2f}) dist={:.2f}",
+                  bot->GetName(), x, y, modifiedZ, distance);
         if (distance > 0.01f)
         {
             if (bot->IsSitState())
@@ -408,7 +519,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         }
     }
 
-    return false;
+    return fail("no-branch");
     //
     // // LOG_DEBUG("playerbots", "IsMovingAllowed {}", IsMovingAllowed());
     // bot->AddUnitMovementFlag()
@@ -1048,6 +1159,12 @@ bool MovementAction::IsDuplicateMove(float x, float y, float z)
         lastMove.lastMoveShort.GetExactDist(x, y, z) > 0.01f)
         return false;
 
+    LOG_DEBUG("playerbots",
+              "swim-trace {}: duplicate-move new=({:.2f},{:.2f},{:.2f}) last=({:.2f},{:.2f},{:.2f}) "
+              "age={}ms maxWait={}ms",
+              bot->GetName(), x, y, z, lastMove.lastMoveShort.GetPositionX(),
+              lastMove.lastMoveShort.GetPositionY(), lastMove.lastMoveShort.GetPositionZ(),
+              getMSTime() - lastMove.msTime, sPlayerbotAIConfig.MaxWaitForMove);
     return true;
 }
 
@@ -1060,7 +1177,16 @@ bool MovementAction::IsWaitingForLastMove(MovementPriority priority)
 
     // heuristic 5s
     if (lastMove.lastdelayTime + lastMove.msTime > getMSTime())
+    {
+        LOG_DEBUG("playerbots",
+                  "swim-trace {}: waiting-for-last-move priority={} lastPriority={} age={}ms delay={}ms "
+                  "remaining={}ms last=({:.2f},{:.2f},{:.2f})",
+                  bot->GetName(), int(priority), int(lastMove.priority), getMSTime() - lastMove.msTime,
+                  lastMove.lastdelayTime, int64(lastMove.lastdelayTime + lastMove.msTime) - int64(getMSTime()),
+                  lastMove.lastMoveShort.GetPositionX(), lastMove.lastMoveShort.GetPositionY(),
+                  lastMove.lastMoveShort.GetPositionZ());
         return true;
+    }
 
     return false;
 }

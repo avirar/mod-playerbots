@@ -246,15 +246,17 @@ public:
         Movement::PointsArray path;
         Nav3DResult result;
         bool const found = Nav3DManager::Instance().FindPathAir(map, PHASEMASK_NORMAL, start, goal, path, result);
+        uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+            map, PHASEMASK_NORMAL, path, 20.0f);
         handler->PSendSysMessage(
-            "nav3dair {}: found={} direct={} points={} len={:.1f} ms={} cell={:.1f}", mapId,
-            found ? 1 : 0, result.Direct ? 1 : 0, path.size(), result.Length, result.ElapsedMs,
-            result.CellSize);
+            "nav3dair {}: found={} direct={} points={} len={:.1f} ms={} cell={:.1f} restricted_ms={}",
+            mapId, found ? 1 : 0, result.Direct ? 1 : 0, path.size(), result.Length,
+            result.ElapsedMs, result.CellSize, restrictedMs);
         LOG_INFO("playerbots",
                  "nav3dair {} start=({:.2f},{:.2f},{:.2f}) goal=({:.2f},{:.2f},{:.2f}) found={} direct={} "
-                 "points={} len={:.1f} ms={} cell={:.1f}",
+                 "points={} len={:.1f} ms={} cell={:.1f} restricted_ms={}",
                  mapId, sx, sy, sz, gx, gy, gz, found ? 1 : 0, result.Direct ? 1 : 0, path.size(),
-                 result.Length, result.ElapsedMs, result.CellSize);
+                 result.Length, result.ElapsedMs, result.CellSize, restrictedMs);
         for (size_t i = 0; i < path.size(); ++i)
             LOG_INFO("playerbots", "nav3dair {} point[{}] = ({:.2f},{:.2f},{:.2f})", mapId, i, path[i].x,
                      path[i].y, path[i].z);

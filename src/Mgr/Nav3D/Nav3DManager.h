@@ -12,13 +12,29 @@
 #include "Nav3DTile.h"
 #include "Position.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <list>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 class Map;
 class Player;
+
+struct Nav3DPathJob;
+
+using Nav3DPathHandle = uint64;
+
+enum class Nav3DPathPoll : uint8
+{
+    Pending,
+    Found,
+    Failed,
+};
 
 struct Nav3DSearchBounds
 {
@@ -60,9 +76,25 @@ public:
                            Nav3DResult& result);
     bool FindPathAir(Map* map, uint32 phase, Position const& start, Position const& goal,
                      Movement::PointsArray& path, Nav3DResult& result);
+
+    // Cooperative multi-tick path requests. RequestPath only records the request; PollPath
+    // advances it under the per-map-thread budget and returns Pending until it finishes.
+    Nav3DPathHandle RequestPath(Map* map, uint32 phase, Position const& start, Position const& goal,
+                                bool air, uint8 priority = 2);
+    Nav3DPathPoll PollPath(Nav3DPathHandle handle, Map* map, Movement::PointsArray& path,
+                           Nav3DResult& result);
+    void CancelPath(Nav3DPathHandle handle);
     static bool CanUseFlight(Player const* bot);
     static bool CanUseFlightAt(Player const* bot, Position const& position);
     bool IsPathClear(Map* map, uint32 phase, Movement::PointsArray const& path, float radius = 0.5f) const;
+    // Restricted flight areas: Dalaran's static AREA_FLAG_NO_FLY_ZONE and dynamic
+    // battlefields (Wintergrasp while the battle is active).
+    static bool IsRestrictedFlightAt(Map* map, uint32 phase, Position const& position);
+    // True when a goal inside a restricted area is a real ground landing (one-way entry).
+    bool CanLandAt(Player const* bot, Position const& goal, bool& restricted) const;
+    // Time the path spends inside restricted flight areas at the given flight speed.
+    uint32 RestrictedFlightMs(Map* map, uint32 phase, Movement::PointsArray const& path,
+                              float speed) const;
 
     // Precomputed .n3t tile cache. The lazy pathfinder remains the fallback until the
     // generator and tile search are wired in.
@@ -93,12 +125,14 @@ public:
 
 private:
     Nav3DManager() = default;
+    ~Nav3DManager();
 
     bool FindPathDirected(Map* map, uint32 phase, Position const& start, Position const& goal,
                           Movement::PointsArray& path, Nav3DResult& result,
                           Nav3DTile const* tile = nullptr, bool airComposite = false,
                           float overrideCellSize = 0.0f,
-                          Nav3DSearchBounds const* bounds = nullptr);
+                          Nav3DSearchBounds const* bounds = nullptr,
+                          bool penalizeRestricted = false);
     bool RefineDetailPath(Map* map, uint32 phase, Nav3DTile const* tile,
                           Movement::PointsArray const& coarse, Movement::PointsArray& path,
                           Nav3DResult& result);
@@ -113,6 +147,63 @@ private:
     std::mutex _tileCacheMutex;
     std::list<TileCacheEntry> _tileLru;
     std::unordered_map<uint64, std::list<TileCacheEntry>::iterator> _tileCache;
+
+    // Per-map cooperative scheduler. Jobs are advanced in FIFO order by whichever bot
+    // polls next, so the map thread spends at most the configured slice on each request
+    // and no single bot can monopolise the budget.
+    struct PathQueueEntry
+    {
+        uint64 Handle = 0;
+        uint8 Priority = 2;
+        uint32 CreatedMs = 0;
+    };
+
+    struct PathScheduler
+    {
+        std::deque<PathQueueEntry> Queue;
+        uint64 BudgetUs = 0;
+        uint32 LastMs = 0;
+    };
+
+    uint64 ClaimGlobalPathBudget(uint32 now);
+    void ConsumeGlobalPathBudget(uint64 usedUs);
+    void PumpPaths(Map* map, PathScheduler& scheduler, uint32 now);
+    void RecordNegativeLocked(uint64 key, uint32 now);
+
+    struct PrefetchRequest
+    {
+        uint32 MapId = 0;
+        uint16 TileX = 0;
+        uint16 TileY = 0;
+        uint8 Medium = 0;
+    };
+
+    void StartPrefetch();
+    void QueuePrefetch(Map* map, Position const& start, Position const& goal, bool air);
+    void PrefetchLoop();
+
+    std::mutex _pathJobsMutex;
+    std::mutex _globalPathMutex;
+    std::unordered_map<uint64, std::shared_ptr<Nav3DPathJob>> _pathJobs;
+    std::unordered_map<Map*, PathScheduler> _pathSchedulers;
+    std::mutex _prefetchMutex;
+    std::condition_variable _prefetchCv;
+    std::deque<PrefetchRequest> _prefetchQueue;
+    std::unordered_set<uint64> _prefetchQueued;
+    std::thread _prefetchThread;
+    bool _prefetchStarted = false;
+    bool _prefetchStop = false;
+    uint64 _nextPathHandle = 1;
+    uint64 _globalPathBudgetUs = 0;
+    uint32 _globalPathLastMs = 0;
+    uint64 _coopRequested = 0;
+    uint64 _coopFound = 0;
+    uint64 _coopFailed = 0;
+    uint64 _coopExpired = 0;
+    std::unordered_map<uint64, uint32> _coopNegative;
+    std::atomic<uint64> _coopStepUs{0};
+    std::atomic<uint64> _coopStepMaxUs{0};
+    uint32 _coopLastLogMs = 0;
 };
 
 #endif

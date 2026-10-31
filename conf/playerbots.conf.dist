@@ -382,13 +382,41 @@ Playerbots.Nav3D.Neighbors = 26
 # Directory (relative to DataDir) for precomputed .n3t tiles. Lazy mode ignores it.
 Playerbots.Nav3D.DataPath = nav3d
 # Maximum number of precomputed tiles kept in the shared LRU.
-Playerbots.Nav3D.TileCacheSize = 64
+Playerbots.Nav3D.TileCacheSize = 2048
 # Areas where the coarse (2x) grid is safe: open water without WMO tunnels. CSV of area ids.
 # Empty = rely on the WMO-floor heuristic only.
 Playerbots.Nav3D.OpenWaterAreas =
 # A* limits; keep these bounded on map threads.
 Playerbots.Nav3D.MaxNodes = 20000
 Playerbots.Nav3D.MaxSearchTimeMs = 50
+# Cooperative multi-tick path search: bound map-thread time per tick and let bots wait.
+Playerbots.Nav3D.Cooperative = 1
+# Dalaran/Wintergrasp restricted flight: allow one-way dives into a ground goal,
+# but reject transit paths that would be dismounted mid-route.
+Playerbots.Nav3D.RespectNoFlyZones = 1
+Playerbots.Nav3D.MaxRestrictedTransitMs = 7500
+Playerbots.Nav3D.PathTickBudgetMs = 1
+Playerbots.Nav3D.PathSliceUs = 200
+Playerbots.Nav3D.PathMaxActive = 64
+Playerbots.Nav3D.PathMaxAgeMs = 15000
+# Total pathfinding CPU across all map threads, in milliseconds per second.
+Playerbots.Nav3D.PathGlobalBudgetMs = 120
+Playerbots.Nav3D.PathMaxPending = 2048
+# Keep each map queue bounded; over the cap the bot uses its normal mover.
+Playerbots.Nav3D.PathMaxPerMap = 64
+# After a failed/timed-out cooperative path, wait before retrying.
+Playerbots.Nav3D.PathRetryMs = 2000
+# Promote a low-priority request that has waited this long (anti-starvation).
+Playerbots.Nav3D.PathAgeBoostMs = 3000
+# A bot waits this long for a route before falling back to its normal movement.
+Playerbots.Nav3D.PathWaitMs = 6000
+Playerbots.Nav3D.PathAirWaitMs = 12000
+# CPU budget per cooperative route. Keep this below what the per-map budget can
+# deliver inside PathWaitMs: 120 ms at 1 ms per 50 ms tick takes ~6 s.
+Playerbots.Nav3D.CoopSearchTimeMs = 120
+Playerbots.Nav3D.CoopDetailSearchTimeMs = 400
+# Cache failed start tiles so retries do not burn the global path budget.
+Playerbots.Nav3D.NegativeTtlMs = 30000
 
 # Action expiration time
 Playerbots.ExpireActionTime = 5000

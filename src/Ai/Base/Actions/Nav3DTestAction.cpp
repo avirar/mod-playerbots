@@ -229,6 +229,29 @@ bool Nav3DTestAction::Execute(Event event)
         return true;
     }
 
+    // Match normal bot movement: a goal inside restricted airspace must be a real ground
+    // landing (one-way dive), and a transit path must fit the restricted-flight budget.
+    Position const finalGoal = points.back();
+    bool goalRestricted = false;
+    if (!Nav3DManager::Instance().CanLandAt(bot, finalGoal, goalRestricted))
+    {
+        botAI->TellMasterNoFacing("nav3d goal is not a valid landing point (restricted air, no ground)");
+        return true;
+    }
+
+    uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+        bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+    if (!goalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+    {
+        std::ostringstream blocked;
+        blocked << "nav3d restricted transit: " << restrictedMs << " ms > "
+                << sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs << " ms";
+        botAI->TellMasterNoFacing(blocked.str());
+        LOG_INFO("playerbots", "{} {}", bot->GetName(), blocked.str());
+        return true;
+    }
+    summary << " restrictedMs=" << restrictedMs;
+
     bot->StopMoving();
     bot->GetMotionMaster()->MoveSplinePath(&path, fly ? FORCED_MOVEMENT_FLY : FORCED_MOVEMENT_NONE);
 

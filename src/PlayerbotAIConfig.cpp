@@ -106,6 +106,39 @@ bool PlayerbotAIConfig::Initialize()
         Nav3DTileCacheSize = 1;
     Nav3DMaxNodes = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxNodes", 20000);
     Nav3DMaxSearchTimeMs = sConfigMgr->GetOption<int32>("Playerbots.Nav3D.MaxSearchTimeMs", 50);
+    Nav3DCooperative = sConfigMgr->GetOption<bool>("Playerbots.Nav3D.Cooperative", true);
+    Nav3DRespectNoFlyZones = sConfigMgr->GetOption<bool>(
+        "Playerbots.Nav3D.RespectNoFlyZones", true);
+    Nav3DMaxRestrictedTransitMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.MaxRestrictedTransitMs", 7500));
+    Nav3DPathBudgetMs = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathTickBudgetMs", 1));
+    Nav3DPathSliceUs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathSliceUs", 200));
+    Nav3DPathMaxActive = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxActive", 64));
+    Nav3DPathMaxAgeMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxAgeMs", 15000));
+    Nav3DPathGlobalBudgetMs = std::max<int32>(10, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathGlobalBudgetMs", 120));
+    Nav3DPathMaxPending = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxPending", 2048));
+    Nav3DPathMaxPerMap = std::max<int32>(1, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathMaxPerMap", 64));
+    Nav3DPathRetryMs = std::max<int32>(100, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathRetryMs", 2000));
+    Nav3DPathAgeBoostMs = std::max<int32>(500, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathAgeBoostMs", 3000));
+    Nav3DPathWaitMs = std::max<int32>(200, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathWaitMs", 6000));
+    Nav3DPathAirWaitMs = std::max<int32>(200, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.PathAirWaitMs", 12000));
+    Nav3DCoopSearchTimeMs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.CoopSearchTimeMs", 120));
+    Nav3DCoopDetailSearchTimeMs = std::max<int32>(50, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.CoopDetailSearchTimeMs", 400));
+    Nav3DNegativeTtlMs = std::max<int32>(1000, sConfigMgr->GetOption<int32>(
+        "Playerbots.Nav3D.NegativeTtlMs", 30000));
     Nav3DOpenWaterAreas.clear();
     LoadList<std::vector<uint32>>(
         sConfigMgr->GetOption<std::string>("Playerbots.Nav3D.OpenWaterAreas", ""), Nav3DOpenWaterAreas);

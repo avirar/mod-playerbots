@@ -29,6 +29,7 @@
 #include "MapMgr.h"
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
+#include "Nav3DManager.h"
 #include "NewRpgStrategy.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -249,6 +250,139 @@ PlayerbotAI::~PlayerbotAI()
         PlayerbotsMgr::instance().RemovePlayerBotData(bot->GetGUID(), true);
 }
 
+PlayerbotAI::Nav3DPathState PlayerbotAI::GetNav3DPathState(float x, float y, float z,
+                                                                 bool air) const
+{
+    if (!nav3dPathHandle && !nav3dPathReady)
+        return Nav3DPathState::None;
+    if (nav3dPathMap != bot->GetMapId() || nav3dPathAir != air)
+        return Nav3DPathState::None;
+
+    float const dx = x - nav3dPathX;
+    float const dy = y - nav3dPathY;
+    float const dz = z - nav3dPathZ;
+    if (dx * dx + dy * dy + dz * dz > 4.0f)
+        return Nav3DPathState::None;
+
+    return nav3dPathReady ? Nav3DPathState::Ready : Nav3DPathState::Pending;
+}
+
+bool PlayerbotAI::RequestNav3DPath(float x, float y, float z, bool air, uint8 priority)
+{
+    if (getMSTime() < nav3dPathRetryAfterMs)
+        return false;
+    CancelNav3DPath();
+    if (!sPlayerbotAIConfig.Nav3DEnabled || !sPlayerbotAIConfig.Nav3DCooperative)
+        return false;
+    if (!bot || !bot->IsInWorld() || !bot->IsAlive() || !bot->GetMap())
+        return false;
+
+    Position const start(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    uint64 const handle = Nav3DManager::Instance().RequestPath(bot->GetMap(), bot->GetPhaseMask(),
+                                                                start, Position(x, y, z), air, priority);
+    if (!handle)
+        return false;
+
+    nav3dPathHandle = handle;
+    nav3dPathMap = bot->GetMapId();
+    nav3dPathStartMs = getMSTime();
+    nav3dPathX = x;
+    nav3dPathY = y;
+    nav3dPathZ = z;
+    nav3dPathAir = air;
+    nav3dPathReady = false;
+    nav3dPathGoalRestricted = Nav3DManager::Instance().IsRestrictedFlightAt(
+        bot->GetMap(), bot->GetPhaseMask(), Position(x, y, z));
+    nav3dPath.clear();
+    return true;
+}
+
+bool PlayerbotAI::TakeNav3DPath(float x, float y, float z, bool air, Movement::PointsArray& path,
+                                float& length, uint32& elapsedMs)
+{
+    if (GetNav3DPathState(x, y, z, air) != Nav3DPathState::Ready)
+        return false;
+
+    path = std::move(nav3dPath);
+    length = nav3dPathLength;
+    elapsedMs = nav3dPathElapsedMs;
+    nav3dPath.clear();
+    nav3dPathReady = false;
+    nav3dPathHandle = 0;
+    return path.size() >= 2;
+}
+
+void PlayerbotAI::CancelNav3DPath()
+{
+    if (nav3dPathHandle)
+        Nav3DManager::Instance().CancelPath(nav3dPathHandle);
+    nav3dPathHandle = 0;
+    nav3dPathReady = false;
+    nav3dPathGoalRestricted = false;
+    nav3dPath.clear();
+    nav3dPathLength = 0.0f;
+    nav3dPathElapsedMs = 0;
+}
+
+void PlayerbotAI::UpdateNav3DPath()
+{
+    if (!nav3dPathHandle)
+        return;
+
+    if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported() || !bot->IsAlive() ||
+        nav3dPathMap != bot->GetMapId())
+    {
+        CancelNav3DPath();
+        return;
+    }
+
+    Movement::PointsArray path;
+    Nav3DResult result;
+    Nav3DPathPoll const poll =
+        Nav3DManager::Instance().PollPath(nav3dPathHandle, bot->GetMap(), path, result);
+    if (poll == Nav3DPathPoll::Pending)
+    {
+        // Never make a bot stand still indefinitely: after this long the normal mover wins.
+        uint32 const waitMs = nav3dPathAir ? sPlayerbotAIConfig.Nav3DPathAirWaitMs
+                                           : sPlayerbotAIConfig.Nav3DPathWaitMs;
+        if (getMSTime() - nav3dPathStartMs > waitMs)
+        {
+            CancelNav3DPath();
+            nav3dPathRetryAfterMs = getMSTime() + sPlayerbotAIConfig.Nav3DPathRetryMs;
+        }
+        return;
+    }
+
+    nav3dPathHandle = 0;
+    if (poll == Nav3DPathPoll::Found && path.size() >= 2)
+    {
+        nav3dPathRetryAfterMs = 0;
+        uint32 const restrictedMs = Nav3DManager::Instance().RestrictedFlightMs(
+            bot->GetMap(), bot->GetPhaseMask(), path, bot->GetSpeed(MOVE_FLIGHT));
+        if (!nav3dPathGoalRestricted && restrictedMs > sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs)
+        {
+            LOG_DEBUG("playerbots",
+                      "nav3d coop rejected: restricted transit {} ms > {} ms goal=({:.1f},{:.1f},{:.1f})",
+                      restrictedMs, sPlayerbotAIConfig.Nav3DMaxRestrictedTransitMs, nav3dPathX,
+                      nav3dPathY, nav3dPathZ);
+            nav3dPathReady = false;
+            nav3dPath.clear();
+            return;
+        }
+        nav3dPath = std::move(path);
+        nav3dPathLength = result.Length;
+        nav3dPathElapsedMs = result.ElapsedMs;
+        nav3dPathReady = true;
+        LOG_DEBUG("playerbots",
+                  "nav3d coop path goal_restricted={} restricted_ms={} points={} len={:.1f}",
+                  nav3dPathGoalRestricted ? 1 : 0, restrictedMs, nav3dPath.size(), nav3dPathLength);
+        return;
+    }
+
+    nav3dPathReady = false;
+    nav3dPath.clear();
+}
+
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
     // Handle the AI check delay
@@ -261,6 +395,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!bot || !bot->GetSession() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
         bot->GetSession()->IsLoggingOut() || bot->IsDuringRemoveFromWorld())
         return;
+
+    // Advance a cooperative Nav3D request before any AI delay/reaction gate: the map thread
+    // spends a bounded slice here and the bot keeps its movement action waiting meanwhile.
+    UpdateNav3DPath();
 
     // Bots send no movement opcodes, so m_lastFallZ stays frozen and Player::IsFalling() (a Z test
     // against it) blocks LFG teleports. Unit::IsFalling() is the flag test, so real falls keep theirs.

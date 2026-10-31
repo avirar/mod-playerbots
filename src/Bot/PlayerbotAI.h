@@ -661,6 +661,35 @@ public:
     uint32 nav3dLootUntilMs = 0;
     uint32 nav3dLootIssuedMs = 0;
 
+    uint64 nav3dPathHandle = 0;
+    uint32 nav3dPathMap = 0;
+    uint32 nav3dPathStartMs = 0;
+    uint32 nav3dPathRetryAfterMs = 0;
+    float nav3dPathX = 0, nav3dPathY = 0, nav3dPathZ = 0;
+    bool nav3dPathAir = false;
+    bool nav3dPathReady = false;
+    bool nav3dPathGoalRestricted = false;
+    float nav3dPathLength = 0;
+    uint32 nav3dPathElapsedMs = 0;
+    Movement::PointsArray nav3dPath;
+
+    // Cooperative Nav3D path request. The search is advanced in bounded slices from
+    // UpdateAI, so the map thread never blocks on one bot's route. Movement actions wait in
+    // Pending instead of falling back to the 2D mover.
+    enum class Nav3DPathState : uint8
+    {
+        None,
+        Pending,
+        Ready,
+    };
+
+    Nav3DPathState GetNav3DPathState(float x, float y, float z, bool air) const;
+    bool RequestNav3DPath(float x, float y, float z, bool air, uint8 priority = 2);
+    bool TakeNav3DPath(float x, float y, float z, bool air, Movement::PointsArray& path, float& length,
+                       uint32& elapsedMs);
+    void CancelNav3DPath();
+    void UpdateNav3DPath();
+
     // True while the emergency surface ascent/hold owns movement. Teleport recovery must not
     // fire while the bot is being held at the surface.
     bool IsDiveSafetyActive() const { return diveSurfacing || diveHoldSurface; }
