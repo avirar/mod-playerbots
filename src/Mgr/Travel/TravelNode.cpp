@@ -3753,6 +3753,13 @@ void TravelNodeMap::PrecomputeReachability(bool reportComponents)
         for (auto const& link : *node->getLinks())
             if (link.first)
                 reverseAdj[link.first].push_back(node);
+
+        // 3D links are alternatives to the 2D graph; include them in the
+        // reachability over-approximation so hasRouteTo does not reject a
+        // route that only exists as a swim/free-flight link.
+        for (auto const& link : *node->getLinks3D())
+            if (link.first)
+                reverseAdj[link.first].push_back(node);
     }
 
     std::vector<TravelNode*> neighbors;
@@ -3761,6 +3768,9 @@ void TravelNodeMap::PrecomputeReachability(bool reportComponents)
         neighbors.clear();
 
         for (auto const& link : *current->getLinks())
+            if (link.first)
+                neighbors.push_back(link.first);
+        for (auto const& link : *current->getLinks3D())
             if (link.first)
                 neighbors.push_back(link.first);
 
