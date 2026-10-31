@@ -198,7 +198,16 @@ float TravelNodePath::getCost(Player* bot, uint32 cGold)
     else if (getPathType() == TravelNodePathType::flightPath)
         return -1.0f;
 
-    if (getPathType() != TravelNodePathType::walk)
+    if (getPathType() == TravelNodePathType::swim)
+    {
+        timeCost = (distance / std::max(swimSpeed, 0.1f)) * modifier;
+    }
+    else if (getPathType() == TravelNodePathType::freeFlight)
+    {
+        float const flightSpeed = bot ? std::max(bot->GetSpeed(MOVE_FLIGHT), 0.1f) : 20.0f;
+        timeCost = (distance / flightSpeed) * modifier;
+    }
+    else if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
     else
         timeCost = (runDistance / speed + swimDistance / swimSpeed) * modifier;
@@ -237,6 +246,13 @@ TravelNodePath* TravelNode::BuildPath(TravelNode* endNode, Unit* bot, bool postP
         returnNodePath = getPathTo(endNode);  // Get the exsisting path.
 
     if (returnNodePath->getComplete())  // Path is already complete. Return it.
+        return returnNodePath;
+
+    // Never replace a structural link (portal/area trigger) with a walk path.
+    // The orb at Falcon Watch used to end up with a vertical "walk" shortcut
+    // through the tower because a generic node pair won the walk generation.
+    if (returnNodePath->getPathType() == TravelNodePathType::staticPortal ||
+        returnNodePath->getPathType() == TravelNodePathType::areaTrigger)
         return returnNodePath;
 
     std::vector<WorldPosition> path = returnNodePath->GetPath();
@@ -1243,7 +1259,7 @@ float TravelNodeRoute::getTotalDistance()
 }
 
 TravelPath TravelNodeRoute::BuildPath(std::vector<WorldPosition> pathToStart, std::vector<WorldPosition> pathToEnd,
-                                      [[maybe_unused]] Unit* bot)
+                                      Unit* bot)
 {
     TravelPath travelPath;
 
@@ -1255,9 +1271,8 @@ TravelPath TravelNodeRoute::BuildPath(std::vector<WorldPosition> pathToStart, st
     {
         if (prevNode)
         {
-            TravelNodePath* nodePath = nullptr;
-            if (prevNode->hasPathTo(node))  // Get the path to the next node if it exists.
-                nodePath = prevNode->getPathTo(node);
+            bool const goalUnderwater = !nodes.empty() && nodes.back()->getPosition()->isUnderWater();
+            TravelNodePath* nodePath = prevNode->selectPathTo(node, bot, goalUnderwater);
 
             if (!nodePath || !nodePath->getComplete())  // If we can not build a path just try to move to the node.
             {
@@ -1288,6 +1303,20 @@ TravelPath TravelNodeRoute::BuildPath(std::vector<WorldPosition> pathToStart, st
             {
                 // Full taxi waypoint route; same reasoning as transport.
                 travelPath.addPath(nodePath->GetPath(), PathNodeType::NODE_FLIGHTPATH, nodePath->getPathObject());
+            }
+            else if (nodePath->getPathType() == TravelNodePathType::swim)
+            {
+                std::vector<WorldPosition> path = nodePath->GetPath();
+                if (path.size() > 1 && node != nodes.back())
+                    path.pop_back();
+                travelPath.addPath(path, PathNodeType::NODE_SWIM);
+            }
+            else if (nodePath->getPathType() == TravelNodePathType::freeFlight)
+            {
+                std::vector<WorldPosition> path = nodePath->GetPath();
+                if (path.size() > 1 && node != nodes.back())
+                    path.pop_back();
+                travelPath.addPath(path, PathNodeType::NODE_AIR);
             }
             else
             {
@@ -1552,19 +1581,17 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
             return TravelNodeRoute();
         }
 
-        for (auto const& link : *currentNode->dataNode->getLinks())  // for each successor n' of n
+        auto processLink = [&](TravelNode* linkNode, TravelNodePath* linkPath)
         {
-            TravelNode* linkNode = link.first;
-            float linkCost = link.second->getCost(bot, currentNode->currentGold);
-
+            float linkCost = linkPath->getCost(bot, currentNode->currentGold);
             if (linkCost <= 0)
-                continue;
+                return;
 
             childNode = &m_stubs.insert(std::make_pair(linkNode, TravelNodeStub(linkNode))).first->second;
             g = currentNode->costFromStart + linkCost;  // stance from start + distance between the two nodes
             if ((childNode->open || childNode->closed) &&
                 childNode->costFromStart <= g)  // n' is already in opend or closed with a lower cost g(n')
-                continue;             // consider next successor
+                return;             // consider next successor
 
             h = childNode->dataNode->fDist(goal) / botSpeed;
             f = g + h; // compute f(n')
@@ -1574,12 +1601,37 @@ TravelNodeRoute TravelNodeMap::GetNodeRoute(TravelNode* start, TravelNode* goal,
             childNode->parent = currentNode;
 
             if (bot && !bot->isTaxiCheater())
-                childNode->currentGold = currentNode->currentGold - link.second->getPrice();
+                childNode->currentGold = currentNode->currentGold - linkPath->getPrice();
 
             childNode->closed = false;
             childNode->open = true;
             open.emplace_back(f, childNode);
             std::push_heap(open.begin(), open.end(), heapComp);
+        };
+
+        for (auto const& link : *currentNode->dataNode->getLinks())
+            processLink(link.first, link.second);
+
+        // 3D paths are alternatives for the same node pair; only offer the
+        // medium the bot can actually use right now.
+        if (bot)
+        {
+            bool const canSwim = bot->IsUnderWater() || bot->isSwimming();
+            bool const canFly = bot->IsFlying();
+            if (canSwim || canFly)
+            {
+                for (auto const& link : *currentNode->dataNode->getLinks3D())
+                {
+                    TravelNodePath* path3d = link.second;
+                    if (!path3d || !path3d->getComplete())
+                        continue;
+                    if (path3d->getPathType() == TravelNodePathType::swim && !canSwim)
+                        continue;
+                    if (path3d->getPathType() == TravelNodePathType::freeFlight && !canFly)
+                        continue;
+                    processLink(link.first, path3d);
+                }
+            }
         }
     }
 
@@ -2281,15 +2333,19 @@ void TravelNodeMap::generateTransportNodes()
 
 void TravelNodeMap::generatePortalNodes()
 {
-    // Static portals are spellcaster GameObjects whose spell teleports the user.
-    // Each becomes a one-way staticPortal link from the GO spawn to the destination.
+    // Static portals are GameObjects whose spell teleports the user. Both
+    // spellcasters and goobers are used in the world (Orb of Translocation,
+    // Naxxramas orbs, Dalaran portals). Each becomes a one-way staticPortal
+    // link from the GO spawn to the destination.
     for (GameObjectData const* goData : WorldPosition().getGameObjectsNear(0, 0))
     {
         GameObjectTemplate const* data = sObjectMgr->GetGameObjectTemplate(goData->id);
-        if (!data || data->type != GAMEOBJECT_TYPE_SPELLCASTER)
+        if (!data || (data->type != GAMEOBJECT_TYPE_SPELLCASTER && data->type != GAMEOBJECT_TYPE_GOOBER))
             continue;
 
-        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(data->spellcaster.spellId);
+        uint32 const spellId = data->type == GAMEOBJECT_TYPE_GOOBER ? data->goober.spellId
+                                                                    : data->spellcaster.spellId;
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
         if (!spellInfo)
             continue;
 
@@ -3250,6 +3306,63 @@ void TravelNodeMap::LoadNodeStore()
         else
         {
             LOG_ERROR("playerbots", ">> Error loading travelNode paths.");
+        }
+    }
+
+    // Optional pre-baked 3D paths (swim / free flight). They live in separate
+    // tables because the 2D path table has one path per node pair.
+    {
+        if (PreparedQueryResult result = PlayerbotsDatabase.Query(
+                PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_TRAVELNODE_LINK3D)))
+        {
+            uint32 loaded = 0;
+            do
+            {
+                Field* fields = result->Fetch();
+                auto startIt = saveNodes.find(fields[0].Get<uint32>());
+                auto endIt = saveNodes.find(fields[1].Get<uint32>());
+                if (startIt == saveNodes.end() || endIt == saveNodes.end())
+                    continue;
+
+                startIt->second->setPathTo3D(
+                    endIt->second,
+                    TravelNodePath(fields[3].Get<float>(), fields[5].Get<float>(), fields[2].Get<uint8>(),
+                                   0, fields[6].Get<bool>(), {}, fields[4].Get<float>()),
+                    true);
+                ++loaded;
+            } while (result->NextRow());
+
+            LOG_INFO("playerbots", ">> Loaded {} travelNode 3D links.", loaded);
+        }
+    }
+
+    {
+        if (PreparedQueryResult result = PlayerbotsDatabase.Query(
+                PlayerbotsDatabase.GetPreparedStatement(PLAYERBOTS_SEL_TRAVELNODE_PATH3D)))
+        {
+            uint32 loaded = 0;
+            do
+            {
+                Field* fields = result->Fetch();
+                auto startIt = saveNodes.find(fields[0].Get<uint32>());
+                auto endIt = saveNodes.find(fields[1].Get<uint32>());
+                if (startIt == saveNodes.end() || endIt == saveNodes.end())
+                    continue;
+
+                TravelNodePath* path = startIt->second->getPathTo3D(endIt->second);
+                if (!path)
+                    continue;
+
+                std::vector<WorldPosition> ppath = path->GetPath();
+                ppath.push_back(WorldPosition(fields[4].Get<uint32>(), fields[5].Get<float>(),
+                                              fields[6].Get<float>(), fields[7].Get<float>()));
+                path->setPath(ppath);
+                if (path->getCalculated())
+                    path->setComplete(true);
+                ++loaded;
+            } while (result->NextRow());
+
+            LOG_INFO("playerbots", ">> Loaded {} travelNode 3D path points.", loaded);
         }
     }
 }

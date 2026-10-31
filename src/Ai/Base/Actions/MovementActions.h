@@ -194,7 +194,8 @@ protected:
                           char const* label,
                           MovementPriority priority = MovementPriority::MOVEMENT_NORMAL,
                           bool lessDelay = false,
-                          bool react = false);
+                          bool react = false,
+                          bool fly = false);
     bool MoveTo(WorldObject* target, float distance = 0.0f,
                 MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
     bool MoveNear(WorldObject* target, float distance = sPlayerbotAIConfig.ContactDistance,

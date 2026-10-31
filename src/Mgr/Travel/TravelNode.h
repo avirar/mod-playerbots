@@ -109,7 +109,9 @@ enum class TravelNodePathType : uint8
     transport = 3,
     flightPath = 4,
     // teleportSpell = 5 // maybe someday
-    staticPortal = 6
+    staticPortal = 6,
+    swim = 7,
+    freeFlight = 8
 };
 
 // A connection between two nodes.
@@ -274,6 +276,7 @@ public:
     WorldPosition* getPosition() { return &point; }
     std::unordered_map<TravelNode*, TravelNodePath>* getPaths() { return &paths; }
     std::unordered_map<TravelNode*, TravelNodePath*>* getLinks() { return &links; }
+    std::unordered_map<TravelNode*, TravelNodePath*>* getLinks3D() { return &links3d; }
     bool isImportant() { return important; }
     bool isLinked() { return linked; }
 
@@ -368,6 +371,52 @@ public:
     {
         return &paths[node];
     }
+    TravelNodePath* setPathTo3D(TravelNode* node,
+                               TravelNodePath path = TravelNodePath(),
+                               bool isLink = true)
+    {
+        if (this != node)
+        {
+            paths3d[node] = path;
+            if (isLink)
+                links3d[node] = &paths3d[node];
+            return &paths3d[node];
+        }
+        return nullptr;
+    }
+
+    bool hasPathTo3D(TravelNode* node)
+    {
+        return paths3d.find(node) != paths3d.end();
+    }
+
+    TravelNodePath* getPathTo3D(TravelNode* node)
+    {
+        auto const itr = paths3d.find(node);
+        return itr == paths3d.end() ? nullptr : &itr->second;
+    }
+
+    bool hasCompletePathTo3D(TravelNode* node)
+    {
+        TravelNodePath* path = getPathTo3D(node);
+        return path && path->getComplete();
+    }
+
+    // Picks the best 3D path for the current bot state, falling back to the
+    // regular 2D graph. Used by the router and by BuildPath so both agree.
+    TravelNodePath* selectPathTo(TravelNode* node, Unit* bot, bool goalUnderwater)
+    {
+        TravelNodePath* path3d = getPathTo3D(node);
+        if (path3d && path3d->getComplete() && bot)
+        {
+            if (path3d->getPathType() == TravelNodePathType::freeFlight && bot->IsFlying())
+                return path3d;
+            if (path3d->getPathType() == TravelNodePathType::swim &&
+                (goalUnderwater || bot->IsUnderWater() || bot->isSwimming()))
+                return path3d;
+        }
+        return hasPathTo(node) ? getPathTo(node) : path3d;
+    }
     bool hasCompletePathTo(TravelNode* node)
     {
         return hasPathTo(node) && getPathTo(node)->getComplete();
@@ -443,6 +492,9 @@ protected:
     std::unordered_map<TravelNode*, TravelNodePath> paths;
     // List of links to other nodes.
     std::unordered_map<TravelNode*, TravelNodePath*> links;
+    // Pre-baked 3D paths (swim/free flight), one per pair and medium.
+    std::unordered_map<TravelNode*, TravelNodePath> paths3d;
+    std::unordered_map<TravelNode*, TravelNodePath*> links3d;
 
     // Undirected connected-component ids assigned by
     // TravelNodeMap::PrecomputeReachability() (H2). 0 = unassigned. See
@@ -486,7 +538,9 @@ enum class PathNodeType : uint8
     NODE_TRANSPORT = 4,
     NODE_FLIGHTPATH = 5,
     // value 6 reserved (was NODE_TELEPORT — removed with teleportSpell)
-    NODE_STATIC_PORTAL = 7
+    NODE_STATIC_PORTAL = 7,
+    NODE_SWIM = 8,
+    NODE_AIR = 9
 };
 
 struct PathNodePoint

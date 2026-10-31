@@ -4627,8 +4627,12 @@ bool MovementAction::MoveTo2(WorldPosition endPos,
     if (path.empty())
         return false;
 
-    // 9. Trim leading waypoints behind the bot.
-    if (!bot->GetTransport())
+    bool const airPath = std::any_of(path.GetPathRef().begin(), path.GetPathRef().end(),
+                                     [](PathNodePoint const& p) { return p.type == PathNodeType::NODE_AIR; });
+
+    // 9. Trim leading waypoints behind the bot. Air routes use absolute 3D
+    // waypoints; ground trimming would drop them as "unwalkable".
+    if (!bot->GetTransport() && !airPath)
         path.makeShortCut(botPos, sPlayerbotAIConfig.ReactDistance, bot);
     if (path.empty())
     {
@@ -4782,7 +4786,8 @@ bool MovementAction::MoveTo2(WorldPosition endPos,
     // hop / drifted past reactDistance / > 125 sqDist jump. Combat callers
     // pass ignoreEnemyTargets=true so the chase doesn't stop at an
     // intermediate enemy.
-    path.ClipPath(botAI, bot, ignoreEnemyTargets);
+    if (!airPath)
+        path.ClipPath(botAI, bot, ignoreEnemyTargets);
 
     // If destination is on land, snap any underwater waypoints to the
     // water surface so the bot swims along the top instead of diving.
@@ -4810,7 +4815,7 @@ bool MovementAction::MoveTo2(WorldPosition endPos,
         botAI->DoSpecificAction("check mount state", Event(), true);
 
     bool const dispatched =
-        DispatchMovement(path, endPos, "walk", priority, lessDelay, react);
+        DispatchMovement(path, endPos, airPath ? "air" : "walk", priority, lessDelay, react, airPath);
 
     if (dispatched && !idle)
         ClearIdleState();
@@ -4821,8 +4826,12 @@ bool MovementAction::MoveTo2(WorldPosition endPos,
 // Hands the resolved path to the motion master — spline for multi-point paths,
 // MovePoint for a single point — or teleport-advances low-activity bots.
 bool MovementAction::DispatchMovement(TravelPath path, [[maybe_unused]] WorldPosition dest, char const* label,
-                                      MovementPriority priority, [[maybe_unused]] bool lessDelay, bool react)
+                                      MovementPriority priority, [[maybe_unused]] bool lessDelay, bool react,
+                                      bool fly)
 {
+    if (fly && (!bot || !bot->IsFlying()))
+        return false;
+
     // Build the PointsArray from the TravelPath.
     std::vector<WorldPosition> const& pts = path.getPointPath();
     Movement::PointsArray points;
@@ -4892,7 +4901,8 @@ bool MovementAction::DispatchMovement(TravelPath path, [[maybe_unused]] WorldPos
     // Match master's walk pace when they're walking and within 5y.
     // AC's ForcedMovement enum has no FLIGHT variant — flying is handled
     // via the MovePoint speed/flight flags below, not the moveMode.
-    ForcedMovement moveMode = FORCED_MOVEMENT_RUN;
+    ForcedMovement moveMode = fly ? FORCED_MOVEMENT_FLY : FORCED_MOVEMENT_RUN;
+    if (!fly)
     if (Player* master = botAI->GetMaster())
     {
         if (bot->IsFriendlyTo(master) && master->IsWalking() &&
@@ -4902,7 +4912,7 @@ bool MovementAction::DispatchMovement(TravelPath path, [[maybe_unused]] WorldPos
         }
     }
 
-    bool const generatePath = !bot->IsFlying() && !bot->isSwimming() &&
+    bool const generatePath = !fly && !bot->IsFlying() && !bot->isSwimming() &&
                               !bot->IsInWater() && !bot->IsUnderWater();
 
     bot->ClearEmoteState();

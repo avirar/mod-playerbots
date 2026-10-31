@@ -76,9 +76,19 @@ bool TeleportAction::Execute(Event /*event*/)
         if (goInfo->type != GAMEOBJECT_TYPE_SPELLCASTER && goInfo->type != GAMEOBJECT_TYPE_GOOBER)
             continue;
 
-        uint32 spellId = goInfo->spellcaster.spellId;
+        // GOOBER stores the spell in data10 (goober.spellId); SPELLCASTER in data0.
+        uint32 const spellId = goInfo->type == GAMEOBJECT_TYPE_GOOBER ? goInfo->goober.spellId
+                                                                      : goInfo->spellcaster.spellId;
         SpellInfo const* spellInfo = SpellMgr::instance()->GetSpellInfo(spellId);
-        if (!spellInfo || !spellInfo->HasEffect(SPELL_EFFECT_TELEPORT_UNITS))
+        if (!spellInfo)
+            continue;
+
+        // Some portal GOs cast a trigger spell that performs the actual teleport.
+        if (spellInfo->Effects[EFFECT_0].TriggerSpell)
+            if (SpellInfo const* triggered = sSpellMgr->GetSpellInfo(spellInfo->Effects[EFFECT_0].TriggerSpell))
+                spellInfo = triggered;
+
+        if (!spellInfo->HasEffect(SPELL_EFFECT_TELEPORT_UNITS))
             continue;
 
         std::ostringstream out;
