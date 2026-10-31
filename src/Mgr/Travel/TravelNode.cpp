@@ -45,6 +45,18 @@ namespace
     constexpr float AREA_TRIGGER_EXIT_ADJACENT_DISTANCE = 20.0f;
 
     constexpr uint32 MIN_STRUCTURAL_WALK_LINKS = 3;
+
+    // WorldPosition() has mapId MAPID_INVALID, which makes
+    // getGameObjectsNear(0, 0) filter for "map == MAPID_INVALID" and return
+    // nothing. Iterate the GO store directly when the caller wants all maps.
+    std::vector<GameObjectData const*> AllGameObjects(uint32 entry = 0)
+    {
+        std::vector<GameObjectData const*> result;
+        for (auto const& itr : sObjectMgr->GetAllGOData())
+            if (!entry || itr.second.id == entry)
+                result.push_back(&itr.second);
+        return result;
+    }
 }
 
 // Prints all path properties as a comma-separated string (same order as the constructor arguments).
@@ -798,6 +810,17 @@ bool TravelPath::IsPathCheating(std::vector<WorldPosition> const& rawPath, float
                 return true;
         }
     }
+    // Guard 3: any near-vertical interior step is a fabricated tower/wall
+    // shortcut. Stairs have a real horizontal run; the Falcon Watch orb pair
+    // produced a 49 yd vertical jump with ~4 yd of run.
+    for (size_t i = 1; i < path.size(); ++i)
+    {
+        float const vDist = std::fabs(path[i - 1].GetPositionZ() - path[i].GetPositionZ());
+        float const hDist = path[i - 1].GetExactDist2d(path[i].GetPositionX(), path[i].GetPositionY());
+        if (vDist > 12.0f && (hDist == 0.0f || vDist / hDist > 4.0f))
+            return true;
+    }
+
     for (WorldPosition point : path)
         if (point.isDarkWater())
             return true;
@@ -2197,7 +2220,7 @@ void TravelNodeMap::generateTransportNodes()
 
             TransportPathContainer const& aPath = animation->Path;
 
-            for (GameObjectData const* goData : WorldPosition().getGameObjectsNear(0, entry))
+            for (GameObjectData const* goData : AllGameObjects(entry))
             {
                 prevNode = nullptr;
                 WorldPosition basePos(goData->mapid, goData->posX, goData->posY, goData->posZ, goData->orientation);
@@ -2331,20 +2354,60 @@ void TravelNodeMap::generateTransportNodes()
     }
 }
 
+void TravelNodeMap::ScanPortalGameObjects()
+{
+    uint32 total = 0, goobers = 0, spellcasters = 0, missing = 0, other = 0;
+    for (GameObjectData const* goData : AllGameObjects())
+    {
+        ++total;
+        GameObjectTemplate const* data = sObjectMgr->GetGameObjectTemplate(goData->id);
+        if (!data)
+        {
+            ++missing;
+            continue;
+        }
+        if (data->type == GAMEOBJECT_TYPE_GOOBER)
+        {
+            ++goobers;
+            if (goobers <= 20)
+                LOG_INFO("playerbots", "portal scan: goober {} '{}' spell {} map {} ({:.0f},{:.0f},{:.0f})",
+                         goData->id, data->name, data->goober.spellId, goData->mapid, goData->posX,
+                         goData->posY, goData->posZ);
+        }
+        else if (data->type == GAMEOBJECT_TYPE_SPELLCASTER)
+            ++spellcasters;
+        else
+            ++other;
+    }
+    LOG_INFO("playerbots", ">> Portal scan: {} GOs, {} goobers, {} spellcasters, {} other, {} missing templates.",
+             total, goobers, spellcasters, other, missing);
+}
+
 void TravelNodeMap::generatePortalNodes()
 {
+    uint32 gooberTemplates = 0;
+    uint32 gooberLinks = 0;
+
     // Static portals are GameObjects whose spell teleports the user. Both
     // spellcasters and goobers are used in the world (Orb of Translocation,
     // Naxxramas orbs, Dalaran portals). Each becomes a one-way staticPortal
     // link from the GO spawn to the destination.
-    for (GameObjectData const* goData : WorldPosition().getGameObjectsNear(0, 0))
+    for (GameObjectData const* goData : AllGameObjects())
     {
         GameObjectTemplate const* data = sObjectMgr->GetGameObjectTemplate(goData->id);
         if (!data || (data->type != GAMEOBJECT_TYPE_SPELLCASTER && data->type != GAMEOBJECT_TYPE_GOOBER))
             continue;
 
-        uint32 const spellId = data->type == GAMEOBJECT_TYPE_GOOBER ? data->goober.spellId
-                                                                    : data->spellcaster.spellId;
+        bool const goober = data->type == GAMEOBJECT_TYPE_GOOBER;
+        if (goober)
+        {
+            ++gooberTemplates;
+            LOG_DEBUG("playerbots", "travel portal: goober {} '{}' spell {} at map {} ({:.0f},{:.0f},{:.0f})",
+                      goData->id, data->name, data->goober.spellId, goData->mapid, goData->posX, goData->posY,
+                      goData->posZ);
+        }
+
+        uint32 const spellId = goober ? data->goober.spellId : data->spellcaster.spellId;
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
         if (!spellInfo)
             continue;
@@ -2384,7 +2447,17 @@ void TravelNodeMap::generatePortalNodes()
         TravelNodePath travelPath(0.1f, 3.0f, (uint8)TravelNodePathType::staticPortal, goData->id, true);
         travelPath.setPath({*inNode->getPosition(), *outNode->getPosition()});
         inNode->setPathTo(outNode, travelPath);
+        if (goober)
+        {
+            ++gooberLinks;
+            LOG_INFO("playerbots", "travel portal: linked goober {} '{}' spell {} -> map {} ({:.0f},{:.0f},{:.0f})",
+                     goData->id, data->name, spellId, pos->target_mapId, pos->target_X, pos->target_Y,
+                     pos->target_Z);
+        }
     }
+
+    LOG_INFO("playerbots", ">> Portal nodes: {} goober templates, {} goober links.", gooberTemplates,
+             gooberLinks);
 }
 
 void TravelNodeMap::generateZoneMeanNodes()

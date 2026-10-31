@@ -809,6 +809,9 @@ public:
 
     void PrecomputeReachability(bool reportComponents = false);
 
+    // Diagnostic: count the gameobject templates the portal generator scans.
+    void ScanPortalGameObjects();
+
     TravelPath GetFullPath(WorldPosition botPos,
         WorldPosition destination, Unit* bot = nullptr);
 

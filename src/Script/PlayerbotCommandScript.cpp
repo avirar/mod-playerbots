@@ -51,6 +51,7 @@ public:
 
         static ChatCommandTable playerbotsTravelCommandTable = {
             {"generatenode", HandleGenerateTravelNodesCommand, SEC_GAMEMASTER, Console::Yes},
+            {"portalscan", HandlePortalScanCommand, SEC_GAMEMASTER, Console::Yes},
         };
 
         static ChatCommandTable playerbotsCommandTable = {
@@ -817,6 +818,13 @@ public:
 
         sPerfMonitor.PrintStats();
         sPerfMonitor.DumpJson(false);
+        return true;
+    }
+
+    static bool HandlePortalScanCommand(ChatHandler* handler, char const* /*args*/)
+    {
+        sTravelNodeMap.ScanPortalGameObjects();
+        handler->PSendSysMessage("Portal scan finished; see the server log.");
         return true;
     }
 
