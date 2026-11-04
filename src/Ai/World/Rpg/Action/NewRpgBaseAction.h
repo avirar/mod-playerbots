@@ -69,7 +69,7 @@ protected:
     // Correct 3D positions for a quest's incomplete objectives (toComplete = turn-in) from the
     // spawn/quest-ender index: covers cave floors and tower platforms alike. Empty when the map
     // has no entry - callers fall back to POI + baked/terrain height.
-    static bool GetQuestObjectivePositions(Player* bot, uint32 questId,
+    static bool GetQuestObjectivePositions(PlayerbotAI* botAI, Player* bot, uint32 questId,
                                            std::vector<QuestObjectivePosition>& outPositions, bool toComplete);
     // Loaded creature/gameobject for a spawn entry, or nullptr when the spawn is not loaded.
     static WorldObject* FindLoadedSpawn(Player* bot, QuestObjectivePosition const& candidate);

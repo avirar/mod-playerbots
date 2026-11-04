@@ -15,6 +15,7 @@
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "LootSourceMgr.h"
 #include "NewRpgHelpers.h"
 #include "NewRpgInfo.h"
 #include "QuestLevelRules.h"
@@ -575,7 +576,7 @@ bool IsSpawnDestinationAllowed(Player* bot, QuestSpawn const& spawn)
 }
 } // namespace
 
-bool NewRpgBaseAction::GetQuestObjectivePositions(Player* bot, uint32 questId,
+bool NewRpgBaseAction::GetQuestObjectivePositions(PlayerbotAI* botAI, Player* bot, uint32 questId,
                                                   std::vector<QuestObjectivePosition>& outPositions, bool toComplete)
 {
     outPositions.clear();
@@ -627,6 +628,28 @@ bool NewRpgBaseAction::GetQuestObjectivePositions(Player* bot, uint32 questId,
             continue;
 
         addEntry(entry, int32(slot), true);
+    }
+
+    // Item (collect) objectives: resolve the required item to its corpse, skinning and
+    // gameobject sources, then to spawns of those entries. The same visibility and
+    // reachability gates apply, so a drop source in another zone or phase is not chosen.
+    for (uint8 slot = 0; slot < QUEST_ITEM_OBJECTIVES_COUNT; ++slot)
+    {
+        uint32 const itemId = quest->RequiredItemId[slot];
+        if (!itemId || status.ItemCount[slot] >= quest->RequiredItemCount[slot])
+            continue;
+
+        int32 const objectiveIdx = int32(QUEST_OBJECTIVES_COUNT + slot);
+
+        for (uint32 entry : sLootSourceMgr.GetCreatureSources(itemId))
+            addEntry(int32(entry), objectiveIdx, true);
+
+        if (botAI->HasSkill(SKILL_SKINNING))
+            for (uint32 entry : sLootSourceMgr.GetSkinningSources(itemId))
+                addEntry(int32(entry), objectiveIdx, true);
+
+        for (uint32 entry : sLootSourceMgr.GetGameObjectSources(itemId))
+            addEntry(-int32(entry), objectiveIdx, true);
     }
 
     return !outPositions.empty();

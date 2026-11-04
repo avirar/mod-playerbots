@@ -542,7 +542,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
     {
         // Spawn-backed objectives first: exact 3D positions (cave floors, tower platforms).
         std::vector<QuestObjectivePosition> objectivePositions;
-        if (GetQuestObjectivePositions(bot, questId, objectivePositions, false))
+        if (GetQuestObjectivePositions(botAI, bot, questId, objectivePositions, false))
         {
             QuestObjectivePosition const* best = nullptr;
             float bestDistance = std::numeric_limits<float>::max();
@@ -663,7 +663,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 bool NewRpgDoQuestAction::SelectSpawnTurnInDestination(NewRpgInfo::DoQuest& data, uint32 questId)
 {
     std::vector<QuestObjectivePosition> enderPositions;
-    if (!GetQuestObjectivePositions(bot, questId, enderPositions, true))
+    if (!GetQuestObjectivePositions(botAI, bot, questId, enderPositions, true))
         return false;
 
     QuestObjectivePosition const* best = nullptr;
