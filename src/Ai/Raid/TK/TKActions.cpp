@@ -1494,8 +1494,7 @@ bool KaelthasSunstriderLootLegendaryWeaponsAction::LootWeapon(uint32 weaponEntry
             false, false, MovementPriority::MOVEMENT_COMBAT, true, false);
     }
 
-    // OpenLootAction now returns true after stopping a moving bot (consuming the tick) without
-    // opening the loot, so stop here first and retry next tick instead of treating it as opened.
+    // OpenLootAction returns true for a bare stop without opening the loot.
     if (bot->isMoving())
     {
         bot->StopMoving();

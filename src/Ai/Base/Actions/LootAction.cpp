@@ -96,10 +96,8 @@ bool OpenLootAction::Execute(Event /*event*/)
     if (lootObject.IsEmpty() || !availableLoot->CanAttemptLoot(lootObject.guid))
         return false;
 
-    // Consume the tick when stopping or dismounting is the only thing between the bot and the
-    // loot. Returning false here lets mount/grind/move actions run in the same tick and undo the
-    // approach. Only do it when the target is already in interaction range; otherwise the move
-    // to loot action still owns the approach.
+    // Consume the tick: returning false lets mount, grind or move actions undo the stop or
+    // dismount in the same tick.
     if (bot->isMoving() || bot->IsMounted())
     {
         Creature* creature = botAI->GetCreature(lootObject.guid);

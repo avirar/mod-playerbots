@@ -69,8 +69,6 @@ MountData CollectMountData(Player const* bot)
 
 bool CheckMountStateAction::IsLootTargetInRange()
 {
-    // "can loot" is the cached value that answers "is an in-range, lootable target pending",
-    // and reusing it keeps this per-tick check O(1) instead of re-running IsLootPossible here.
     return AI_VALUE(bool, "can loot");
 }
 
@@ -129,7 +127,7 @@ bool CheckMountStateAction::Execute(Event /*event*/)
 
     bool inBattleground = bot->InBattleground();
     bool const noRealMaster = (!master || master == bot);
-    // OpenLootAction dismounts for in-range loot; do not remount before it can open.
+    // Don't remount while OpenLootAction is dismounting to open in-range loot.
     bool const lootTargetInRange = IsLootTargetInRange();
 
     // If there is a master and bot not in BG, follow master's mount state regardless of group leader
