@@ -46,16 +46,25 @@ constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
 Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo)
 {
     std::vector<Item*> candidates;
+    auto canEnchant = [spellInfo](Item* item)
+    {
+        // Vellum enchants consume the vellum and grant no skill; skill-up
+        // crafting must target real gear.
+        if (item->IsArmorVellum() || item->IsWeaponVellum())
+            return false;
+        return item->IsFitToSpellRequirements(spellInfo);
+    };
+
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
         if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
-            if (item->IsFitToSpellRequirements(spellInfo))
+            if (canEnchant(item))
                 candidates.push_back(item);
 
     for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
                 if (Item* item = bot->GetItemByPos(bagSlot, slot))
-                    if (item->IsFitToSpellRequirements(spellInfo))
+                    if (canEnchant(item))
                         candidates.push_back(item);
 
     if (candidates.empty())
@@ -421,6 +430,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             info.ChangeToIdle();
             return true;
         }
+        LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
+                  itemTarget->GetEntry(), itemTarget->GetGUID().ToString(), chosen->spellId);
         cast = botAI->CastSpell(chosen->spellId, bot, itemTarget);
     }
     else
