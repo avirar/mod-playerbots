@@ -30,13 +30,14 @@ void AddLootOutput(std::unordered_map<uint32, LootTemplateOutput>& outputs, uint
 
 void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
                                         std::unordered_map<uint32, LootTemplateOutput>& outputs, bool guaranteed,
-                                        uint32 multiplier, uint32 depth)
+                                        float probabilityScale, uint32 multiplier, uint32 depth)
 {
-    if (!lTemplate || depth > MAX_LOOT_REFERENCE_DEPTH)
+    if (!lTemplate || depth > MAX_LOOT_REFERENCE_DEPTH || probabilityScale <= 0.0f)
         return;
 
     LootTemplateAccess const* access = reinterpret_cast<LootTemplateAccess const*>(lTemplate);
-    auto collect = [&outputs, multiplier, depth](LootStoreItem const* entry, bool canBeGuaranteed, float probability)
+    auto collect = [&outputs, multiplier, probabilityScale, depth](LootStoreItem const* entry, bool canBeGuaranteed,
+                                                                   float probability)
     {
         if (!entry)
             return;
@@ -51,7 +52,8 @@ void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
                 return;
 
             uint32 const refMultiplier = multiplier * std::max<uint32>(1, entry->maxcount);
-            CollectLootTemplateOutputsInternal(referenced, outputs, entryGuaranteed, refMultiplier, depth + 1);
+            CollectLootTemplateOutputsInternal(referenced, outputs, entryGuaranteed, probabilityScale * probability,
+                                               refMultiplier, depth + 1);
             return;
         }
 
@@ -59,7 +61,7 @@ void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
         // A random output still contributes its expected share; the planner
         // treats minCount == 0 as a gamble and relies on failure memory.
         float const expectedCount = canBeGuaranteed && !entry->needs_quest && entry->conditions.empty()
-                                        ? float(entry->mincount) * probability * multiplier
+                                        ? float(entry->mincount) * probability * probabilityScale * multiplier
                                         : 0.0f;
 
         AddLootOutput(outputs, entry->itemid, minCount, expectedCount);
@@ -96,7 +98,7 @@ void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
 
 void CollectLootTemplateOutputs(LootTemplate const* lTemplate, std::unordered_map<uint32, LootTemplateOutput>& outputs)
 {
-    CollectLootTemplateOutputsInternal(lTemplate, outputs, true, 1, 0);
+    CollectLootTemplateOutputsInternal(lTemplate, outputs, true, 1.0f, 1, 0);
 }
 
 LootTemplateAccess const* DropMapValue::GetLootTemplate(ObjectGuid guid, LootType type)

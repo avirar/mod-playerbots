@@ -117,6 +117,10 @@ constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
 constexpr size_t MAX_PLAN_STEPS = 20;
+// Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
+// outputs do not consume the whole plan budget.
+constexpr float MIN_CONVERSION_EXPECTED = 0.1f;
+constexpr uint32 MAX_CONVERSION_ATTEMPTS = 8;
 
 uint32 GetEnchantId(SpellInfo const* spellInfo)
 {
@@ -537,7 +541,10 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         uint32& inputAvailable = ctx.plan.available[conversion.inputItemId];
         auto& stacks = ctx.plan.stacks[conversion.inputItemId];
         float const perCast = output->second.expectedCount;
-        uint32 const needed = std::max<uint32>(1, uint32(std::ceil(float(remaining) / perCast)));
+        // Very low-yield outputs get a single gamble; high-yield ones get a
+        // bounded number of casts rather than eating the whole plan budget.
+        uint32 const maxCasts = perCast < MIN_CONVERSION_EXPECTED ? 1 : MAX_CONVERSION_ATTEMPTS;
+        uint32 const needed = std::min(maxCasts, std::max<uint32>(1, uint32(std::ceil(float(remaining) / perCast))));
 
         for (uint32 casts = 0; casts < needed && produced < float(remaining) && ctx.plan.steps.size() < MAX_PLAN_STEPS;
              ++casts)
@@ -561,43 +568,40 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         return true;
 
     uint32 const missing = remaining - uint32(std::min(produced, float(remaining)));
-    if (missing > 0)
+    auto const vendor = ctx.bags->vendorItems.find(itemId);
+    if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.info, itemId))
     {
-        auto const vendor = ctx.bags->vendorItems.find(itemId);
-        if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.info, itemId))
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (proto)
         {
-            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-            if (proto)
+            for (VendorOffer const& offer : vendor->second)
             {
-                for (VendorOffer const& offer : vendor->second)
-                {
-                    if (offer.stock < missing)
-                        continue;
+                if (offer.stock < missing)
+                    continue;
 
-                    uint32 const purchases = (missing + offer.buyCount - 1) / offer.buyCount;
-                    uint64 const cost = uint64(offer.price) * purchases;
-                    if (cost > ctx.plan.moneyBudget)
-                        continue;
+                uint32 const purchases = (missing + offer.buyCount - 1) / offer.buyCount;
+                uint64 const cost = uint64(offer.price) * purchases;
+                if (cost > ctx.plan.moneyBudget)
+                    continue;
 
-                    ctx.plan.moneyBudget -= uint32(cost);
-                    ctx.plan.steps.push_back({0, 0, 0, missing, itemId, offer.guid});
-                    LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
-                              ctx.bot->GetName(), itemId, missing, offer.price);
-                    return true;
-                }
+                ctx.plan.moneyBudget -= uint32(cost);
+                ctx.plan.steps.push_back({0, 0, 0, missing, itemId, offer.guid});
+                LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
+                          ctx.bot->GetName(), itemId, missing, offer.price);
+                return true;
             }
         }
-
-        // A chance-based conversion may not yield the exact item; let the
-        // executor try it and rely on failure memory when the loot comes short.
-        if (probabilistic && plannedConversion)
-            return true;
-
-        LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft, conversion or vendor (produced {})",
-                  ctx.bot->GetName(), itemId, missing, produced);
-        return false;
     }
-    return true;
+
+    // A chance-based conversion may not yield the exact item. Only a direct
+    // reagent of the final recipe may gamble; a nested craft that cannot be
+    // covered would otherwise discard the whole plan after consuming inputs.
+    if (probabilistic && plannedConversion && depth == 0)
+        return true;
+
+    LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft, conversion or vendor (produced {})",
+              ctx.bot->GetName(), itemId, missing, produced);
+    return false;
 }
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth)
