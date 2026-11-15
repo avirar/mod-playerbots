@@ -523,8 +523,10 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
                 if (creature->HasNpcFlag(UNIT_NPC_FLAG_REPAIR) && AI_VALUE(bool, "can repair"))
                     botAI->DoSpecificAction("repair", Event("repair"), true);
 
-                // TrainerAction resolves its target from the bot unless the bot has a master.
-                if (!botAI->GetMaster() && creature->HasNpcFlag(UNIT_NPC_FLAG_TRAINER))
+                // TrainerAction resolves its target from the bot unless the bot has a
+                // different master; self-bots are their own master.
+                Player* master = botAI->GetMaster();
+                if ((!master || master == bot) && creature->HasNpcFlag(UNIT_NPC_FLAG_TRAINER))
                 {
                     bot->SetSelection(creature->GetGUID());
                     botAI->DoSpecificAction("trainer", Event("trainer", "learn"), true);
