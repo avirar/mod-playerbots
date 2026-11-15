@@ -119,7 +119,16 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                                           skill->TrivialSkillLineRankLow));
             tier = std::max(tier, skill->TrivialSkillLineRankLow);
         }
-        if (chance <= 0 || !botAI->CanCastSpell(spellId, bot, true))
+        if (chance <= 0)
+            continue;
+
+        bool hasReagents = true;
+        for (uint8 r = 0; r < MAX_SPELL_REAGENTS && hasReagents; ++r)
+        {
+            if (spellInfo->ReagentCount[r] > 0)
+                hasReagents = bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
+        }
+        if (!hasReagents || !botAI->CanCastSpell(spellId, bot, true))
             continue;
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
