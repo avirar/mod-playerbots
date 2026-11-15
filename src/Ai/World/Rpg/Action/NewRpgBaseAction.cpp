@@ -116,8 +116,10 @@ bool HasCraftableProfessionRecipe(Player* bot, uint32 skillLine)
                 break;
             }
         }
-        if (hasTools)
-            return true;
+        if (!hasTools || bot->HasSpellCooldown(spellId))
+            continue;
+
+        return true;
     }
 
     return false;

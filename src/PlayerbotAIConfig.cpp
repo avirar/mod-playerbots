@@ -310,7 +310,7 @@ bool PlayerbotAIConfig::Initialize()
 
     //////////////////////////// Professions
     ClassMatchingProfessionChance =
-        std::min<uint32>(100, sConfigMgr->GetOption<uint32>("Playerbots.ClassMatchingProfessionChance", 30));
+        std::min<uint32>(100, sConfigMgr->GetOption<uint32>("Playerbots.ClassMatchingProfessionChance", 70));
     FishingDistanceFromMaster = sConfigMgr->GetOption<float>("Playerbots.FishingDistanceFromMaster", 10.0f);
     EndFishingWithMaster = sConfigMgr->GetOption<float>("Playerbots.EndFishingWithMaster", 30.0f);
     FishingDistance = sConfigMgr->GetOption<float>("Playerbots.FishingDistance", 40.0f);

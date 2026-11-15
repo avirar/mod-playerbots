@@ -541,6 +541,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         if (!cast)
         {
+            // A genuine equipped-gear upgrade is still worth casting at max skill;
+            // only marketable scroll production requires a vellum.
             Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo, !skillMaxed, &calculator) : nullptr;
             if (!itemTarget)
             {

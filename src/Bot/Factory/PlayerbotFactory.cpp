@@ -40,6 +40,7 @@
 #include "SpellMgr.h"
 #include "Trainer.h"
 #include "World.h"
+#include <algorithm>
 #include <array>
 #include <unordered_set>
 #include <utility>
@@ -258,13 +259,10 @@ bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer
     if (trainer->GetTrainerType() != Trainer::Type::Tradeskill)
         return true;
 
-    // Managed bots (random, AddClass and self-bots) use their assigned pair.
+    // Managed bots (random, AddClass and self-bots) use their known professions.
     // Leave player-owned alts and their trainers alone.
-    uint16 const firstSkill = sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
-    uint16 const secondSkill = sRandomPlayerbotMgr.GetValue(bot, "secondSkill");
     bool const managedBot = sRandomPlayerbotMgr.IsRandomBot(bot) || IsSelfBot(bot) ||
-                            sRandomPlayerbotMgr.IsAddclassBotCached(bot->GetGUID().GetCounter()) ||
-                            IsPrimaryTradeSkill(firstSkill) || IsPrimaryTradeSkill(secondSkill);
+                            sRandomPlayerbotMgr.IsAddclassBotCached(bot->GetGUID().GetCounter());
     if (!managedBot)
         return true;
 
@@ -276,13 +274,6 @@ bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer
         return true;
 
     if (!IsPrimaryTradeSkill(skillId))
-        return false;
-
-    if ((IsPrimaryTradeSkill(firstSkill) && skillId == firstSkill) ||
-        (IsPrimaryTradeSkill(secondSkill) && skillId == secondSkill))
-        return true;
-
-    if (IsPrimaryTradeSkill(firstSkill) || IsPrimaryTradeSkill(secondSkill))
         return false;
 
     uint32 knownPrimarySkills = 0;
@@ -348,73 +339,159 @@ uint32 PlayerbotFactory::GetProfessionStarterSpell(uint16 skillId)
     return 0;
 }
 
+namespace
+{
+enum class ProfessionArmorType : uint8
+{
+    Cloth,
+    Leather,
+    Mail,
+    Plate
+};
+
+ProfessionArmorType GetClassArmorType(uint8 classId)
+{
+    switch (classId)
+    {
+        case CLASS_PRIEST:
+        case CLASS_MAGE:
+        case CLASS_WARLOCK:
+            return ProfessionArmorType::Cloth;
+        case CLASS_ROGUE:
+        case CLASS_DRUID:
+            return ProfessionArmorType::Leather;
+        case CLASS_HUNTER:
+        case CLASS_SHAMAN:
+            return ProfessionArmorType::Mail;
+        default:
+            return ProfessionArmorType::Plate;
+    }
+}
+
+bool UsesSpellPower(uint8 classId, uint8 specTab)
+{
+    switch (classId)
+    {
+        case CLASS_PALADIN:
+            return specTab == PALADIN_TAB_HOLY;
+        case CLASS_DRUID:
+            return specTab == DRUID_TAB_BALANCE || specTab == DRUID_TAB_RESTORATION;
+        case CLASS_SHAMAN:
+            return specTab == SHAMAN_TAB_ELEMENTAL || specTab == SHAMAN_TAB_RESTORATION;
+        case CLASS_PRIEST:
+        case CLASS_MAGE:
+        case CLASS_WARLOCK:
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct ProfessionAffinity
+{
+    ProfessionArmorType armor;
+    bool spellPower;
+    bool hasSpec;
+};
+
+ProfessionAffinity GetProfessionAffinity(Player* bot)
+{
+    ProfessionAffinity affinity;
+    affinity.armor = GetClassArmorType(bot->getClass());
+    affinity.hasSpec = bot->GetLevel() >= 10;
+    affinity.spellPower =
+        affinity.hasSpec && UsesSpellPower(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
+    return affinity;
+}
+
+uint32 GetProfessionAffinityPercent(ProfessionAffinity const& affinity, uint16 skillId)
+{
+    // Below level 10 there is no chosen spec yet; keep the class-level fit only.
+    if (!affinity.hasSpec)
+    {
+        switch (skillId)
+        {
+            case SKILL_TAILORING:
+                return affinity.armor == ProfessionArmorType::Cloth ? 110 : 50;
+            case SKILL_LEATHERWORKING:
+                return affinity.armor == ProfessionArmorType::Leather || affinity.armor == ProfessionArmorType::Mail
+                           ? 110
+                           : (affinity.armor == ProfessionArmorType::Plate ? 60 : 50);
+            case SKILL_BLACKSMITHING:
+                return affinity.armor == ProfessionArmorType::Plate
+                           ? 110
+                           : (affinity.armor == ProfessionArmorType::Mail ? 60 : 50);
+            default:
+                return 100;
+        }
+    }
+
+    switch (skillId)
+    {
+        case SKILL_TAILORING:
+            if (affinity.spellPower)
+            {
+                if (affinity.armor == ProfessionArmorType::Cloth)
+                    return 110;
+                if (affinity.armor == ProfessionArmorType::Plate)
+                    return 70;
+                return 100;
+            }
+            return 50;
+        case SKILL_LEATHERWORKING:
+            if (affinity.armor == ProfessionArmorType::Leather || affinity.armor == ProfessionArmorType::Mail)
+                return affinity.spellPower ? 100 : 110;
+            return affinity.armor == ProfessionArmorType::Plate ? 60 : 50;
+        case SKILL_BLACKSMITHING:
+            if (affinity.armor == ProfessionArmorType::Plate)
+                return affinity.spellPower ? 90 : 110;
+            return affinity.armor == ProfessionArmorType::Mail ? 60 : 50;
+        default:
+            return 100;
+    }
+}
+
+uint32 GetPairAffinityPercent(ProfessionAffinity const& affinity, uint16 firstSkill, uint16 secondSkill)
+{
+    uint32 const first = GetProfessionAffinityPercent(affinity, firstSkill);
+    uint32 const second = GetProfessionAffinityPercent(affinity, secondSkill);
+    return std::clamp<uint32>(first * second / 100, 20u, 150u);
+}
+}  // namespace
+
 std::vector<PlayerbotFactory::WeightedProfessionPair> PlayerbotFactory::GetClassProfessionPairs(Player* bot)
 {
-    switch (bot->getClass())
+    // Soft class/spec affinity on the generic pool; unrelated pairs stay at 100%.
+    ProfessionAffinity const affinity = GetProfessionAffinity(bot);
+    std::vector<WeightedProfessionPair> pairs = GetRandomProfessionPairs();
+    for (WeightedProfessionPair& pair : pairs)
     {
-        case CLASS_WARRIOR:
-            return {{SKILL_MINING, SKILL_BLACKSMITHING, 45},
-                    {SKILL_MINING, SKILL_ENGINEERING, 30},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 15},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 10}};
-        case CLASS_PALADIN:
-            return {{SKILL_MINING, SKILL_BLACKSMITHING, 45},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 30},
-                    {SKILL_MINING, SKILL_ENGINEERING, 15},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 10}};
-        case CLASS_DEATH_KNIGHT:
-            return {{SKILL_MINING, SKILL_BLACKSMITHING, 45},
-                    {SKILL_MINING, SKILL_ENGINEERING, 35},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 20}};
-        case CLASS_HUNTER:
-            return {{SKILL_SKINNING, SKILL_LEATHERWORKING, 45},
-                    {SKILL_MINING, SKILL_ENGINEERING, 35},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 10},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 10}};
-        case CLASS_ROGUE:
-            return {{SKILL_SKINNING, SKILL_LEATHERWORKING, 35},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 25},
-                    {SKILL_MINING, SKILL_ENGINEERING, 25},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 10},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 5}};
-        case CLASS_DRUID:
-            return {{SKILL_SKINNING, SKILL_LEATHERWORKING, 35},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 35},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 20},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 10}};
-        case CLASS_SHAMAN:
-            return {{SKILL_HERBALISM, SKILL_ALCHEMY, 35},
-                    {SKILL_SKINNING, SKILL_LEATHERWORKING, 25},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 25},
-                    {SKILL_MINING, SKILL_JEWELCRAFTING, 15}};
-        case CLASS_PRIEST:
-            return {{SKILL_TAILORING, SKILL_ENCHANTING, 45},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 30},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 25}};
-        case CLASS_MAGE:
-            return {{SKILL_TAILORING, SKILL_ENCHANTING, 50},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 25},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 25}};
-        case CLASS_WARLOCK:
-        default:
-            return {{SKILL_TAILORING, SKILL_ENCHANTING, 50},
-                    {SKILL_HERBALISM, SKILL_ALCHEMY, 25},
-                    {SKILL_HERBALISM, SKILL_INSCRIPTION, 25}};
+        uint32 const percent = GetPairAffinityPercent(affinity, pair.firstSkill, pair.secondSkill);
+        pair.weight = std::max<uint32>(1, pair.weight * percent / 100);
     }
+    return pairs;
 }
 
 std::vector<PlayerbotFactory::WeightedProfessionPair> PlayerbotFactory::GetRandomProfessionPairs()
 {
-    return {{SKILL_MINING, SKILL_BLACKSMITHING, 20},
-            {SKILL_MINING, SKILL_ENGINEERING, 18},
-            {SKILL_MINING, SKILL_JEWELCRAFTING, 16},
-            {SKILL_SKINNING, SKILL_LEATHERWORKING, 18},
-            {SKILL_HERBALISM, SKILL_ALCHEMY, 18},
-            {SKILL_HERBALISM, SKILL_INSCRIPTION, 14},
+    return {{SKILL_MINING, SKILL_BLACKSMITHING, 18},
+            {SKILL_MINING, SKILL_ENGINEERING, 16},
+            {SKILL_MINING, SKILL_JEWELCRAFTING, 14},
+            {SKILL_SKINNING, SKILL_LEATHERWORKING, 16},
+            {SKILL_HERBALISM, SKILL_ALCHEMY, 16},
+            {SKILL_HERBALISM, SKILL_INSCRIPTION, 12},
             {SKILL_TAILORING, SKILL_ENCHANTING, 10},
-            {SKILL_HERBALISM, SKILL_MINING, 6},
-            {SKILL_HERBALISM, SKILL_SKINNING, 5},
-            {SKILL_MINING, SKILL_SKINNING, 5}};
+            {SKILL_HERBALISM, SKILL_MINING, 10},
+            {SKILL_HERBALISM, SKILL_SKINNING, 8},
+            {SKILL_MINING, SKILL_SKINNING, 8},
+            {SKILL_HERBALISM, SKILL_ENCHANTING, 8},
+            {SKILL_MINING, SKILL_ENCHANTING, 8},
+            {SKILL_SKINNING, SKILL_ENCHANTING, 5},
+            {SKILL_JEWELCRAFTING, SKILL_ENCHANTING, 5},
+            {SKILL_ALCHEMY, SKILL_INSCRIPTION, 6},
+            {SKILL_BLACKSMITHING, SKILL_JEWELCRAFTING, 6},
+            {SKILL_BLACKSMITHING, SKILL_ENGINEERING, 5},
+            {SKILL_LEATHERWORKING, SKILL_TAILORING, 3}};
 }
 
 std::pair<uint16, uint16> PlayerbotFactory::ChooseProfessionPair(
@@ -899,17 +976,10 @@ void PlayerbotFactory::Randomize(bool incremental)
             pmo->finish();
     }
 
-    LOG_DEBUG("playerbots", "Initializing skills (step 1)...");
-    pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Skills1");
-    bot->LearnDefaultSkills();
-    InitSkills();
-    if (pmo)
-        pmo->finish();
-
+    LOG_DEBUG("playerbots", "Initializing class spells...");
     pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Spells1");
-    LOG_DEBUG("playerbots", "Initializing spells (step 1)...");
+    bot->LearnDefaultSkills();
     InitClassSpells();
-    InitAvailableSpells();
     if (pmo)
         pmo->finish();
 
@@ -927,6 +997,12 @@ void PlayerbotFactory::Randomize(bool incremental)
         // botAI->DoSpecificAction("auto talents");
         botAI->ResetStrategies(false);  // fix wrong stored strategy
     }
+    if (pmo)
+        pmo->finish();
+
+    LOG_DEBUG("playerbots", "Initializing skills (step 1)...");
+    pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Skills1");
+    InitSkills();
     if (pmo)
         pmo->finish();
 
@@ -1109,6 +1185,12 @@ void PlayerbotFactory::Refresh()
     // }
     InitAttunementQuests();
     ClearInventory();
+    InitClassSpells();
+    if (!sPlayerbotAIConfig.EquipAndSpecPersistence ||
+        bot->GetLevel() < sPlayerbotAIConfig.EquipAndSpecPersistenceLevel)
+    {
+        InitTalentsTree(true, true, true);
+    }
     InitAmmo();
     InitFood();
     InitReagents();
@@ -1117,17 +1199,11 @@ void PlayerbotFactory::Refresh()
     InitPet();
     InitPetTalents();
     InitSkills();
-    InitClassSpells();
     InitAvailableSpells();
     InitReputation();
     InitSpecialSpells();
     InitMounts();
     InitKeyring();
-    if (!sPlayerbotAIConfig.EquipAndSpecPersistence ||
-        bot->GetLevel() < sPlayerbotAIConfig.EquipAndSpecPersistenceLevel)
-    {
-        InitTalentsTree(true, true, true);
-    }
     if (bot->GetLevel() >= sPlayerbotAIConfig.MinEnchantingBotLevel)
         ApplyEnchantAndGemsNew();
     bot->DurabilityRepairAll(false, 1.0f, false);

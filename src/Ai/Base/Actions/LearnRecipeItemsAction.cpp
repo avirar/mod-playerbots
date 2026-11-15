@@ -73,12 +73,13 @@ bool LearnRecipeItemsAction::Execute(Event /*event*/)
         // master once; they can ask the bot to use it or trade for it.
         if (MasterCanLearnRecipe(botAI, bot, proto, recipeSpellId))
         {
-            if (botAI->announcedRecipeSpells.insert(recipeSpellId).second)
+            if (!botAI->announcedRecipeSpells.contains(recipeSpellId))
             {
                 std::string const message = PlayerbotTextMgr::instance().GetBotTextOrDefault(
                     "rpg_recipe_for_master", "I have a recipe you can learn: %item",
                     {{"%item", botAI->GetChatHelper()->FormatItem(proto)}});
-                botAI->TellMaster(message);
+                if (botAI->TellMaster(message))
+                    botAI->announcedRecipeSpells.insert(recipeSpellId);
             }
             continue;
         }

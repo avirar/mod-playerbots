@@ -711,11 +711,11 @@ Playerbots.BotTaxiGapJitterMs = 100
 # PROFESSIONS
 #
 
-# Percentage of randombots in each class bucket that receive a class-matching
-# weighted profession combination. The remaining randombots use the weighted
-# random sane-pair profession pool.
-# Default: 30
-Playerbots.ClassMatchingProfessionChance = 30
+# Percentage of managed bots that receive a class/spec-matched weighted
+# profession pair. The remaining bots use the weighted random sane-pair
+# profession pool, which intentionally allows odd combinations.
+# Default: 70
+Playerbots.ClassMatchingProfessionChance = 70
 
 # Automatically adds the 'master fishing' strategy to bots that have the fishing skill when the bots master fishes.
 # Default: 1 (Enabled)
