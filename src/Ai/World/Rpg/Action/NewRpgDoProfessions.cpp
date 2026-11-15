@@ -7,12 +7,13 @@
 #include "NewRpgDoProfessions.h"
 
 #include <algorithm>
-#include <list>
-#include <unordered_map>
 #include <vector>
 
+#include "CellImpl.h"
 #include "DBCStructure.h"
 #include "GameObject.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
 #include "ObjectMgr.h"
@@ -32,24 +33,32 @@ struct ProfessionRecipe
     bool useful = false;
 };
 
-// Game object entries are static data, so the focus -> entries lookup is built once.
-std::vector<uint32> const& GameObjectEntriesForFocus(uint32 focusId)
+class NearestSpellFocusCheck
 {
-    static std::unordered_map<uint32, std::vector<uint32>> const entriesByFocus = []
+public:
+    NearestSpellFocusCheck(WorldObject const& searcher, uint32 focusId, float range)
+        : _searcher(searcher), _focusId(focusId), _range(range)
     {
-        std::unordered_map<uint32, std::vector<uint32>> entries;
-        for (auto const& [entry, goTemplate] : *sObjectMgr->GetGameObjectTemplates())
-        {
-            if (goTemplate.type == GAMEOBJECT_TYPE_SPELL_FOCUS && goTemplate.spellFocus.focusId)
-                entries[goTemplate.spellFocus.focusId].push_back(entry);
-        }
-        return entries;
-    }();
+    }
 
-    static std::vector<uint32> const none;
-    auto it = entriesByFocus.find(focusId);
-    return it == entriesByFocus.end() ? none : it->second;
-}
+    bool operator()(GameObject* go)
+    {
+        if (go->GetGOInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS || !go->isSpawned())
+            return false;
+        if (go->GetGOInfo()->spellFocus.focusId != _focusId)
+            return false;
+        if (!go->IsWithinDistInMap(&_searcher, _range))
+            return false;
+
+        _range = _searcher.GetDistance(go);
+        return true;
+    }
+
+private:
+    WorldObject const& _searcher;
+    uint32 _focusId;
+    float _range;
+};
 }  // namespace
 
 bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
@@ -81,11 +90,13 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (bot->HasUnitState(UNIT_STATE_CASTING) || bot->IsNonMeleeSpellCast(false))
         return true;
 
-    if (bot->IsMounted())
+    if (bot->IsInFlight())
     {
-        bot->Dismount();
+        LOG_DEBUG("playerbots", "[New RPG] {} professions waiting: in flight", bot->GetName());
         return true;
     }
+    if (bot->IsMounted())
+        bot->Dismount();
 
     uint8 const bagSpace = AI_VALUE(uint8, "bag space");
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);
@@ -194,16 +205,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (chosen->spellFocus)
     {
+        constexpr float SPELL_FOCUS_SEARCH_RANGE = 100.0f;
         GameObject* focus = nullptr;
-        std::list<GameObject*> gameObjects;
-        bot->GetGameObjectListWithEntryInGrid(gameObjects, GameObjectEntriesForFocus(chosen->spellFocus), 100.0f);
-        for (GameObject* go : gameObjects)
-        {
-            if (go->isSpawned() && go->GetGOInfo()->type == GAMEOBJECT_TYPE_SPELL_FOCUS &&
-                go->GetGOInfo()->spellFocus.focusId == chosen->spellFocus &&
-                (!focus || bot->GetDistance(go) < bot->GetDistance(focus)))
-                focus = go;
-        }
+        NearestSpellFocusCheck check(*bot, chosen->spellFocus, SPELL_FOCUS_SEARCH_RANGE);
+        Acore::GameObjectLastSearcher<NearestSpellFocusCheck> searcher(bot, focus, check);
+        Cell::VisitObjects(bot, searcher, SPELL_FOCUS_SEARCH_RANGE);
 
         if (!focus)
         {
@@ -216,24 +222,21 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         float const focusDistance = float(focus->GetGOInfo()->spellFocus.dist) - 1.0f;
         if (!focus->IsWithinDistInMap(bot, focusDistance))
         {
-            if (!bot->isMoving())
-                MoveWorldObjectTo(focus->GetGUID(), 3.0f);
+            LOG_DEBUG("playerbots", "[New RPG] {} professions moving to spell focus {} (distance {})", bot->GetName(),
+                      focus->GetEntry(), bot->GetDistance(focus));
+            if (!bot->isMoving() && !MoveWorldObjectTo(focus->GetGUID(), 3.0f))
+                LOG_DEBUG("playerbots", "[New RPG] {} professions move to spell focus {} failed", bot->GetName(),
+                          focus->GetEntry());
             return true;
         }
     }
 
-    // A player stops, stands and dismounts to craft; consume the tick so follow/grind
-    // cannot immediately start moving us again.
+    // A player stops and stands to craft; do both in the same tick so the sparse
+    // random-bot schedule is not spent waiting for the next one.
     if (bot->isMoving())
-    {
         bot->StopMoving();
-        return true;
-    }
     if (!bot->IsStandState())
-    {
         bot->SetStandState(UNIT_STAND_STATE_STAND);
-        return true;
-    }
 
     data.spellId = chosen->spellId;
     data.lastCast = getMSTime();
