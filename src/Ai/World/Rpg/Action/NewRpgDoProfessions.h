@@ -8,6 +8,7 @@
 #define PLAYERBOT_NEWRPGDOPROFESSIONS_H
 
 #include "NewRpgBaseAction.h"
+#include "NewRpgInfo.h"
 
 class NewRpgDoProfessionsAction : public NewRpgBaseAction
 {
@@ -15,6 +16,9 @@ public:
     NewRpgDoProfessionsAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg do professions") {}
 
     bool Execute(Event event) override;
+
+private:
+    bool LearnFromTrainer(NewRpgInfo::DoProfessions& data);
 };
 
 #endif

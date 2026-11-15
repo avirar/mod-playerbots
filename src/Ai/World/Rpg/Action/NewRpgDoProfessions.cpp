@@ -7,18 +7,23 @@
 #include "NewRpgDoProfessions.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
+#include "Creature.h"
 #include "DBCStructure.h"
 #include "GameObject.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
+#include "ObjectAccessor.h"
+#include "ObjectDefines.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "SpellFocusMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "Trainer.h"
 
 namespace
 {
@@ -56,6 +61,66 @@ bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions
 }
 }  // namespace
 
+bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data)
+{
+    Creature* trainer = nullptr;
+    float bestTrainerDistance = std::numeric_limits<float>::max();
+    for (ObjectGuid const guid : AI_VALUE(GuidVector, "possible new rpg targets"))
+    {
+        Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
+        if (!creature || !creature->IsInWorld() || !creature->IsTrainer())
+            continue;
+
+        Trainer::Trainer const* trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
+        if (!trainerData || trainerData->GetTrainerType() != Trainer::Type::Tradeskill ||
+            !trainerData->IsTrainerValidForPlayer(bot))
+            continue;
+
+        bool const recentlyVisited = data.trainerGuid == creature->GetGUID() && data.lastTrainer &&
+                                     GetMSTimeDiffToNow(data.lastTrainer) < 5 * 60 * IN_MILLISECONDS;
+        if (recentlyVisited)
+            continue;
+
+        bool teachesSkill = false;
+        for (Trainer::Spell const& trainerSpell : trainerData->GetSpells())
+        {
+            if (trainerSpell.ReqSkillLine == data.skillLine && trainerData->CanTeachSpell(bot, &trainerSpell))
+            {
+                teachesSkill = true;
+                break;
+            }
+        }
+        if (!teachesSkill)
+            continue;
+
+        float const distance = bot->GetDistance(creature);
+        if (distance < bestTrainerDistance)
+        {
+            bestTrainerDistance = distance;
+            trainer = creature;
+        }
+    }
+
+    if (!trainer)
+        return false;
+
+    if (bot->GetDistance(trainer) > INTERACTION_DISTANCE)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} professions moving to trainer {} (distance {})", bot->GetName(),
+                  trainer->GetEntry(), bot->GetDistance(trainer));
+        MoveWorldObjectTo(trainer->GetGUID(), 2.0f);
+        return true;
+    }
+
+    LOG_DEBUG("playerbots", "[New RPG] {} professions learning from trainer {} (skill {})", bot->GetName(),
+              trainer->GetEntry(), data.skillLine);
+    data.trainerGuid = trainer->GetGUID();
+    data.lastTrainer = getMSTime();
+    bot->SetSelection(trainer->GetGUID());
+    botAI->DoSpecificAction("trainer", Event("trainer", "learn"), true);
+    return true;
+}
+
 bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
@@ -92,6 +157,13 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     }
     if (bot->IsMounted())
         bot->Dismount();
+
+    // Recipe items picked up later are handled by the item-push trigger; this
+    // covers items already in the bags when the status starts.
+    if (data.casts == 0 && botAI->DoSpecificAction("learn recipe items", Event(), true))
+        return true;
+    if (LearnFromTrainer(data))
+        return true;
 
     uint8 const bagSpace = AI_VALUE(uint8, "bag space");
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);

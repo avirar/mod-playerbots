@@ -39,6 +39,7 @@
 #include "ImbueAction.h"
 #include "InviteToGroupAction.h"
 #include "LeaveGroupAction.h"
+#include "LearnRecipeItemsAction.h"
 #include "LootAction.h"
 #include "LootRollAction.h"
 #include "MoveToRpgTargetAction.h"
@@ -149,6 +150,7 @@ public:
         creators["return"] = &ActionContext::_return;
         creators["move to loot"] = &ActionContext::move_to_loot;
         creators["open loot"] = &ActionContext::open_loot;
+        creators["learn recipe items"] = &ActionContext::learn_recipe_items;
         creators["guard"] = &ActionContext::guard;
         creators["return to stay position"] = &ActionContext::return_to_stay_position;
         creators["move out of enemy contact"] = &ActionContext::move_out_of_enemy_contact;
@@ -315,6 +317,7 @@ private:
     static Action* guard(PlayerbotAI* botAI) { return new GuardAction(botAI); }
     static Action* return_to_stay_position(PlayerbotAI* botAI) { return new ReturnToStayPositionAction(botAI); }
     static Action* open_loot(PlayerbotAI* botAI) { return new OpenLootAction(botAI); }
+    static Action* learn_recipe_items(PlayerbotAI* botAI) { return new LearnRecipeItemsAction(botAI); }
     static Action* move_to_loot(PlayerbotAI* botAI) { return new MoveToLootAction(botAI); }
     static Action* _return(PlayerbotAI* botAI) { return new ReturnAction(botAI); }
     static Action* shoot(PlayerbotAI* botAI) { return new CastShootAction(botAI); }
