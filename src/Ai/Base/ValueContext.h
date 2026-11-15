@@ -248,6 +248,7 @@ public:
         creators["next rpg action"] = &ValueContext::next_rpg_action;
         creators["travel target"] = &ValueContext::travel_target;
         creators["talk target"] = &ValueContext::talk_target;
+        creators["spell focus target"] = &ValueContext::spell_focus_target;
         creators["pull target"] = &ValueContext::pull_target;
         creators["pull strategy target"] = &ValueContext::pull_strategy_target;
         creators["focus heal targets"] = &ValueContext::focus_heal_targets;
@@ -509,6 +510,7 @@ private:
     static UntypedValue* rpg_target(PlayerbotAI* botAI) { return new RpgTargetValue(botAI); }
     static UntypedValue* ignore_rpg_target(PlayerbotAI* botAI) { return new IgnoreRpgTargetValue(botAI); }
     static UntypedValue* talk_target(PlayerbotAI* botAI) { return new TalkTargetValue(botAI); }
+    static UntypedValue* spell_focus_target(PlayerbotAI* botAI) { return new SpellFocusTargetValue(botAI); }
     static UntypedValue* next_rpg_action(PlayerbotAI* botAI) { return new NextRpgActionValue(botAI); }
     static UntypedValue* travel_target(PlayerbotAI* botAI) { return new TravelTargetValue(botAI); }
     static UntypedValue* pull_target(PlayerbotAI* botAI) { return new PullTargetValue(botAI); }

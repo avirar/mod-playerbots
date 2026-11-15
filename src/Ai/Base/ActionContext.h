@@ -42,6 +42,7 @@
 #include "LootAction.h"
 #include "LootRollAction.h"
 #include "MoveToRpgTargetAction.h"
+#include "MoveToSpellFocusAction.h"
 #include "MoveToTravelTargetAction.h"
 #include "MovementActions.h"
 #include "NewRpgAction.h"
@@ -287,6 +288,7 @@ public:
         creators["new rpg outdoor pvp"] = &ActionContext::new_rpg_outdoor_pvp;
         creators["new rpg do gather"] = &ActionContext::new_rpg_do_gather;
         creators["new rpg do professions"] = &ActionContext::new_rpg_do_professions;
+        creators["move to spell focus"] = &ActionContext::move_to_spell_focus;
         creators["wait for attack keep safe distance"] = &ActionContext::wait_for_attack_keep_safe_distance;
     }
 
@@ -500,6 +502,7 @@ private:
     static Action* new_rpg_outdoor_pvp(PlayerbotAI* botAI) { return new NewRpgOutdoorPvpAction(botAI); }
     static Action* new_rpg_do_gather(PlayerbotAI* botAI) { return new NewRpgDoGatherAction(botAI); }
     static Action* new_rpg_do_professions(PlayerbotAI* botAI) { return new NewRpgDoProfessionsAction(botAI); }
+    static Action* move_to_spell_focus(PlayerbotAI* botAI) { return new MoveToSpellFocusAction(botAI); }
     static Action* wait_for_attack_keep_safe_distance(PlayerbotAI* botAI) { return new WaitForAttackKeepSafeDistanceAction(botAI); }
 };
 

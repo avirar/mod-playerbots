@@ -9,16 +9,14 @@
 #include <algorithm>
 #include <vector>
 
-#include "CellImpl.h"
 #include "DBCStructure.h"
 #include "GameObject.h"
-#include "GridNotifiers.h"
-#include "GridNotifiersImpl.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "Playerbots.h"
+#include "SpellFocusMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 
@@ -33,32 +31,29 @@ struct ProfessionRecipe
     bool useful = false;
 };
 
-class NearestSpellFocusCheck
+constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
+constexpr uint32 COOKING_FIRE_FOCUS = 4;
+constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
+
+bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions& data, uint32 focusId)
 {
-public:
-    NearestSpellFocusCheck(WorldObject const& searcher, uint32 focusId, float range)
-        : _searcher(searcher), _focusId(focusId), _range(range)
-    {
-    }
+    if (focusId != COOKING_FIRE_FOCUS || !bot->HasSpell(BASIC_CAMPFIRE_SPELL) ||
+        bot->HasSpellCooldown(BASIC_CAMPFIRE_SPELL))
+        return false;
 
-    bool operator()(GameObject* go)
-    {
-        if (go->GetGOInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS || !go->isSpawned())
-            return false;
-        if (go->GetGOInfo()->spellFocus.focusId != _focusId)
-            return false;
-        if (!go->IsWithinDistInMap(&_searcher, _range))
-            return false;
+    if (bot->isMoving())
+        bot->StopMoving();
+    if (!bot->IsStandState())
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
 
-        _range = _searcher.GetDistance(go);
+    data.lastCampfire = getMSTime();
+    LOG_DEBUG("playerbots", "[New RPG] {} professions casting basic campfire", bot->GetName());
+    if (botAI->CastSpell(BASIC_CAMPFIRE_SPELL, bot))
         return true;
-    }
 
-private:
-    WorldObject const& _searcher;
-    uint32 _focusId;
-    float _range;
-};
+    data.lastCampfire = 0;
+    return false;
+}
 }  // namespace
 
 bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
@@ -207,28 +202,52 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (chosen->spellFocus)
     {
-        constexpr float SPELL_FOCUS_SEARCH_RANGE = 100.0f;
-        GameObject* focus = nullptr;
-        NearestSpellFocusCheck check(*bot, chosen->spellFocus, SPELL_FOCUS_SEARCH_RANGE);
-        Acore::GameObjectLastSearcher<NearestSpellFocusCheck> searcher(bot, focus, check);
-        Cell::VisitObjects(bot, searcher, SPELL_FOCUS_SEARCH_RANGE);
+        ObjectGuid const focusGuid = AI_VALUE2(ObjectGuid, "spell focus", chosen->spellFocus);
+        WorldObject* worldObject = focusGuid.IsEmpty() ? nullptr : botAI->GetWorldObject(focusGuid);
+        GameObject* focus = worldObject ? worldObject->ToGameObject() : nullptr;
+        SpellFocusSpawn const* cached = (!focus && !focusGuid.IsEmpty()) ? sSpellFocusMgr.Get(focusGuid) : nullptr;
 
-        if (!focus)
+        if (!focus && !cached)
         {
+            if (TryBasicCampfire(botAI, bot, data, chosen->spellFocus))
+                return true;
+            if (data.lastCampfire && GetMSTimeDiffToNow(data.lastCampfire) < CAMPFIRE_WAIT_MS)
+                return true;
+
             LOG_DEBUG("playerbots", "[New RPG] {} no spell focus {} for recipe {}", bot->GetName(), chosen->spellFocus,
                       chosen->spellId);
             info.ChangeToIdle();
             return true;
         }
 
-        float const focusDistance = float(focus->GetGOInfo()->spellFocus.dist) - 1.0f;
-        if (!focus->IsWithinDistInMap(bot, focusDistance))
+        float distance = 0.0f;
+        float focusDistance = 0.0f;
+        if (focus)
         {
+            distance = bot->GetDistance(focus);
+            focusDistance = float(focus->GetGOInfo()->spellFocus.dist) - 1.0f;
+        }
+        else
+        {
+            float const dx = cached->pos.GetPositionX() - bot->GetPositionX();
+            float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
+            float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
+            distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+            focusDistance = cached->distance - 1.0f;
+        }
+
+        if (!focus || distance > focusDistance)
+        {
+            // A campfire is better than walking more than 100 yards to an existing focus.
+            if (distance > 100.0f && TryBasicCampfire(botAI, bot, data, chosen->spellFocus))
+                return true;
+            if (data.lastCampfire && GetMSTimeDiffToNow(data.lastCampfire) < CAMPFIRE_WAIT_MS)
+                return true;
+
             LOG_DEBUG("playerbots", "[New RPG] {} professions moving to spell focus {} (distance {})", bot->GetName(),
-                      focus->GetEntry(), bot->GetDistance(focus));
-            if (!bot->isMoving() && !MoveWorldObjectTo(focus->GetGUID(), 3.0f))
-                LOG_DEBUG("playerbots", "[New RPG] {} professions move to spell focus {} failed", bot->GetName(),
-                          focus->GetEntry());
+                      focusGuid.ToString(), distance);
+            context->GetValue<ObjectGuid>("spell focus target")->Set(focusGuid);
+            botAI->DoSpecificAction("move to spell focus", Event("spell focus"), true);
             return true;
         }
     }

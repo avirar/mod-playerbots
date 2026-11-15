@@ -5410,7 +5410,7 @@ std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
                 continue;
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-            if (!spellInfo)
+            if (!spellInfo || !spellInfo->HasEffect(SPELL_EFFECT_CREATE_ITEM))
                 continue;
 
             bool found = false;

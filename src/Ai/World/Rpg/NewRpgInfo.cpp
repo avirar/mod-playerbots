@@ -226,6 +226,7 @@ std::string NewRpgInfo::ToString()
             out << "DO_PROFESSIONS";
             out << "\nskillLine: " << arg.skillLine;
             out << "\nspellId: " << arg.spellId;
+            out << "\nlastCampfire: " << (arg.lastCampfire ? GetMSTimeDiffToNow(arg.lastCampfire) : 0);
             out << "\ncasts: " << arg.casts;
         }
         else

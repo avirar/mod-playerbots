@@ -17,6 +17,7 @@
 #include <mysqld_error.h>
 #include "AllMapScript.h"
 #include "GatherNodeMgr.h"
+#include "SpellFocusMgr.h"
 #include "GlobalScript.h"
 #include "GuildTaskMgr.h"
 #include "PlayerScript.h"
@@ -538,6 +539,9 @@ public:
 
         LOG_INFO("server.loading", "Loading gather node index...");
         GatherNodeMgr::instance().Load();
+
+        LOG_INFO("server.loading", "Loading spell focus index...");
+        sSpellFocusMgr.Load();
 
         LOG_INFO("server.loading", "Playerbots World Thread Processor initialized");
     }

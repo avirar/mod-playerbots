@@ -26,6 +26,7 @@ public:
         static ChatCommandTable playerbotsDebugCommandTable = {
             {"bg", HandleDebugBGCommand, SEC_GAMEMASTER, Console::Yes},
             {"rpg", HandleDebugRpgCommand, SEC_GAMEMASTER, Console::Yes},
+            {"tp", HandleDebugTeleportCommand, SEC_GAMEMASTER, Console::Yes},
         };
 
         static ChatCommandTable playerbotsAccountCommandTable = {
@@ -153,6 +154,27 @@ public:
 
         sPerfMonitor.PrintStats();
         sPerfMonitor.DumpJson(false);
+        return true;
+    }
+
+    static bool HandleDebugTeleportCommand(ChatHandler* handler, PlayerIdentifier target, float x, float y, float z,
+                                           Optional<uint32> mapId)
+    {
+        Player* bot = target.GetConnectedPlayer();
+        if (!bot)
+        {
+            handler->SendErrorMessage("{} is not online.", target.GetName());
+            return false;
+        }
+
+        uint32 const map = mapId ? *mapId : bot->GetMapId();
+        if (!bot->TeleportTo(map, x, y, z, bot->GetOrientation()))
+        {
+            handler->SendErrorMessage("Failed to teleport {} to {} {} {} (map {}).", target.GetName(), x, y, z, map);
+            return false;
+        }
+
+        handler->PSendSysMessage("{} teleported to {} {} {} (map {}).", target.GetName(), x, y, z, map);
         return true;
     }
 

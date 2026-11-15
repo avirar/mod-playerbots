@@ -92,6 +92,7 @@ struct NewRpgInfo
         uint32 skillLine{0};
         uint32 spellId{0};
         uint32 lastCast{0};
+        uint32 lastCampfire{0};
         uint32 casts{0};
     };
     struct Idle

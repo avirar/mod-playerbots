@@ -114,6 +114,17 @@ public:
     }
 };
 
+// Movement target for spells that require a GAMEOBJECT_TYPE_SPELL_FOCUS object nearby.
+// Set by the caller, consumed and cleared by "move to spell focus".
+class SpellFocusTargetValue : public ManualSetValue<ObjectGuid>
+{
+public:
+    SpellFocusTargetValue(PlayerbotAI* botAI, std::string const name = "spell focus target")
+        : ManualSetValue<ObjectGuid>(botAI, ObjectGuid::Empty, name)
+    {
+    }
+};
+
 class PullTargetValue : public ManualSetValue<ObjectGuid>
 {
 public:
