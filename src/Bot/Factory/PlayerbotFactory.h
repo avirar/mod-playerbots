@@ -183,6 +183,7 @@ private:
                                              ProfessionSpecializationSpell knownSpell,
                                              ProfessionSpecializationSpell learnSpell);
     void InitTradeSkills();
+    void InitProfessionTools();
     void InitTradeSpecializations();
     bool InitAlchemySpecialization();
     bool InitEngineeringSpecialization();

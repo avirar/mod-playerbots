@@ -3187,7 +3187,56 @@ void PlayerbotFactory::InitTradeSkills()
                                 ? maxPrimaryTradeSkills - primarySkills.size()
                                 : 0));
 
+    InitProfessionTools();
     InitTradeSpecializations();
+}
+
+void PlayerbotFactory::InitProfessionTools()
+{
+    auto ensureTool = [this](uint32 itemId, uint32 totemCategory)
+    {
+        if (totemCategory ? bot->HasItemTotemCategory(totemCategory) : bot->HasItemCount(itemId, 1, false))
+            return;
+        StoreItem(itemId, 1);
+    };
+
+    if (bot->HasSkill(SKILL_BLACKSMITHING))
+        ensureTool(5956, 162);  // Blacksmith Hammer
+
+    if (bot->HasSkill(SKILL_ENGINEERING))
+    {
+        ensureTool(5956, 162);  // Blacksmith Hammer
+        if (bot->GetSkillValue(SKILL_ENGINEERING) >= 50)
+            ensureTool(6219, 14);  // Arclight Spanner
+    }
+
+    if (bot->HasSkill(SKILL_JEWELCRAFTING))
+        ensureTool(20815, 0);  // Jeweler's Kit
+
+    if (bot->HasSkill(SKILL_INSCRIPTION))
+        ensureTool(39505, 121);  // Virtuoso Inking Set
+
+    if (bot->HasSkill(SKILL_ENCHANTING))
+    {
+        // Each enchant rank names a specific rod category; a higher rod does not
+        // satisfy a lower requirement, so keep every rod up to the bot's tier.
+        uint16 const value = bot->GetSkillValue(SKILL_ENCHANTING);
+        ensureTool(6218, 6);  // Runed Copper Rod
+        if (value >= 50)
+            ensureTool(6339, 7);  // Runed Silver Rod
+        if (value >= 125)
+            ensureTool(11130, 8);  // Runed Golden Rod
+        if (value >= 200)
+            ensureTool(11145, 9);  // Runed Truesilver Rod
+        if (value >= 275)
+            ensureTool(16207, 10);  // Runed Arcanite Rod
+    }
+
+    if (bot->HasSkill(SKILL_MINING))
+        ensureTool(2901, 165);  // Mining Pick
+
+    if (bot->HasSkill(SKILL_SKINNING))
+        ensureTool(7005, 166);  // Skinning Knife
 }
 
 void PlayerbotFactory::InitTradeSpecializations()
