@@ -78,8 +78,9 @@ public:
 
         if (command.empty())
         {
-            handler->SendErrorMessage("Usage: .playerbots exec <bot> <command> (state-changing commands; "
-                                      "query replies go to the bot's master - use inspect)");
+            handler->SendErrorMessage(
+                "Usage: .playerbots exec <bot> <command> (state-changing commands; "
+                "query replies go to the bot's master - use inspect)");
             return false;
         }
 
@@ -97,8 +98,9 @@ public:
 
         if (command.empty())
         {
-            handler->SendErrorMessage("Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
-                                      "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells)");
+            handler->SendErrorMessage(
+                "Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
+                "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells)");
             return false;
         }
 
@@ -167,7 +169,13 @@ public:
         if (text == "do first aid" || text == "first aid" || text == "do professions" || text == "professions")
         {
             botAI->rpgInfo.ChangeToDoProfessions(SKILL_FIRST_AID);
-            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS", target.GetName());
+            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (first aid)", target.GetName());
+            return true;
+        }
+        if (text == "do cooking" || text == "cooking")
+        {
+            botAI->rpgInfo.ChangeToDoProfessions(SKILL_COOKING);
+            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (cooking)", target.GetName());
             return true;
         }
         if (text == "idle")
@@ -177,7 +185,7 @@ public:
             return true;
         }
 
-        handler->SendErrorMessage("Usage: .playerbots debug rpg <bot> do first aid|do professions|idle");
+        handler->SendErrorMessage("Usage: .playerbots debug rpg <bot> do first aid|do cooking|do professions|idle");
         return false;
     }
 

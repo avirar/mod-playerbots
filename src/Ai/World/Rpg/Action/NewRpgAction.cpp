@@ -5,10 +5,15 @@
  */
 
 #include "NewRpgAction.h"
+
+#include <cmath>
+#include <cstdlib>
+
 #include "AreaDefines.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "DBCStores.h"
+#include "G3D/Vector2.h"
 #include "GossipDef.h"
 #include "IVMapMgr.h"
 #include "MotionMaster.h"
@@ -32,15 +37,11 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "WaypointMovementGenerator.h"
-#include "G3D/Vector2.h"
-#include <cmath>
-#include <cstdlib>
 
 void TellRpgStatusAction::WhisperStatusChange(Player* owner, std::string const& statusName)
 {
     std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-        RPG_STATUS_CHANGED_KEY, RPG_STATUS_CHANGED_DEFAULT,
-        {{"%status", statusName}});
+        RPG_STATUS_CHANGED_KEY, RPG_STATUS_CHANGED_DEFAULT, {{"%status", statusName}});
     bot->Whisper(msg, LANG_UNIVERSAL, owner);
 }
 
@@ -66,8 +67,7 @@ bool TellRpgStatusAction::Execute(Event event)
     if (!isMaster && !isGM && owner != bot)
     {
         std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-            "rpg_debug_permission_error",
-            "Only your master or a GM can change my rpg status.", {});
+            "rpg_debug_permission_error", "Only your master or a GM can change my rpg status.", {});
         bot->Whisper(msg, LANG_UNIVERSAL, owner);
         return false;
     }
@@ -134,8 +134,8 @@ bool TellRpgStatusAction::Execute(Event event)
         WorldPosition pos = SelectRandomGrindPos(bot);
         if (pos == WorldPosition())
         {
-            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_no_grind_pos_error", "No grind position available.", {});
+            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault("rpg_no_grind_pos_error",
+                                                                               "No grind position available.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
@@ -148,8 +148,8 @@ bool TellRpgStatusAction::Execute(Event event)
         WorldPosition pos = SelectRandomCampPos(bot);
         if (pos == WorldPosition())
         {
-            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_no_camp_pos_error", "No camp position available.", {});
+            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault("rpg_no_camp_pos_error",
+                                                                               "No camp position available.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
@@ -164,8 +164,8 @@ bool TellRpgStatusAction::Execute(Event event)
         std::vector<uint32> path;
         if (!SelectRandomFlightTaxiNode(flightMasterEntry, flightMasterPos, path))
         {
-            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_no_flight_path_error", "No flight path available.", {});
+            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault("rpg_no_flight_path_error",
+                                                                               "No flight path available.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
@@ -194,21 +194,21 @@ bool TellRpgStatusAction::Execute(Event event)
     }
     else if (status == RPG_DO_PROFESSIONS)
     {
-        if (professionSkill != SKILL_FIRST_AID)
+        if (professionSkill != SKILL_FIRST_AID && professionSkill != SKILL_COOKING)
         {
             std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_poc_error", "Only First Aid is supported for now.", {});
+                "rpg_professions_poc_error", "Only First Aid and Cooking are supported for now.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
-        if (!botAI->HasSkill(SKILL_FIRST_AID))
+        if (!botAI->HasSkill(SkillType(professionSkill)))
         {
             std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_no_first_aid", "I have not learned First Aid.", {});
+                "rpg_professions_not_learned", "I have not learned that profession.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
-        info.ChangeToDoProfessions(SKILL_FIRST_AID);
+        info.ChangeToDoProfessions(professionSkill);
         WhisperStatusChange(owner, "DO_PROFESSIONS");
         return true;
     }
@@ -241,8 +241,7 @@ bool TellRpgStatusAction::Execute(Event event)
         if (!quest || (questStatus != QUEST_STATUS_INCOMPLETE && questStatus != QUEST_STATUS_COMPLETE))
         {
             std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_invalid_quest_error", "Invalid quest %quest_id",
-                {{"%quest_id", std::to_string(questId)}});
+                "rpg_invalid_quest_error", "Invalid quest %quest_id", {{"%quest_id", std::to_string(questId)}});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }
@@ -254,7 +253,8 @@ bool TellRpgStatusAction::Execute(Event event)
     std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
         "rpg_unknown_status_error",
         "Unknown rpg status. Options: idle, rest, wander random, wander npc, "
-        "go grind, go camp, do quest [<id>], travel flight, outdoor pvp, do gather, do professions.", {});
+        "go grind, go camp, do quest [<id>], travel flight, outdoor pvp, do gather, do professions.",
+        {});
     bot->Whisper(msg, LANG_UNIVERSAL, owner);
     return false;
 }
@@ -803,8 +803,8 @@ void NewRpgTravelFlightAction::ContinueCrossMapTaxi()
     if (!flight)
         return;
 
-    LOG_DEBUG("playerbots", "[New RPG] {} continuing taxi across map boundary (next node {} on map {})",
-              bot->GetName(), nextDest, nextNode->map_id);
+    LOG_DEBUG("playerbots", "[New RPG] {} continuing taxi across map boundary (next node {} on map {})", bot->GetName(),
+              nextDest, nextNode->map_id);
 
     flight->SetCurrentNodeAfterTeleport();
 
