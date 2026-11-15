@@ -100,7 +100,7 @@ public:
         {
             handler->SendErrorMessage(
                 "Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
-                "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells)");
+                "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells, inventory)");
             return false;
         }
 

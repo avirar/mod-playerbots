@@ -5,6 +5,16 @@
  */
 
 #include "PlayerbotAI.h"
+
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
+#include <iomanip>
+#include <map>
+#include <mutex>
+#include <sstream>
+#include <string>
+
 #include "AiFactory.h"
 #include "BudgetValues.h"
 #include "ChannelMgr.h"
@@ -21,6 +31,7 @@
 #include "GameObjectData.h"
 #include "GameTime.h"
 #include "GuildMgr.h"
+#include "ItemUsageValue.h"
 #include "LFGMgr.h"
 #include "LastMovementValue.h"
 #include "LastSpellCastValue.h"
@@ -52,20 +63,11 @@
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
-#include "ItemUsageValue.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
 #include "WsgRouteState.h"
-#include <algorithm>
-#include <iomanip>
-#include <cfloat>
-#include <cmath>
-#include <map>
-#include <mutex>
-#include <sstream>
-#include <string>
 
 namespace
 {
@@ -74,14 +76,10 @@ constexpr uint32 SPELL_DK_FROST_PRESENCE = 48263;
 constexpr uint32 SPELL_GRAVITY_LAPSE_TK = 39432;
 constexpr uint32 SPELL_GRAVITY_LAPSE_MGT = 44226;
 constexpr uint32 VEHICLE_FLAG_FIXED_POSITION = 0x00200000;
-}
+}  // namespace
 
 std::vector<std::string> PlayerbotAI::dispel_whitelist = {
-    "mutating injection",
-    "frostbolt",
-    "dreamless sleep",
-    "greater dreamless sleep",
-    "major dreamless sleep",
+    "mutating injection", "frostbolt", "dreamless sleep", "greater dreamless sleep", "major dreamless sleep",
 };
 
 std::vector<std::string>& split(std::string const s, char delim, std::vector<std::string>& elems);
@@ -107,7 +105,7 @@ void PacketHandlingHelper::Handle(ExternalEventHelper& helper)
     while (!queue.empty())
     {
         WorldPacket packet = queue.top();
-        queue.pop(); // remove first so handling can't modify the queue while we're using it
+        queue.pop();  // remove first so handling can't modify the queue while we're using it
 
         helper.HandlePacket(handlers, packet);
     }
@@ -548,11 +546,10 @@ void PlayerbotAI::UpdateAIGroupMaster()
                 botAI->ChangeStrategy("+follow", BOT_STATE_NON_COMBAT);
 
                 if (botAI->GetMaster() == botAI->GetGroupLeader())
-                    botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                        "hello_follow", "Hello, I follow you!", {}));
+                    botAI->TellMaster(
+                        PlayerbotTextMgr::instance().GetBotTextOrDefault("hello_follow", "Hello, I follow you!", {}));
                 else
-                    botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                        "hello", "Hello!", {}));
+                    botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello!", {}));
             }
             else
             {
@@ -565,7 +562,6 @@ void PlayerbotAI::UpdateAIGroupMaster()
 
 void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal)
 {
-
     if (!bot || !bot->GetSession())
         return;
 
@@ -573,7 +569,7 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
         return;
 
     if (!bot->GetMap())
-        return; // instances are created and destroyed on demand
+        return;  // instances are created and destroyed on demand
 
     // Only build the metric name when the profiler is enabled; start() returns nullptr otherwise.
     PerfMonitorOperation* pmo = nullptr;
@@ -618,8 +614,7 @@ void PlayerbotAI::UpdateAIInternal([[maybe_unused]] uint32 elapsed, bool minimal
 
         if (master && master->IsInWorld() &&
             (master->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING) || master->HasUnitState(UNIT_STATE_IN_FLIGHT) ||
-             (master->GetSession() &&
-              master->GetSession()->HasPermission(rbac::RBAC_PERM_INSTANT_LOGOUT))))
+             (master->GetSession() && master->GetSession()->HasPermission(rbac::RBAC_PERM_INSTANT_LOGOUT))))
         {
             logout = true;
         }
@@ -760,8 +755,8 @@ void PlayerbotAI::HandleCommand(uint32 type, std::string const& text, Player& fr
 
     // Security gate for all commands, including "debug" (same rule as the Player* overload).
     if (!IsAllowedCommand(filtered) &&
-        !GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL,
-                                      type != CHAT_MSG_WHISPER, &fromPlayer))
+        !GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, type != CHAT_MSG_WHISPER,
+                                      &fromPlayer))
         return;
 
     if (filtered.substr(0, 6) == "debug ")
@@ -968,8 +963,7 @@ void PlayerbotAI::Reset(bool full)
     {
         WorldPackets::Character::LogoutCancel data = WorldPacket(CMSG_LOGOUT_CANCEL);
         bot->GetSession()->HandleLogoutCancelOpcode(data);
-        TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-            "logout_cancel", "Logout cancelled!", {}));
+        TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("logout_cancel", "Logout cancelled!", {}));
     }
 
     currentEngine = engines[BOT_STATE_NON_COMBAT];
@@ -1177,8 +1171,8 @@ void PlayerbotAI::HandleCommand(uint32 type, std::string const text, Player* fro
         {
             if (type == CHAT_MSG_WHISPER)
             {
-                std::string message = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "bot_not_your_master", "You are not my master!", {});
+                std::string message = PlayerbotTextMgr::instance().GetBotTextOrDefault("bot_not_your_master",
+                                                                                       "You are not my master!", {});
                 bot->Whisper(message, LANG_UNIVERSAL, fromPlayer);
             }
             return;
@@ -1193,8 +1187,8 @@ void PlayerbotAI::HandleCommand(uint32 type, std::string const text, Player* fro
         {
             if (type == CHAT_MSG_WHISPER)
             {
-                std::string message = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "logout_start", "I'm logging out!", {});
+                std::string message =
+                    PlayerbotTextMgr::instance().GetBotTextOrDefault("logout_start", "I'm logging out!", {});
                 TellMaster(message);
             }
 
@@ -1214,8 +1208,8 @@ void PlayerbotAI::HandleCommand(uint32 type, std::string const text, Player* fro
 
         if (type == CHAT_MSG_WHISPER)
         {
-            std::string message = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "logout_cancel", "Logout cancelled!", {});
+            std::string message =
+                PlayerbotTextMgr::instance().GetBotTextOrDefault("logout_cancel", "Logout cancelled!", {});
             TellMaster(message);
         }
 
@@ -1304,7 +1298,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
                     return;
 
                 if (lang == LANG_ADDON)
-                        return;
+                    return;
 
                 if (p.GetOpcode() == SMSG_GM_MESSAGECHAT)
                 {
@@ -1399,8 +1393,8 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 
             return;
         }
-        case SMSG_FORCE_MOVE_ROOT:      // CMSG_FORCE_MOVE_ROOT_ACK
-        case SMSG_FORCE_MOVE_UNROOT:    // CMSG_FORCE_MOVE_UNROOT_ACK
+        case SMSG_FORCE_MOVE_ROOT:    // CMSG_FORCE_MOVE_ROOT_ACK
+        case SMSG_FORCE_MOVE_UNROOT:  // CMSG_FORCE_MOVE_UNROOT_ACK
         {
             // Quick fix for CMSG_FORCE_MOVE_ROOT_ACK and CMSG_FORCE_MOVE_UNROOT_ACK:
             // this should resolve issues with MOVEMENTFLAG_ROOT being permanently set
@@ -1418,7 +1412,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
 
             return;
         }
-        case SMSG_MOVE_KNOCK_BACK:      // CMSG_MOVE_KNOCK_BACK_ACK
+        case SMSG_MOVE_KNOCK_BACK:  // CMSG_MOVE_KNOCK_BACK_ACK
         {
             WorldPacket p(packet);
             p.rpos(0);
@@ -1694,10 +1688,7 @@ void PlayerbotAI::DoNextAction(bool min)
     }
 }
 
-void PlayerbotAI::ReInitCurrentEngine()
-{
-    currentEngine->Init();
-}
+void PlayerbotAI::ReInitCurrentEngine() { currentEngine->Init(); }
 
 void PlayerbotAI::ChangeStrategy(std::string const names, BotState type)
 {
@@ -1749,15 +1740,13 @@ std::vector<std::string> PlayerbotAI::GetStrategies(BotState type)
 
 void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
 {
-    static const std::vector<std::string> allInstanceStrategies =
-    {
-        "aq20", "aq40", "blacktemple", "bwl", "gruulslair", "hyjal", "icc", "karazhan", "magtheridon",
-        "moltencore", "naxx", "onyxia", "rs", "ssc", "tbc-ac", "tbc-mech", "tbc-mgt", "tbc-ramp",
-        "tbc-seth", "tbc-ub", "tempestkeep", "ulduar", "voa", "wotlk-an", "wotlk-cos", "wotlk-dtk",
-        "wotlk-eoe", "wotlk-fos", "wotlk-gd", "wotlk-hol", "wotlk-hos", "wotlk-nex", "wotlk-occ",
-        "wotlk-ok", "wotlk-os", "wotlk-pos", "wotlk-toc", "wotlk-uk", "wotlk-up", "wotlk-vh",
-        "zulaman", "zulgurub"
-    };
+    static const std::vector<std::string> allInstanceStrategies = {
+        "aq20",      "aq40",        "blacktemple", "bwl",       "gruulslair", "hyjal",     "icc",
+        "karazhan",  "magtheridon", "moltencore",  "naxx",      "onyxia",     "rs",        "ssc",
+        "tbc-ac",    "tbc-mech",    "tbc-mgt",     "tbc-ramp",  "tbc-seth",   "tbc-ub",    "tempestkeep",
+        "ulduar",    "voa",         "wotlk-an",    "wotlk-cos", "wotlk-dtk",  "wotlk-eoe", "wotlk-fos",
+        "wotlk-gd",  "wotlk-hol",   "wotlk-hos",   "wotlk-nex", "wotlk-occ",  "wotlk-ok",  "wotlk-os",
+        "wotlk-pos", "wotlk-toc",   "wotlk-uk",    "wotlk-up",  "wotlk-vh",   "zulaman",   "zulgurub"};
 
     for (std::string const& strat : allInstanceStrategies)
     {
@@ -1991,9 +1980,10 @@ bool PlayerbotAI::PlayEmote(uint32 emote)
     WorldPacket data(SMSG_TEXT_EMOTE);
     data << (TextEmotes)emote;
     data << EmoteAction::GetNumberOfEmoteVariants((TextEmotes)emote, bot->getRace(), bot->getGender());
-    data << ((master && (ServerFacade::instance().GetDistance2d(bot, master) < 30.0f) && urand(0, 1)) ? master->GetGUID()
-             : (bot->GetTarget() && urand(0, 1))                                            ? bot->GetTarget()
-                                                                                            : ObjectGuid::Empty);
+    data << ((master && (ServerFacade::instance().GetDistance2d(bot, master) < 30.0f) && urand(0, 1))
+                 ? master->GetGUID()
+             : (bot->GetTarget() && urand(0, 1)) ? bot->GetTarget()
+                                                 : ObjectGuid::Empty);
     bot->GetSession()->HandleTextEmoteOpcode(data);
 
     return false;
@@ -2087,10 +2077,7 @@ bool PlayerbotAI::IsCombo(Player* player)
            (player->getClass() == CLASS_DRUID && player->HasAura(768));  // cat druid
 }
 
-bool PlayerbotAI::IsRangedDps(Player* player, bool bySpec)
-{
-    return IsRanged(player, bySpec) && IsDps(player, bySpec);
-}
+bool PlayerbotAI::IsRangedDps(Player* player, bool bySpec) { return IsRanged(player, bySpec) && IsDps(player, bySpec); }
 
 // If true, indexLivingOnly excludes dead group members from the index, meaning living members shift
 // up to fill the gap. Example: if assist heal 0 dies, then assist heal 1 becomes assist heal 0.
@@ -2139,8 +2126,8 @@ bool PlayerbotAI::IsAssistHealOfIndex(Player* player, uint8 index, bool indexLiv
 
     // If the player is an assistant, their index is just the number of assistants before them.
     // If they are a non-assistant, their index is shifted by the total number of assistants.
-    uint8 playerIndex = group->IsAssistant(player->GetGUID())
-        ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
+    uint8 playerIndex =
+        group->IsAssistant(player->GetGUID()) ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
 
     return playerIndex == index;
 }
@@ -2192,8 +2179,8 @@ bool PlayerbotAI::IsAssistRangedDpsOfIndex(Player* player, uint8 index, bool ind
 
     // If the player is an assistant, their index is just the number of assistants before them.
     // If they are a non-assistant, their index is shifted by the total number of assistants.
-    uint8 playerIndex = group->IsAssistant(player->GetGUID())
-        ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
+    uint8 playerIndex =
+        group->IsAssistant(player->GetGUID()) ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
 
     return playerIndex == index;
 }
@@ -2688,8 +2675,7 @@ bool PlayerbotAI::IsAssistTankOfIndex(Player* player, uint8 index, bool indexLiv
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-        if (!member || (indexLivingOnly && !member->IsAlive()) || !IsTank(member) ||
-            member->GetGUID() == mainTankGuid)
+        if (!member || (indexLivingOnly && !member->IsAlive()) || !IsTank(member) || member->GetGUID() == mainTankGuid)
         {
             continue;
         }
@@ -2715,8 +2701,8 @@ bool PlayerbotAI::IsAssistTankOfIndex(Player* player, uint8 index, bool indexLiv
 
     // If the player is an assistant, their index is just the number of assistants before them.
     // If they are a non-assistant, their index is shifted by the total number of assistants.
-    uint8 playerIndex = group->IsAssistant(player->GetGUID())
-        ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
+    uint8 playerIndex =
+        group->IsAssistant(player->GetGUID()) ? assistantsBeforePlayer : (totalAssistants + nonAssistantsBeforePlayer);
 
     return playerIndex == index;
 }
@@ -3431,7 +3417,8 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (!spellid)
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. No spellid. - spellid: {}, bot name: {}", spellid, bot->GetName());
+            LOG_DEBUG("playerbots", "Can cast spell failed. No spellid. - spellid: {}, bot name: {}", spellid,
+                      bot->GetName());
 
         return false;
     }
@@ -3439,7 +3426,8 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (bot->HasUnitState(UNIT_STATE_LOST_CONTROL))
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. Unit state lost control. - spellid: {}, bot name: {}", spellid, bot->GetName());
+            LOG_DEBUG("playerbots", "Can cast spell failed. Unit state lost control. - spellid: {}, bot name: {}",
+                      spellid, bot->GetName());
 
         return false;
     }
@@ -3447,7 +3435,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (!target)
         target = bot;
 
-     if (!IsValidUnit(target))
+    if (!IsValidUnit(target))
         return false;
 
     if (Pet* pet = bot->GetPet())
@@ -3457,8 +3445,9 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (checkHasSpell && !bot->HasSpell(spellid))
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. Bot not has spell. - target name: {}, spellid: {}, bot name: {}",
-                target->GetName(), spellid, bot->GetName());
+            LOG_DEBUG("playerbots",
+                      "Can cast spell failed. Bot not has spell. - target name: {}, spellid: {}, bot name: {}",
+                      target->GetName(), spellid, bot->GetName());
 
         return false;
     }
@@ -3466,7 +3455,9 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL) != nullptr)
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "CanCastSpell() target name: {}, spellid: {}, bot name: {}, failed because has current channeled spell",
+            LOG_DEBUG(
+                "playerbots",
+                "CanCastSpell() target name: {}, spellid: {}, bot name: {}, failed because has current channeled spell",
                 target->GetName(), spellid, bot->GetName());
 
         return false;
@@ -3475,8 +3466,9 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if (bot->HasSpellCooldown(spellid))
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. Spell not has cooldown. - target name: {}, spellid: {}, bot name: {}",
-                target->GetName(), spellid, bot->GetName());
+            LOG_DEBUG("playerbots",
+                      "Can cast spell failed. Spell not has cooldown. - target name: {}, spellid: {}, bot name: {}",
+                      target->GetName(), spellid, bot->GetName());
 
         return false;
     }
@@ -3486,7 +3478,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
             LOG_DEBUG("playerbots", "Can cast spell failed. No spellInfo. - target name: {}, spellid: {}, bot name: {}",
-                target->GetName(), spellid, bot->GetName());
+                      target->GetName(), spellid, bot->GetName());
 
         return false;
     }
@@ -3494,7 +3486,9 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     if ((bot->GetShapeshiftForm() == FORM_FLIGHT || bot->GetShapeshiftForm() == FORM_FLIGHT_EPIC) && !bot->IsInCombat())
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-            LOG_DEBUG("playerbots", "Can cast spell failed. In flight form (not in combat). - target name: {}, spellid: {}, bot name: {}",
+            LOG_DEBUG(
+                "playerbots",
+                "Can cast spell failed. In flight form (not in combat). - target name: {}, spellid: {}, bot name: {}",
                 target->GetName(), spellid, bot->GetName());
 
         return false;
@@ -3506,7 +3500,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
     {
         if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
             LOG_DEBUG("playerbots", "Casting time and bot is moving - target name: {}, spellid: {}, bot name: {}",
-                target->GetName(), spellid, bot->GetName());
+                      target->GetName(), spellid, bot->GetName());
 
         return false;
     }
@@ -3520,7 +3514,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
             {
                 if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
                     LOG_DEBUG("playerbots", "target is immuned to spell - target name: {}, spellid: {}, bot name: {}",
-                        target->GetName(), spellid, bot->GetName());
+                              target->GetName(), spellid, bot->GetName());
 
                 return false;
             }
@@ -3531,7 +3525,7 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
         {
             if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
                 LOG_DEBUG("playerbots", "target is out of sight distance - target name: {}, spellid: {}, bot name: {}",
-                    target->GetName(), spellid, bot->GetName());
+                          target->GetName(), spellid, bot->GetName());
 
             return false;
         }
@@ -3575,8 +3569,9 @@ bool PlayerbotAI::CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell,
             return true;
         default:
             if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
-                LOG_DEBUG("playerbots", "CanCastSpell Check Failed. - target name: {}, spellid: {}, bot name: {}, result: {}",
-                    target->GetName(), spellid, bot->GetName(), result);
+                LOG_DEBUG("playerbots",
+                          "CanCastSpell Check Failed. - target name: {}, spellid: {}, bot name: {}, result: {}",
+                          target->GetName(), spellid, bot->GetName(), result);
 
             return false;
     }
@@ -4638,12 +4633,16 @@ Player* PlayerbotAI::FindNewMaster()
     return nullptr;
 }
 
-// An altbot is a bot whose master is client-based (a regular player or a SelfBot), and is not a randombot, and is not a SelfBot.
-// For the purpose of this bool, all addclassbots return true for IsAltBot, but not all altbots return true for IsAddClassBot, since
-// IsAddClassBot requires the bot to come from a type 2 account in playerbots_account_type.
-bool PlayerbotAI::IsAltBot() { return HasGameClientMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot) && !IsSelfBot(bot); }
+// An altbot is a bot whose master is client-based (a regular player or a SelfBot), and is not a randombot, and is not a
+// SelfBot. For the purpose of this bool, all addclassbots return true for IsAltBot, but not all altbots return true for
+// IsAddClassBot, since IsAddClassBot requires the bot to come from a type 2 account in playerbots_account_type.
+bool PlayerbotAI::IsAltBot()
+{
+    return HasGameClientMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot) && !IsSelfBot(bot);
+}
 
-// True when the bot's master is driven by a player with a game client: a regular player (no bot AI) or a SelfBot player.
+// True when the bot's master is driven by a player with a game client: a regular player (no bot AI) or a SelfBot
+// player.
 bool PlayerbotAI::HasGameClientMaster() { return IsRealPlayer(master) || IsSelfBot(master); }
 
 Player* PlayerbotAI::GetGroupLeader()
@@ -5373,20 +5372,19 @@ void PlayerbotAI::_fillGearScoreData(Player* player, Item* item, std::vector<uin
 
 namespace
 {
-    std::string Lowercase(std::string value)
-    {
-        std::transform(value.begin(), value.end(), value.begin(),
-                       [](unsigned char c) { return char(std::tolower(c)); });
-        return value;
-    }
+std::string Lowercase(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    return value;
 }
+}  // namespace
 
 std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
 {
     static SkillType const professionSkills[] = {
-        SKILL_ALCHEMY,      SKILL_BLACKSMITHING, SKILL_ENCHANTING,   SKILL_ENGINEERING, SKILL_HERBALISM,
-        SKILL_INSCRIPTION,  SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,    SKILL_SKINNING,
-        SKILL_TAILORING,    SKILL_COOKING,       SKILL_FIRST_AID,    SKILL_FISHING};
+        SKILL_ALCHEMY,     SKILL_BLACKSMITHING, SKILL_ENCHANTING,     SKILL_ENGINEERING, SKILL_HERBALISM,
+        SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,      SKILL_SKINNING,
+        SKILL_TAILORING,   SKILL_COOKING,       SKILL_FIRST_AID,      SKILL_FISHING};
 
     std::string const lowerFilter = Lowercase(filter);
     std::ostringstream out;
@@ -5425,10 +5423,9 @@ std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
                     continue;
 
                 found = true;
-                chance = std::max(chance, ItemUsageValue::CraftSkillGainChance(
-                                              bot->GetPureSkillValue(uint32(skill)),
-                                              ability->TrivialSkillLineRankHigh,
-                                              ability->TrivialSkillLineRankLow));
+                chance = std::max(chance, ItemUsageValue::CraftSkillGainChance(bot->GetPureSkillValue(uint32(skill)),
+                                                                               ability->TrivialSkillLineRankHigh,
+                                                                               ability->TrivialSkillLineRankLow));
             }
 
             if (!found)
@@ -5446,6 +5443,37 @@ std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
     }
 
     return out.str().empty() ? "No known professions." : out.str();
+}
+
+std::string PlayerbotAI::DescribeInventory(std::string const& filter) const
+{
+    std::map<uint32, uint32> counts;
+    auto addItem = [&counts](Item* item)
+    {
+        if (item)
+            counts[item->GetEntry()] += item->GetCount();
+    };
+
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        addItem(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                addItem(bot->GetItemByPos(bagSlot, slot));
+
+    std::string const lowerFilter = Lowercase(filter);
+    std::ostringstream out;
+    for (auto const& [entry, count] : counts)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+        std::string const name = proto ? proto->Name1 : std::to_string(entry);
+        if (!lowerFilter.empty() && Lowercase(name).find(lowerFilter) == std::string::npos &&
+            std::to_string(entry) != filter)
+            continue;
+        out << entry << " x" << count << " " << name << "\n";
+    }
+
+    return out.str().empty() ? "No matching items." : out.str();
 }
 
 std::string PlayerbotAI::DescribeSpells(std::string const& filter) const
@@ -5620,6 +5648,10 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     else if (command == "spells" || command.rfind("spells ", 0) == 0)
     {
         return DescribeSpells(command.size() > 7 ? command.substr(7) : "");
+    }
+    else if (command == "inventory" || command.rfind("inventory ", 0) == 0)
+    {
+        return DescribeInventory(command.size() > 10 ? command.substr(10) : "");
     }
     else if (command == "budget")
     {
@@ -5878,8 +5910,8 @@ Item* PlayerbotAI::FindStoneFor(Item* weapon) const
 
     // Elemental Sharpening Stone also works on maces/staves/fists, so it is a valid fallback.
     static const std::vector<uint32_t> uPrioritizedWeightStoneIds = {
-        ADAMANTITE_WEIGHTSTONE, FEL_WEIGHTSTONE,    ELEMENTAL_SHARPENING_STONE, DENSE_WEIGHTSTONE, SOLID_WEIGHTSTONE,
-        HEAVY_WEIGHTSTONE,      COARSE_WEIGHTSTONE, ROUGH_WEIGHTSTONE};
+        ADAMANTITE_WEIGHTSTONE, FEL_WEIGHTSTONE,   ELEMENTAL_SHARPENING_STONE, DENSE_WEIGHTSTONE,
+        SOLID_WEIGHTSTONE,      HEAVY_WEIGHTSTONE, COARSE_WEIGHTSTONE,         ROUGH_WEIGHTSTONE};
 
     Item* stone = nullptr;
     ItemTemplate const* pProto = weapon->GetTemplate();

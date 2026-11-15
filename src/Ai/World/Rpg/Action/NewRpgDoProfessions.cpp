@@ -151,7 +151,9 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             hasAnyReagent = true;
             hasReagents = bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
         }
-        if (!hasAnyReagent || !hasReagents || !botAI->CanCastSpell(spellId, bot, true))
+        // CanCastSpell rejects every recipe while the bot is walking to the spell focus,
+        // so only gate on the recipe itself here; CastSpell validates the actual cast.
+        if (!hasAnyReagent || !hasReagents || bot->HasSpellCooldown(spellId))
             continue;
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);

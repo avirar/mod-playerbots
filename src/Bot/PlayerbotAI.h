@@ -7,6 +7,9 @@
 #ifndef PLAYERBOTS_PLAYERBOTAI_H
 #define PLAYERBOTS_PLAYERBOTAI_H
 
+#include <stack>
+#include <unordered_set>
+
 #include "Chat.h"
 #include "ChatFilter.h"
 #include "ChatHelper.h"
@@ -24,8 +27,6 @@
 #include "SpellAuras.h"
 #include "Util.h"
 #include "WorldPacket.h"
-#include <stack>
-#include <unordered_set>
 
 class Action;
 class AiObjectContext;
@@ -171,64 +172,64 @@ enum ChatChannelId
 
 enum RoguePoisonId
 {
-    INSTANT_POISON      = 6947,
-    INSTANT_POISON_II   = 6949,
-    INSTANT_POISON_III  = 6950,
-    INSTANT_POISON_IV   = 8926,
-    INSTANT_POISON_V    = 8927,
-    INSTANT_POISON_VI   = 8928,
-    INSTANT_POISON_VII  = 21927,
+    INSTANT_POISON = 6947,
+    INSTANT_POISON_II = 6949,
+    INSTANT_POISON_III = 6950,
+    INSTANT_POISON_IV = 8926,
+    INSTANT_POISON_V = 8927,
+    INSTANT_POISON_VI = 8928,
+    INSTANT_POISON_VII = 21927,
     INSTANT_POISON_VIII = 43230,
-    INSTANT_POISON_IX   = 43231,
-    DEADLY_POISON       = 2892,
-    DEADLY_POISON_II    = 2893,
-    DEADLY_POISON_III   = 8984,
-    DEADLY_POISON_IV    = 8985,
-    DEADLY_POISON_V     = 20844,
-    DEADLY_POISON_VI    = 22053,
-    DEADLY_POISON_VII   = 22054,
-    DEADLY_POISON_VIII  = 43232,
-    DEADLY_POISON_IX    = 43233
+    INSTANT_POISON_IX = 43231,
+    DEADLY_POISON = 2892,
+    DEADLY_POISON_II = 2893,
+    DEADLY_POISON_III = 8984,
+    DEADLY_POISON_IV = 8985,
+    DEADLY_POISON_V = 20844,
+    DEADLY_POISON_VI = 22053,
+    DEADLY_POISON_VII = 22054,
+    DEADLY_POISON_VIII = 43232,
+    DEADLY_POISON_IX = 43233
 };
 
 enum SharpeningStoneId
 {
-    ROUGH_SHARPENING_STONE      = 2862,
-    COARSE_SHARPENING_STONE     = 2863,
-    HEAVY_SHARPENING_STONE      = 2871,
-    SOLID_SHARPENING_STONE      = 7964,
-    DENSE_SHARPENING_STONE      = 12404,
-    ELEMENTAL_SHARPENING_STONE  = 18262,
-    FEL_SHARPENING_STONE        = 23528,
+    ROUGH_SHARPENING_STONE = 2862,
+    COARSE_SHARPENING_STONE = 2863,
+    HEAVY_SHARPENING_STONE = 2871,
+    SOLID_SHARPENING_STONE = 7964,
+    DENSE_SHARPENING_STONE = 12404,
+    ELEMENTAL_SHARPENING_STONE = 18262,
+    FEL_SHARPENING_STONE = 23528,
     ADAMANTITE_SHARPENING_STONE = 23529
 };
 
 enum WeightstoneId
 {
-    ROUGH_WEIGHTSTONE      = 3239,
-    COARSE_WEIGHTSTONE     = 3240,
-    HEAVY_WEIGHTSTONE      = 3241,
-    SOLID_WEIGHTSTONE      = 7965,
-    DENSE_WEIGHTSTONE      = 12643,
-    FEL_WEIGHTSTONE        = 28420,
+    ROUGH_WEIGHTSTONE = 3239,
+    COARSE_WEIGHTSTONE = 3240,
+    HEAVY_WEIGHTSTONE = 3241,
+    SOLID_WEIGHTSTONE = 7965,
+    DENSE_WEIGHTSTONE = 12643,
+    FEL_WEIGHTSTONE = 28420,
     ADAMANTITE_WEIGHTSTONE = 28421
 };
 
 enum WizardOilId
 {
-    MINOR_WIZARD_OIL      = 20744,
-    LESSER_WIZARD_OIL     = 20746,
-    WIZARD_OIL            = 20750,
-    BRILLIANT_WIZARD_OIL  = 20749,
-    SUPERIOR_WIZARD_OIL   = 22522
+    MINOR_WIZARD_OIL = 20744,
+    LESSER_WIZARD_OIL = 20746,
+    WIZARD_OIL = 20750,
+    BRILLIANT_WIZARD_OIL = 20749,
+    SUPERIOR_WIZARD_OIL = 22522
 };
 
 enum ManaOilId
 {
-    MINOR_MANA_OIL        = 20745,
-    LESSER_MANA_OIL       = 20747,
-    BRILLIANT_MANA_OIL    = 20748,
-    SUPERIOR_MANA_OIL     = 22521
+    MINOR_MANA_OIL = 20745,
+    LESSER_MANA_OIL = 20747,
+    BRILLIANT_MANA_OIL = 20748,
+    SUPERIOR_MANA_OIL = 22521
 };
 
 enum class BotTypeNumber : uint8
@@ -533,8 +534,7 @@ public:
     bool CanCastSpell(uint32 spellid, Unit* target, bool checkHasSpell = true, Item* itemTarget = nullptr,
                       Item* castItem = nullptr);
     bool CanCastSpell(uint32 spellid, GameObject* goTarget, bool checkHasSpell = true, Item* castItem = nullptr);
-    bool CanCastSpell(uint32 spellid, float x, float y, float z, bool checkHasSpell = true,
-                      Item* itemTarget = nullptr);
+    bool CanCastSpell(uint32 spellid, float x, float y, float z, bool checkHasSpell = true, Item* itemTarget = nullptr);
 
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
@@ -549,7 +549,7 @@ public:
                      bool fixed = false);
 
     uint32 GetEquipGearScore(Player* player);
-    //uint32 GetEquipGearScore(Player* player, bool withBags, bool withBank);
+    // uint32 GetEquipGearScore(Player* player, bool withBags, bool withBank);
     static uint32 GetMixedGearScore(Player* player, bool withBags, bool withBank, uint32 topN = 0);
     bool HasSkill(SkillType skill);
     bool IsAllowedCommand(std::string const text);
@@ -583,8 +583,7 @@ public:
 
     bool HasCheat(BotCheatMask mask)
     {
-        return ((uint32)mask & (uint32)cheatMask) != 0 ||
-               ((uint32)mask & (uint32)sPlayerbotAIConfig.BotCheatMask) != 0;
+        return ((uint32)mask & (uint32)cheatMask) != 0 || ((uint32)mask & (uint32)sPlayerbotAIConfig.BotCheatMask) != 0;
     }
     BotCheatMask GetCheat() { return cheatMask; }
     void SetCheat(BotCheatMask mask) { cheatMask = mask; }
@@ -649,6 +648,7 @@ private:
                                    bool mixed = false);
     std::string DescribeProfessions(std::string const& filter = "") const;
     std::string DescribeSpells(std::string const& filter = "") const;
+    std::string DescribeInventory(std::string const& filter = "") const;
     bool IsTellAllowed(PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     void UpdateAIGroupMaster();
     Item* FindItemInInventory(std::function<bool(ItemTemplate const*)> checkItem) const;
@@ -663,6 +663,7 @@ private:
         return player && player->GetSession() && player->IsInWorld() && !player->IsDuringRemoveFromWorld() &&
                !player->IsBeingTeleported();
     }
+
 protected:
     Player* bot;
     Player* master;
