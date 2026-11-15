@@ -5,6 +5,10 @@
  */
 
 #include "TrainerAction.h"
+
+#include <algorithm>
+#include <vector>
+
 #include "AiFactory.h"
 #include "BisListMgr.h"
 #include "BudgetValues.h"
@@ -111,11 +115,25 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
     float reputationDiscount = bot->GetReputationPriceDiscount(creature);
     uint32 totalCost = 0;
 
-    for (auto& spell : trainer->GetSpells())
+    std::vector<Trainer::Spell const*> trainerSpells;
+    for (Trainer::Spell const& spell : trainer->GetSpells())
+        trainerSpells.push_back(&spell);
+
+    // Low ranks first: the trainer state machine requires ReqAbility and the
+    // previous rank.
+    std::sort(trainerSpells.begin(), trainerSpells.end(),
+              [](Trainer::Spell const* a, Trainer::Spell const* b)
+              {
+                  if (a->ReqSkillRank != b->ReqSkillRank)
+                      return a->ReqSkillRank < b->ReqSkillRank;
+                  if (a->ReqLevel != b->ReqLevel)
+                      return a->ReqLevel < b->ReqLevel;
+                  return a->SpellId < b->SpellId;
+              });
+
+    for (Trainer::Spell const* trainerSpell : trainerSpells)
     {
         // simplified version of Trainer::TeachSpell method
-
-        Trainer::Spell const* trainerSpell = trainer->GetSpell(spell.SpellId);
         if (!trainerSpell)
             continue;
 

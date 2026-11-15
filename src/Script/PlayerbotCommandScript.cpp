@@ -188,16 +188,40 @@ public:
         if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
             botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
 
-        if (text == "do first aid" || text == "first aid" || text == "do professions" || text == "professions")
+        std::string professionName = text;
+        if (professionName.rfind("do ", 0) == 0)
+            professionName = professionName.substr(3);
+
+        static std::map<std::string, uint32> const professionCommands = {
+            {"first aid", SKILL_FIRST_AID},     {"cooking", SKILL_COOKING},       {"alchemy", SKILL_ALCHEMY},
+            {"blacksmithing", SKILL_BLACKSMITHING}, {"enchanting", SKILL_ENCHANTING}, {"engineering", SKILL_ENGINEERING},
+            {"herbalism", SKILL_HERBALISM},     {"inscription", SKILL_INSCRIPTION}, {"jewelcrafting", SKILL_JEWELCRAFTING},
+            {"leatherworking", SKILL_LEATHERWORKING}, {"mining", SKILL_MINING},    {"skinning", SKILL_SKINNING},
+            {"tailoring", SKILL_TAILORING},     {"fishing", SKILL_FISHING}};
+
+        uint32 professionSkill = 0;
+        auto const it = professionCommands.find(professionName);
+        if (it != professionCommands.end())
+            professionSkill = it->second;
+        else if (professionName == "professions")
         {
-            botAI->rpgInfo.ChangeToDoProfessions(SKILL_FIRST_AID);
-            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (first aid)", target.GetName());
-            return true;
+            static uint32 const craftProfessions[] = {
+                SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
+                SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_TAILORING, SKILL_COOKING, SKILL_FIRST_AID};
+            for (uint32 skill : craftProfessions)
+            {
+                if (botAI->HasSkill(SkillType(skill)))
+                {
+                    professionSkill = skill;
+                    break;
+                }
+            }
         }
-        if (text == "do cooking" || text == "cooking")
+
+        if (professionSkill)
         {
-            botAI->rpgInfo.ChangeToDoProfessions(SKILL_COOKING);
-            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (cooking)", target.GetName());
+            botAI->rpgInfo.ChangeToDoProfessions(professionSkill);
+            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (skill {})", target.GetName(), professionSkill);
             return true;
         }
         if (text == "idle")

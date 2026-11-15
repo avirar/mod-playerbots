@@ -5410,7 +5410,11 @@ std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
                 continue;
 
             SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-            if (!spellInfo || !spellInfo->HasEffect(SPELL_EFFECT_CREATE_ITEM))
+            if (!spellInfo ||
+                (!spellInfo->HasEffect(SPELL_EFFECT_CREATE_ITEM) &&
+                 !spellInfo->HasEffect(SPELL_EFFECT_ENCHANT_ITEM) &&
+                 !spellInfo->HasEffect(SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY) &&
+                 !spellInfo->HasEffect(SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)))
                 continue;
 
             bool found = false;
@@ -5484,7 +5488,8 @@ std::string PlayerbotAI::DescribeSpells(std::string const& filter) const
 
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
     {
-        if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
+        if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED ||
+            !playerSpell->IsInSpec(bot->GetActiveSpec()))
             continue;
 
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
@@ -5496,7 +5501,10 @@ std::string PlayerbotAI::DescribeSpells(std::string const& filter) const
             std::to_string(spellId) != filter)
             continue;
 
-        out << spellId << " " << name << "\n";
+        out << spellId << " " << name;
+        if (!playerSpell->Active)
+            out << " (inactive)";
+        out << "\n";
         if (++count >= 200)
         {
             out << "... truncated\n";

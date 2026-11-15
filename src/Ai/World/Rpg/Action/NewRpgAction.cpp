@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <map>
 
 #include "AreaDefines.h"
 #include "BroadcastHelper.h"
@@ -79,15 +80,39 @@ bool TellRpgStatusAction::Execute(Event event)
 
     std::string name = text;
     uint32 professionSkill = 0;
-    if (name == "do first aid")
     {
-        name = "do professions";
-        professionSkill = SKILL_FIRST_AID;
+        static std::map<std::string, uint32> const professionCommands = {
+            {"first aid", SKILL_FIRST_AID},     {"cooking", SKILL_COOKING},       {"alchemy", SKILL_ALCHEMY},
+            {"blacksmithing", SKILL_BLACKSMITHING}, {"enchanting", SKILL_ENCHANTING}, {"engineering", SKILL_ENGINEERING},
+            {"herbalism", SKILL_HERBALISM},     {"inscription", SKILL_INSCRIPTION}, {"jewelcrafting", SKILL_JEWELCRAFTING},
+            {"leatherworking", SKILL_LEATHERWORKING}, {"mining", SKILL_MINING},    {"skinning", SKILL_SKINNING},
+            {"tailoring", SKILL_TAILORING},     {"fishing", SKILL_FISHING}};
+
+        std::string professionName = name;
+        if (professionName.rfind("do ", 0) == 0)
+            professionName = professionName.substr(3);
+
+        auto const it = professionCommands.find(professionName);
+        if (it != professionCommands.end())
+        {
+            name = "do professions";
+            professionSkill = it->second;
+        }
     }
-    else if (name == "do cooking")
+
+    if (name == "do professions" && !professionSkill)
     {
-        name = "do professions";
-        professionSkill = SKILL_COOKING;
+        static uint32 const craftProfessions[] = {
+            SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
+            SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_TAILORING, SKILL_COOKING, SKILL_FIRST_AID};
+        for (uint32 skill : craftProfessions)
+        {
+            if (botAI->HasSkill(SkillType(skill)))
+            {
+                professionSkill = skill;
+                break;
+            }
+        }
     }
     uint32 questId = 0;
     static std::string const doQuestPrefix = "do quest ";
@@ -199,10 +224,10 @@ bool TellRpgStatusAction::Execute(Event event)
     }
     else if (status == RPG_DO_PROFESSIONS)
     {
-        if (professionSkill != SKILL_FIRST_AID && professionSkill != SKILL_COOKING)
+        if (!professionSkill)
         {
             std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_poc_error", "Only First Aid and Cooking are supported for now.", {});
+                "rpg_professions_none_error", "I have no craft profession to work on.", {});
             bot->Whisper(msg, LANG_UNIVERSAL, owner);
             return false;
         }

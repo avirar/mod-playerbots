@@ -3570,29 +3570,57 @@ void PlayerbotFactory::InitAvailableSpells()
             trainerIdCache[bot->getClass()].push_back(i->first);
         }
     }
+    struct TrainerSpellEntry
+    {
+        Trainer::Trainer* trainer;
+        Trainer::Spell const* spell;
+    };
+
+    std::vector<TrainerSpellEntry> trainerSpells;
     for (uint32 trainerId : trainerIdCache[bot->getClass()])
     {
         Trainer::Trainer* trainer = sObjectMgr->GetTrainer(trainerId);
+        if (!trainer)
+            continue;
 
-        for (auto& spell : trainer->GetSpells())
+        for (Trainer::Spell const& spell : trainer->GetSpells())
+            trainerSpells.push_back({trainer, &spell});
+    }
+
+    // Low ranks first: the trainer state machine requires ReqAbility and the
+    // previous rank, which may be taught by a different trainer.
+    std::sort(trainerSpells.begin(), trainerSpells.end(),
+              [](TrainerSpellEntry const& a, TrainerSpellEntry const& b)
+              {
+                  if (a.spell->ReqSkillRank != b.spell->ReqSkillRank)
+                      return a.spell->ReqSkillRank < b.spell->ReqSkillRank;
+                  if (a.spell->ReqLevel != b.spell->ReqLevel)
+                      return a.spell->ReqLevel < b.spell->ReqLevel;
+                  return a.spell->SpellId < b.spell->SpellId;
+              });
+
+    constexpr uint32 MAX_PASSES = 4;
+    for (uint32 pass = 0; pass < MAX_PASSES; ++pass)
+    {
+        bool learned = false;
+        for (TrainerSpellEntry const& entry : trainerSpells)
         {
             // simplified version of Trainer::TeachSpell method
-
-            Trainer::Spell const* trainerSpell = trainer->GetSpell(spell.SpellId);
-            if (!trainerSpell)
+            if (!IsTrainerSpellAllowedForBot(bot, entry.trainer, entry.spell))
                 continue;
 
-            if (!IsTrainerSpellAllowedForBot(bot, trainer, trainerSpell))
+            if (!entry.trainer->CanTeachSpell(bot, entry.spell))
                 continue;
 
-            if (!trainer->CanTeachSpell(bot, trainerSpell))
-                continue;
-
-            if (trainerSpell->IsCastable())
-                bot->CastSpell(bot, trainerSpell->SpellId, true);
+            if (entry.spell->IsCastable())
+                bot->CastSpell(bot, entry.spell->SpellId, true);
             else
-                bot->learnSpell(trainerSpell->SpellId, false);
+                bot->learnSpell(entry.spell->SpellId, false);
+            learned = true;
         }
+
+        if (!learned)
+            break;
     }
 }
 

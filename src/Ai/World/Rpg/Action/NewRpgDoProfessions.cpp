@@ -10,6 +10,8 @@
 #include <limits>
 #include <vector>
 
+#include "Bag.h"
+#include "Item.h"
 #include "Creature.h"
 #include "DBCStructure.h"
 #include "GameObject.h"
@@ -34,11 +36,33 @@ struct ProfessionRecipe
     uint32 tier = 0;
     uint32 spellFocus = 0;
     bool useful = false;
+    bool noItemSpell = false;  // enchanting: target a bag item instead of creating one
 };
 
 constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
+
+Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo)
+{
+    std::vector<Item*> candidates;
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            if (item->IsFitToSpellRequirements(spellInfo))
+                candidates.push_back(item);
+
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                if (Item* item = bot->GetItemByPos(bagSlot, slot))
+                    if (item->IsFitToSpellRequirements(spellInfo))
+                        candidates.push_back(item);
+
+    if (candidates.empty())
+        return nullptr;
+
+    return candidates[urand(0, uint32(candidates.size()) - 1)];
+}
 
 bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions& data, uint32 focusId)
 {
@@ -81,10 +105,24 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
         if (recentlyVisited)
             continue;
 
+        bool teachesProfession = false;
+        for (Trainer::Spell const& trainerSpell : trainerData->GetSpells())
+        {
+            if (trainerSpell.ReqSkillLine == data.skillLine)
+            {
+                teachesProfession = true;
+                break;
+            }
+        }
+        if (!teachesProfession)
+            continue;
+
         bool teachesSkill = false;
         for (Trainer::Spell const& trainerSpell : trainerData->GetSpells())
         {
-            if (trainerSpell.ReqSkillLine == data.skillLine && trainerData->CanTeachSpell(bot, &trainerSpell))
+            if (trainerSpell.ReqSkillLine != data.skillLine && trainerSpell.ReqSkillLine != 0)
+                continue;
+            if (trainerData->CanTeachSpell(bot, &trainerSpell))
             {
                 teachesSkill = true;
                 break;
@@ -140,12 +178,6 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         return true;
     }
 
-    if (data.skillLine != SKILL_FIRST_AID && data.skillLine != SKILL_COOKING)
-    {
-        info.ChangeToIdle();
-        return true;
-    }
-
     // Let the current cast finish before selecting the next recipe.
     if (bot->HasUnitState(UNIT_STATE_CASTING) || bot->IsNonMeleeSpellCast(false))
         return true;
@@ -182,6 +214,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             continue;
 
         uint32 outputItemId = 0;
+        bool noItemSpell = false;
         for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
         {
             if (spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM)
@@ -189,8 +222,15 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 outputItemId = spellInfo->Effects[e].ItemType;
                 break;
             }
+            if (spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
+            {
+                noItemSpell = true;
+                break;
+            }
         }
-        if (!outputItemId)
+        if (!outputItemId && !noItemSpell)
             continue;
 
         int32 chance = 0;
@@ -225,13 +265,29 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (!hasAnyReagent || !hasReagents || bot->HasSpellCooldown(spellId))
             continue;
 
-        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
-        if (!proto)
+        bool hasTools = true;
+        for (uint8 t = 0; t < 2; ++t)
+        {
+            if (spellInfo->TotemCategory[t] && !bot->HasItemTotemCategory(spellInfo->TotemCategory[t]))
+            {
+                hasTools = false;
+                break;
+            }
+        }
+        if (!hasTools)
             continue;
 
-        ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
-        bool const useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
-                            usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL;
+        bool useful = false;
+        if (outputItemId)
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
+            if (!proto)
+                continue;
+
+            ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
+            useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
+                     usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL;
+        }
 
         // At max skill there is no skill-up to gain; useful outputs are still
         // crafted up to their item-usage limit.
@@ -239,7 +295,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             continue;
 
         (useful ? usefulRecipes : skillUpRecipes)
-            .push_back({spellId, chance, tier, spellInfo->RequiresSpellFocus, useful});
+            .push_back({spellId, chance, tier, spellInfo->RequiresSpellFocus, useful, noItemSpell});
     }
 
     auto pickBest = [](std::vector<ProfessionRecipe>& recipes) -> ProfessionRecipe*
@@ -267,7 +323,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     // Skill-up surplus respects the bag-space rule; actually useful outputs may go up to
     // their item-usage limit even when the bags are already fairly full.
-    if (!chosen->useful && bagSpace > 80)
+    if (!chosen->useful && !chosen->noItemSpell && bagSpace > 80)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus", bot->GetName(),
                   bagSpace, chosen->spellId);
@@ -353,7 +409,24 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     LOG_DEBUG("playerbots", "[New RPG] {} professions skill {} recipe {} chance {} useful {} tier {}", bot->GetName(),
               data.skillLine, chosen->spellId, chosen->chance, chosen->useful, chosen->tier);
 
-    if (botAI->CastSpell(chosen->spellId, bot))
+    bool cast = false;
+    if (chosen->noItemSpell)
+    {
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(chosen->spellId);
+        Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo) : nullptr;
+        if (!itemTarget)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
+                      chosen->spellId);
+            info.ChangeToIdle();
+            return true;
+        }
+        cast = botAI->CastSpell(chosen->spellId, bot, itemTarget);
+    }
+    else
+        cast = botAI->CastSpell(chosen->spellId, bot);
+
+    if (cast)
         return true;
 
     LOG_DEBUG("playerbots", "[New RPG] {} professions cast failed for recipe {} (skill {})", bot->GetName(),
