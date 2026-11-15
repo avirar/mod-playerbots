@@ -68,6 +68,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         bot->StopMoving();
         return true;
     }
+    if (bot->IsSitState())
+    {
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+        return true;
+    }
 
     uint8 const bagSpace = AI_VALUE(uint8, "bag space");
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);
@@ -174,6 +179,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (botAI->CastSpell(chosen->spellId, bot))
         return true;
 
+    LOG_DEBUG("playerbots", "[New RPG] {} professions cast failed for recipe {} (skill {})",
+              bot->GetName(), chosen->spellId, data.skillLine);
     botAI->SetNextCheckDelay(1000);
     return false;
 }
