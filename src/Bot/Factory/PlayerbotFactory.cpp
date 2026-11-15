@@ -341,6 +341,16 @@ uint32 PlayerbotFactory::GetProfessionStarterSpell(uint16 skillId)
 
 namespace
 {
+constexpr uint32 AFFINITY_BEST = 110;
+constexpr uint32 AFFINITY_NEUTRAL = 100;
+constexpr uint32 AFFINITY_MIDDLE = 90;
+constexpr uint32 AFFINITY_PLATE_CASTER = 70;
+constexpr uint32 AFFINITY_MISMATCH = 50;
+constexpr uint32 AFFINITY_MISMATCH_PLATE = 60;
+constexpr uint32 AFFINITY_MIN = 20;
+constexpr uint32 AFFINITY_MAX = 150;
+constexpr uint32 AFFINITY_SCALE = 100;
+
 enum class ProfessionArmorType : uint8
 {
     Cloth,
@@ -411,17 +421,19 @@ uint32 GetProfessionAffinityPercent(ProfessionAffinity const& affinity, uint16 s
         switch (skillId)
         {
             case SKILL_TAILORING:
-                return affinity.armor == ProfessionArmorType::Cloth ? 110 : 50;
+                return affinity.armor == ProfessionArmorType::Cloth ? AFFINITY_BEST : AFFINITY_MISMATCH;
             case SKILL_LEATHERWORKING:
                 return affinity.armor == ProfessionArmorType::Leather || affinity.armor == ProfessionArmorType::Mail
-                           ? 110
-                           : (affinity.armor == ProfessionArmorType::Plate ? 60 : 50);
+                           ? AFFINITY_BEST
+                           : (affinity.armor == ProfessionArmorType::Plate ? AFFINITY_MISMATCH_PLATE
+                                                                           : AFFINITY_MISMATCH);
             case SKILL_BLACKSMITHING:
                 return affinity.armor == ProfessionArmorType::Plate
-                           ? 110
-                           : (affinity.armor == ProfessionArmorType::Mail ? 60 : 50);
+                           ? AFFINITY_BEST
+                           : (affinity.armor == ProfessionArmorType::Mail ? AFFINITY_MISMATCH_PLATE
+                                                                          : AFFINITY_MISMATCH);
             default:
-                return 100;
+                return AFFINITY_NEUTRAL;
         }
     }
 
@@ -429,18 +441,18 @@ uint32 GetProfessionAffinityPercent(ProfessionAffinity const& affinity, uint16 s
     {
         case SKILL_TAILORING:
             if (affinity.spellPower)
-                return affinity.armor == ProfessionArmorType::Plate ? 70 : 110;
-            return 50;
+                return affinity.armor == ProfessionArmorType::Plate ? AFFINITY_PLATE_CASTER : AFFINITY_BEST;
+            return AFFINITY_MISMATCH;
         case SKILL_LEATHERWORKING:
             if (affinity.armor == ProfessionArmorType::Leather || affinity.armor == ProfessionArmorType::Mail)
-                return 110;
-            return affinity.armor == ProfessionArmorType::Plate ? 60 : 50;
+                return AFFINITY_BEST;
+            return affinity.armor == ProfessionArmorType::Plate ? AFFINITY_MISMATCH_PLATE : AFFINITY_MISMATCH;
         case SKILL_BLACKSMITHING:
             if (affinity.armor == ProfessionArmorType::Plate)
-                return affinity.spellPower ? 90 : 110;
-            return affinity.armor == ProfessionArmorType::Mail ? 60 : 50;
+                return affinity.spellPower ? AFFINITY_MIDDLE : AFFINITY_BEST;
+            return affinity.armor == ProfessionArmorType::Mail ? AFFINITY_MISMATCH_PLATE : AFFINITY_MISMATCH;
         default:
-            return 100;
+            return AFFINITY_NEUTRAL;
     }
 }
 
@@ -448,7 +460,7 @@ uint32 GetPairAffinityPercent(ProfessionAffinity const& affinity, uint16 firstSk
 {
     uint32 const first = GetProfessionAffinityPercent(affinity, firstSkill);
     uint32 const second = GetProfessionAffinityPercent(affinity, secondSkill);
-    return std::clamp<uint32>(first * second / 100, 20u, 150u);
+    return std::clamp<uint32>(first * second / AFFINITY_SCALE, AFFINITY_MIN, AFFINITY_MAX);
 }
 }  // namespace
 
@@ -460,7 +472,7 @@ std::vector<PlayerbotFactory::WeightedProfessionPair> PlayerbotFactory::GetClass
     for (WeightedProfessionPair& pair : pairs)
     {
         uint32 const percent = GetPairAffinityPercent(affinity, pair.firstSkill, pair.secondSkill);
-        pair.weight = std::max<uint32>(1, pair.weight * percent / 100);
+        pair.weight = std::max<uint32>(1, pair.weight * percent / AFFINITY_SCALE);
     }
     return pairs;
 }
