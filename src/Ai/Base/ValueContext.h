@@ -44,6 +44,7 @@
 #include "ItemCountValue.h"
 #include "ItemForSpellValue.h"
 #include "ItemUsageValue.h"
+#include "SpellFocusValue.h"
 #include "LastMovementValue.h"
 #include "LastSaidValue.h"
 #include "LastSpellCastTimeValue.h"
@@ -248,6 +249,7 @@ public:
         creators["next rpg action"] = &ValueContext::next_rpg_action;
         creators["travel target"] = &ValueContext::travel_target;
         creators["talk target"] = &ValueContext::talk_target;
+        creators["spell focus"] = &ValueContext::spell_focus;
         creators["spell focus target"] = &ValueContext::spell_focus_target;
         creators["pull target"] = &ValueContext::pull_target;
         creators["pull strategy target"] = &ValueContext::pull_strategy_target;
@@ -510,6 +512,7 @@ private:
     static UntypedValue* rpg_target(PlayerbotAI* botAI) { return new RpgTargetValue(botAI); }
     static UntypedValue* ignore_rpg_target(PlayerbotAI* botAI) { return new IgnoreRpgTargetValue(botAI); }
     static UntypedValue* talk_target(PlayerbotAI* botAI) { return new TalkTargetValue(botAI); }
+    static UntypedValue* spell_focus(PlayerbotAI* botAI) { return new SpellFocusValue(botAI); }
     static UntypedValue* spell_focus_target(PlayerbotAI* botAI) { return new SpellFocusTargetValue(botAI); }
     static UntypedValue* next_rpg_action(PlayerbotAI* botAI) { return new NextRpgActionValue(botAI); }
     static UntypedValue* travel_target(PlayerbotAI* botAI) { return new TravelTargetValue(botAI); }

@@ -202,7 +202,15 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (chosen->spellFocus)
     {
-        ObjectGuid const focusGuid = AI_VALUE2(ObjectGuid, "spell focus", chosen->spellFocus);
+        Value<ObjectGuid>* focusValue = context->GetValue<ObjectGuid>("spell focus", chosen->spellFocus);
+        if (!focusValue)
+        {
+            LOG_ERROR("playerbots", "[New RPG] {} missing 'spell focus' value", bot->GetName());
+            info.ChangeToIdle();
+            return true;
+        }
+
+        ObjectGuid const focusGuid = focusValue->Get();
         WorldObject* worldObject = focusGuid.IsEmpty() ? nullptr : botAI->GetWorldObject(focusGuid);
         GameObject* focus = worldObject ? worldObject->ToGameObject() : nullptr;
         SpellFocusSpawn const* cached = (!focus && !focusGuid.IsEmpty()) ? sSpellFocusMgr.Get(focusGuid) : nullptr;
