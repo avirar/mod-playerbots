@@ -28,6 +28,8 @@ public:
     {
         if (go->GetGOInfo()->type != GAMEOBJECT_TYPE_SPELL_FOCUS || !go->isSpawned())
             return false;
+        if (!go->InSamePhase(&_searcher))
+            return false;
         if (go->GetGOInfo()->spellFocus.focusId != _focusId)
             return false;
         if (!go->IsWithinDistInMap(&_searcher, _range))
@@ -62,7 +64,8 @@ ObjectGuid SpellFocusValue::Calculate()
         return focus->GetGUID();
 
     constexpr float CACHE_RANGE = 900.0f;
-    if (SpellFocusSpawn const* cached = sSpellFocusMgr.Nearest(focusId, WorldPosition(bot), CACHE_RANGE))
+    if (SpellFocusSpawn const* cached =
+            sSpellFocusMgr.Nearest(focusId, WorldPosition(bot), CACHE_RANGE, bot->GetPhaseMask()))
         return ObjectGuid::Create<HighGuid::GameObject>(cached->entry, cached->spawnId);
 
     return ObjectGuid();

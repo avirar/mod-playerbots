@@ -46,17 +46,18 @@ constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
 
+uint32 GetEnchantId(SpellInfo const* spellInfo)
+{
+    for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+        if (spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM)
+            return spellInfo->Effects[e].MiscValue;
+
+    return 0;
+}
+
 int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightCalculator& calculator)
 {
-    uint32 enchantId = 0;
-    for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
-    {
-        if (spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM)
-        {
-            enchantId = spellInfo->Effects[e].MiscValue;
-            break;
-        }
-    }
+    uint32 const enchantId = GetEnchantId(spellInfo);
     if (!enchantId)
         return -1;
 
@@ -89,6 +90,8 @@ int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightC
         float const newScore = calculator.CalculateEnchant(enchantId, proto->Delay, proto->IsRangedWeapon());
         float const oldScore =
             currentId ? calculator.CalculateEnchant(currentId, proto->Delay, proto->IsRangedWeapon()) : 0.0f;
+        if (currentId && oldScore <= 0.0f)
+            continue;  // the calculator cannot value this enchant; do not overwrite it
         float const gain = newScore - oldScore;
         if (newScore > 0.0f && gain > bestGain)
         {
@@ -100,7 +103,7 @@ int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightC
     return bestSlot;
 }
 
-Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo, bool preferVellum)
+Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo, bool allowGear, StatsWeightCalculator* calculator)
 {
     std::vector<Item*> gear;
     std::vector<Item*> vellums;
@@ -124,14 +127,40 @@ Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo, bool preferVell
                 if (Item* item = bot->GetItemByPos(bagSlot, slot))
                     collect(item);
 
-    if (preferVellum && !vellums.empty())
-        return vellums[urand(0, uint32(vellums.size()) - 1)];
-    if (!gear.empty())
-        return gear[urand(0, uint32(gear.size()) - 1)];
     if (!vellums.empty())
         return vellums[urand(0, uint32(vellums.size()) - 1)];
 
-    return nullptr;
+    if (!allowGear)
+        return nullptr;
+
+    uint32 const enchantId = GetEnchantId(spellInfo);
+    std::vector<Item*> candidates;
+    for (Item* item : gear)
+    {
+        uint32 const currentId = item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+        if (!currentId)
+        {
+            candidates.push_back(item);
+            continue;
+        }
+
+        if (!calculator || !enchantId)
+            continue;
+
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto)
+            continue;
+
+        float const newScore = calculator->CalculateEnchant(enchantId, proto->Delay, proto->IsRangedWeapon());
+        float const oldScore = calculator->CalculateEnchant(currentId, proto->Delay, proto->IsRangedWeapon());
+        if (oldScore > 0.0f && newScore > 0.0f && newScore > oldScore)
+            candidates.push_back(item);
+    }
+
+    if (candidates.empty())
+        return nullptr;
+
+    return candidates[urand(0, uint32(candidates.size()) - 1)];
 }
 
 bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions& data, uint32 focusId)
@@ -450,7 +479,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (focus)
         {
             distance = bot->GetDistance(focus);
-            focusDistance = float(focus->GetGOInfo()->spellFocus.dist) - 1.0f;
+            focusDistance = std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - 1.0f);
         }
         else
         {
@@ -458,7 +487,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
             float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
             distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-            focusDistance = cached->distance - 1.0f;
+            focusDistance = std::max(0.5f, cached->distance - 1.0f);
         }
 
         if (!focus || distance > focusDistance)
@@ -494,9 +523,9 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (chosen->noItemSpell)
     {
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(chosen->spellId);
+        StatsWeightCalculator calculator(bot);
         if (spellInfo)
         {
-            StatsWeightCalculator calculator(bot);
             int8 const selfSlot = FindUsefulEnchantSlot(bot, spellInfo, calculator);
             if (selfSlot >= 0)
             {
@@ -512,8 +541,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         if (!cast)
         {
-            bool const preferVellum = chosen->marketable || skillMaxed;
-            Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo, preferVellum) : nullptr;
+            Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo, !skillMaxed, &calculator) : nullptr;
             if (!itemTarget)
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),

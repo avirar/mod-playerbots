@@ -6,6 +6,8 @@
 
 #include "SpellFocusMgr.h"
 
+#include <mutex>
+
 #include "GameObject.h"
 #include "Log.h"
 #include "ObjectMgr.h"
@@ -16,6 +18,7 @@ void SpellFocusMgr::Load()
     uint32 oldMSTime = getMSTime();
     _spawns.clear();
     _bySpawnId.clear();
+    _unavailableUntil.clear();
 
     for (auto const& [spawnId, goData] : sObjectMgr->GetAllGOData())
     {
@@ -27,6 +30,7 @@ void SpellFocusMgr::Load()
         spawn.spawnId = spawnId;
         spawn.entry = goData.id;
         spawn.focusId = goInfo->spellFocus.focusId;
+        spawn.phaseMask = goData.phaseMask;
         spawn.distance = float(goInfo->spellFocus.dist);
         spawn.pos = WorldPosition(goData.mapid, goData.posX, goData.posY, goData.posZ, goData.orientation);
 
@@ -38,7 +42,8 @@ void SpellFocusMgr::Load()
              GetMSTimeDiffToNow(oldMSTime));
 }
 
-SpellFocusSpawn const* SpellFocusMgr::Nearest(uint32 focusId, WorldPosition const& from, float maxRange) const
+SpellFocusSpawn const* SpellFocusMgr::Nearest(uint32 focusId, WorldPosition const& from, float maxRange,
+                                              uint32 phaseMask) const
 {
     auto mapIt = _spawns.find(from.GetMapId());
     if (mapIt == _spawns.end())
@@ -48,10 +53,19 @@ SpellFocusSpawn const* SpellFocusMgr::Nearest(uint32 focusId, WorldPosition cons
     if (focusIt == mapIt->second.end())
         return nullptr;
 
+    uint32 const now = getMSTime();
+    std::shared_lock<std::shared_mutex> lock(_unavailableMutex);
     float bestDistanceSq = maxRange * maxRange;
     SpellFocusSpawn const* best = nullptr;
     for (SpellFocusSpawn const& spawn : focusIt->second)
     {
+        if (phaseMask && !(spawn.phaseMask & phaseMask))
+            continue;
+
+        auto unavailable = _unavailableUntil.find(spawn.spawnId);
+        if (unavailable != _unavailableUntil.end() && unavailable->second > now)
+            continue;
+
         float const dx = spawn.pos.GetPositionX() - from.GetPositionX();
         float const dy = spawn.pos.GetPositionY() - from.GetPositionY();
         float const dz = spawn.pos.GetPositionZ() - from.GetPositionZ();
@@ -64,6 +78,12 @@ SpellFocusSpawn const* SpellFocusMgr::Nearest(uint32 focusId, WorldPosition cons
     }
 
     return best;
+}
+
+void SpellFocusMgr::MarkUnavailable(ObjectGuid::LowType spawnId, uint32 durationMs)
+{
+    std::unique_lock<std::shared_mutex> lock(_unavailableMutex);
+    _unavailableUntil[spawnId] = getMSTime() + durationMs;
 }
 
 SpellFocusSpawn const* SpellFocusMgr::Get(ObjectGuid guid) const

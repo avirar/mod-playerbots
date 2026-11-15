@@ -5,14 +5,19 @@
  */
 
 #include "NewRpgBaseAction.h"
+
+#include <algorithm>
+
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Creature.h"
+#include "DBCStructure.h"
 #include "GameObject.h"
 #include "GatherNodeMgr.h"
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "ItemUsageValue.h"
 #include "NewRpgHelpers.h"
 #include "NewRpgInfo.h"
 #include "QuestLevelRules.h"
@@ -35,10 +40,89 @@
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
+#include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "G3D/Vector2.h"
+
+namespace
+{
+bool HasCraftableProfessionRecipe(Player* bot, uint32 skillLine)
+{
+    uint32 const skillValue = bot->GetPureSkillValue(skillLine);
+    bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(skillLine);
+
+    for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
+    {
+        if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+
+        bool hasRecipeOutput = false;
+        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+        {
+            if (spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
+            {
+                hasRecipeOutput = true;
+                break;
+            }
+        }
+        if (!hasRecipeOutput)
+            continue;
+
+        bool matchedSkillLine = false;
+        int32 chance = 0;
+        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            SkillLineAbilityEntry const* ability = itr->second;
+            if (ability->SkillLine != skillLine)
+                continue;
+
+            matchedSkillLine = true;
+            chance =
+                std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, ability->TrivialSkillLineRankHigh,
+                                                                      ability->TrivialSkillLineRankLow));
+        }
+        if (!matchedSkillLine || (!skillMaxed && chance <= 0))
+            continue;
+
+        bool hasAnyReagent = false;
+        bool hasReagents = true;
+        for (uint8 r = 0; r < MAX_SPELL_REAGENTS && hasReagents; ++r)
+        {
+            if (spellInfo->ReagentCount[r] == 0)
+                continue;
+
+            hasAnyReagent = true;
+            hasReagents = bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
+        }
+        if (!hasAnyReagent || !hasReagents)
+            continue;
+
+        bool hasTools = true;
+        for (uint8 t = 0; t < 2; ++t)
+        {
+            if (spellInfo->TotemCategory[t] && !bot->HasItemTotemCategory(spellInfo->TotemCategory[t]))
+            {
+                hasTools = false;
+                break;
+            }
+        }
+        if (hasTools)
+            return true;
+    }
+
+    return false;
+}
+}  // namespace
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
 {
@@ -1025,6 +1109,15 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
             botAI->rpgInfo.ChangeToDoGather();
             return true;
         }
+        case RPG_DO_PROFESSIONS:
+        {
+            uint32 const skillLine = SelectProfessionToLevel();
+            if (!skillLine)
+                return false;
+
+            botAI->rpgInfo.ChangeToDoProfessions(skillLine);
+            return true;
+        }
         case RPG_IDLE:
         {
             botAI->rpgInfo.ChangeToIdle();
@@ -1049,6 +1142,29 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
     }
     return false;
+}
+
+uint32 NewRpgBaseAction::SelectProfessionToLevel()
+{
+    static uint32 const craftProfessions[] = {
+        SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
+        SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_TAILORING,  SKILL_FIRST_AID,   SKILL_COOKING};
+
+    std::vector<uint32> available;
+    for (uint32 skillLine : craftProfessions)
+    {
+        if (!botAI->HasSkill(SkillType(skillLine)))
+            continue;
+        if (!HasCraftableProfessionRecipe(bot, skillLine))
+            continue;
+
+        available.push_back(skillLine);
+    }
+
+    if (available.empty())
+        return 0;
+
+    return available[urand(0, available.size() - 1)];
 }
 
 bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
@@ -1108,7 +1224,7 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return sGatherNodeMgr.HasUsableNodes(bot);
         }
         case RPG_DO_PROFESSIONS:
-            return botAI->HasSkill(SKILL_FIRST_AID);
+            return SelectProfessionToLevel() != 0;
         case RPG_TRAVEL_FLIGHT:
         {
             uint32 flightMasterEntry = 0;

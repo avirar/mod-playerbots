@@ -6,10 +6,13 @@
 
 #include "MoveToSpellFocusAction.h"
 
+#include <algorithm>
+
 #include "GameObject.h"
 #include "Log.h"
 #include "Playerbots.h"
 #include "SpellFocusMgr.h"
+#include "Timer.h"
 
 bool MoveToSpellFocusAction::Execute(Event /*event*/)
 {
@@ -34,13 +37,17 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
         float const dx = cached->pos.GetPositionX() - bot->GetPositionX();
         float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
         float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
-        float const focusDistance = cached->distance - 1.0f;
+        float const focusDistance = std::max(0.5f, cached->distance - 1.0f);
         if (dx * dx + dy * dy + dz * dz <= focusDistance * focusDistance)
         {
-            LOG_DEBUG("playerbots", "[spell focus] {} reached cached {} at {:.1f} yd", bot->GetName(), cached->entry,
-                      std::sqrt(dx * dx + dy * dy + dz * dz));
+            // The grid is loaded at this distance. If the live object is still
+            // missing, the spawn is phase-restricted or despawned; skip it for a
+            // while instead of returning to the same empty spot.
+            LOG_DEBUG("playerbots", "[spell focus] {} cached {} is absent; marking it unavailable", bot->GetName(),
+                      cached->entry);
+            sSpellFocusMgr.MarkUnavailable(cached->spawnId, 5 * MINUTE * IN_MILLISECONDS);
             context->GetValue<ObjectGuid>("spell focus target")->Set(ObjectGuid::Empty);
-            return true;
+            return false;
         }
 
         LOG_DEBUG("playerbots", "[spell focus] {} moving to cached {} at {:.1f} yd", bot->GetName(), cached->entry,
@@ -49,7 +56,7 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
                       cached->pos.GetPositionZ());
     }
 
-    float const focusDistance = float(focus->GetGOInfo()->spellFocus.dist) - 1.0f;
+    float const focusDistance = std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - 1.0f);
     if (focus->IsWithinDistInMap(bot, focusDistance))
     {
         LOG_DEBUG("playerbots", "[spell focus] {} reached {} (distance {})", bot->GetName(), focus->GetEntry(),
@@ -60,7 +67,7 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
 
     LOG_DEBUG("playerbots", "[spell focus] {} moving to {} (distance {})", bot->GetName(), focus->GetEntry(),
               bot->GetDistance(focus));
-    return MoveTo(focus, 3.0f);
+    return MoveTo(focus, std::max(0.2f, focusDistance - 0.5f));
 }
 
 bool MoveToSpellFocusAction::isUseful() { return !AI_VALUE(ObjectGuid, "spell focus target").IsEmpty(); }

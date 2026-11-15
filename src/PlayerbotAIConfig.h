@@ -73,7 +73,7 @@ enum NewRpgStatus : int
     RPG_OUTDOOR_PVP = 8,
     // Roam the current zone harvesting herb/ore nodes
     RPG_DO_GATHER = 9,
-    // Level a secondary profession (POC: First Aid)
+    // Level a known crafting profession (first aid, cooking, or a primary craft)
     RPG_DO_PROFESSIONS = 10,
     RPG_STATUS_END = 11
 };

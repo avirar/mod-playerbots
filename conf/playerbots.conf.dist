@@ -1456,6 +1456,7 @@ Playerbots.CollectDetailedQuestStats = 0
 # Rest          (Default: 5   Take a break for a while and do nothing)
 # OutdoorPvp    (Default: 10  Participate in outdoor PvP capture points if already in an outdoor PvP zone)
 # DoGather      (Default: 15  Roam the current zone harvesting herb/ore nodes; requires Herbalism or Mining)
+# DoProfessions (Default: 10  Level a known crafting profession using recipes the bot can craft)
 Playerbots.RpgStatusProbWeight.WanderRandom = 15
 Playerbots.RpgStatusProbWeight.WanderNpc = 20
 Playerbots.RpgStatusProbWeight.GoGrind = 15
@@ -1465,6 +1466,7 @@ Playerbots.RpgStatusProbWeight.TravelFlight = 15
 Playerbots.RpgStatusProbWeight.Rest = 5
 Playerbots.RpgStatusProbWeight.OutdoorPvp = 10
 Playerbots.RpgStatusProbWeight.DoGather = 15
+Playerbots.RpgStatusProbWeight.DoProfessions = 10
 
 # Bots' minimum and maximum level when teleporting in and out of a zone, according to the new RPG strategy
 # Format: Playerbots.ZoneBracket.zoneID = minLevel,maxLevel
