@@ -430,17 +430,11 @@ uint32 GetProfessionAffinityPercent(ProfessionAffinity const& affinity, uint16 s
     {
         case SKILL_TAILORING:
             if (affinity.spellPower)
-            {
-                if (affinity.armor == ProfessionArmorType::Cloth)
-                    return 110;
-                if (affinity.armor == ProfessionArmorType::Plate)
-                    return 70;
-                return 100;
-            }
+                return affinity.armor == ProfessionArmorType::Plate ? 70 : 110;
             return 50;
         case SKILL_LEATHERWORKING:
             if (affinity.armor == ProfessionArmorType::Leather || affinity.armor == ProfessionArmorType::Mail)
-                return affinity.spellPower ? 100 : 110;
+                return 110;
             return affinity.armor == ProfessionArmorType::Plate ? 60 : 50;
         case SKILL_BLACKSMITHING:
             if (affinity.armor == ProfessionArmorType::Plate)
