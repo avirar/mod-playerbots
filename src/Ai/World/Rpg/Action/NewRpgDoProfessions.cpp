@@ -115,6 +115,7 @@ constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_GRACE_MS = 6 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
+constexpr uint32 RECIPE_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
 constexpr size_t MAX_PLAN_STEPS = 20;
 // Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
@@ -416,6 +417,12 @@ bool IsVendorFailure(NewRpgInfo const& info, uint32 itemId)
 {
     return info.failedVendorAt && info.failedVendorItem == itemId &&
            GetMSTimeDiffToNow(info.failedVendorAt) < VENDOR_FAILURE_MEMORY_MS;
+}
+
+bool IsRecipeFailure(NewRpgInfo const& info, uint32 spellId)
+{
+    auto const it = info.failedRecipes.find(spellId);
+    return it != info.failedRecipes.end() && GetMSTimeDiffToNow(it->second) < RECIPE_FAILURE_MEMORY_MS;
 }
 
 void SeedPlanItem(CraftPlanContext& ctx, uint32 itemId)
@@ -1273,6 +1280,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (outputItemId)
             craftIndex[outputItemId].push_back(recipeIndex);
 
+        // A recipe whose cast just failed is not retried immediately. Keep it in
+        // the graph as a possible intermediate, but not as the next final cast.
+        if (IsRecipeFailure(info, spellId))
+            continue;
+
         if (!matchedSkillLine || (!worthwhile && (chance <= 0 || skillMaxed)))
             continue;
 
@@ -1436,8 +1448,19 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         cast = botAI->CastSpell(chosen->spellId, bot);
 
     if (cast)
+    {
+        info.failedRecipes.erase(chosen->spellId);
         return true;
+    }
 
+    for (auto it = info.failedRecipes.begin(); it != info.failedRecipes.end();)
+    {
+        if (GetMSTimeDiffToNow(it->second) >= RECIPE_FAILURE_MEMORY_MS)
+            it = info.failedRecipes.erase(it);
+        else
+            ++it;
+    }
+    info.failedRecipes[chosen->spellId] = getMSTime();
     LOG_DEBUG("playerbots", "[New RPG] {} professions cast failed for recipe {} (skill {})", bot->GetName(),
               chosen->spellId, data.skillLine);
     botAI->SetNextCheckDelay(1000);

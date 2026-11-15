@@ -129,6 +129,7 @@ struct NewRpgInfo
     uint32 failedAt{0};
     uint32 failedVendorItem{0};
     uint32 failedVendorAt{0};
+    std::unordered_map<uint32, uint32> failedRecipes;  // spellId -> failure timestamp
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
