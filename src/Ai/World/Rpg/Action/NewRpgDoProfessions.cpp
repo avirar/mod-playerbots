@@ -56,6 +56,19 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (bot->HasUnitState(UNIT_STATE_CASTING) || bot->IsNonMeleeSpellCast(false))
         return true;
 
+    // A player stops and dismounts to craft; consume the tick so follow/grind cannot
+    // immediately start moving us again.
+    if (bot->IsMounted())
+    {
+        bot->Dismount();
+        return true;
+    }
+    if (bot->isMoving())
+    {
+        bot->StopMoving();
+        return true;
+    }
+
     uint8 const bagSpace = AI_VALUE(uint8, "bag space");
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);
 

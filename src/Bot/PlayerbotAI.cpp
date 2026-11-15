@@ -51,12 +51,15 @@
 #include "SocialMgr.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
+#include "ItemUsageValue.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
 #include "WsgRouteState.h"
 #include <algorithm>
+#include <iomanip>
 #include <cfloat>
 #include <cmath>
 #include <map>
@@ -5368,6 +5371,114 @@ void PlayerbotAI::_fillGearScoreData(Player* player, Item* item, std::vector<uin
     }
 }
 
+namespace
+{
+    std::string Lowercase(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [](unsigned char c) { return char(std::tolower(c)); });
+        return value;
+    }
+}
+
+std::string PlayerbotAI::DescribeProfessions(std::string const& filter) const
+{
+    static SkillType const professionSkills[] = {
+        SKILL_ALCHEMY,      SKILL_BLACKSMITHING, SKILL_ENCHANTING,   SKILL_ENGINEERING, SKILL_HERBALISM,
+        SKILL_INSCRIPTION,  SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,    SKILL_SKINNING,
+        SKILL_TAILORING,    SKILL_COOKING,       SKILL_FIRST_AID,    SKILL_FISHING};
+
+    std::string const lowerFilter = Lowercase(filter);
+    std::ostringstream out;
+    uint32 lines = 0;
+
+    for (SkillType skill : professionSkills)
+    {
+        if (!bot->HasSkill(skill))
+            continue;
+
+        SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(uint32(skill));
+        std::string const name = skillLine ? skillLine->name[0] : std::to_string(uint32(skill));
+        if (!lowerFilter.empty() && Lowercase(name).find(lowerFilter) == std::string::npos &&
+            std::to_string(uint32(skill)) != filter)
+            continue;
+
+        out << name << " " << bot->GetSkillValue(uint32(skill)) << "/" << bot->GetMaxSkillValue(uint32(skill)) << "\n";
+        ++lines;
+
+        for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
+        {
+            if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
+                continue;
+
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            if (!spellInfo)
+                continue;
+
+            bool found = false;
+            int32 chance = 0;
+            SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+            for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+            {
+                SkillLineAbilityEntry const* ability = itr->second;
+                if (ability->SkillLine != uint32(skill))
+                    continue;
+
+                found = true;
+                chance = std::max(chance, ItemUsageValue::CraftSkillGainChance(
+                                              bot->GetPureSkillValue(uint32(skill)),
+                                              ability->TrivialSkillLineRankHigh,
+                                              ability->TrivialSkillLineRankLow));
+            }
+
+            if (!found)
+                continue;
+
+            out << "  " << spellInfo->SpellName[0] << " (" << spellId << ") chance " << std::fixed
+                << std::setprecision(1) << (chance / 10.0f) << "%\n";
+
+            if (++lines >= 80)
+            {
+                out << "  ... truncated\n";
+                return out.str();
+            }
+        }
+    }
+
+    return out.str().empty() ? "No known professions." : out.str();
+}
+
+std::string PlayerbotAI::DescribeSpells(std::string const& filter) const
+{
+    std::string const lowerFilter = Lowercase(filter);
+    std::ostringstream out;
+    uint32 count = 0;
+
+    for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
+    {
+        if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+
+        std::string const name = spellInfo->SpellName[0];
+        if (!lowerFilter.empty() && Lowercase(name).find(lowerFilter) == std::string::npos &&
+            std::to_string(spellId) != filter)
+            continue;
+
+        out << spellId << " " << name << "\n";
+        if (++count >= 200)
+        {
+            out << "... truncated\n";
+            break;
+        }
+    }
+
+    return out.str().empty() ? "No known spells." : out.str();
+}
+
 std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 {
     if (command == "state")
@@ -5497,6 +5608,14 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
         out << " Retry " << target->getRetryCount(true) << "/" << target->getRetryCount(false);
 
         return out.str();
+    }
+    else if (command == "professions" || command.rfind("professions ", 0) == 0)
+    {
+        return DescribeProfessions(command.size() > 12 ? command.substr(12) : "");
+    }
+    else if (command == "spells" || command.rfind("spells ", 0) == 0)
+    {
+        return DescribeSpells(command.size() > 7 ? command.substr(7) : "");
     }
     else if (command == "budget")
     {

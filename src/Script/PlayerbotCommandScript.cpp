@@ -25,6 +25,7 @@ public:
     {
         static ChatCommandTable playerbotsDebugCommandTable = {
             {"bg", HandleDebugBGCommand, SEC_GAMEMASTER, Console::Yes},
+            {"rpg", HandleDebugRpgCommand, SEC_GAMEMASTER, Console::Yes},
         };
 
         static ChatCommandTable playerbotsAccountCommandTable = {
@@ -97,7 +98,7 @@ public:
         if (command.empty())
         {
             handler->SendErrorMessage("Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
-                                      "movement, target, hp, strategy, action, values, travel, budget)");
+                                      "movement, target, hp, strategy, action, values, travel, budget, professions, spells)");
             return false;
         }
 
@@ -151,6 +152,33 @@ public:
         sPerfMonitor.PrintStats();
         sPerfMonitor.DumpJson(false);
         return true;
+    }
+
+    static bool HandleDebugRpgCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
+    {
+        PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
+        if (!botAI)
+            return false;
+
+        std::string const text(command);
+        if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+            botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
+
+        if (text == "do first aid" || text == "first aid" || text == "do professions" || text == "professions")
+        {
+            botAI->rpgInfo.ChangeToDoProfessions(SKILL_FIRST_AID);
+            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS", target.GetName());
+            return true;
+        }
+        if (text == "idle")
+        {
+            botAI->rpgInfo.ChangeToIdle();
+            handler->PSendSysMessage("{}: rpg status IDLE", target.GetName());
+            return true;
+        }
+
+        handler->SendErrorMessage("Usage: .playerbots debug rpg <bot> do first aid|do professions|idle");
+        return false;
     }
 
     static bool HandleDebugBGCommand(ChatHandler* handler, char const* args)
