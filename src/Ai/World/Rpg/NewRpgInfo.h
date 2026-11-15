@@ -20,6 +20,7 @@
 #include <array>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 using NewRpgStatusTransitionProb = std::vector<std::vector<int>>;
 
@@ -89,6 +90,16 @@ struct NewRpgInfo
     // RPG_DO_PROFESSIONS
     struct DoProfessions
     {
+        // A dependency or conversion cast; the final recipe is selected again once these are done.
+        struct CraftStep
+        {
+            uint32 spellId{0};
+            uint32 spellFocus{0};
+            uint32 inputItemId{0};  // 0 for a normal create-item recipe
+            uint32 inputCount{0};
+            uint32 expectedItemId{0};  // conversion output the plan needs
+        };
+
         uint32 skillLine{0};
         uint32 spellId{0};
         uint32 lastCast{0};
@@ -96,6 +107,18 @@ struct NewRpgInfo
         uint32 lastTrainer{0};
         ObjectGuid trainerGuid{};
         uint32 casts{0};
+        std::vector<CraftStep> pendingCrafts;
+        // Conversion loot is asynchronous; wait for the window to close before the next step.
+        uint32 lootWaitStart{0};
+        uint32 lootWaitSpell{0};
+        uint32 lootWaitInput{0};
+        uint32 lootWaitItem{0};
+        uint32 lootWaitCount{0};
+        // A conversion that did not yield the expected item is skipped for a while.
+        uint32 failedSpell{0};
+        uint32 failedInput{0};
+        uint32 failedItem{0};
+        uint32 failedAt{0};
     };
     struct Idle
     {

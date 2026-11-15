@@ -18,7 +18,17 @@ public:
     bool Execute(Event event) override;
 
 private:
+    enum class SpellFocusState
+    {
+        Ready,
+        Waiting,
+        Unavailable
+    };
+
     bool LearnFromTrainer(NewRpgInfo::DoProfessions& data);
+    bool HandleLootWait(NewRpgInfo::DoProfessions& data);
+    bool RunPendingCrafts(NewRpgInfo::DoProfessions& data);
+    SpellFocusState EnsureSpellFocus(NewRpgInfo::DoProfessions& data, uint32 spellFocus);
 };
 
 #endif

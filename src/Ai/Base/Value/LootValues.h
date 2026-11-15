@@ -7,6 +7,9 @@
 #ifndef PLAYERBOTS_LOOTVALUES_H
 #define PLAYERBOTS_LOOTVALUES_H
 
+#include <unordered_set>
+#include <vector>
+
 #include "ItemUsageValue.h"
 #include "LootMgr.h"
 #include "NamedObjectContext.h"
@@ -18,11 +21,20 @@ class PlayerbotAI;
 class LootTemplateAccess
 {
 public:
-    class LootGroup;  // A set of loot definitions for items (refs are not allowed inside)
-    typedef std::vector<LootGroup> LootGroups;
+    // Mirrors LootTemplate::LootGroup; only the two lists are read.
+    class LootGroup
+    {
+    public:
+        LootStoreItemList ExplicitlyChanced;
+        LootStoreItemList EqualChanced;
+    };
+    typedef std::vector<LootGroup*> LootGroups;
     LootStoreItemList Entries;  // not grouped only
     LootGroups Groups;          // groups have own (optimized) processing, grouped entries go there
 };
+
+// Every item id a loot template can produce, including reference and grouped entries.
+void CollectLootTemplateItems(LootTemplate const* lTemplate, std::unordered_set<uint32>& items);
 
 //                   itemId, entry
 // Multi: one item has many droppers.

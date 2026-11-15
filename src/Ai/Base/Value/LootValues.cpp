@@ -5,8 +5,55 @@
  */
 
 #include "LootValues.h"
+
+#include <cstdlib>
+
 #include "Playerbots.h"
 #include "SharedValueContext.h"
+
+namespace
+{
+constexpr uint32 MAX_LOOT_REFERENCE_DEPTH = 8;
+
+void CollectLootTemplateItemsInternal(LootTemplate const* lTemplate, std::unordered_set<uint32>& items, uint32 depth)
+{
+    if (!lTemplate || depth > MAX_LOOT_REFERENCE_DEPTH)
+        return;
+
+    LootTemplateAccess const* access = reinterpret_cast<LootTemplateAccess const*>(lTemplate);
+    auto collect = [&items, depth](LootStoreItem const* entry)
+    {
+        if (!entry)
+            return;
+        if (entry->reference)
+        {
+            CollectLootTemplateItemsInternal(LootTemplates_Reference.GetLootFor(std::abs(entry->reference)), items,
+                                             depth + 1);
+            return;
+        }
+        if (entry->itemid)
+            items.insert(entry->itemid);
+    };
+
+    for (LootStoreItem* entry : access->Entries)
+        collect(entry);
+
+    for (LootTemplateAccess::LootGroup* group : access->Groups)
+    {
+        if (!group)
+            continue;
+        for (LootStoreItem* entry : group->ExplicitlyChanced)
+            collect(entry);
+        for (LootStoreItem* entry : group->EqualChanced)
+            collect(entry);
+    }
+}
+}  // namespace
+
+void CollectLootTemplateItems(LootTemplate const* lTemplate, std::unordered_set<uint32>& items)
+{
+    CollectLootTemplateItemsInternal(lTemplate, items, 0);
+}
 
 LootTemplateAccess const* DropMapValue::GetLootTemplate(ObjectGuid guid, LootType type)
 {
