@@ -61,7 +61,9 @@ bool TellRpgStatusAction::Execute(Event event)
     Player* master = botAI->GetMaster();
     bool isMaster = master && master->GetGUID() == owner->GetGUID();
     bool isGM = owner->GetSession() && owner->GetSession()->GetSecurity() >= SEC_GAMEMASTER;
-    if (!isMaster && !isGM)
+    // Console .playerbots exec sends the command from the bot itself; allow that GM-only
+    // path (and self-bots) to change the status, as the exec command is GM-gated.
+    if (!isMaster && !isGM && owner != bot)
     {
         std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
             "rpg_debug_permission_error",
