@@ -67,7 +67,6 @@ struct ConversionCandidate
 struct VendorOffer
 {
     ObjectGuid guid{};
-    uint32 slot{0};
     uint32 price{0};  // discounted unit price
     uint32 buyCount{1};
     uint32 stock{0};  // units left; UINT32_MAX when unlimited
@@ -76,7 +75,7 @@ struct VendorOffer
 struct BagSnapshot
 {
     std::unordered_map<uint32, uint32> counts;
-    std::unordered_map<uint32, uint32> largestStack;
+    std::unordered_map<uint32, std::vector<uint32>> stacks;
     std::unordered_map<uint32, std::vector<VendorOffer>> vendorItems;
     std::vector<ConversionCandidate> conversions;
 };
@@ -84,7 +83,7 @@ struct BagSnapshot
 struct CraftPlan
 {
     std::unordered_map<uint32, uint32> available;
-    std::unordered_map<uint32, uint32> stackAvailable;
+    std::unordered_map<uint32, std::vector<uint32>> stacks;
     std::unordered_set<uint32> seeded;
     std::unordered_set<uint32> visiting;
     std::unordered_set<uint32> plannedSpells;
@@ -95,7 +94,7 @@ struct CraftPlan
 struct CraftPlanContext
 {
     Player* bot = nullptr;
-    NewRpgInfo::DoProfessions const* data = nullptr;
+    NewRpgInfo const* info = nullptr;
     std::vector<ProfessionRecipe> const* recipes = nullptr;
     std::unordered_map<uint32, std::vector<size_t>> const* craftIndex = nullptr;
     BagSnapshot const* bags = nullptr;
@@ -301,7 +300,7 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
         return;
 
     snapshot.counts[proto->ItemId] += item->GetCount();
-    snapshot.largestStack[proto->ItemId] = std::max(snapshot.largestStack[proto->ItemId], item->GetCount());
+    snapshot.stacks[proto->ItemId].push_back(item->GetCount());
 
     auto addConversion =
         [&snapshot, &seen](uint32 spellId, uint32 inputItemId, uint32 inputCount, LootTemplate const* loot)
@@ -396,7 +395,6 @@ void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
 
             VendorOffer offer;
             offer.guid = guid;
-            offer.slot = i;
             offer.price = uint32(std::floor(float(proto->BuyPrice) * discount));
             offer.buyCount = std::max<uint32>(1, proto->BuyCount);
             offer.stock = item->maxcount ? vendor->GetVendorItemCurrentCount(item) : std::numeric_limits<uint32>::max();
@@ -405,17 +403,16 @@ void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
     }
 }
 
-bool IsConversionFailure(NewRpgInfo::DoProfessions const& data, uint32 spellId, uint32 inputItemId,
-                         uint32 expectedItemId)
+bool IsConversionFailure(NewRpgInfo const& info, uint32 spellId, uint32 inputItemId, uint32 expectedItemId)
 {
-    return data.failedAt && data.failedSpell == spellId && data.failedInput == inputItemId &&
-           data.failedItem == expectedItemId && GetMSTimeDiffToNow(data.failedAt) < CONVERSION_FAILURE_MEMORY_MS;
+    return info.failedAt && info.failedSpell == spellId && info.failedInput == inputItemId &&
+           info.failedItem == expectedItemId && GetMSTimeDiffToNow(info.failedAt) < CONVERSION_FAILURE_MEMORY_MS;
 }
 
-bool IsVendorFailure(NewRpgInfo::DoProfessions const& data, uint32 itemId)
+bool IsVendorFailure(NewRpgInfo const& info, uint32 itemId)
 {
-    return data.failedVendorAt && data.failedVendorItem == itemId &&
-           GetMSTimeDiffToNow(data.failedVendorAt) < VENDOR_FAILURE_MEMORY_MS;
+    return info.failedVendorAt && info.failedVendorItem == itemId &&
+           GetMSTimeDiffToNow(info.failedVendorAt) < VENDOR_FAILURE_MEMORY_MS;
 }
 
 void SeedPlanItem(CraftPlanContext& ctx, uint32 itemId)
@@ -425,8 +422,8 @@ void SeedPlanItem(CraftPlanContext& ctx, uint32 itemId)
 
     if (auto const it = ctx.bags->counts.find(itemId); it != ctx.bags->counts.end())
         ctx.plan.available[itemId] += it->second;
-    if (auto const it = ctx.bags->largestStack.find(itemId); it != ctx.bags->largestStack.end())
-        ctx.plan.stackAvailable[itemId] = it->second;
+    if (auto const it = ctx.bags->stacks.find(itemId); it != ctx.bags->stacks.end())
+        ctx.plan.stacks[itemId] = it->second;
 }
 
 bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage)
@@ -517,43 +514,57 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         }
     }
 
-    uint32 produced = 0;
+    float produced = 0.0f;
+    bool plannedConversion = false;
+    bool probabilistic = false;
     for (ConversionCandidate const& conversion : ctx.bags->conversions)
     {
-        if (produced >= remaining || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
+        if (produced >= float(remaining) || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
             break;
         if (conversion.inputItemId == itemId)
             continue;
 
         auto const output = conversion.outputs.find(itemId);
-        if (output == conversion.outputs.end() || !output->second.reliableCount)
+        if (output == conversion.outputs.end() || output->second.expectedCount <= 0.0f)
             continue;
-        if (IsConversionFailure(*ctx.data, conversion.spellId, conversion.inputItemId, itemId))
+        if (IsConversionFailure(*ctx.info, conversion.spellId, conversion.inputItemId, itemId))
             continue;
 
         // Milling, Prospecting and Disenchanting target one stack and need the
-        // whole input count in that stack; plan only what one stack can supply.
+        // whole input count in that stack. Consume from the largest stack and
+        // promote the next one once it drops below the required count.
         SeedPlanItem(ctx, conversion.inputItemId);
         uint32& inputAvailable = ctx.plan.available[conversion.inputItemId];
-        uint32& stackAvailable = ctx.plan.stackAvailable[conversion.inputItemId];
-        uint32 const perCast = output->second.reliableCount;
+        auto& stacks = ctx.plan.stacks[conversion.inputItemId];
+        float const perCast = output->second.expectedCount;
+        uint32 const needed = std::max<uint32>(1, uint32(std::ceil(float(remaining) / perCast)));
 
-        while (inputAvailable >= conversion.inputCount && stackAvailable >= conversion.inputCount &&
-               produced < remaining && ctx.plan.steps.size() < MAX_PLAN_STEPS)
+        for (uint32 casts = 0; casts < needed && produced < float(remaining) && ctx.plan.steps.size() < MAX_PLAN_STEPS;
+             ++casts)
         {
+            auto stack = std::max_element(stacks.begin(), stacks.end());
+            if (stack == stacks.end() || *stack < conversion.inputCount || inputAvailable < conversion.inputCount)
+                break;
+
+            *stack -= conversion.inputCount;
             inputAvailable -= conversion.inputCount;
-            stackAvailable -= conversion.inputCount;
             ctx.plan.steps.push_back({conversion.spellId, 0, conversion.inputItemId, conversion.inputCount, itemId});
-            produced = std::min(remaining, produced + perCast);
+            produced += perCast;
+            plannedConversion = true;
+            if (output->second.minCount == 0)
+                probabilistic = true;
         }
     }
 
     ctx.plan.visiting.erase(itemId);
-    uint32 const missing = remaining - std::min(remaining, produced);
+    if (produced >= float(remaining))
+        return true;
+
+    uint32 const missing = remaining - uint32(std::min(produced, float(remaining)));
     if (missing > 0)
     {
         auto const vendor = ctx.bags->vendorItems.find(itemId);
-        if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.data, itemId))
+        if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.info, itemId))
         {
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
             if (proto)
@@ -577,6 +588,11 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
             }
         }
 
+        // A chance-based conversion may not yield the exact item; let the
+        // executor try it and rely on failure memory when the loot comes short.
+        if (probabilistic && plannedConversion)
+            return true;
+
         LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft, conversion or vendor (produced {})",
                   ctx.bot->GetName(), itemId, missing, produced);
         return false;
@@ -593,14 +609,14 @@ bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& reci
     return true;
 }
 
-bool PlanRecipe(Player* bot, NewRpgInfo::DoProfessions const& data, ProfessionRecipe const& recipe,
+bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& recipe,
                 std::vector<ProfessionRecipe> const& recipes,
                 std::unordered_map<uint32, std::vector<size_t>> const& craftIndex, BagSnapshot const& bags,
                 uint32 moneyBudget, std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps)
 {
     CraftPlanContext ctx;
     ctx.bot = bot;
-    ctx.data = &data;
+    ctx.info = &info;
     ctx.recipes = &recipes;
     ctx.craftIndex = &craftIndex;
     ctx.bags = &bags;
@@ -728,20 +744,20 @@ bool NewRpgDoProfessionsAction::HandleLootWait(NewRpgInfo::DoProfessions& data)
 
     if (!success)
     {
-        data.failedSpell = data.lootWaitSpell;
-        data.failedInput = data.lootWaitInput;
-        data.failedItem = data.lootWaitItem;
-        data.failedAt = getMSTime();
+        botAI->rpgInfo.failedSpell = data.lootWaitSpell;
+        botAI->rpgInfo.failedInput = data.lootWaitInput;
+        botAI->rpgInfo.failedItem = data.lootWaitItem;
+        botAI->rpgInfo.failedAt = getMSTime();
         LOG_DEBUG("playerbots", "[New RPG] {} professions conversion {} on item {} did not yield item {}",
                   bot->GetName(), data.lootWaitSpell, data.lootWaitInput, data.lootWaitItem);
     }
-    else if (data.failedSpell == data.lootWaitSpell && data.failedInput == data.lootWaitInput &&
-             data.failedItem == data.lootWaitItem)
+    else if (botAI->rpgInfo.failedSpell == data.lootWaitSpell && botAI->rpgInfo.failedInput == data.lootWaitInput &&
+             botAI->rpgInfo.failedItem == data.lootWaitItem)
     {
-        data.failedSpell = 0;
-        data.failedInput = 0;
-        data.failedItem = 0;
-        data.failedAt = 0;
+        botAI->rpgInfo.failedSpell = 0;
+        botAI->rpgInfo.failedInput = 0;
+        botAI->rpgInfo.failedItem = 0;
+        botAI->rpgInfo.failedAt = 0;
     }
 
     data.lootWaitStart = 0;
@@ -764,8 +780,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
     {
         LOG_DEBUG("playerbots", "[New RPG] {} vendor purchase of {} x{} failed: {}", bot->GetName(),
                   step.expectedItemId, step.inputCount, reason);
-        data.failedVendorItem = step.expectedItemId;
-        data.failedVendorAt = getMSTime();
+        botAI->rpgInfo.failedVendorItem = step.expectedItemId;
+        botAI->rpgInfo.failedVendorAt = getMSTime();
         data.pendingCrafts.clear();
         return false;
     };
@@ -810,9 +826,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         if (!vendorItem)
             return failVendor("vendor slot missing");
 
-        // BuyItemFromVendorSlot prefers the session's last opened vendor list, which
-        // may be a different NPC. Point it at the vendor we are standing at.
-        bot->GetSession()->SetCurrentVendor(vendor->GetEntry());
+        // Clear any stale list-inventory entry so the core uses the vendor we pass.
+        bot->GetSession()->SetCurrentVendor(0);
 
         uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
         uint32 const unitPrice = uint32(std::floor(float(proto->BuyPrice) * bot->GetReputationPriceDiscount(vendor)));
@@ -1303,7 +1318,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 LOG_TRACE("playerbots", "[New RPG] {} plan candidate {} chance {} useful {}", bot->GetName(),
                           recipe.spellId, recipe.chance, recipe.useful);
                 std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
-                if (!PlanRecipe(bot, data, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps))
+                if (!PlanRecipe(bot, info, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps))
                     continue;
 
                 chosen = &recipe;

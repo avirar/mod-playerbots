@@ -17,7 +17,7 @@ namespace
 constexpr uint32 MAX_LOOT_REFERENCE_DEPTH = 8;
 
 void AddLootOutput(std::unordered_map<uint32, LootTemplateOutput>& outputs, uint32 itemId, uint32 minCount,
-                   uint32 maxCount, uint32 reliableCount)
+                   float expectedCount)
 {
     if (!itemId)
         return;
@@ -25,8 +25,7 @@ void AddLootOutput(std::unordered_map<uint32, LootTemplateOutput>& outputs, uint
     // Independent entries can each produce the same item, so yields add up.
     LootTemplateOutput& output = outputs[itemId];
     output.minCount += minCount;
-    output.maxCount += maxCount;
-    output.reliableCount += reliableCount;
+    output.expectedCount += expectedCount;
 }
 
 void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
@@ -57,15 +56,13 @@ void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
         }
 
         uint32 const minCount = entryGuaranteed ? uint32(entry->mincount) * multiplier : 0;
-        uint32 const maxCount = uint32(entry->maxcount) * multiplier;
-        // Only plan around an output that reliably shows up. Random group picks
-        // and low-chance extras stay out of the conservative count.
-        uint32 reliableCount = 0;
-        if (canBeGuaranteed && !entry->needs_quest && entry->conditions.empty() && entry->mincount > 0 &&
-            probability >= 0.5f)
-            reliableCount = std::max<uint32>(1, uint32(float(entry->mincount) * probability)) * multiplier;
+        // A random output still contributes its expected share; the planner
+        // treats minCount == 0 as a gamble and relies on failure memory.
+        float const expectedCount = canBeGuaranteed && !entry->needs_quest && entry->conditions.empty()
+                                        ? float(entry->mincount) * probability * multiplier
+                                        : 0.0f;
 
-        AddLootOutput(outputs, entry->itemid, minCount, maxCount, reliableCount);
+        AddLootOutput(outputs, entry->itemid, minCount, expectedCount);
     };
 
     for (LootStoreItem* entry : access->Entries)

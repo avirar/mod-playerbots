@@ -7,9 +7,12 @@
 #include "NewRpgBaseAction.h"
 
 #include <algorithm>
-#include <unordered_set>
+#include <cmath>
+#include <limits>
+#include <unordered_map>
 
 #include "BroadcastHelper.h"
+#include "BudgetValues.h"
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "DBCStructure.h"
@@ -49,40 +52,83 @@
 
 namespace
 {
-bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine)
+struct NearbyVendorOffer
+{
+    uint32 price{0};
+    uint32 buyCount{1};
+    uint32 stock{0};
+};
+
+struct NearbyVendorIndex
+{
+    bool scanned{false};
+    std::unordered_map<uint32, std::vector<NearbyVendorOffer>> items;
+};
+
+void ScanNearbyVendors(PlayerbotAI* botAI, NearbyVendorIndex& index)
+{
+    if (index.scanned)
+        return;
+    index.scanned = true;
+
+    Player* bot = botAI->GetBot();
+    for (ObjectGuid const guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get())
+    {
+        Creature* vendor = botAI->GetCreature(guid);
+        if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() || bot->GetDistance(vendor) > 100.0f)
+            continue;
+
+        VendorItemData const* items = vendor->GetVendorItems();
+        if (!items)
+            continue;
+
+        float const discount = bot->GetReputationPriceDiscount(vendor);
+        for (uint32 i = 0; i < items->GetItemCount(); ++i)
+        {
+            VendorItem const* item = items->GetItem(i);
+            if (!item || !item->item || item->ExtendedCost)
+                continue;
+
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item->item);
+            if (!proto || !proto->BuyPrice)
+                continue;
+
+            NearbyVendorOffer offer;
+            offer.price = uint32(std::floor(float(proto->BuyPrice) * discount));
+            offer.buyCount = std::max<uint32>(1, proto->BuyCount);
+            offer.stock = item->maxcount ? vendor->GetVendorItemCurrentCount(item)
+                                         : std::numeric_limits<uint32>::max();
+            index.items[item->item].push_back(offer);
+        }
+    }
+}
+
+// Mirrors the planner's vendor predicate: gold-only, in stock, affordable.
+bool CanBuyNearby(PlayerbotAI* botAI, NearbyVendorIndex& index, uint32 itemId, uint32 count)
+{
+    ScanNearbyVendors(botAI, index);
+    auto const offers = index.items.find(itemId);
+    if (offers == index.items.end())
+        return false;
+
+    uint32 const budget =
+        botAI->GetAiObjectContext()->GetValue<uint32>("free money for", uint32(NeedMoneyFor::tradeskill))->Get();
+    for (NearbyVendorOffer const& offer : offers->second)
+    {
+        if (offer.stock < count)
+            continue;
+        uint32 const purchases = (count + offer.buyCount - 1) / offer.buyCount;
+        if (uint64(offer.price) * purchases <= budget)
+            return true;
+    }
+    return false;
+}
+
+bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVendorIndex& vendorIndex)
 {
     Player* bot = botAI->GetBot();
     uint32 const skillValue = bot->GetPureSkillValue(skillLine);
     bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(skillLine);
-
-    // A recipe whose missing reagents are sold by a nearby vendor becomes
-    // craftable through the profession status, so the gate must see it too.
-    std::unordered_set<uint32> nearbyVendorItems;
-    bool vendorsScanned = false;
-    auto soldNearby = [&](uint32 itemId)
-    {
-        if (!vendorsScanned)
-        {
-            vendorsScanned = true;
-            for (ObjectGuid const guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get())
-            {
-                Creature* vendor = botAI->GetCreature(guid);
-                if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() || bot->GetDistance(vendor) > 100.0f)
-                    continue;
-
-                VendorItemData const* items = vendor->GetVendorItems();
-                if (!items)
-                    continue;
-                for (uint32 i = 0; i < items->GetItemCount(); ++i)
-                {
-                    VendorItem const* item = items->GetItem(i);
-                    if (item && item->item)
-                        nearbyVendorItems.insert(item->item);
-                }
-            }
-        }
-        return nearbyVendorItems.count(itemId) != 0;
-    };
 
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
     {
@@ -134,11 +180,13 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine)
                 continue;
 
             hasAnyReagent = true;
-            if (bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false))
+            uint32 const have =
+                std::min<uint32>(bot->GetItemCount(spellInfo->Reagent[r], false), spellInfo->ReagentCount[r]);
+            if (have >= spellInfo->ReagentCount[r])
                 continue;
 
             hasReagents = false;
-            if (!soldNearby(spellInfo->Reagent[r]))
+            if (!CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], spellInfo->ReagentCount[r] - have))
                 vendorReagents = false;
         }
         if (!hasAnyReagent || (!hasReagents && !vendorReagents))
@@ -1190,11 +1238,12 @@ uint32 NewRpgBaseAction::SelectProfessionToLevel()
         SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_TAILORING,  SKILL_FIRST_AID,   SKILL_COOKING};
 
     std::vector<uint32> available;
+    NearbyVendorIndex vendorIndex;
     for (uint32 skillLine : craftProfessions)
     {
         if (!botAI->HasSkill(SkillType(skillLine)))
             continue;
-        if (!HasCraftableProfessionRecipe(botAI, skillLine))
+        if (!HasCraftableProfessionRecipe(botAI, skillLine, vendorIndex))
             continue;
 
         available.push_back(skillLine);

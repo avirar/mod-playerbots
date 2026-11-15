@@ -97,6 +97,12 @@ void NewRpgInfo::Reset()
 {
     data = Idle{};
     startT = getMSTime();
+    failedSpell = 0;
+    failedInput = 0;
+    failedItem = 0;
+    failedAt = 0;
+    failedVendorItem = 0;
+    failedVendorAt = 0;
     questGiver.Clear();
     ignoredQuestGivers.clear();
 }

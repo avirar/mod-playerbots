@@ -36,9 +36,8 @@ public:
 
 struct LootTemplateOutput
 {
-    uint32 minCount{0};       // guaranteed per processing
-    uint32 maxCount{0};       // possible per processing
-    uint32 reliableCount{0};  // conservative yield used when planning
+    uint32 minCount{0};      // guaranteed per processing
+    float expectedCount{0};  // probability-weighted yield used when planning
 };
 
 // Every item a loot template can produce, including reference and grouped entries.

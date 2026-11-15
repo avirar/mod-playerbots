@@ -115,20 +115,20 @@ struct NewRpgInfo
         uint32 lootWaitInput{0};
         uint32 lootWaitItem{0};
         uint32 lootWaitCount{0};
-        // A conversion that did not yield the expected item is skipped for a while.
-        uint32 failedSpell{0};
-        uint32 failedInput{0};
-        uint32 failedItem{0};
-        uint32 failedAt{0};
-        // A vendor purchase that did not complete is not retried immediately.
-        uint32 failedVendorItem{0};
-        uint32 failedVendorAt{0};
     };
     struct Idle
     {
     };
 
     uint32 startT{0};  // start timestamp of the current status
+
+    // Failure memory kept outside the status variant so it survives an idle transition.
+    uint32 failedSpell{0};
+    uint32 failedInput{0};
+    uint32 failedItem{0};
+    uint32 failedAt{0};
+    uint32 failedVendorItem{0};
+    uint32 failedVendorAt{0};
 
     // MOVE_FAR
     float nearestMoveFarDis{FLT_MAX};
