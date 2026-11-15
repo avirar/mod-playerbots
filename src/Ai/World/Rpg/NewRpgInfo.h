@@ -86,6 +86,14 @@ struct NewRpgInfo
         uint32 lastPassiveCheck{0};
         ObjectGuid::LowType lastSwitchedFrom{0};
     };
+    // RPG_DO_PROFESSIONS
+    struct DoProfessions
+    {
+        uint32 skillLine{0};
+        uint32 spellId{0};
+        uint32 lastCast{0};
+        uint32 casts{0};
+    };
     struct Idle
     {
     };
@@ -116,7 +124,8 @@ struct NewRpgInfo
         Rest,
         TravelFlight,
         OutdoorPvP,
-        DoGather
+        DoGather,
+        DoProfessions
     >;
     RpgData data;
 
@@ -131,6 +140,7 @@ struct NewRpgInfo
     void ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path);
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToDoGather();
+    void ChangeToDoProfessions(uint32 skillLine);
     void ChangeToRest();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);

@@ -1107,6 +1107,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
 
             return sGatherNodeMgr.HasUsableNodes(bot);
         }
+        case RPG_DO_PROFESSIONS:
+            return botAI->HasSkill(SKILL_FIRST_AID);
         case RPG_TRAVEL_FLIGHT:
         {
             uint32 flightMasterEntry = 0;

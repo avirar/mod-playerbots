@@ -71,6 +71,17 @@ bool TellRpgStatusAction::Execute(Event event)
     }
 
     std::string name = text;
+    uint32 professionSkill = 0;
+    if (name == "do first aid")
+    {
+        name = "do professions";
+        professionSkill = SKILL_FIRST_AID;
+    }
+    else if (name == "do cooking")
+    {
+        name = "do professions";
+        professionSkill = SKILL_COOKING;
+    }
     uint32 questId = 0;
     static std::string const doQuestPrefix = "do quest ";
     size_t doQuestPos = text.find(doQuestPrefix);
@@ -179,6 +190,26 @@ bool TellRpgStatusAction::Execute(Event event)
         WhisperStatusChange(owner, "DO_GATHER");
         return true;
     }
+    else if (status == RPG_DO_PROFESSIONS)
+    {
+        if (professionSkill != SKILL_FIRST_AID)
+        {
+            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_poc_error", "Only First Aid is supported for now.", {});
+            bot->Whisper(msg, LANG_UNIVERSAL, owner);
+            return false;
+        }
+        if (!botAI->HasSkill(SKILL_FIRST_AID))
+        {
+            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_no_first_aid", "I have not learned First Aid.", {});
+            bot->Whisper(msg, LANG_UNIVERSAL, owner);
+            return false;
+        }
+        info.ChangeToDoProfessions(SKILL_FIRST_AID);
+        WhisperStatusChange(owner, "DO_PROFESSIONS");
+        return true;
+    }
     else if (status == RPG_DO_QUEST)
     {
         if (!questId)
@@ -221,7 +252,7 @@ bool TellRpgStatusAction::Execute(Event event)
     std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
         "rpg_unknown_status_error",
         "Unknown rpg status. Options: idle, rest, wander random, wander npc, "
-        "go grind, go camp, do quest [<id>], travel flight, outdoor pvp, do gather.", {});
+        "go grind, go camp, do quest [<id>], travel flight, outdoor pvp, do gather, do professions.", {});
     bot->Whisper(msg, LANG_UNIVERSAL, owner);
     return false;
 }

@@ -73,7 +73,9 @@ enum NewRpgStatus : int
     RPG_OUTDOOR_PVP = 8,
     // Roam the current zone harvesting herb/ore nodes
     RPG_DO_GATHER = 9,
-    RPG_STATUS_END = 10
+    // Level a secondary profession (POC: First Aid)
+    RPG_DO_PROFESSIONS = 10,
+    RPG_STATUS_END = 11
 };
 
 #define MAX_SPECNO 20
