@@ -98,7 +98,7 @@ public:
         if (command.empty())
         {
             handler->SendErrorMessage("Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
-                                      "movement, target, hp, strategy, action, values, travel, budget, professions, spells)");
+                                      "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells)");
             return false;
         }
 

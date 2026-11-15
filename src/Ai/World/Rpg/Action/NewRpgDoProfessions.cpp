@@ -31,6 +31,8 @@ namespace
 bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
+    LOG_DEBUG("playerbots", "[New RPG] {} do professions execute (status {})", bot->GetName(),
+              uint32(info.GetStatus()));
     auto* dataPtr = std::get_if<NewRpgInfo::DoProfessions>(&info.data);
     if (!dataPtr)
         return false;

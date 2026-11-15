@@ -5609,6 +5609,10 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
 
         return out.str();
     }
+    else if (command == "rpg")
+    {
+        return rpgInfo.ToString();
+    }
     else if (command == "professions" || command.rfind("professions ", 0) == 0)
     {
         return DescribeProfessions(command.size() > 12 ? command.substr(12) : "");
