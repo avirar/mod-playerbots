@@ -637,6 +637,7 @@ public:
     void RecordQuestDropped(uint32 questId, QuestDropReason reason);
     void RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason);
     std::unordered_set<uint32> lowPriorityQuest;
+    std::unordered_set<uint32> announcedRecipeSpells;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;
 

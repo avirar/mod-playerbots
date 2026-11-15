@@ -7,9 +7,11 @@
 #include "LearnRecipeItemsAction.h"
 
 #include "Bag.h"
+#include "ChatHelper.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "Player.h"
+#include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
 #include "SpellMgr.h"
@@ -33,6 +35,19 @@ uint32 RecipeItemSpell(ItemTemplate const* proto)
 
     return 0;
 }
+
+bool MasterCanLearnRecipe(PlayerbotAI* botAI, Player* bot, ItemTemplate const* proto, uint32 recipeSpellId)
+{
+    Player* master = botAI->GetMaster();
+    if (!master || master == bot)
+        return false;
+
+    Group* group = bot->GetGroup();
+    if (!group || group != master->GetGroup())
+        return false;
+
+    return !master->HasSpell(recipeSpellId) && master->CanUseItem(proto) == EQUIP_ERR_OK;
+}
 }  // namespace
 
 bool LearnRecipeItemsAction::Execute(Event /*event*/)
@@ -51,7 +66,24 @@ bool LearnRecipeItemsAction::Execute(Event /*event*/)
     {
         ItemTemplate const* proto = item->GetTemplate();
         uint32 const recipeSpellId = RecipeItemSpell(proto);
-        if (!recipeSpellId || bot->HasSpell(recipeSpellId) || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        if (!recipeSpellId)
+            continue;
+
+        // Leave a recipe the grouped master can learn in the bags and tell the
+        // master once; they can ask the bot to use it or trade for it.
+        if (MasterCanLearnRecipe(botAI, bot, proto, recipeSpellId))
+        {
+            if (botAI->announcedRecipeSpells.insert(recipeSpellId).second)
+            {
+                std::string const message = PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                    "rpg_recipe_for_master", "I have a recipe you can learn: %item",
+                    {{"%item", botAI->GetChatHelper()->FormatItem(proto)}});
+                botAI->TellMaster(message);
+            }
+            continue;
+        }
+
+        if (bot->HasSpell(recipeSpellId) || bot->CanUseItem(proto) != EQUIP_ERR_OK)
             continue;
 
         bool hasProfession = false;

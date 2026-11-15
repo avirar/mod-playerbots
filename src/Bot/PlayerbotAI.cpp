@@ -997,6 +997,7 @@ void PlayerbotAI::Reset(bool full)
         aiObjectContext->GetValue<TravelTarget*>("travel target")->Get()->setStatus(TRAVEL_STATUS_EXPIRED);
         aiObjectContext->GetValue<TravelTarget*>("travel target")->Get()->setExpireIn(1000);
         rpgInfo = NewRpgInfo();
+        announcedRecipeSpells.clear();
     }
 
     aiObjectContext->GetValue<GuidSet&>("ignore rpg target")->Get().clear();
