@@ -123,6 +123,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         int32 chance = 0;
         uint32 tier = 0;
+        bool matchedSkillLine = false;
         SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
         for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
@@ -130,10 +131,13 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             if (skill->SkillLine != data.skillLine)
                 continue;
 
+            matchedSkillLine = true;
             chance = std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, skill->TrivialSkillLineRankHigh,
                                                                            skill->TrivialSkillLineRankLow));
             tier = std::max(tier, skill->TrivialSkillLineRankLow);
         }
+        if (!matchedSkillLine)
+            continue;
         bool hasAnyReagent = false;
         bool hasReagents = true;
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS && hasReagents; ++r)

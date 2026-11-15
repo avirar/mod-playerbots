@@ -72,6 +72,11 @@ bool TellRpgStatusAction::Execute(Event event)
         return false;
     }
 
+    // The status is inert without the strategy; self-bots often ask for it
+    // before New RPG is attached.
+    if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+        botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
+
     std::string name = text;
     uint32 professionSkill = 0;
     if (name == "do first aid")
