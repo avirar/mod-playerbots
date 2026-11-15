@@ -120,7 +120,6 @@ constexpr size_t MAX_PLAN_STEPS = 20;
 // Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
 // outputs do not consume the whole plan budget.
 constexpr float MIN_CONVERSION_EXPECTED = 0.1f;
-constexpr uint32 MAX_CONVERSION_ATTEMPTS = 8;
 
 uint32 GetEnchantId(SpellInfo const* spellInfo)
 {
@@ -521,6 +520,7 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     float produced = 0.0f;
     bool plannedConversion = false;
     bool probabilistic = false;
+    bool lowYieldPlanned = false;
     for (ConversionCandidate const& conversion : ctx.bags->conversions)
     {
         if (produced >= float(remaining) || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
@@ -541,9 +541,13 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         uint32& inputAvailable = ctx.plan.available[conversion.inputItemId];
         auto& stacks = ctx.plan.stacks[conversion.inputItemId];
         float const perCast = output->second.expectedCount;
-        // Very low-yield outputs get a single gamble; high-yield ones get a
-        // bounded number of casts rather than eating the whole plan budget.
-        uint32 const maxCasts = perCast < MIN_CONVERSION_EXPECTED ? 1 : MAX_CONVERSION_ATTEMPTS;
+        // Very low-yield outputs get one gamble per plan; high-yield ones may
+        // use the remaining step budget.
+        bool const lowYield = perCast < MIN_CONVERSION_EXPECTED;
+        if (lowYield && lowYieldPlanned)
+            continue;
+
+        uint32 const maxCasts = lowYield ? 1 : uint32(MAX_PLAN_STEPS);
         uint32 const needed = std::min(maxCasts, std::max<uint32>(1, uint32(std::ceil(float(remaining) / perCast))));
 
         for (uint32 casts = 0; casts < needed && produced < float(remaining) && ctx.plan.steps.size() < MAX_PLAN_STEPS;
@@ -560,6 +564,11 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
             plannedConversion = true;
             if (output->second.minCount == 0)
                 probabilistic = true;
+            if (lowYield)
+            {
+                lowYieldPlanned = true;
+                break;
+            }
         }
     }
 
