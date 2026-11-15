@@ -7,6 +7,7 @@
 #include "NewRpgBaseAction.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
@@ -48,10 +49,40 @@
 
 namespace
 {
-bool HasCraftableProfessionRecipe(Player* bot, uint32 skillLine)
+bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine)
 {
+    Player* bot = botAI->GetBot();
     uint32 const skillValue = bot->GetPureSkillValue(skillLine);
     bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(skillLine);
+
+    // A recipe whose missing reagents are sold by a nearby vendor becomes
+    // craftable through the profession status, so the gate must see it too.
+    std::unordered_set<uint32> nearbyVendorItems;
+    bool vendorsScanned = false;
+    auto soldNearby = [&](uint32 itemId)
+    {
+        if (!vendorsScanned)
+        {
+            vendorsScanned = true;
+            for (ObjectGuid const guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get())
+            {
+                Creature* vendor = botAI->GetCreature(guid);
+                if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() || bot->GetDistance(vendor) > 100.0f)
+                    continue;
+
+                VendorItemData const* items = vendor->GetVendorItems();
+                if (!items)
+                    continue;
+                for (uint32 i = 0; i < items->GetItemCount(); ++i)
+                {
+                    VendorItem const* item = items->GetItem(i);
+                    if (item && item->item)
+                        nearbyVendorItems.insert(item->item);
+                }
+            }
+        }
+        return nearbyVendorItems.count(itemId) != 0;
+    };
 
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
     {
@@ -96,15 +127,21 @@ bool HasCraftableProfessionRecipe(Player* bot, uint32 skillLine)
 
         bool hasAnyReagent = false;
         bool hasReagents = true;
-        for (uint8 r = 0; r < MAX_SPELL_REAGENTS && hasReagents; ++r)
+        bool vendorReagents = true;
+        for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
         {
             if (spellInfo->ReagentCount[r] == 0)
                 continue;
 
             hasAnyReagent = true;
-            hasReagents = bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
+            if (bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false))
+                continue;
+
+            hasReagents = false;
+            if (!soldNearby(spellInfo->Reagent[r]))
+                vendorReagents = false;
         }
-        if (!hasAnyReagent || !hasReagents)
+        if (!hasAnyReagent || (!hasReagents && !vendorReagents))
             continue;
 
         bool hasTools = true;
@@ -1157,7 +1194,7 @@ uint32 NewRpgBaseAction::SelectProfessionToLevel()
     {
         if (!botAI->HasSkill(SkillType(skillLine)))
             continue;
-        if (!HasCraftableProfessionRecipe(bot, skillLine))
+        if (!HasCraftableProfessionRecipe(botAI, skillLine))
             continue;
 
         available.push_back(skillLine);

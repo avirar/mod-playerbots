@@ -6,6 +6,7 @@
 
 #include "LootValues.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 #include "Playerbots.h"
@@ -15,44 +16,90 @@ namespace
 {
 constexpr uint32 MAX_LOOT_REFERENCE_DEPTH = 8;
 
-void CollectLootTemplateItemsInternal(LootTemplate const* lTemplate, std::unordered_set<uint32>& items, uint32 depth)
+void AddLootOutput(std::unordered_map<uint32, LootTemplateOutput>& outputs, uint32 itemId, uint32 minCount,
+                   uint32 maxCount, uint32 reliableCount)
+{
+    if (!itemId)
+        return;
+
+    // Independent entries can each produce the same item, so yields add up.
+    LootTemplateOutput& output = outputs[itemId];
+    output.minCount += minCount;
+    output.maxCount += maxCount;
+    output.reliableCount += reliableCount;
+}
+
+void CollectLootTemplateOutputsInternal(LootTemplate const* lTemplate,
+                                        std::unordered_map<uint32, LootTemplateOutput>& outputs, bool guaranteed,
+                                        uint32 multiplier, uint32 depth)
 {
     if (!lTemplate || depth > MAX_LOOT_REFERENCE_DEPTH)
         return;
 
     LootTemplateAccess const* access = reinterpret_cast<LootTemplateAccess const*>(lTemplate);
-    auto collect = [&items, depth](LootStoreItem const* entry)
+    auto collect = [&outputs, multiplier, depth](LootStoreItem const* entry, bool canBeGuaranteed, float probability)
     {
         if (!entry)
             return;
+
+        bool const entryGuaranteed =
+            canBeGuaranteed && probability >= 1.0f && !entry->needs_quest && entry->conditions.empty();
+
         if (entry->reference)
         {
-            CollectLootTemplateItemsInternal(LootTemplates_Reference.GetLootFor(std::abs(entry->reference)), items,
-                                             depth + 1);
+            LootTemplate const* referenced = LootTemplates_Reference.GetLootFor(std::abs(entry->reference));
+            if (!referenced)
+                return;
+
+            uint32 const refMultiplier = multiplier * std::max<uint32>(1, entry->maxcount);
+            CollectLootTemplateOutputsInternal(referenced, outputs, entryGuaranteed, refMultiplier, depth + 1);
             return;
         }
-        if (entry->itemid)
-            items.insert(entry->itemid);
+
+        uint32 const minCount = entryGuaranteed ? uint32(entry->mincount) * multiplier : 0;
+        uint32 const maxCount = uint32(entry->maxcount) * multiplier;
+        // Only plan around an output that reliably shows up. Random group picks
+        // and low-chance extras stay out of the conservative count.
+        uint32 reliableCount = 0;
+        if (canBeGuaranteed && !entry->needs_quest && entry->conditions.empty() && entry->mincount > 0 &&
+            probability >= 0.5f)
+            reliableCount = std::max<uint32>(1, uint32(float(entry->mincount) * probability)) * multiplier;
+
+        AddLootOutput(outputs, entry->itemid, minCount, maxCount, reliableCount);
     };
 
     for (LootStoreItem* entry : access->Entries)
-        collect(entry);
+        collect(entry, guaranteed, std::min(1.0f, std::max(0.0f, entry->chance / 100.0f)));
 
     for (LootTemplateAccess::LootGroup* group : access->Groups)
     {
         if (!group)
             continue;
+
+        float explicitTotal = 0.0f;
         for (LootStoreItem* entry : group->ExplicitlyChanced)
-            collect(entry);
+            explicitTotal += std::max(0.0f, entry->chance);
+
+        float const equalWeight = std::max(0.0f, 100.0f - std::min(explicitTotal, 100.0f));
+        size_t const equalCount = group->EqualChanced.size();
+
+        for (LootStoreItem* entry : group->ExplicitlyChanced)
+        {
+            float const probability = explicitTotal > 100.0f ? entry->chance / explicitTotal : entry->chance / 100.0f;
+            collect(entry, guaranteed, std::min(1.0f, std::max(0.0f, probability)));
+        }
         for (LootStoreItem* entry : group->EqualChanced)
-            collect(entry);
+        {
+            float const probability = equalCount ? (equalWeight / float(equalCount)) / 100.0f : 0.0f;
+            collect(entry, guaranteed, probability);
+        }
     }
 }
 }  // namespace
 
-void CollectLootTemplateItems(LootTemplate const* lTemplate, std::unordered_set<uint32>& items)
+void CollectLootTemplateOutputs(LootTemplate const* lTemplate, std::unordered_map<uint32, LootTemplateOutput>& outputs)
 {
-    CollectLootTemplateItemsInternal(lTemplate, items, 0);
+    CollectLootTemplateOutputsInternal(lTemplate, outputs, true, 1, 0);
 }
 
 LootTemplateAccess const* DropMapValue::GetLootTemplate(ObjectGuid guid, LootType type)

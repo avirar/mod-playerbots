@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "Bag.h"
-#include "ChatHelper.h"
+#include "BudgetValues.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
@@ -36,6 +36,7 @@
 #include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "Trainer.h"
+#include "WorldSession.h"
 
 namespace
 {
@@ -60,22 +61,34 @@ struct ConversionCandidate
     uint32 spellId = 0;
     uint32 inputItemId = 0;
     uint32 inputCount = 0;
-    std::unordered_set<uint32> outputs;
+    std::unordered_map<uint32, LootTemplateOutput> outputs;
+};
+
+struct VendorOffer
+{
+    ObjectGuid guid{};
+    uint32 slot{0};
+    uint32 price{0};  // discounted unit price
+    uint32 buyCount{1};
+    uint32 stock{0};  // units left; UINT32_MAX when unlimited
 };
 
 struct BagSnapshot
 {
     std::unordered_map<uint32, uint32> counts;
-    std::unordered_map<uint32, ObjectGuid> vendorItems;
+    std::unordered_map<uint32, uint32> largestStack;
+    std::unordered_map<uint32, std::vector<VendorOffer>> vendorItems;
     std::vector<ConversionCandidate> conversions;
 };
 
 struct CraftPlan
 {
     std::unordered_map<uint32, uint32> available;
+    std::unordered_map<uint32, uint32> stackAvailable;
     std::unordered_set<uint32> seeded;
     std::unordered_set<uint32> visiting;
     std::unordered_set<uint32> plannedSpells;
+    uint32 moneyBudget{0};
     std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
 };
 
@@ -102,6 +115,7 @@ constexpr uint32 CONVERSION_LOOT_TIMEOUT_MS = 15 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_GRACE_MS = 6 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
+constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
 constexpr size_t MAX_PLAN_STEPS = 20;
 
@@ -242,37 +256,40 @@ bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions
     return false;
 }
 
-bool VendorSellsItem(Creature* vendor, uint32 itemId)
+int32 FindVendorItemSlot(Creature* vendor, uint32 itemId)
 {
     VendorItemData const* items = sObjectMgr->GetNpcVendorItemList(vendor->GetEntry());
     if (!items)
-        return false;
+        return -1;
 
     for (uint32 i = 0; i < items->GetItemCount(); ++i)
     {
         VendorItem const* item = items->GetItem(i);
         if (item && item->item == itemId)
-            return true;
+            return int32(i);
     }
 
-    return false;
+    return -1;
 }
 
-Item* FindBagItemByEntry(Player* bot, uint32 entry)
+Item* FindLargestBagItemByEntry(Player* bot, uint32 entry)
 {
+    Item* best = nullptr;
+    auto consider = [&best, entry](Item* item)
+    {
+        if (item && item->GetEntry() == entry && (!best || item->GetCount() > best->GetCount()))
+            best = item;
+    };
+
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
-        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
-            if (item->GetEntry() == entry)
-                return item;
+        consider(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
 
     for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
-                if (Item* item = bot->GetItemByPos(bagSlot, slot))
-                    if (item->GetEntry() == entry)
-                        return item;
+                consider(bot->GetItemByPos(bagSlot, slot));
 
-    return nullptr;
+    return best;
 }
 
 bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage);
@@ -284,6 +301,7 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
         return;
 
     snapshot.counts[proto->ItemId] += item->GetCount();
+    snapshot.largestStack[proto->ItemId] = std::max(snapshot.largestStack[proto->ItemId], item->GetCount());
 
     auto addConversion =
         [&snapshot, &seen](uint32 spellId, uint32 inputItemId, uint32 inputCount, LootTemplate const* loot)
@@ -299,19 +317,21 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
         candidate.spellId = spellId;
         candidate.inputItemId = inputItemId;
         candidate.inputCount = inputCount;
-        CollectLootTemplateItems(loot, candidate.outputs);
+        CollectLootTemplateOutputs(loot, candidate.outputs);
         if (!candidate.outputs.empty())
             snapshot.conversions.push_back(std::move(candidate));
     };
 
     Player* bot = botAI->GetBot();
     bool const millable = bot->HasSpell(MILLING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_MILLABLE) &&
-                          item->GetCount() >= CONVERSION_INPUT_COUNT;
+                          item->GetCount() >= CONVERSION_INPUT_COUNT &&
+                          proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_INSCRIPTION);
     bool const prospectable = bot->HasSpell(PROSPECTING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE) &&
-                              item->GetCount() >= CONVERSION_INPUT_COUNT;
+                              item->GetCount() >= CONVERSION_INPUT_COUNT &&
+                              proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_JEWELCRAFTING);
     bool const disenchantable = bot->HasSpell(DISENCHANT_SPELL) && proto->DisenchantID &&
                                 (proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
-                                proto->Quality >= ITEM_QUALITY_UNCOMMON;
+                                proto->Quality >= ITEM_QUALITY_UNCOMMON && proto->Quality <= ITEM_QUALITY_EPIC;
     if (!millable && !prospectable && !disenchantable)
         return;
 
@@ -363,11 +383,24 @@ void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
         if (!items)
             continue;
 
+        float const discount = bot->GetReputationPriceDiscount(vendor);
         for (uint32 i = 0; i < items->GetItemCount(); ++i)
         {
             VendorItem const* item = items->GetItem(i);
-            if (item && item->item && !snapshot.vendorItems.count(item->item))
-                snapshot.vendorItems[item->item] = guid;
+            if (!item || !item->item || item->ExtendedCost)
+                continue;
+
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item->item);
+            if (!proto || !proto->BuyPrice)
+                continue;
+
+            VendorOffer offer;
+            offer.guid = guid;
+            offer.slot = i;
+            offer.price = uint32(std::floor(float(proto->BuyPrice) * discount));
+            offer.buyCount = std::max<uint32>(1, proto->BuyCount);
+            offer.stock = item->maxcount ? vendor->GetVendorItemCurrentCount(item) : std::numeric_limits<uint32>::max();
+            snapshot.vendorItems[item->item].push_back(offer);
         }
     }
 }
@@ -379,13 +412,30 @@ bool IsConversionFailure(NewRpgInfo::DoProfessions const& data, uint32 spellId, 
            data.failedItem == expectedItemId && GetMSTimeDiffToNow(data.failedAt) < CONVERSION_FAILURE_MEMORY_MS;
 }
 
+bool IsVendorFailure(NewRpgInfo::DoProfessions const& data, uint32 itemId)
+{
+    return data.failedVendorAt && data.failedVendorItem == itemId &&
+           GetMSTimeDiffToNow(data.failedVendorAt) < VENDOR_FAILURE_MEMORY_MS;
+}
+
+void SeedPlanItem(CraftPlanContext& ctx, uint32 itemId)
+{
+    if (!ctx.plan.seeded.insert(itemId).second)
+        return;
+
+    if (auto const it = ctx.bags->counts.find(itemId); it != ctx.bags->counts.end())
+        ctx.plan.available[itemId] += it->second;
+    if (auto const it = ctx.bags->largestStack.find(itemId); it != ctx.bags->largestStack.end())
+        ctx.plan.stackAvailable[itemId] = it->second;
+}
+
 bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage)
 {
     if (!proto || !proto->DisenchantID)
         return false;
     if (proto->Class != ITEM_CLASS_ARMOR && proto->Class != ITEM_CLASS_WEAPON)
         return false;
-    if (proto->Quality < ITEM_QUALITY_UNCOMMON)
+    if (proto->Quality < ITEM_QUALITY_UNCOMMON || proto->Quality > ITEM_QUALITY_EPIC)
         return false;
     if (!bot->HasSkill(SKILL_ENCHANTING) || bot->GetSkillValue(SKILL_ENCHANTING) < proto->RequiredDisenchantSkill)
         return false;
@@ -393,10 +443,11 @@ bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usag
         usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_USE || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP)
         return false;
 
-    // Off-class greens are BAD_EQUIP rather than DISENCHANT, and BoE greens with no
-    // use are NONE/VENDOR/AH; those are all safe to destroy for materials.
-    return usage == ITEM_USAGE_DISENCHANT || usage == ITEM_USAGE_BAD_EQUIP || usage == ITEM_USAGE_NONE ||
-           usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH;
+    // Off-class greens are NONE (BoE ones may be AH/VENDOR); those are safe to
+    // destroy for materials. BAD_EQUIP is deliberately excluded: it marks a
+    // stopgap upgrade the equip path may still wear.
+    return usage == ITEM_USAGE_DISENCHANT || usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR ||
+           usage == ITEM_USAGE_AH;
 }
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth);
@@ -406,11 +457,8 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     if (!itemId || count == 0)
         return false;
 
+    SeedPlanItem(ctx, itemId);
     uint32& available = ctx.plan.available[itemId];
-    if (ctx.plan.seeded.insert(itemId).second)
-        if (auto const it = ctx.bags->counts.find(itemId); it != ctx.bags->counts.end())
-            available += it->second;
-
     uint32 const fromBag = std::min(available, count);
     available -= fromBag;
     count -= fromBag;
@@ -474,22 +522,29 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     {
         if (produced >= remaining || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
             break;
-        if (conversion.inputItemId == itemId || !conversion.outputs.count(itemId))
+        if (conversion.inputItemId == itemId)
+            continue;
+
+        auto const output = conversion.outputs.find(itemId);
+        if (output == conversion.outputs.end() || !output->second.reliableCount)
             continue;
         if (IsConversionFailure(*ctx.data, conversion.spellId, conversion.inputItemId, itemId))
             continue;
 
+        // Milling, Prospecting and Disenchanting target one stack and need the
+        // whole input count in that stack; plan only what one stack can supply.
+        SeedPlanItem(ctx, conversion.inputItemId);
         uint32& inputAvailable = ctx.plan.available[conversion.inputItemId];
-        if (ctx.plan.seeded.insert(conversion.inputItemId).second)
-            if (auto const it = ctx.bags->counts.find(conversion.inputItemId); it != ctx.bags->counts.end())
-                inputAvailable += it->second;
+        uint32& stackAvailable = ctx.plan.stackAvailable[conversion.inputItemId];
+        uint32 const perCast = output->second.reliableCount;
 
-        while (inputAvailable >= conversion.inputCount && produced < remaining &&
-               ctx.plan.steps.size() < MAX_PLAN_STEPS)
+        while (inputAvailable >= conversion.inputCount && stackAvailable >= conversion.inputCount &&
+               produced < remaining && ctx.plan.steps.size() < MAX_PLAN_STEPS)
         {
             inputAvailable -= conversion.inputCount;
+            stackAvailable -= conversion.inputCount;
             ctx.plan.steps.push_back({conversion.spellId, 0, conversion.inputItemId, conversion.inputCount, itemId});
-            ++produced;
+            produced = std::min(remaining, produced + perCast);
         }
     }
 
@@ -498,13 +553,31 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     if (missing > 0)
     {
         auto const vendor = ctx.bags->vendorItems.find(itemId);
-        if (vendor != ctx.bags->vendorItems.end())
+        if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.data, itemId))
         {
-            ctx.plan.steps.push_back({0, 0, 0, missing, itemId, vendor->second});
-            return true;
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+            if (proto)
+            {
+                for (VendorOffer const& offer : vendor->second)
+                {
+                    if (offer.stock < missing)
+                        continue;
+
+                    uint32 const purchases = (missing + offer.buyCount - 1) / offer.buyCount;
+                    uint64 const cost = uint64(offer.price) * purchases;
+                    if (cost > ctx.plan.moneyBudget)
+                        continue;
+
+                    ctx.plan.moneyBudget -= uint32(cost);
+                    ctx.plan.steps.push_back({0, 0, 0, missing, itemId, offer.guid});
+                    LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
+                              ctx.bot->GetName(), itemId, missing, offer.price);
+                    return true;
+                }
+            }
         }
 
-        LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft or conversion (produced {})",
+        LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft, conversion or vendor (produced {})",
                   ctx.bot->GetName(), itemId, missing, produced);
         return false;
     }
@@ -523,7 +596,7 @@ bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& reci
 bool PlanRecipe(Player* bot, NewRpgInfo::DoProfessions const& data, ProfessionRecipe const& recipe,
                 std::vector<ProfessionRecipe> const& recipes,
                 std::unordered_map<uint32, std::vector<size_t>> const& craftIndex, BagSnapshot const& bags,
-                std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps)
+                uint32 moneyBudget, std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps)
 {
     CraftPlanContext ctx;
     ctx.bot = bot;
@@ -531,6 +604,7 @@ bool PlanRecipe(Player* bot, NewRpgInfo::DoProfessions const& data, ProfessionRe
     ctx.recipes = &recipes;
     ctx.craftIndex = &craftIndex;
     ctx.bags = &bags;
+    ctx.plan.moneyBudget = moneyBudget;
 
     // The recipe's own output is never a valid input for itself.
     if (recipe.outputItemId)
@@ -686,17 +760,25 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
               1, data.pendingCrafts.size(), step.spellId, step.spellFocus, step.inputItemId, step.inputCount,
               step.expectedItemId);
 
+    auto failVendor = [this, &data, step](char const* reason)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} vendor purchase of {} x{} failed: {}", bot->GetName(),
+                  step.expectedItemId, step.inputCount, reason);
+        data.failedVendorItem = step.expectedItemId;
+        data.failedVendorAt = getMSTime();
+        data.pendingCrafts.clear();
+        return false;
+    };
+
     if (!step.spellId)
     {
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(step.expectedItemId);
         if (!proto)
-        {
-            data.pendingCrafts.clear();
-            return true;
-        }
+            return failVendor("unknown item");
 
         Creature* vendor = step.vendorGuid.IsEmpty() ? nullptr : ObjectAccessor::GetCreature(*bot, step.vendorGuid);
-        if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() || !VendorSellsItem(vendor, step.expectedItemId))
+        if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() ||
+            FindVendorItemSlot(vendor, step.expectedItemId) < 0)
         {
             vendor = nullptr;
             GuidVector const vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
@@ -704,7 +786,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             {
                 Creature* candidate = botAI->GetCreature(guid);
                 if (candidate && candidate->IsInWorld() && candidate->IsVendor() &&
-                    VendorSellsItem(candidate, step.expectedItemId))
+                    bot->GetDistance(candidate) <= 100.0f && FindVendorItemSlot(candidate, step.expectedItemId) >= 0)
                 {
                     vendor = candidate;
                     break;
@@ -713,12 +795,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         }
 
         if (!vendor)
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: no vendor sells item {}", bot->GetName(),
-                      step.expectedItemId);
-            data.pendingCrafts.clear();
-            return true;
-        }
+            return failVendor("no nearby vendor sells it");
 
         data.pendingCrafts.front().vendorGuid = vendor->GetGUID();
         if (bot->GetDistance(vendor) > INTERACTION_DISTANCE)
@@ -727,30 +804,55 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             return true;
         }
 
-        for (uint32 i = 0; i < step.inputCount; ++i)
+        int32 const slot = FindVendorItemSlot(vendor, step.expectedItemId);
+        VendorItemData const* items = vendor->GetVendorItems();
+        VendorItem const* vendorItem = items && slot >= 0 ? items->GetItem(slot) : nullptr;
+        if (!vendorItem)
+            return failVendor("vendor slot missing");
+
+        // BuyItemFromVendorSlot prefers the session's last opened vendor list, which
+        // may be a different NPC. Point it at the vendor we are standing at.
+        bot->GetSession()->SetCurrentVendor(vendor->GetEntry());
+
+        uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
+        uint32 const unitPrice = uint32(std::floor(float(proto->BuyPrice) * bot->GetReputationPriceDiscount(vendor)));
+        uint32 purchased = 0;
+        while (purchased < step.inputCount)
         {
+            uint32 const budget = AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::tradeskill));
+            if (unitPrice > budget)
+                return failVendor("tradeskill budget too low");
+
+            if (vendorItem->maxcount && vendor->GetVendorItemCurrentCount(vendorItem) < buyCount)
+                return failVendor("vendor out of stock");
+
             uint32 const before = bot->GetItemCount(step.expectedItemId, false);
-            botAI->DoSpecificAction("buy", Event("buy", ChatHelper::FormatItem(proto)), true);
-            if (bot->GetItemCount(step.expectedItemId, false) <= before)
-            {
-                data.pendingCrafts.clear();
-                return true;
-            }
+            // The core returns false for unlimited-stock items even when the
+            // purchase succeeds, so judge success by the item count.
+            bot->BuyItemFromVendorSlot(vendor->GetGUID(), uint32(slot), step.expectedItemId, 1, NULL_BAG, NULL_SLOT);
+
+            uint32 const after = bot->GetItemCount(step.expectedItemId, false);
+            if (after <= before)
+                return failVendor("core purchase rejected");
+            purchased += after - before;
         }
 
         data.pendingCrafts.erase(data.pendingCrafts.begin());
-        LOG_DEBUG("playerbots", "[New RPG] {} bought {} x{}", bot->GetName(), step.expectedItemId, step.inputCount);
+        LOG_DEBUG("playerbots", "[New RPG] {} bought {} x{}", bot->GetName(), step.expectedItemId, purchased);
         return true;
     }
 
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(step.spellId);
-    if (!spellInfo || !bot->HasSpell(step.spellId) || bot->HasSpellCooldown(step.spellId))
+    if (!spellInfo || !bot->HasSpell(step.spellId))
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: spell {} missing or on cooldown", bot->GetName(),
-                  step.spellId);
+        LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: spell {} missing", bot->GetName(), step.spellId);
         data.pendingCrafts.clear();
-        return true;
+        return false;
     }
+
+    // A dependency cast can briefly be on cooldown; wait instead of throwing the plan away.
+    if (bot->HasSpellCooldown(step.spellId))
+        return true;
 
     for (uint8 t = 0; t < 2; ++t)
     {
@@ -759,32 +861,53 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing tool category {}", bot->GetName(),
                       spellInfo->TotemCategory[t]);
             data.pendingCrafts.clear();
-            return true;
+            return false;
         }
     }
 
     Item* inputItem = nullptr;
     if (step.inputItemId)
     {
-        inputItem = FindBagItemByEntry(bot, step.inputItemId);
+        inputItem = FindLargestBagItemByEntry(bot, step.inputItemId);
         if (!inputItem || inputItem->GetCount() < step.inputCount)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing input item {} x{}", bot->GetName(),
                       step.inputItemId, step.inputCount);
             data.pendingCrafts.clear();
-            return true;
+            return false;
+        }
+
+        ItemTemplate const* proto = inputItem->GetTemplate();
+        if (!proto)
+        {
+            data.pendingCrafts.clear();
+            return false;
+        }
+
+        if (step.spellId == MILLING_SPELL && proto->RequiredSkillRank > bot->GetSkillValue(SKILL_INSCRIPTION))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: inscription skill too low to mill {}",
+                      bot->GetName(), step.inputItemId);
+            data.pendingCrafts.clear();
+            return false;
+        }
+        if (step.spellId == PROSPECTING_SPELL && proto->RequiredSkillRank > bot->GetSkillValue(SKILL_JEWELCRAFTING))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: jewelcrafting skill too low to prospect {}",
+                      bot->GetName(), step.inputItemId);
+            data.pendingCrafts.clear();
+            return false;
         }
 
         if (step.spellId == DISENCHANT_SPELL)
         {
-            ItemTemplate const* proto = inputItem->GetTemplate();
             ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", step.inputItemId);
-            if (!proto || !IsDisenchantableItem(bot, proto, usage))
+            if (!IsDisenchantableItem(bot, proto, usage))
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: input item {} no longer disenchantable",
                           bot->GetName(), step.inputItemId);
                 data.pendingCrafts.clear();
-                return true;
+                return false;
             }
         }
     }
@@ -798,7 +921,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
                 LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing reagent {} x{}", bot->GetName(),
                           spellInfo->Reagent[r], spellInfo->ReagentCount[r]);
                 data.pendingCrafts.clear();
-                return true;
+                return false;
             }
         }
     }
@@ -823,6 +946,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
     data.lastCast = getMSTime();
     ++data.casts;
 
+    // Sample before the cast: a fast loot store can add the item during CastSpell.
+    uint32 const expectedBefore = step.inputItemId ? bot->GetItemCount(step.expectedItemId, false) : 0;
     bool const cast =
         step.inputItemId ? botAI->CastSpell(step.spellId, bot, inputItem) : botAI->CastSpell(step.spellId, bot);
     if (!cast)
@@ -841,7 +966,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         data.lootWaitSpell = step.spellId;
         data.lootWaitInput = step.inputItemId;
         data.lootWaitItem = step.expectedItemId;
-        data.lootWaitCount = bot->GetItemCount(step.expectedItemId, false);
+        data.lootWaitCount = expectedBefore;
         LOG_DEBUG("playerbots", "[New RPG] {} professions conversion {} on item {} for item {}", bot->GetName(),
                   step.spellId, step.inputItemId, step.expectedItemId);
     }
@@ -1170,6 +1295,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         BagSnapshot bags;
         BuildBagSnapshot(botAI, bags);
+        uint32 const tradeskillBudget = AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::tradeskill));
         auto tryPlan = [&](std::vector<ProfessionRecipe>& recipes) -> bool
         {
             for (ProfessionRecipe& recipe : recipes)
@@ -1177,7 +1303,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 LOG_TRACE("playerbots", "[New RPG] {} plan candidate {} chance {} useful {}", bot->GetName(),
                           recipe.spellId, recipe.chance, recipe.useful);
                 std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
-                if (!PlanRecipe(bot, data, recipe, allRecipes, craftIndex, bags, steps))
+                if (!PlanRecipe(bot, data, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps))
                     continue;
 
                 chosen = &recipe;

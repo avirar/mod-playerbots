@@ -120,6 +120,9 @@ struct NewRpgInfo
         uint32 failedInput{0};
         uint32 failedItem{0};
         uint32 failedAt{0};
+        // A vendor purchase that did not complete is not retried immediately.
+        uint32 failedVendorItem{0};
+        uint32 failedVendorAt{0};
     };
     struct Idle
     {

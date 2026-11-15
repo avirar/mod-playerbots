@@ -7,6 +7,7 @@
 #ifndef PLAYERBOTS_LOOTVALUES_H
 #define PLAYERBOTS_LOOTVALUES_H
 
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -33,8 +34,15 @@ public:
     LootGroups Groups;          // groups have own (optimized) processing, grouped entries go there
 };
 
-// Every item id a loot template can produce, including reference and grouped entries.
-void CollectLootTemplateItems(LootTemplate const* lTemplate, std::unordered_set<uint32>& items);
+struct LootTemplateOutput
+{
+    uint32 minCount{0};       // guaranteed per processing
+    uint32 maxCount{0};       // possible per processing
+    uint32 reliableCount{0};  // conservative yield used when planning
+};
+
+// Every item a loot template can produce, including reference and grouped entries.
+void CollectLootTemplateOutputs(LootTemplate const* lTemplate, std::unordered_map<uint32, LootTemplateOutput>& outputs);
 
 //                   itemId, entry
 // Multi: one item has many droppers.
