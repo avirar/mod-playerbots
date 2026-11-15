@@ -95,6 +95,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     uint8 const bagSpace = AI_VALUE(uint8, "bag space");
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);
+    bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(data.skillLine);
 
     std::vector<ProfessionRecipe> usefulRecipes;
     std::vector<ProfessionRecipe> skillUpRecipes;
@@ -133,9 +134,6 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                                                                            skill->TrivialSkillLineRankLow));
             tier = std::max(tier, skill->TrivialSkillLineRankLow);
         }
-        if (chance <= 0)
-            continue;
-
         bool hasAnyReagent = false;
         bool hasReagents = true;
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS && hasReagents; ++r)
@@ -158,6 +156,12 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
         bool const useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
                             usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL;
+
+        // At max skill there is no skill-up to gain; useful outputs are still
+        // crafted up to their item-usage limit.
+        if (!useful && (chance <= 0 || skillMaxed))
+            continue;
+
         (useful ? usefulRecipes : skillUpRecipes)
             .push_back({spellId, chance, tier, spellInfo->RequiresSpellFocus, useful});
     }
