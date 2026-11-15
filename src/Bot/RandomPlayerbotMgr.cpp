@@ -2509,27 +2509,32 @@ bool RandomPlayerbotMgr::IsAddclassBot(Player* bot)
     return false;
 }
 
-bool RandomPlayerbotMgr::IsAddclassBot(ObjectGuid::LowType bot)
+bool RandomPlayerbotMgr::IsAddclassBotCached(ObjectGuid::LowType bot) const
 {
     ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(bot);
-
-    // Check the cache with faction considerations
     for (uint8 claz = CLASS_WARRIOR; claz <= CLASS_DRUID; claz++)
     {
         if (claz == 10)
             continue;
 
-        for (uint8 isAlliance = 0; isAlliance <= 1; isAlliance++)
+        for (uint8 isAlliance = 0; isAlliance <= 1; ++isAlliance)
         {
-            if (addclassCache[GetTeamClassIdx(isAlliance, claz)].find(guid) !=
-                addclassCache[GetTeamClassIdx(isAlliance, claz)].end())
-            {
+            auto const cache = addclassCache.find(GetTeamClassIdx(isAlliance, claz));
+            if (cache != addclassCache.end() && cache->second.contains(guid))
                 return true;
-            }
         }
     }
 
+    return false;
+}
+
+bool RandomPlayerbotMgr::IsAddclassBot(ObjectGuid::LowType bot)
+{
+    if (IsAddclassBotCached(bot))
+        return true;
+
     // If not in cache, check the account type
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(bot);
     uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(guid);
     if (accountId && IsAccountType(accountId, 2)) // Type 2 = AddClass
     {

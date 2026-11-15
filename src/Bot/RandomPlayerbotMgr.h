@@ -136,6 +136,7 @@ public:
     bool IsRandomBot(ObjectGuid::LowType bot);
     bool IsAddclassBot(Player* bot);
     bool IsAddclassBot(ObjectGuid::LowType bot);
+    bool IsAddclassBotCached(ObjectGuid::LowType bot) const;
     void Randomize(Player* bot);
     void Clear(Player* bot);
     void RandomizeFirst(Player* bot);

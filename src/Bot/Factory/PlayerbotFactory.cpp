@@ -250,12 +250,22 @@ uint16 PlayerbotFactory::GetTrainerSpellTradeSkill(Trainer::Spell const* trainer
 }
 
 bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer const* trainer,
-                                                     Trainer::Spell const* trainerSpell)
+                                                   Trainer::Spell const* trainerSpell)
 {
     if (!bot || !trainer || !trainerSpell)
         return false;
 
-    if (trainer->GetTrainerType() != Trainer::Type::Tradeskill || !sRandomPlayerbotMgr.IsRandomBot(bot))
+    if (trainer->GetTrainerType() != Trainer::Type::Tradeskill)
+        return true;
+
+    // Managed bots (random, AddClass and self-bots) use their assigned pair.
+    // Leave player-owned alts and their trainers alone.
+    uint16 const firstSkill = sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
+    uint16 const secondSkill = sRandomPlayerbotMgr.GetValue(bot, "secondSkill");
+    bool const managedBot = sRandomPlayerbotMgr.IsRandomBot(bot) || IsSelfBot(bot) ||
+                            sRandomPlayerbotMgr.IsAddclassBotCached(bot->GetGUID().GetCounter()) ||
+                            IsPrimaryTradeSkill(firstSkill) || IsPrimaryTradeSkill(secondSkill);
+    if (!managedBot)
         return true;
 
     uint16 const skillId = GetTrainerSpellTradeSkill(trainerSpell);
@@ -267,9 +277,6 @@ bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer
 
     if (!IsPrimaryTradeSkill(skillId))
         return false;
-
-    uint16 const firstSkill = sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
-    uint16 const secondSkill = sRandomPlayerbotMgr.GetValue(bot, "secondSkill");
 
     if ((IsPrimaryTradeSkill(firstSkill) && skillId == firstSkill) ||
         (IsPrimaryTradeSkill(secondSkill) && skillId == secondSkill))
@@ -284,6 +291,11 @@ bool PlayerbotFactory::IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer
         if (IsPrimaryTradeSkill(tradeSkill) && bot->HasSkill(tradeSkill))
             ++knownPrimarySkills;
     }
+
+    // A managed bot with no primary profession may still learn a starter from a
+    // trainer; InitTradeSkills will pick its pair when the factory runs.
+    if (knownPrimarySkills == 0 && trainerSpell->ReqSkillLine == 0)
+        return true;
 
     uint32 const maxPrimaryTradeSkills =
         std::min<uint32>(2, sWorld->getIntConfig(CONFIG_MAX_PRIMARY_TRADE_SKILL));
@@ -1629,6 +1641,11 @@ void PlayerbotFactory::InitPet()
 
 void PlayerbotFactory::ClearSkills()
 {
+    // A full skill reset re-rolls the managed profession assignment.
+    for (char const* key : {"firstSkill", "secondSkill", "professionRollType"})
+        if (sRandomPlayerbotMgr.GetValue(bot, key))
+            sRandomPlayerbotMgr.SetValue(bot, key, 0);
+
     for (uint32 i = 0; i < sizeof(tradeSkills) / sizeof(uint32); ++i)
     {
         bot->SetSkill(tradeSkills[i], 0, 0, 0);
@@ -3036,7 +3053,11 @@ bool PlayerbotFactory::CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item)
 
 void PlayerbotFactory::InitTradeSkills()
 {
-    if (!sRandomPlayerbotMgr.IsRandomBot(bot))
+    bool const isRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
+    bool const isSelfBot = IsSelfBot(bot);
+    bool const managedBot = isRandomBot || isSelfBot ||
+                            sRandomPlayerbotMgr.IsAddclassBotCached(bot->GetGUID().GetCounter());
+    if (!managedBot)
         return;
 
     uint32 const maxPrimaryTradeSkills =
@@ -3090,13 +3111,17 @@ void PlayerbotFactory::InitTradeSkills()
     else if (knownPrimarySkills.size() == 1)
     {
         // The real skill is authoritative. Reuse a stored complement only when the stored pair contains that skill.
+        // A self-bot keeps a player-chosen single profession instead of being given a second one.
         uint16 const knownSkill = knownPrimarySkills.front();
         addPrimarySkill(knownSkill);
 
-        if (firstSkill == knownSkill && secondSkill != knownSkill)
-            addPrimarySkill(secondSkill);
-        else if (secondSkill == knownSkill && firstSkill != knownSkill)
-            addPrimarySkill(firstSkill);
+        if (!isSelfBot)
+        {
+            if (firstSkill == knownSkill && secondSkill != knownSkill)
+                addPrimarySkill(secondSkill);
+            else if (secondSkill == knownSkill && firstSkill != knownSkill)
+                addPrimarySkill(firstSkill);
+        }
     }
     else
     {
@@ -3118,7 +3143,7 @@ void PlayerbotFactory::InitTradeSkills()
         addPrimarySkill(professionPair.first);
         addPrimarySkill(professionPair.second);
     }
-    else if (primarySkills.size() == 1 && maxPrimaryTradeSkills >= 2)
+    else if (!isSelfBot && primarySkills.size() == 1 && maxPrimaryTradeSkills >= 2)
     {
         addPrimarySkill(ChooseComplementaryProfession(professionPairs, primarySkills.front()));
 
@@ -3141,18 +3166,26 @@ void PlayerbotFactory::InitTradeSkills()
     sRandomPlayerbotMgr.SetValue(bot, "firstSkill", firstSkill);
     sRandomPlayerbotMgr.SetValue(bot, "secondSkill", secondSkill);
 
-    for (uint16 skillId : knownPrimarySkills)
+    if (!isSelfBot)
     {
-        if (std::find(primarySkills.begin(), primarySkills.end(), skillId) == primarySkills.end())
-            bot->SetSkill(skillId, 0, 0, 0);
+        for (uint16 skillId : knownPrimarySkills)
+        {
+            if (std::find(primarySkills.begin(), primarySkills.end(), skillId) == primarySkills.end())
+                bot->SetSkill(skillId, 0, 0, 0);
+        }
     }
 
-    SetRandomSkill(SKILL_FIRST_AID);
-    SetRandomSkill(SKILL_FISHING);
-    SetRandomSkill(SKILL_COOKING);
+    if (isRandomBot)
+    {
+        SetRandomSkill(SKILL_FIRST_AID);
+        SetRandomSkill(SKILL_FISHING);
+        SetRandomSkill(SKILL_COOKING);
+    }
 
     std::vector<uint16> skillsToLearn = {SKILL_FIRST_AID, SKILL_FISHING, SKILL_COOKING};
     skillsToLearn.insert(skillsToLearn.end(), primarySkills.begin(), primarySkills.end());
+
+    bool const reassignFreeProfessionPoints = !isSelfBot || knownPrimarySkills.empty();
 
     uint32 selectedPrimaryStarterSpells = 0;
     for (uint16 skillId : primarySkills)
@@ -3162,10 +3195,13 @@ void PlayerbotFactory::InitTradeSkills()
             ++selectedPrimaryStarterSpells;
     }
 
-    bot->SetFreePrimaryProfessions(
-        static_cast<uint16>(maxPrimaryTradeSkills > selectedPrimaryStarterSpells
-                                ? maxPrimaryTradeSkills - selectedPrimaryStarterSpells
-                                : 0));
+    if (reassignFreeProfessionPoints)
+    {
+        bot->SetFreePrimaryProfessions(
+            static_cast<uint16>(maxPrimaryTradeSkills > selectedPrimaryStarterSpells
+                                    ? maxPrimaryTradeSkills - selectedPrimaryStarterSpells
+                                    : 0));
+    }
 
     for (uint16 skillId : skillsToLearn)
     {
@@ -3179,13 +3215,19 @@ void PlayerbotFactory::InitTradeSkills()
         bot->learnSpell(spellId, false);
     }
 
-    for (uint16 skillId : primarySkills)
-        SetRandomSkill(skillId);
+    if (isRandomBot)
+    {
+        for (uint16 skillId : primarySkills)
+            SetRandomSkill(skillId);
+    }
 
-    bot->SetFreePrimaryProfessions(
-        static_cast<uint16>(maxPrimaryTradeSkills > primarySkills.size()
-                                ? maxPrimaryTradeSkills - primarySkills.size()
-                                : 0));
+    if (reassignFreeProfessionPoints)
+    {
+        bot->SetFreePrimaryProfessions(
+            static_cast<uint16>(maxPrimaryTradeSkills > primarySkills.size()
+                                    ? maxPrimaryTradeSkills - primarySkills.size()
+                                    : 0));
+    }
 
     InitProfessionTools();
     InitTradeSpecializations();
@@ -3195,9 +3237,12 @@ void PlayerbotFactory::InitProfessionTools()
 {
     auto ensureTool = [this](uint32 itemId, uint32 totemCategory)
     {
-        if (totemCategory ? bot->HasItemTotemCategory(totemCategory) : bot->HasItemCount(itemId, 1, false))
+        if (bot->HasItemCount(itemId, 1, false) || (totemCategory && bot->HasItemTotemCategory(totemCategory)))
             return;
-        if (!bot->StoreNewItemInBestSlots(itemId, 1))
+
+        ItemPosCountVec dest;
+        InventoryResult msg = bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, 1);
+        if (msg != EQUIP_ERR_OK || !bot->StoreNewItem(dest, itemId, true))
             LOG_DEBUG("playerbots", "{} could not store profession tool {}", bot->GetName(), itemId);
     };
 
@@ -3220,8 +3265,8 @@ void PlayerbotFactory::InitProfessionTools()
     if (bot->HasSkill(SKILL_ENCHANTING))
     {
         // Each enchant rank names a specific rod category; a higher rod does not
-        // satisfy a lower requirement, so keep every rod up to the bot's tier.
-        uint16 const value = bot->GetSkillValue(SKILL_ENCHANTING);
+        // satisfy a lower requirement, so keep every rod up to the level cap.
+        uint16 const value = bot->GetMaxSkillValue(SKILL_ENCHANTING);
         ensureTool(6218, 6);  // Runed Copper Rod
         if (value >= 50)
             ensureTool(6339, 7);  // Runed Silver Rod
@@ -3231,6 +3276,17 @@ void PlayerbotFactory::InitProfessionTools()
             ensureTool(11145, 9);  // Runed Truesilver Rod
         if (value >= 275)
             ensureTool(16207, 10);  // Runed Arcanite Rod
+        if (value >= 300)
+            ensureTool(22461, 41);  // Runed Fel Iron Rod
+        if (value >= 350)
+            ensureTool(22462, 62);  // Runed Adamantite Rod
+        if (value >= 375)
+        {
+            ensureTool(22463, 63);   // Runed Eternium Rod
+            ensureTool(44451, 189);  // Runed Cobalt Rod
+        }
+        if (value >= 425)
+            ensureTool(44452, 190);  // Runed Titanium Rod
     }
 
     if (bot->HasSkill(SKILL_MINING))
