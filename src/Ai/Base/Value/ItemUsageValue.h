@@ -73,6 +73,11 @@ public:
 
     static std::vector<uint32> SpellsUsingItem(uint32 itemId, Player* bot);
     static bool SpellGivesSkillUp(uint32 spellId, Player* bot);
+    // Exact core crafting chance (PlayerUpdates.cpp): orange at TrivialSkillLineRankLow,
+    // grey at TrivialSkillLineRankHigh, linearly interpolated in between. The value is in
+    // the same tenths-of-percent units as UpdateSkillPro.
+    static int32 CraftSkillGainChance(uint32 skillValue, uint32 grayLevel, uint32 yellowLevel);
+    static int32 CraftSkillGainChance(uint32 spellId, Player* bot);
 
     static std::string const GetConsumableType(ItemTemplate const* proto, bool hasMana);
 };

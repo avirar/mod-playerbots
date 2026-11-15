@@ -17,6 +17,8 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 #include "StatsWeightCalculator.h"
+#include "World.h"
+#include "WorldConfig.h"
 
 #include <unordered_set>
 
@@ -1048,25 +1050,49 @@ inline int32 SkillGainChance(uint32 SkillValue, uint32 GrayLevel, uint32 GreenLe
     return sWorld->getIntConfig(CONFIG_SKILL_CHANCE_ORANGE) * 10;
 }
 
+int32 ItemUsageValue::CraftSkillGainChance(uint32 skillValue, uint32 grayLevel, uint32 yellowLevel)
+{
+    // Keep this in sync with Player::UpdateCraftSkill / CraftSkillGainChance in
+    // PlayerUpdates.cpp. Crafting interpolates between the orange and grey chances;
+    // SkillChance.Yellow/Green only apply to gathering and scripted gains.
+    int32 const orangeChance = sWorld->getIntConfig(CONFIG_SKILL_CHANCE_ORANGE) * 10;
+    int32 const grayChance = sWorld->getIntConfig(CONFIG_SKILL_CHANCE_GREY) * 10;
+
+    if (grayLevel <= yellowLevel)
+        return skillValue < grayLevel ? orangeChance : grayChance;
+
+    if (skillValue <= yellowLevel)
+        return orangeChance;
+    if (skillValue >= grayLevel)
+        return grayChance;
+
+    return grayChance + int32(int64(grayLevel - skillValue) * (orangeChance - grayChance) /
+                              (grayLevel - yellowLevel));
+}
+
+int32 ItemUsageValue::CraftSkillGainChance(uint32 spellId, Player* bot)
+{
+    if (!bot)
+        return 0;
+
+    int32 best = 0;
+    SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+    for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        SkillLineAbilityEntry const* skill = itr->second;
+        if (!skill->SkillLine)
+            continue;
+
+        uint32 const skillValue = bot->GetPureSkillValue(skill->SkillLine);
+        best = std::max(best, CraftSkillGainChance(skillValue, skill->TrivialSkillLineRankHigh,
+                                                   skill->TrivialSkillLineRankLow));
+    }
+    return best;
+}
+
 bool ItemUsageValue::SpellGivesSkillUp(uint32 spellId, Player* bot)
 {
-    SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
-
-    for (SkillLineAbilityMap::const_iterator _spell_idx = bounds.first; _spell_idx != bounds.second; ++_spell_idx)
-    {
-        SkillLineAbilityEntry const* skill = _spell_idx->second;
-        if (skill->SkillLine)
-        {
-            uint32 SkillValue = bot->GetPureSkillValue(skill->SkillLine);
-
-            if (SkillGainChance(SkillValue, skill->TrivialSkillLineRankHigh,
-                                (skill->TrivialSkillLineRankHigh + skill->TrivialSkillLineRankLow) / 2,
-                                skill->TrivialSkillLineRankLow) > 0)
-                return true;
-        }
-    }
-
-    return false;
+    return CraftSkillGainChance(spellId, bot) > 0;
 }
 
 std::string const ItemUsageValue::GetConsumableType(ItemTemplate const* proto, bool hasMana)
