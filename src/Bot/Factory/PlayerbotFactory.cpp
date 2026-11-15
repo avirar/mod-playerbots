@@ -3197,7 +3197,8 @@ void PlayerbotFactory::InitProfessionTools()
     {
         if (totemCategory ? bot->HasItemTotemCategory(totemCategory) : bot->HasItemCount(itemId, 1, false))
             return;
-        StoreItem(itemId, 1);
+        if (!bot->StoreNewItemInBestSlots(itemId, 1))
+            LOG_DEBUG("playerbots", "{} could not store profession tool {}", bot->GetName(), itemId);
     };
 
     if (bot->HasSkill(SKILL_BLACKSMITHING))
