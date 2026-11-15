@@ -399,8 +399,7 @@ ProfessionAffinity GetProfessionAffinity(Player* bot)
     ProfessionAffinity affinity;
     affinity.armor = GetClassArmorType(bot->getClass());
     affinity.hasSpec = bot->GetLevel() >= 10;
-    affinity.spellPower =
-        affinity.hasSpec && UsesSpellPower(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
+    affinity.spellPower = affinity.hasSpec && UsesSpellPower(bot->getClass(), AiFactory::GetPlayerSpecTab(bot));
     return affinity;
 }
 
@@ -474,7 +473,7 @@ std::vector<PlayerbotFactory::WeightedProfessionPair> PlayerbotFactory::GetRando
             {SKILL_SKINNING, SKILL_LEATHERWORKING, 16},
             {SKILL_HERBALISM, SKILL_ALCHEMY, 16},
             {SKILL_HERBALISM, SKILL_INSCRIPTION, 12},
-            {SKILL_TAILORING, SKILL_ENCHANTING, 10},
+            {SKILL_TAILORING, SKILL_ENCHANTING, 16},
             {SKILL_HERBALISM, SKILL_MINING, 10},
             {SKILL_HERBALISM, SKILL_SKINNING, 8},
             {SKILL_MINING, SKILL_SKINNING, 8},
