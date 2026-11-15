@@ -5662,6 +5662,16 @@ std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
     {
         return DescribeInventory(command.size() > 10 ? command.substr(10) : "");
     }
+    else if (command.rfind("item usage ", 0) == 0)
+    {
+        uint32 const itemId = uint32(atoi(command.substr(11).c_str()));
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (!proto)
+            return "unknown item";
+
+        ItemUsage const usage = GetAiObjectContext()->GetValue<ItemUsage>("item usage", itemId)->Get();
+        return std::to_string(itemId) + " " + proto->Name1 + " usage " + std::to_string(uint32(usage));
+    }
     else if (command == "budget")
     {
         std::ostringstream out;

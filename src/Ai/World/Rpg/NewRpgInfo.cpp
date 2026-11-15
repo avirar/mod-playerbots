@@ -231,6 +231,23 @@ std::string NewRpgInfo::ToString()
                 out << "\ntrainer: " << arg.trainerGuid.ToString()
                     << " (" << (arg.lastTrainer ? GetMSTimeDiffToNow(arg.lastTrainer) : 0) << " ms ago)";
             out << "\ncasts: " << arg.casts;
+            out << "\npendingCrafts: " << arg.pendingCrafts.size();
+            for (size_t i = 0; i < arg.pendingCrafts.size() && i < 5; ++i)
+            {
+                auto const& step = arg.pendingCrafts[i];
+                if (!step.spellId)
+                {
+                    out << "\n  " << i << ": buy " << step.expectedItemId << " x" << step.inputCount;
+                    continue;
+                }
+
+                out << "\n  " << i << ": spell " << step.spellId << " focus " << step.spellFocus;
+                if (step.inputItemId)
+                    out << " input " << step.inputItemId << " x" << step.inputCount << " -> " << step.expectedItemId;
+            }
+            if (arg.lootWaitStart)
+                out << "\nlootWait: item " << arg.lootWaitItem << " for " << GetMSTimeDiffToNow(arg.lootWaitStart)
+                    << " ms";
         }
         else
             out << "UNKNOWN";

@@ -97,7 +97,8 @@ struct NewRpgInfo
             uint32 spellFocus{0};
             uint32 inputItemId{0};  // 0 for a normal create-item recipe
             uint32 inputCount{0};
-            uint32 expectedItemId{0};  // conversion output the plan needs
+            uint32 expectedItemId{0};  // conversion output or bought item
+            ObjectGuid vendorGuid{};   // buy steps only
         };
 
         uint32 skillLine{0};

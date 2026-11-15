@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "Bag.h"
+#include "ChatHelper.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
@@ -65,6 +66,7 @@ struct ConversionCandidate
 struct BagSnapshot
 {
     std::unordered_map<uint32, uint32> counts;
+    std::unordered_map<uint32, ObjectGuid> vendorItems;
     std::vector<ConversionCandidate> conversions;
 };
 
@@ -79,6 +81,7 @@ struct CraftPlan
 
 struct CraftPlanContext
 {
+    Player* bot = nullptr;
     NewRpgInfo::DoProfessions const* data = nullptr;
     std::vector<ProfessionRecipe> const* recipes = nullptr;
     std::unordered_map<uint32, std::vector<size_t>> const* craftIndex = nullptr;
@@ -96,6 +99,7 @@ constexpr uint32 DISENCHANT_SPELL = 13262;
 constexpr uint32 CONVERSION_INPUT_COUNT = 5;
 constexpr uint32 DISENCHANT_INPUT_COUNT = 1;
 constexpr uint32 CONVERSION_LOOT_TIMEOUT_MS = 15 * IN_MILLISECONDS;
+constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_GRACE_MS = 6 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
@@ -238,6 +242,22 @@ bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions
     return false;
 }
 
+bool VendorSellsItem(Creature* vendor, uint32 itemId)
+{
+    VendorItemData const* items = sObjectMgr->GetNpcVendorItemList(vendor->GetEntry());
+    if (!items)
+        return false;
+
+    for (uint32 i = 0; i < items->GetItemCount(); ++i)
+    {
+        VendorItem const* item = items->GetItem(i);
+        if (item && item->item == itemId)
+            return true;
+    }
+
+    return false;
+}
+
 Item* FindBagItemByEntry(Player* bot, uint32 entry)
 {
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
@@ -254,6 +274,8 @@ Item* FindBagItemByEntry(Player* bot, uint32 entry)
 
     return nullptr;
 }
+
+bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage);
 
 void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::unordered_set<uint64_t>& seen)
 {
@@ -287,7 +309,9 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
                           item->GetCount() >= CONVERSION_INPUT_COUNT;
     bool const prospectable = bot->HasSpell(PROSPECTING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE) &&
                               item->GetCount() >= CONVERSION_INPUT_COUNT;
-    bool const disenchantable = bot->HasSpell(DISENCHANT_SPELL) && proto->DisenchantID;
+    bool const disenchantable = bot->HasSpell(DISENCHANT_SPELL) && proto->DisenchantID &&
+                                (proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
+                                proto->Quality >= ITEM_QUALITY_UNCOMMON;
     if (!millable && !prospectable && !disenchantable)
         return;
 
@@ -303,7 +327,7 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
         addConversion(PROSPECTING_SPELL, proto->ItemId, CONVERSION_INPUT_COUNT,
                       LootTemplates_Prospecting.GetLootFor(proto->ItemId));
 
-    if (disenchantable && usage == ITEM_USAGE_DISENCHANT)
+    if (disenchantable && IsDisenchantableItem(bot, proto, usage))
         addConversion(DISENCHANT_SPELL, proto->ItemId, DISENCHANT_INPUT_COUNT,
                       LootTemplates_Disenchant.GetLootFor(proto->DisenchantID));
 }
@@ -325,6 +349,27 @@ void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
                 inspect(bot->GetItemByPos(bagSlot, slot));
+
+    GuidVector const vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+    for (ObjectGuid const guid : vendors)
+    {
+        Creature* vendor = botAI->GetCreature(guid);
+        if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor())
+            continue;
+        if (bot->GetDistance(vendor) > 100.0f)
+            continue;
+
+        VendorItemData const* items = sObjectMgr->GetNpcVendorItemList(vendor->GetEntry());
+        if (!items)
+            continue;
+
+        for (uint32 i = 0; i < items->GetItemCount(); ++i)
+        {
+            VendorItem const* item = items->GetItem(i);
+            if (item && item->item && !snapshot.vendorItems.count(item->item))
+                snapshot.vendorItems[item->item] = guid;
+        }
+    }
 }
 
 bool IsConversionFailure(NewRpgInfo::DoProfessions const& data, uint32 spellId, uint32 inputItemId,
@@ -332,6 +377,26 @@ bool IsConversionFailure(NewRpgInfo::DoProfessions const& data, uint32 spellId, 
 {
     return data.failedAt && data.failedSpell == spellId && data.failedInput == inputItemId &&
            data.failedItem == expectedItemId && GetMSTimeDiffToNow(data.failedAt) < CONVERSION_FAILURE_MEMORY_MS;
+}
+
+bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage)
+{
+    if (!proto || !proto->DisenchantID)
+        return false;
+    if (proto->Class != ITEM_CLASS_ARMOR && proto->Class != ITEM_CLASS_WEAPON)
+        return false;
+    if (proto->Quality < ITEM_QUALITY_UNCOMMON)
+        return false;
+    if (!bot->HasSkill(SKILL_ENCHANTING) || bot->GetSkillValue(SKILL_ENCHANTING) < proto->RequiredDisenchantSkill)
+        return false;
+    if (usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_GUILD_TASK || usage == ITEM_USAGE_EQUIP ||
+        usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_USE || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP)
+        return false;
+
+    // Off-class greens are BAD_EQUIP rather than DISENCHANT, and BoE greens with no
+    // use are NONE/VENDOR/AH; those are all safe to destroy for materials.
+    return usage == ITEM_USAGE_DISENCHANT || usage == ITEM_USAGE_BAD_EQUIP || usage == ITEM_USAGE_NONE ||
+           usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH;
 }
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth);
@@ -353,7 +418,11 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         return true;
 
     if (depth >= MAX_CRAFT_DEPTH || ctx.plan.visiting.count(itemId) || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: depth {} visiting {} steps {}",
+                  ctx.bot->GetName(), itemId, count, depth, ctx.plan.visiting.count(itemId), ctx.plan.steps.size());
         return false;
+    }
 
     ctx.plan.visiting.insert(itemId);
 
@@ -373,7 +442,11 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
 
                 CraftPlanContext trial = ctx;
                 if (!EnsureRecipeIngredients(trial, recipe, depth + 1))
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: recipe {} ingredients failed",
+                              ctx.bot->GetName(), itemId, remaining, recipe.spellId);
                     continue;
+                }
 
                 trial.plan.steps.push_back({recipe.spellId, recipe.spellFocus, 0, 0, 0});
                 trial.plan.plannedSpells.insert(recipe.spellId);
@@ -421,7 +494,21 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     }
 
     ctx.plan.visiting.erase(itemId);
-    return produced >= remaining;
+    uint32 const missing = remaining - std::min(remaining, produced);
+    if (missing > 0)
+    {
+        auto const vendor = ctx.bags->vendorItems.find(itemId);
+        if (vendor != ctx.bags->vendorItems.end())
+        {
+            ctx.plan.steps.push_back({0, 0, 0, missing, itemId, vendor->second});
+            return true;
+        }
+
+        LOG_DEBUG("playerbots", "[New RPG] {} cannot plan item {} x{}: no craft or conversion (produced {})",
+                  ctx.bot->GetName(), itemId, missing, produced);
+        return false;
+    }
+    return true;
 }
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth)
@@ -433,12 +520,13 @@ bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& reci
     return true;
 }
 
-bool PlanRecipe(NewRpgInfo::DoProfessions const& data, ProfessionRecipe const& recipe,
+bool PlanRecipe(Player* bot, NewRpgInfo::DoProfessions const& data, ProfessionRecipe const& recipe,
                 std::vector<ProfessionRecipe> const& recipes,
                 std::unordered_map<uint32, std::vector<size_t>> const& craftIndex, BagSnapshot const& bags,
                 std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps)
 {
     CraftPlanContext ctx;
+    ctx.bot = bot;
     ctx.data = &data;
     ctx.recipes = &recipes;
     ctx.craftIndex = &craftIndex;
@@ -449,8 +537,16 @@ bool PlanRecipe(NewRpgInfo::DoProfessions const& data, ProfessionRecipe const& r
         ctx.plan.visiting.insert(recipe.outputItemId);
 
     for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
-        if (recipe.reagentCounts[r] && !EnsureItem(ctx, recipe.reagents[r], recipe.reagentCounts[r], 0))
+    {
+        if (!recipe.reagentCounts[r])
+            continue;
+        if (!EnsureItem(ctx, recipe.reagents[r], recipe.reagentCounts[r], 0))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} plan recipe {} missing reagent {} x{}", bot->GetName(),
+                      recipe.spellId, recipe.reagents[r], recipe.reagentCounts[r]);
             return false;
+        }
+    }
 
     if (ctx.plan.steps.empty())
         return false;
@@ -544,7 +640,12 @@ bool NewRpgDoProfessionsAction::HandleLootWait(NewRpgInfo::DoProfessions& data)
     {
         if (elapsed >= CONVERSION_LOOT_TIMEOUT_MS)
             botAI->DoSpecificAction("release loot", Event(), true);
-        return true;
+
+        // A lost release response must not freeze the whole profession status.
+        if (elapsed < CONVERSION_LOOT_HARD_TIMEOUT_MS)
+            return true;
+
+        LOG_DEBUG("playerbots", "[New RPG] {} loot window still open after {} ms; continuing", bot->GetName(), elapsed);
     }
 
     bool const success = bot->GetItemCount(data.lootWaitItem, false) > data.lootWaitCount;
@@ -581,9 +682,72 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
 {
     NewRpgInfo::DoProfessions::CraftStep const step = data.pendingCrafts.front();
 
+    LOG_TRACE("playerbots", "[New RPG] {} pending step {}/{} spell {} focus {} input {}x{} expect {}", bot->GetName(),
+              1, data.pendingCrafts.size(), step.spellId, step.spellFocus, step.inputItemId, step.inputCount,
+              step.expectedItemId);
+
+    if (!step.spellId)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(step.expectedItemId);
+        if (!proto)
+        {
+            data.pendingCrafts.clear();
+            return true;
+        }
+
+        Creature* vendor = step.vendorGuid.IsEmpty() ? nullptr : ObjectAccessor::GetCreature(*bot, step.vendorGuid);
+        if (!vendor || !vendor->IsInWorld() || !vendor->IsVendor() || !VendorSellsItem(vendor, step.expectedItemId))
+        {
+            vendor = nullptr;
+            GuidVector const vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+            for (ObjectGuid const guid : vendors)
+            {
+                Creature* candidate = botAI->GetCreature(guid);
+                if (candidate && candidate->IsInWorld() && candidate->IsVendor() &&
+                    VendorSellsItem(candidate, step.expectedItemId))
+                {
+                    vendor = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (!vendor)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: no vendor sells item {}", bot->GetName(),
+                      step.expectedItemId);
+            data.pendingCrafts.clear();
+            return true;
+        }
+
+        data.pendingCrafts.front().vendorGuid = vendor->GetGUID();
+        if (bot->GetDistance(vendor) > INTERACTION_DISTANCE)
+        {
+            MoveWorldObjectTo(vendor->GetGUID(), 2.0f);
+            return true;
+        }
+
+        for (uint32 i = 0; i < step.inputCount; ++i)
+        {
+            uint32 const before = bot->GetItemCount(step.expectedItemId, false);
+            botAI->DoSpecificAction("buy", Event("buy", ChatHelper::FormatItem(proto)), true);
+            if (bot->GetItemCount(step.expectedItemId, false) <= before)
+            {
+                data.pendingCrafts.clear();
+                return true;
+            }
+        }
+
+        data.pendingCrafts.erase(data.pendingCrafts.begin());
+        LOG_DEBUG("playerbots", "[New RPG] {} bought {} x{}", bot->GetName(), step.expectedItemId, step.inputCount);
+        return true;
+    }
+
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(step.spellId);
     if (!spellInfo || !bot->HasSpell(step.spellId) || bot->HasSpellCooldown(step.spellId))
     {
+        LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: spell {} missing or on cooldown", bot->GetName(),
+                  step.spellId);
         data.pendingCrafts.clear();
         return true;
     }
@@ -592,6 +756,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
     {
         if (spellInfo->TotemCategory[t] && !bot->HasItemTotemCategory(spellInfo->TotemCategory[t]))
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing tool category {}", bot->GetName(),
+                      spellInfo->TotemCategory[t]);
             data.pendingCrafts.clear();
             return true;
         }
@@ -603,6 +769,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         inputItem = FindBagItemByEntry(bot, step.inputItemId);
         if (!inputItem || inputItem->GetCount() < step.inputCount)
         {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing input item {} x{}", bot->GetName(),
+                      step.inputItemId, step.inputCount);
             data.pendingCrafts.clear();
             return true;
         }
@@ -610,9 +778,11 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         if (step.spellId == DISENCHANT_SPELL)
         {
             ItemTemplate const* proto = inputItem->GetTemplate();
-            if (!proto || !proto->DisenchantID ||
-                AI_VALUE2(ItemUsage, "item usage", step.inputItemId) != ITEM_USAGE_DISENCHANT)
+            ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", step.inputItemId);
+            if (!proto || !IsDisenchantableItem(bot, proto, usage))
             {
+                LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: input item {} no longer disenchantable",
+                          bot->GetName(), step.inputItemId);
                 data.pendingCrafts.clear();
                 return true;
             }
@@ -625,6 +795,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             if (spellInfo->ReagentCount[r] &&
                 !bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false))
             {
+                LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing reagent {} x{}", bot->GetName(),
+                          spellInfo->Reagent[r], spellInfo->ReagentCount[r]);
                 data.pendingCrafts.clear();
                 return true;
             }
@@ -909,8 +1081,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                     continue;
 
                 ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
+                // Reagents are not final goods: treating ITEM_USAGE_SKILL as useful
+                // lets a direct intermediate recipe outrank the finished item that
+                // needs it, so the bot crafts bolts forever instead of the bag.
                 useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
-                         usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL;
+                         usage == ITEM_USAGE_QUEST;
             }
             else if (scrollItemId)
             {
@@ -995,13 +1170,14 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         BagSnapshot bags;
         BuildBagSnapshot(botAI, bags);
-
         auto tryPlan = [&](std::vector<ProfessionRecipe>& recipes) -> bool
         {
             for (ProfessionRecipe& recipe : recipes)
             {
+                LOG_TRACE("playerbots", "[New RPG] {} plan candidate {} chance {} useful {}", bot->GetName(),
+                          recipe.spellId, recipe.chance, recipe.useful);
                 std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
-                if (!PlanRecipe(data, recipe, allRecipes, craftIndex, bags, steps))
+                if (!PlanRecipe(bot, data, recipe, allRecipes, craftIndex, bags, steps))
                     continue;
 
                 chosen = &recipe;
