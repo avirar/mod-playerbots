@@ -13,6 +13,7 @@
 #include "Bag.h"
 #include "Item.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "DBCStructure.h"
 #include "GameObject.h"
 #include "ItemUsageValue.h"
@@ -25,6 +26,7 @@
 #include "SpellFocusMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "StatsWeightCalculator.h"
 #include "Trainer.h"
 
 namespace
@@ -37,40 +39,99 @@ struct ProfessionRecipe
     uint32 spellFocus = 0;
     bool useful = false;
     bool noItemSpell = false;  // enchanting: target a bag item instead of creating one
+    bool marketable = false;   // enchanting: the scroll output is auction-worthy
 };
 
 constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
 
-Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo)
+int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightCalculator& calculator)
 {
-    std::vector<Item*> candidates;
-    auto canEnchant = [spellInfo](Item* item)
+    uint32 enchantId = 0;
+    for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
     {
-        // Vellum enchants consume the vellum and grant no skill; skill-up
-        // crafting must target real gear.
+        if (spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM)
+        {
+            enchantId = spellInfo->Effects[e].MiscValue;
+            break;
+        }
+    }
+    if (!enchantId)
+        return -1;
+
+    SpellItemEnchantmentEntry const* enchant = sSpellItemEnchantmentStore.LookupEntry(enchantId);
+    if (!enchant || enchant->slot != PERM_ENCHANTMENT_SLOT)
+        return -1;
+
+    if (enchant->requiredSkill &&
+        (!bot->HasSkill(enchant->requiredSkill) || bot->GetSkillValue(enchant->requiredSkill) < enchant->requiredSkillValue))
+        return -1;
+    if (enchant->requiredLevel > bot->GetLevel())
+        return -1;
+
+    int8 bestSlot = -1;
+    float bestGain = 0.0f;
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY)
+            continue;
+
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item || !item->IsFitToSpellRequirements(spellInfo))
+            continue;
+
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto)
+            continue;
+
+        uint32 const currentId = item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+        float const newScore = calculator.CalculateEnchant(enchantId, proto->Delay, proto->IsRangedWeapon());
+        float const oldScore =
+            currentId ? calculator.CalculateEnchant(currentId, proto->Delay, proto->IsRangedWeapon()) : 0.0f;
+        float const gain = newScore - oldScore;
+        if (newScore > 0.0f && gain > bestGain)
+        {
+            bestGain = gain;
+            bestSlot = int8(slot);
+        }
+    }
+
+    return bestSlot;
+}
+
+Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo, bool preferVellum)
+{
+    std::vector<Item*> gear;
+    std::vector<Item*> vellums;
+    auto collect = [spellInfo, &gear, &vellums](Item* item)
+    {
+        if (!item->IsFitToSpellRequirements(spellInfo))
+            return;
         if (item->IsArmorVellum() || item->IsWeaponVellum())
-            return false;
-        return item->IsFitToSpellRequirements(spellInfo);
+            vellums.push_back(item);
+        else
+            gear.push_back(item);
     };
 
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
         if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
-            if (canEnchant(item))
-                candidates.push_back(item);
+            collect(item);
 
     for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
                 if (Item* item = bot->GetItemByPos(bagSlot, slot))
-                    if (canEnchant(item))
-                        candidates.push_back(item);
+                    collect(item);
 
-    if (candidates.empty())
-        return nullptr;
+    if (preferVellum && !vellums.empty())
+        return vellums[urand(0, uint32(vellums.size()) - 1)];
+    if (!gear.empty())
+        return gear[urand(0, uint32(gear.size()) - 1)];
+    if (!vellums.empty())
+        return vellums[urand(0, uint32(vellums.size()) - 1)];
 
-    return candidates[urand(0, uint32(candidates.size()) - 1)];
+    return nullptr;
 }
 
 bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions& data, uint32 focusId)
@@ -223,6 +284,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             continue;
 
         uint32 outputItemId = 0;
+        uint32 scrollItemId = 0;
         bool noItemSpell = false;
         for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
         {
@@ -236,6 +298,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
             {
                 noItemSpell = true;
+                scrollItemId = spellInfo->Effects[e].ItemType;
                 break;
             }
         }
@@ -287,6 +350,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             continue;
 
         bool useful = false;
+        bool marketable = false;
         if (outputItemId)
         {
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
@@ -297,14 +361,22 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
                      usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL;
         }
+        else if (scrollItemId)
+        {
+            // Vellums produce a tradeable scroll and still grant skill. Until
+            // AH pricing exists, treat every scroll as a potential sale and
+            // prefer vellums; AH valuation can gate this per enchant later.
+            marketable = true;
+        }
 
-        // At max skill there is no skill-up to gain; useful outputs are still
-        // crafted up to their item-usage limit.
-        if (!useful && (chance <= 0 || skillMaxed))
+        // At max skill there is no skill-up to gain; useful outputs (including
+        // marketable enchant scrolls) are still crafted.
+        bool const worthwhile = useful || marketable;
+        if (!worthwhile && (chance <= 0 || skillMaxed))
             continue;
 
-        (useful ? usefulRecipes : skillUpRecipes)
-            .push_back({spellId, chance, tier, spellInfo->RequiresSpellFocus, useful, noItemSpell});
+        (worthwhile ? usefulRecipes : skillUpRecipes)
+            .push_back({spellId, chance, tier, spellInfo->RequiresSpellFocus, useful, noItemSpell, marketable});
     }
 
     auto pickBest = [](std::vector<ProfessionRecipe>& recipes) -> ProfessionRecipe*
@@ -422,17 +494,37 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (chosen->noItemSpell)
     {
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(chosen->spellId);
-        Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo) : nullptr;
-        if (!itemTarget)
+        if (spellInfo)
         {
-            LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
-                      chosen->spellId);
-            info.ChangeToIdle();
-            return true;
+            StatsWeightCalculator calculator(bot);
+            int8 const selfSlot = FindUsefulEnchantSlot(bot, spellInfo, calculator);
+            if (selfSlot >= 0)
+            {
+                Item* equipped = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, selfSlot);
+                if (equipped)
+                {
+                    LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting equipped slot {} item {} ({})",
+                              bot->GetName(), selfSlot, equipped->GetEntry(), equipped->GetGUID().ToString());
+                    cast = botAI->CastSpell(chosen->spellId, bot, equipped);
+                }
+            }
         }
-        LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
-                  itemTarget->GetEntry(), itemTarget->GetGUID().ToString(), chosen->spellId);
-        cast = botAI->CastSpell(chosen->spellId, bot, itemTarget);
+
+        if (!cast)
+        {
+            bool const preferVellum = chosen->marketable || skillMaxed;
+            Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo, preferVellum) : nullptr;
+            if (!itemTarget)
+            {
+                LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
+                          chosen->spellId);
+                info.ChangeToIdle();
+                return true;
+            }
+            LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
+                      itemTarget->GetEntry(), itemTarget->GetGUID().ToString(), chosen->spellId);
+            cast = botAI->CastSpell(chosen->spellId, bot, itemTarget);
+        }
     }
     else
         cast = botAI->CastSpell(chosen->spellId, bot);
