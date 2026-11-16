@@ -39,6 +39,7 @@
 #include "RandomPlayerbotFactory.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
+#include "SpellMgr.h"
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "Unit.h"
@@ -2747,7 +2748,7 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* /*handler*/,
 
     if (!args || !*args)
     {
-        LOG_ERROR("playerbots", "Usage: rndbot stats/queststats/questdump/update/reset/init/refresh/add/remove");
+        LOG_ERROR("playerbots", "Usage: rndbot stats/queststats/questdump/professionstats/professiondump/update/reset/init/refresh/add/remove");
         return false;
     }
 
@@ -2777,6 +2778,18 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* /*handler*/,
     if (cmd == "questdump")
     {
         sRandomPlayerbotMgr.ExportQuestStatsToJson();
+        return true;
+    }
+
+    if (cmd == "professionstats")
+    {
+        sRandomPlayerbotMgr.PrintProfessionStats();
+        return true;
+    }
+
+    if (cmd == "professiondump")
+    {
+        sRandomPlayerbotMgr.ExportProfessionStatsToJson();
         return true;
     }
 
@@ -3270,11 +3283,11 @@ void RandomPlayerbotMgr::PrintStats()
         LOG_INFO("playerbots", "Bots rpg status:");
         LOG_INFO("playerbots",
                  "    Idle: {}, Rest: {}, GoGrind: {}, GoCamp: {}, MoveRandom: {}, MoveNpc: {}, DoQuest: {}, "
-                 "TravelFlight: {}, OutdoorPvP: {}, DoGather: {}",
+                 "TravelFlight: {}, OutdoorPvP: {}, DoGather: {}, DoProfessions: {}",
                  rpgStatusCount[RPG_IDLE], rpgStatusCount[RPG_REST], rpgStatusCount[RPG_GO_GRIND],
                  rpgStatusCount[RPG_GO_CAMP], rpgStatusCount[RPG_WANDER_RANDOM], rpgStatusCount[RPG_WANDER_NPC],
                  rpgStatusCount[RPG_DO_QUEST], rpgStatusCount[RPG_TRAVEL_FLIGHT], rpgStatusCount[RPG_OUTDOOR_PVP],
-                 rpgStatusCount[RPG_DO_GATHER]);
+                 rpgStatusCount[RPG_DO_GATHER], rpgStatusCount[RPG_DO_PROFESSIONS]);
 
         PrintQuestTotals(rpgStasticTotal);
     }
@@ -3303,18 +3316,18 @@ void RandomPlayerbotMgr::PrintQuestTotals(NewRpgStatistic const& stats)
 {
     LOG_INFO("playerbots", "Bots total quests:");
     LOG_INFO("playerbots", "    Accepted: {}, Completed: {}, Rewarded: {}, Dropped: {}, Abandoned: {}",
-             stats.questAccepted, stats.questCompleted, stats.questRewarded, stats.questDropped,
-             stats.questAbandoned);
+             stats.questAccepted, stats.questCompleted, stats.questRewarded, stats.questDropped, stats.questAbandoned);
 
     if (stats.questAccepted > 0)
     {
         LOG_INFO("playerbots", "    Completed: {:.2f}%, Rewarded: {:.2f}%, Dropped: {:.2f}%, Abandoned: {:.2f}%",
                  stats.questCompleted * 100.0f / stats.questAccepted,
-                 stats.questRewarded * 100.0f / stats.questAccepted,
-                 stats.questDropped * 100.0f / stats.questAccepted,
+                 stats.questRewarded * 100.0f / stats.questAccepted, stats.questDropped * 100.0f / stats.questAccepted,
                  stats.questAbandoned * 100.0f / stats.questAccepted);
     }
 }
+
+NewRpgStatistic RandomPlayerbotMgr::CollectProfessionStats() { return CollectQuestStats(); }
 
 void RandomPlayerbotMgr::PrintQuestStats()
 {
@@ -3426,6 +3439,106 @@ void RandomPlayerbotMgr::PrintQuestStats()
     }
 
     LOG_INFO("playerbots", "=== END QUEST STATISTICS REPORT ===");
+}
+
+void RandomPlayerbotMgr::PrintProfessionStats()
+{
+    if (!sPlayerbotAIConfig.EnableNewRpgStrategy)
+    {
+        LOG_INFO("playerbots", "New RPG strategy is not enabled. Profession stats not available.");
+        return;
+    }
+
+    LOG_INFO("playerbots", "=== PROFESSION STATISTICS REPORT ===");
+    NewRpgStatistic const total = CollectProfessionStats();
+    NewRpgStatistic::ProfessionCounters const& profession = total.profession;
+    LOG_INFO("playerbots", "Bots total professions:");
+    LOG_INFO("playerbots",
+             "    Sessions: {}, Casts: {}, Failed casts: {}, Skill gain: {}, Trainer visits: {}, "
+             "Spells learned: {}, Vendor items: {}",
+             profession.sessions, profession.casts, profession.castFailures, profession.skillGain,
+             profession.trainerVisits, profession.trainerSpellsLearned, profession.vendorPurchases);
+
+    uint32 endTotal = 0;
+    for (uint32 count : profession.endReasons)
+        endTotal += count;
+    if (endTotal)
+    {
+        LOG_INFO("playerbots", "Profession end reasons:");
+        for (size_t i = 0; i < profession.endReasons.size(); ++i)
+            if (profession.endReasons[i])
+                LOG_INFO("playerbots", "    {}: {}", ProfessionEndReasonName(static_cast<ProfessionEndReason>(i)),
+                         profession.endReasons[i]);
+        LOG_INFO("playerbots", "");
+    }
+
+    if (!sPlayerbotAIConfig.CollectDetailedProfessionStats)
+    {
+        LOG_INFO("playerbots",
+                 "Detailed profession stats are disabled. Set "
+                 "Playerbots.CollectDetailedProfessionStats = 1.");
+        return;
+    }
+
+    struct ProfessionRow
+    {
+        uint32 skillLine{0};
+        NewRpgStatistic::ProfessionCounters counters;
+    };
+
+    std::vector<ProfessionRow> rows;
+    rows.reserve(total.byProfession.size());
+    for (auto const& [skillLine, counters] : total.byProfession)
+        rows.push_back({skillLine, counters});
+    std::sort(rows.begin(), rows.end(),
+              [](ProfessionRow const& a, ProfessionRow const& b)
+              {
+                  if (a.counters.sessions != b.counters.sessions)
+                      return a.counters.sessions > b.counters.sessions;
+                  return a.counters.casts > b.counters.casts;
+              });
+
+    if (!rows.empty())
+    {
+        LOG_INFO("playerbots", "Profession breakdown:");
+        for (ProfessionRow const& row : rows)
+        {
+            SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(row.skillLine);
+            std::string const name = skillLine ? skillLine->name[0] : std::to_string(row.skillLine);
+            LOG_INFO("playerbots",
+                     "    {}: sessions {}, casts {}, failures {}, skill +{}, trainer visits {}, vendor items {}", name,
+                     row.counters.sessions, row.counters.casts, row.counters.castFailures, row.counters.skillGain,
+                     row.counters.trainerVisits, row.counters.vendorPurchases);
+        }
+    }
+
+    struct RecipeRow
+    {
+        uint32 spellId{0};
+        NewRpgStatistic::ProfessionRecipeCounters counters;
+    };
+
+    std::vector<RecipeRow> recipes;
+    recipes.reserve(total.byRecipe.size());
+    for (auto const& [spellId, counters] : total.byRecipe)
+        if (counters.failures)
+            recipes.push_back({spellId, counters});
+    std::sort(recipes.begin(), recipes.end(),
+              [](RecipeRow const& a, RecipeRow const& b) { return a.counters.failures > b.counters.failures; });
+
+    if (!recipes.empty())
+    {
+        LOG_INFO("playerbots", "Top profession recipe failures:");
+        for (size_t i = 0; i < recipes.size() && i < 10; ++i)
+        {
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(recipes[i].spellId);
+            LOG_INFO("playerbots", "    [{}] {} — casts {}, failures {}", recipes[i].spellId,
+                     spellInfo ? spellInfo->SpellName[0] : "Unknown Spell", recipes[i].counters.casts,
+                     recipes[i].counters.failures);
+        }
+    }
+
+    LOG_INFO("playerbots", "=== END PROFESSION STATISTICS REPORT ===");
 }
 
 void RandomPlayerbotMgr::ExportQuestStatsToJson()
@@ -3547,6 +3660,129 @@ void RandomPlayerbotMgr::ExportQuestStatsToJson()
     out << "}\n";
 
     WriteJsonFile(LogsJsonPath("playerbots_quest_stats.json"), out.str(), "Quest stats");
+}
+
+void RandomPlayerbotMgr::ExportProfessionStatsToJson()
+{
+    if (!sPlayerbotAIConfig.EnableNewRpgStrategy)
+    {
+        LOG_ERROR("playerbots", "New RPG strategy is not enabled. Profession stats not available.");
+        return;
+    }
+
+    if (!sPlayerbotAIConfig.CollectDetailedProfessionStats)
+    {
+        LOG_ERROR("playerbots", "Detailed profession stats are disabled. Set "
+                                "Playerbots.CollectDetailedProfessionStats = 1.");
+        return;
+    }
+
+    NewRpgStatistic const total = CollectProfessionStats();
+    auto endReasonName = [](size_t i) { return ProfessionEndReasonName(static_cast<ProfessionEndReason>(i)); };
+
+    auto reasonsToJson = [](auto const& counts, auto nameFor)
+    {
+        std::ostringstream out;
+        out << "{";
+        bool first = true;
+        for (size_t i = 0; i < counts.size(); ++i)
+        {
+            if (!counts[i])
+                continue;
+            if (!first)
+                out << ", ";
+            out << "\"" << JsonEscape(nameFor(i)) << "\": " << counts[i];
+            first = false;
+        }
+        out << "}";
+        return out.str();
+    };
+
+    struct ProfessionRow
+    {
+        uint32 skillLine{0};
+        NewRpgStatistic::ProfessionCounters counters;
+    };
+
+    std::vector<ProfessionRow> professions;
+    professions.reserve(total.byProfession.size());
+    for (auto const& [skillLine, counters] : total.byProfession)
+        professions.push_back({skillLine, counters});
+    std::sort(professions.begin(), professions.end(), [](ProfessionRow const& a, ProfessionRow const& b)
+    {
+        if (a.counters.sessions != b.counters.sessions)
+            return a.counters.sessions > b.counters.sessions;
+        return a.counters.casts > b.counters.casts;
+    });
+
+    struct RecipeRow
+    {
+        uint32 spellId{0};
+        NewRpgStatistic::ProfessionRecipeCounters counters;
+    };
+
+    std::vector<RecipeRow> recipes;
+    recipes.reserve(total.byRecipe.size());
+    for (auto const& [spellId, counters] : total.byRecipe)
+        recipes.push_back({spellId, counters});
+    std::sort(recipes.begin(), recipes.end(),
+              [](RecipeRow const& a, RecipeRow const& b) { return a.counters.failures > b.counters.failures; });
+
+    char stamp[32] = "";
+    std::time_t const now = std::time(nullptr);
+    if (std::tm const* utc = std::gmtime(&now))
+        std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", utc);
+
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"generatedAt\": " << static_cast<uint64>(now) << ",\n";
+    out << "  \"generatedAtUtc\": \"" << stamp << "\",\n";
+    out << "  \"totals\": {\n";
+    out << "    \"sessions\": " << total.profession.sessions << ",\n";
+    out << "    \"casts\": " << total.profession.casts << ",\n";
+    out << "    \"castFailures\": " << total.profession.castFailures << ",\n";
+    out << "    \"skillGain\": " << total.profession.skillGain << ",\n";
+    out << "    \"trainerVisits\": " << total.profession.trainerVisits << ",\n";
+    out << "    \"trainerSpellsLearned\": " << total.profession.trainerSpellsLearned << ",\n";
+    out << "    \"vendorPurchases\": " << total.profession.vendorPurchases << "\n";
+    out << "  },\n";
+    out << "  \"endReasons\": " << reasonsToJson(total.profession.endReasons, endReasonName) << ",\n";
+    out << "  \"professions\": [\n";
+    for (size_t i = 0; i < professions.size(); ++i)
+    {
+        ProfessionRow const& row = professions[i];
+        SkillLineEntry const* skillLine = sSkillLineStore.LookupEntry(row.skillLine);
+        std::string const name = skillLine ? skillLine->name[0] : std::to_string(row.skillLine);
+        out << "    {\n";
+        out << "      \"id\": " << row.skillLine << ",\n";
+        out << "      \"name\": \"" << JsonEscape(name) << "\",\n";
+        out << "      \"sessions\": " << row.counters.sessions << ",\n";
+        out << "      \"casts\": " << row.counters.casts << ",\n";
+        out << "      \"castFailures\": " << row.counters.castFailures << ",\n";
+        out << "      \"skillGain\": " << row.counters.skillGain << ",\n";
+        out << "      \"trainerVisits\": " << row.counters.trainerVisits << ",\n";
+        out << "      \"trainerSpellsLearned\": " << row.counters.trainerSpellsLearned << ",\n";
+        out << "      \"vendorPurchases\": " << row.counters.vendorPurchases << ",\n";
+        out << "      \"endReasons\": " << reasonsToJson(row.counters.endReasons, endReasonName) << "\n";
+        out << "    }" << (i + 1 < professions.size() ? "," : "") << "\n";
+    }
+    out << "  ],\n";
+    out << "  \"recipes\": [\n";
+    for (size_t i = 0; i < recipes.size(); ++i)
+    {
+        RecipeRow const& row = recipes[i];
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(row.spellId);
+        out << "    {\n";
+        out << "      \"id\": " << row.spellId << ",\n";
+        out << "      \"name\": \"" << JsonEscape(spellInfo ? spellInfo->SpellName[0] : "Unknown Spell") << "\",\n";
+        out << "      \"casts\": " << row.counters.casts << ",\n";
+        out << "      \"failures\": " << row.counters.failures << "\n";
+        out << "    }" << (i + 1 < recipes.size() ? "," : "") << "\n";
+    }
+    out << "  ]\n";
+    out << "}\n";
+
+    WriteJsonFile(LogsJsonPath("playerbots_profession_stats.json"), out.str(), "Profession stats");
 }
 
 double RandomPlayerbotMgr::GetBuyMultiplier(Player* bot)

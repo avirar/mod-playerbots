@@ -402,6 +402,7 @@ public:
     bool EnableNewRpgStrategy;
     float RpgTargetSearchDistance;
     bool CollectDetailedQuestStats;
+    bool CollectDetailedProfessionStats;
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool SyncLevelWithPlayers;
     bool RandomBotConcentrateInPlayerZone;

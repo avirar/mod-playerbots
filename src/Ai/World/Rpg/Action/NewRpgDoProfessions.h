@@ -29,7 +29,7 @@ private:
     bool HandleLootWait(NewRpgInfo::DoProfessions& data);
     bool RunPendingCrafts(NewRpgInfo::DoProfessions& data);
     SpellFocusState EnsureSpellFocus(NewRpgInfo::DoProfessions& data, uint32 spellFocus);
-    void FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data);
+    void FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data, ProfessionEndReason reason);
 };
 
 #endif

@@ -1452,6 +1452,13 @@ Playerbots.RpgTargetSearchDistance = 150.0
 # Default: 0 (disabled)
 Playerbots.CollectDetailedQuestStats = 0
 
+# Track per-profession session/cast/failure/skill-gain/trainer/vendor counters and per-recipe
+# failures, reported by ".playerbots rndbot professionstats" and dumped to
+# LogsDir/playerbots_profession_stats.json by ".playerbots rndbot professiondump". Adds per-bot
+# maps that are cleared on every stats aggregation.
+# Default: 0 (disabled)
+Playerbots.CollectDetailedProfessionStats = 0
+
 # Control probability weights for RPG status of bots. Takes effect only when the status meets its premise.​
 # Sum of weights need not be 100. Set to 0 to disable the status.
 #

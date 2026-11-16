@@ -103,6 +103,8 @@ struct NewRpgInfo
 
         uint32 skillLine{0};
         std::vector<uint32> pendingSkillLines;
+        bool started{false};
+        uint16 startSkill{0};
         uint32 spellId{0};
         uint32 lastCast{0};
         uint32 lastCampfire{0};
@@ -202,6 +204,41 @@ enum class QuestAbandonReason : uint8
     Count
 };
 
+enum class ProfessionEndReason : uint8
+{
+    NoRecipe,
+    NoMaterials,
+    BagFull,
+    NoFocus,
+    NoTarget,
+    CraftFailed,
+    SkillLost,
+    Count
+};
+
+inline char const* ProfessionEndReasonName(ProfessionEndReason reason)
+{
+    switch (reason)
+    {
+        case ProfessionEndReason::NoRecipe:
+            return "no_recipe";
+        case ProfessionEndReason::NoMaterials:
+            return "no_materials";
+        case ProfessionEndReason::BagFull:
+            return "bag_full";
+        case ProfessionEndReason::NoFocus:
+            return "no_focus";
+        case ProfessionEndReason::NoTarget:
+            return "no_target";
+        case ProfessionEndReason::CraftFailed:
+            return "craft_failed";
+        case ProfessionEndReason::SkillLost:
+            return "skill_lost";
+        default:
+            return "unknown";
+    }
+}
+
 inline char const* QuestDropReasonName(QuestDropReason reason)
 {
     switch (reason)
@@ -257,6 +294,43 @@ struct NewRpgStatistic
     // Filled only while CollectDetailedQuestStats is enabled.
     std::unordered_map<uint32, QuestCounters> byQuest;
 
+    struct ProfessionCounters
+    {
+        uint32 sessions{0};
+        uint32 casts{0};
+        uint32 castFailures{0};
+        uint32 skillGain{0};
+        uint32 trainerVisits{0};
+        uint32 trainerSpellsLearned{0};
+        uint32 vendorPurchases{0};
+        std::array<uint32, static_cast<size_t>(ProfessionEndReason::Count)> endReasons{};
+
+        ProfessionCounters& operator+=(ProfessionCounters const& other)
+        {
+            sessions += other.sessions;
+            casts += other.casts;
+            castFailures += other.castFailures;
+            skillGain += other.skillGain;
+            trainerVisits += other.trainerVisits;
+            trainerSpellsLearned += other.trainerSpellsLearned;
+            vendorPurchases += other.vendorPurchases;
+            for (size_t i = 0; i < endReasons.size(); ++i)
+                endReasons[i] += other.endReasons[i];
+            return *this;
+        }
+    };
+
+    struct ProfessionRecipeCounters
+    {
+        uint32 casts{0};
+        uint32 failures{0};
+    };
+
+    ProfessionCounters profession;
+    // Filled only while CollectDetailedProfessionStats is enabled.
+    std::unordered_map<uint32, ProfessionCounters> byProfession;
+    std::unordered_map<uint32, ProfessionRecipeCounters> byRecipe;
+
     NewRpgStatistic& operator+=(NewRpgStatistic const& other)
     {
         questAccepted += other.questAccepted;
@@ -275,6 +349,16 @@ struct NewRpgStatistic
                 target.dropped[i] += counters.dropped[i];
             for (size_t i = 0; i < target.abandoned.size(); ++i)
                 target.abandoned[i] += counters.abandoned[i];
+        }
+
+        profession += other.profession;
+        for (auto const& [skillLine, counters] : other.byProfession)
+            byProfession[skillLine] += counters;
+        for (auto const& [spellId, counters] : other.byRecipe)
+        {
+            ProfessionRecipeCounters& target = byRecipe[spellId];
+            target.casts += counters.casts;
+            target.failures += counters.failures;
         }
         return *this;
     }

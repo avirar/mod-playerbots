@@ -7065,6 +7065,70 @@ void PlayerbotAI::RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason
         ++rpgStatistic.byQuest[questId].abandoned[static_cast<size_t>(reason)];
 }
 
+void PlayerbotAI::RecordProfessionSession(uint32 skillLine)
+{
+    ++rpgStatistic.profession.sessions;
+    if (sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        ++rpgStatistic.byProfession[skillLine].sessions;
+}
+
+void PlayerbotAI::RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success)
+{
+    ++rpgStatistic.profession.casts;
+    if (!success)
+        ++rpgStatistic.profession.castFailures;
+
+    if (!sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        return;
+
+    NewRpgStatistic::ProfessionCounters& professionCounters = rpgStatistic.byProfession[skillLine];
+    ++professionCounters.casts;
+    if (!success)
+        ++professionCounters.castFailures;
+
+    NewRpgStatistic::ProfessionRecipeCounters& recipeCounters = rpgStatistic.byRecipe[spellId];
+    ++recipeCounters.casts;
+    if (!success)
+        ++recipeCounters.failures;
+}
+
+void PlayerbotAI::RecordProfessionSkillGain(uint32 skillLine, uint32 gain)
+{
+    rpgStatistic.profession.skillGain += gain;
+    if (sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        rpgStatistic.byProfession[skillLine].skillGain += gain;
+}
+
+void PlayerbotAI::RecordProfessionTrainerVisit(uint32 skillLine, uint32 spellsLearned)
+{
+    ++rpgStatistic.profession.trainerVisits;
+    rpgStatistic.profession.trainerSpellsLearned += spellsLearned;
+    if (!sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        return;
+
+    NewRpgStatistic::ProfessionCounters& counters = rpgStatistic.byProfession[skillLine];
+    ++counters.trainerVisits;
+    counters.trainerSpellsLearned += spellsLearned;
+}
+
+void PlayerbotAI::RecordProfessionVendorPurchase(uint32 skillLine, uint32 count)
+{
+    rpgStatistic.profession.vendorPurchases += count;
+    if (sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        rpgStatistic.byProfession[skillLine].vendorPurchases += count;
+}
+
+void PlayerbotAI::RecordProfessionEnd(uint32 skillLine, ProfessionEndReason reason)
+{
+    size_t const index = static_cast<size_t>(reason);
+    if (index >= rpgStatistic.profession.endReasons.size())
+        return;
+
+    ++rpgStatistic.profession.endReasons[index];
+    if (sPlayerbotAIConfig.CollectDetailedProfessionStats)
+        ++rpgStatistic.byProfession[skillLine].endReasons[index];
+}
+
 uint32 PlayerbotAI::GetReactDelay()
 {
     uint32 base = sPlayerbotAIConfig.ReactDelay;  // Default 100(ms)

@@ -676,8 +676,17 @@ bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& rec
 }
 }  // namespace
 
-void NewRpgDoProfessionsAction::FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data)
+void NewRpgDoProfessionsAction::FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data,
+                                                 ProfessionEndReason reason)
 {
+    if (data.started)
+    {
+        uint16 const currentSkill = bot->GetPureSkillValue(data.skillLine);
+        if (currentSkill > data.startSkill)
+            botAI->RecordProfessionSkillGain(data.skillLine, currentSkill - data.startSkill);
+        botAI->RecordProfessionEnd(data.skillLine, reason);
+    }
+
     if (!data.pendingSkillLines.empty())
     {
         uint32 const next = data.pendingSkillLines.front();
@@ -768,7 +777,11 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
     data.lastTrainer = getMSTime();
     data.lastTrainerSkill = currentSkill;
     bot->SetSelection(trainer->GetGUID());
+    size_t const spellsBefore = bot->GetSpellMap().size();
     botAI->DoSpecificAction("trainer", Event("trainer", "learn"), true);
+    size_t const spellsAfter = bot->GetSpellMap().size();
+    botAI->RecordProfessionTrainerVisit(
+        data.skillLine, spellsAfter > spellsBefore ? uint32(spellsAfter - spellsBefore) : 0u);
     return true;
 }
 
@@ -906,6 +919,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
 
         data.pendingCrafts.erase(data.pendingCrafts.begin());
         LOG_DEBUG("playerbots", "[New RPG] {} bought {} x{}", bot->GetName(), step.expectedItemId, purchased);
+        botAI->RecordProfessionVendorPurchase(data.skillLine, purchased);
         return true;
     }
 
@@ -1017,6 +1031,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
     uint32 const expectedBefore = step.inputItemId ? bot->GetItemCount(step.expectedItemId, false) : 0;
     bool const cast =
         step.inputItemId ? botAI->CastSpell(step.spellId, bot, inputItem) : botAI->CastSpell(step.spellId, bot);
+    botAI->RecordProfessionCast(data.skillLine, step.spellId, cast);
     if (!cast)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast failed for recipe {}", bot->GetName(),
@@ -1124,8 +1139,15 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (!data.skillLine || !botAI->HasSkill(SkillType(data.skillLine)))
     {
-        FinishProfession(info, data);
+        FinishProfession(info, data, ProfessionEndReason::SkillLost);
         return true;
+    }
+
+    if (!data.started)
+    {
+        data.started = true;
+        data.startSkill = bot->GetPureSkillValue(data.skillLine);
+        botAI->RecordProfessionSession(data.skillLine);
     }
 
     // Let the current cast finish before selecting the next recipe.
@@ -1146,7 +1168,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (!data.pendingCrafts.empty())
     {
         if (!RunPendingCrafts(data))
-            FinishProfession(info, data);
+            FinishProfession(info, data, ProfessionEndReason::CraftFailed);
         return true;
     }
 
@@ -1361,7 +1383,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
                       bot->GetName(), data.skillLine);
-            FinishProfession(info, data);
+            FinishProfession(info, data, ProfessionEndReason::NoMaterials);
             return true;
         }
 
@@ -1392,7 +1414,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
                       bot->GetName(), data.skillLine);
-            FinishProfession(info, data);
+            FinishProfession(info, data, ProfessionEndReason::NoMaterials);
             return true;
         }
     }
@@ -1403,12 +1425,12 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus", bot->GetName(),
                   bagSpace, chosen->spellId);
-        FinishProfession(info, data);
+        FinishProfession(info, data, ProfessionEndReason::BagFull);
         return true;
     }
     if (chosen->useful && bagSpace >= 100)
     {
-        FinishProfession(info, data);
+        FinishProfession(info, data, ProfessionEndReason::BagFull);
         return true;
     }
 
@@ -1422,7 +1444,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         case SpellFocusState::Waiting:
             return true;
         case SpellFocusState::Unavailable:
-            FinishProfession(info, data);
+            FinishProfession(info, data, ProfessionEndReason::NoFocus);
             return true;
     }
 
@@ -1468,7 +1490,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
                           chosen->spellId);
-                FinishProfession(info, data);
+                FinishProfession(info, data, ProfessionEndReason::NoTarget);
                 return true;
             }
             LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
@@ -1478,6 +1500,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     }
     else
         cast = botAI->CastSpell(chosen->spellId, bot);
+
+    botAI->RecordProfessionCast(data.skillLine, chosen->spellId, cast);
 
     if (cast)
     {

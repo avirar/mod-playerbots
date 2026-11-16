@@ -636,6 +636,12 @@ public:
     void RecordQuestRewarded(uint32 questId);
     void RecordQuestDropped(uint32 questId, QuestDropReason reason);
     void RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason);
+    void RecordProfessionSession(uint32 skillLine);
+    void RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success);
+    void RecordProfessionSkillGain(uint32 skillLine, uint32 gain);
+    void RecordProfessionTrainerVisit(uint32 skillLine, uint32 spellsLearned);
+    void RecordProfessionVendorPurchase(uint32 skillLine, uint32 count);
+    void RecordProfessionEnd(uint32 skillLine, ProfessionEndReason reason);
     std::unordered_set<uint32> lowPriorityQuest;
     std::unordered_set<uint32> announcedRecipeSpells;
     time_t bgReleaseAttemptTime = 0;

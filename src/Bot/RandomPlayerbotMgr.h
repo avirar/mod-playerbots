@@ -156,8 +156,11 @@ public:
     void PrintStats();
     void PrintQuestTotals(NewRpgStatistic const& stats);
     NewRpgStatistic CollectQuestStats();
+    NewRpgStatistic CollectProfessionStats();
     void PrintQuestStats();
+    void PrintProfessionStats();
     void ExportQuestStatsToJson();
+    void ExportProfessionStatsToJson();
     double GetBuyMultiplier(Player* bot);
     double GetSellMultiplier(Player* bot);
     void AddTradeDiscount(Player* bot, Player* master, int32 value);
