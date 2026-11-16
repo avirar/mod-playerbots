@@ -106,6 +106,7 @@ struct NewRpgInfo
         uint32 lastCast{0};
         uint32 lastCampfire{0};
         uint32 lastTrainer{0};
+        uint16 lastTrainerSkill{0};
         ObjectGuid trainerGuid{};
         uint32 casts{0};
         std::vector<CraftStep> pendingCrafts;

@@ -234,7 +234,7 @@ std::string NewRpgInfo::ToString()
             out << "\nspellId: " << arg.spellId;
             out << "\nlastCampfire: " << (arg.lastCampfire ? GetMSTimeDiffToNow(arg.lastCampfire) : 0);
             if (!arg.trainerGuid.IsEmpty())
-                out << "\ntrainer: " << arg.trainerGuid.ToString()
+                out << "\ntrainer: " << arg.trainerGuid.ToString() << " skill " << arg.lastTrainerSkill
                     << " (" << (arg.lastTrainer ? GetMSTimeDiffToNow(arg.lastTrainer) : 0) << " ms ago)";
             out << "\ncasts: " << arg.casts;
             out << "\npendingCrafts: " << arg.pendingCrafts.size();

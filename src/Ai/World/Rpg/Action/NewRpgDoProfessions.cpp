@@ -117,6 +117,7 @@ constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
 constexpr uint32 RECIPE_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
+constexpr uint32 VENDOR_REAGENT_TARGET_STACKS = 2;
 constexpr size_t MAX_PLAN_STEPS = 20;
 // Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
 // outputs do not consume the whole plan budget.
@@ -459,6 +460,95 @@ bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usag
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth);
 
+bool IsVendorStockReagent(ItemTemplate const* proto)
+{
+    // Keep gatherable materials (herbs, ore, ...) out of the stock-up path: they
+    // are usually cheaper to gather and would otherwise turn every vendor visit
+    // into a shopping trip.
+    return proto && proto->Class == ITEM_CLASS_TRADE_GOODS && !proto->RequiredSkill && !proto->RequiredSkillRank;
+}
+
+bool IsVendorOnlyReagent(CraftPlanContext const& ctx, uint32 itemId)
+{
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+    if (!proto || !IsVendorStockReagent(proto))
+        return false;
+
+    if (ctx.craftIndex->find(itemId) != ctx.craftIndex->end())
+        return false;
+
+    for (ConversionCandidate const& conversion : ctx.bags->conversions)
+        if (conversion.outputs.find(itemId) != conversion.outputs.end())
+            return false;
+
+    return ctx.bags->vendorItems.find(itemId) != ctx.bags->vendorItems.end();
+}
+
+bool PlanVendorPurchase(CraftPlanContext& ctx, uint32 itemId, uint32 missing)
+{
+    auto const vendor = ctx.bags->vendorItems.find(itemId);
+    if (vendor == ctx.bags->vendorItems.end() || IsVendorFailure(*ctx.info, itemId) ||
+        ctx.plan.steps.size() >= MAX_PLAN_STEPS)
+        return false;
+
+    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+    if (!proto)
+        return false;
+
+    uint32 const stack = std::max<uint32>(1, proto->GetMaxStackSize());
+    uint32 const available = ctx.plan.available[itemId];
+    bool const canStock = IsVendorOnlyReagent(ctx, itemId);
+    uint32 const target = VENDOR_REAGENT_TARGET_STACKS * stack;
+    if (!missing && (!canStock || available >= target))
+        return false;
+
+    uint32 const stockedMissing =
+        std::max(missing, canStock && available < target ? target - available : missing);
+
+    // Prefer the full target, then one stack, then the exact missing count. A
+    // vendor-only reagent is stocked so the next craft does not need another trip.
+    std::array<uint32, 3> const candidates = {
+        stockedMissing, std::max(missing, canStock ? stack : missing), missing};
+    uint32 previous = std::numeric_limits<uint32>::max();
+    for (uint32 candidate : candidates)
+    {
+        if (!candidate || candidate == previous)
+            continue;
+        previous = candidate;
+
+        for (VendorOffer const& offer : vendor->second)
+        {
+            uint32 const buyCount = std::max<uint32>(1, offer.buyCount);
+            uint32 purchases = (candidate + buyCount - 1) / buyCount;
+            if (offer.stock != std::numeric_limits<uint32>::max())
+            {
+                uint32 const maxPurchases = offer.stock / buyCount;
+                if (purchases > maxPurchases)
+                    purchases = maxPurchases;
+            }
+            if (!purchases)
+                continue;
+
+            uint32 const units = purchases * buyCount;
+            if (units < missing)
+                continue;
+
+            uint64 const cost = uint64(offer.price) * purchases;
+            if (cost > ctx.plan.moneyBudget)
+                continue;
+
+            ctx.plan.moneyBudget -= uint32(cost);
+            ctx.plan.steps.push_back({0, 0, 0, units, itemId, offer.guid});
+            ctx.plan.available[itemId] += units - missing;
+            LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
+                      ctx.bot->GetName(), itemId, units, offer.price);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
 {
     if (!itemId || count == 0)
@@ -470,7 +560,15 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
     available -= fromBag;
     count -= fromBag;
     if (count == 0)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (proto && IsVendorOnlyReagent(ctx, itemId) &&
+            ctx.plan.available[itemId] < std::max<uint32>(1, proto->GetMaxStackSize()))
+        {
+            PlanVendorPurchase(ctx, itemId, 0);
+        }
         return true;
+    }
 
     if (depth >= MAX_CRAFT_DEPTH || ctx.plan.visiting.count(itemId) || ctx.plan.steps.size() >= MAX_PLAN_STEPS)
     {
@@ -584,30 +682,8 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
         return true;
 
     uint32 const missing = remaining - uint32(std::min(produced, float(remaining)));
-    auto const vendor = ctx.bags->vendorItems.find(itemId);
-    if (vendor != ctx.bags->vendorItems.end() && !IsVendorFailure(*ctx.info, itemId))
-    {
-        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-        if (proto)
-        {
-            for (VendorOffer const& offer : vendor->second)
-            {
-                if (offer.stock < missing)
-                    continue;
-
-                uint32 const purchases = (missing + offer.buyCount - 1) / offer.buyCount;
-                uint64 const cost = uint64(offer.price) * purchases;
-                if (cost > ctx.plan.moneyBudget)
-                    continue;
-
-                ctx.plan.moneyBudget -= uint32(cost);
-                ctx.plan.steps.push_back({0, 0, 0, missing, itemId, offer.guid});
-                LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
-                          ctx.bot->GetName(), itemId, missing, offer.price);
-                return true;
-            }
-        }
-    }
+    if (PlanVendorPurchase(ctx, itemId, missing))
+        return true;
 
     // A chance-based conversion may not yield the exact item. Only a direct
     // reagent of the final recipe may gamble; a nested craft that cannot be
@@ -670,6 +746,7 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
 {
     Creature* trainer = nullptr;
     float bestTrainerDistance = std::numeric_limits<float>::max();
+    uint16 const currentSkill = bot->GetBaseSkillValue(data.skillLine);
     for (ObjectGuid const guid : AI_VALUE(GuidVector, "possible new rpg targets"))
     {
         Creature* creature = ObjectAccessor::GetCreature(*bot, guid);
@@ -679,11 +756,6 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
         Trainer::Trainer const* trainerData = sObjectMgr->GetTrainer(creature->GetEntry());
         if (!trainerData || trainerData->GetTrainerType() != Trainer::Type::Tradeskill ||
             !trainerData->IsTrainerValidForPlayer(bot))
-            continue;
-
-        bool const recentlyVisited = data.trainerGuid == creature->GetGUID() && data.lastTrainer &&
-                                     GetMSTimeDiffToNow(data.lastTrainer) < 5 * 60 * IN_MILLISECONDS;
-        if (recentlyVisited)
             continue;
 
         bool teachesProfession = false;
@@ -699,17 +771,28 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
             continue;
 
         bool teachesSkill = false;
+        bool teachesNewSkill = false;
         for (Trainer::Spell const& trainerSpell : trainerData->GetSpells())
         {
             if (trainerSpell.ReqSkillLine != data.skillLine && trainerSpell.ReqSkillLine != 0)
                 continue;
-            if (trainerData->CanTeachSpell(bot, &trainerSpell))
-            {
-                teachesSkill = true;
-                break;
-            }
+            if (!trainerData->CanTeachSpell(bot, &trainerSpell))
+                continue;
+
+            teachesSkill = true;
+            if (trainerSpell.ReqSkillRank > data.lastTrainerSkill)
+                teachesNewSkill = true;
         }
         if (!teachesSkill)
+            continue;
+
+        // A skill-up can unlock a new rank before the retry window expires. Only the
+        // unchanged-skill case is rate-limited, so unaffordable spells do not cause a
+        // trainer visit on every tick.
+        bool const recentlyVisited = data.trainerGuid == creature->GetGUID() && data.lastTrainer &&
+                                     !teachesNewSkill &&
+                                     GetMSTimeDiffToNow(data.lastTrainer) < 5 * 60 * IN_MILLISECONDS;
+        if (recentlyVisited)
             continue;
 
         float const distance = bot->GetDistance(creature);
@@ -735,6 +818,7 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
               trainer->GetEntry(), data.skillLine);
     data.trainerGuid = trainer->GetGUID();
     data.lastTrainer = getMSTime();
+    data.lastTrainerSkill = currentSkill;
     bot->SetSelection(trainer->GetGUID());
     botAI->DoSpecificAction("trainer", Event("trainer", "learn"), true);
     return true;
