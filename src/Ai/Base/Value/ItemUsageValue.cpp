@@ -681,6 +681,9 @@ bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
             return botAI->HasSkill(SKILL_ENCHANTING);
         case 7005:  // Skinning Knife
             return botAI->HasSkill(SKILL_SKINNING);
+        case 20815:  // Jeweler's Kit
+        case 20824:  // Simple Grinder
+            return botAI->HasSkill(SKILL_JEWELCRAFTING);
         case 12709:
             return botAI->HasSkill(SKILL_SKINNING);
         case 19901:

@@ -937,6 +937,14 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
 
     for (uint8 t = 0; t < 2; ++t)
     {
+        if (spellInfo->Totem[t] && !bot->HasItemCount(spellInfo->Totem[t], 1, false))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing tool item {}", bot->GetName(),
+                      spellInfo->Totem[t]);
+            data.pendingCrafts.clear();
+            return false;
+        }
+
         if (spellInfo->TotemCategory[t] && !bot->HasItemTotemCategory(spellInfo->TotemCategory[t]))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: missing tool category {}", bot->GetName(),
@@ -1275,6 +1283,12 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         bool hasTools = true;
         for (uint8 t = 0; t < 2; ++t)
         {
+            if (spellInfo->Totem[t] && !bot->HasItemCount(spellInfo->Totem[t], 1, false))
+            {
+                hasTools = false;
+                break;
+            }
+
             if (spellInfo->TotemCategory[t] && !bot->HasItemTotemCategory(spellInfo->TotemCategory[t]))
             {
                 hasTools = false;

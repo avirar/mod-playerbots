@@ -3367,7 +3367,10 @@ void PlayerbotFactory::InitProfessionTools()
     }
 
     if (bot->HasSkill(SKILL_JEWELCRAFTING))
+    {
         ensureTool(20815, 0);  // Jeweler's Kit
+        ensureTool(20824, 0);  // Simple Grinder
+    }
 
     if (bot->HasSkill(SKILL_INSCRIPTION))
         ensureTool(39505, 121);  // Virtuoso Inking Set

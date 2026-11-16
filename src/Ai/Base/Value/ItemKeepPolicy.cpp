@@ -30,7 +30,7 @@ constexpr uint32 KEEP_CONSUMABLE_STACKS = 3;
 constexpr uint32 KEEP_GEAR_COPIES = 1;
 constexpr uint32 KEEP_PROFESSION_STOCK_STACKS = 2;
 
-std::array<uint32, 16> const PROFESSION_TOOL_IDS = {
+std::array<uint32, 17> const PROFESSION_TOOL_IDS = {
     5956,   // Blacksmith Hammer
     6218,   // Runed Copper Rod
     6219,   // Arclight Spanner
@@ -40,6 +40,7 @@ std::array<uint32, 16> const PROFESSION_TOOL_IDS = {
     11145,  // Runed Truesilver Rod
     16207,  // Runed Arcanite Rod
     20815,  // Jeweler's Kit
+    20824,  // Simple Grinder
     22461,  // Runed Fel Iron Rod
     22462,  // Runed Adamantite Rod
     22463,  // Runed Eternium Rod
