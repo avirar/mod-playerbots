@@ -198,6 +198,7 @@ private:
     void InitTalentsByTemplate(uint32 specNo);
     void InitQuests(std::list<uint32>& questMap, bool withRewardItem = true);
     void ClearInventory();
+    void ClearBagItems();
     void ClearAllItems();
     void ResetQuests();
 

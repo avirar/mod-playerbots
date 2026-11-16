@@ -155,6 +155,8 @@ public:
     int WeightTeleToDalaran;
     std::vector<uint32> RandomBotMaps;
     std::vector<uint32> RandomBotQuestItems;
+    std::vector<std::string> RandomBotInventoryCleanupPriority;
+    std::vector<std::string> RandomBotInventoryCleanupProtected;
     std::vector<uint32> RandomBotAccounts;
     std::vector<uint32> RandomBotSpellIds;
     std::vector<uint32> RandomBotQuestIds;

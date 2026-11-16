@@ -1352,6 +1352,14 @@ Playerbots.AutoDoQuests = 1
 # Quest items to keep in bots' inventories (do not automatically destroy)
 Playerbots.RandomBotQuestItems = "5175,5176,5177,5178,6948,11000,12382,13704,16309"
 
+# Destroy order for random-bot bag cleanup, least useful first.
+# Categories: useless,trade,disenchant,consumable,quest,gear
+# Missing categories are never destroyed by the staged fallback.
+Playerbots.RandomBotInventoryCleanupPriority = "useless,trade,disenchant,consumable,quest,gear"
+
+# Categories never destroyed by random-bot bag cleanup, even if listed in the priority order.
+Playerbots.RandomBotInventoryCleanupProtected = "quest,gear"
+
 #
 #
 ####################################################################################################

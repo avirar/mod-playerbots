@@ -16,6 +16,7 @@
 #include "GuildMgr.h"
 #include "InventoryAction.h"
 #include "Item.h"
+#include "ItemKeepPolicy.h"
 #include "ItemPackets.h"
 #include "ItemTemplate.h"
 #include "ItemVisitors.h"
@@ -42,11 +43,10 @@
 #include "World.h"
 #include <algorithm>
 #include <array>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
-
-#include <array>
-#include <utility>
+#include <vector>
 
 namespace
 {
@@ -1756,7 +1756,7 @@ void PlayerbotFactory::ClearEverything()
     bot->resetTalents(true);
     ClearSkills();
     ClearSpells();
-    ClearInventory();
+    ClearBagItems();
     ResetQuests();
     // bot->SaveToDB(false, false);
 }
@@ -3715,21 +3715,13 @@ void PlayerbotFactory::InitSkills()
 
 void PlayerbotFactory::SetRandomSkill(uint16 id)
 {
-    uint32 maxValue = level * 5;
+    uint32 const target = level * 5;
+    uint32 const currentValue = bot->GetPureSkillValue(id);
+    uint32 const currentMax = bot->GetPureMaxSkillValue(id);
+    uint32 const value = std::max(currentValue, target);
+    uint32 const maxValue = std::max(currentMax, value);
+    uint16 const step = currentValue ? bot->GetSkillStep(id) : 1;
 
-    // do not let skill go beyond limit even if maxlevel > blizzlike
-    // if (level > 60)
-    // {
-    //     maxValue = (level + 10) * 5;
-    // }
-
-    // uint32 value = urand(maxValue - level, maxValue);
-    uint32 value = maxValue;
-    //uint32 curValue = bot->GetSkillValue(id); //not used, line marked for removal.
-
-    uint16 step = bot->GetSkillValue(id) ? bot->GetSkillStep(id) : 1;
-
-    // if (!bot->HasSkill(id) || value > curValue)
     bot->SetSkill(id, step, value, maxValue);
 }
 
@@ -4168,11 +4160,210 @@ void PlayerbotFactory::InitInstanceQuests()
     // quest rewards boost bot level, so reduce back
     bot->GiveLevel(level);
 
-    ClearInventory();
+    ClearBagItems();
     bot->SetUInt32Value(PLAYER_XP, currentXP);
 }
 
+namespace
+{
+constexpr uint8 INVENTORY_CLEANUP_MAX_BAG_SPACE = 80;
+
+struct InventoryItemGroup
+{
+    std::vector<Item*> items;
+    uint32 totalCount = 0;
+};
+
+uint8 GetInventoryBagSpace(Player* bot)
+{
+    uint32 used = 0;
+    uint32 total = INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START;
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            ++used;
+    }
+
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+    {
+        Bag const* bag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bagSlot);
+        if (!bag)
+            continue;
+
+        total += bag->GetBagSize();
+        used += bag->GetBagSize() - bag->GetFreeSlots();
+    }
+
+    return total ? static_cast<uint8>((used * 100) / total) : 100;
+}
+
+uint32 GetFallbackKeepCount(ItemCleanupCategory category, ItemTemplate const* proto)
+{
+    switch (category)
+    {
+        case ItemCleanupCategory::Trade:
+        case ItemCleanupCategory::Consumable:
+            return std::max<uint32>(1, proto->GetMaxStackSize());
+        case ItemCleanupCategory::Useless:
+        case ItemCleanupCategory::Disenchant:
+        case ItemCleanupCategory::Quest:
+        case ItemCleanupCategory::Gear:
+        case ItemCleanupCategory::None:
+        default:
+            return 0;
+    }
+}
+}
+
 void PlayerbotFactory::ClearInventory()
+{
+    if (!botAI || !botAI->GetAiObjectContext())
+    {
+        ClearBagItems();
+        return;
+    }
+
+    std::unordered_map<uint32, ItemKeepRule> rules;
+    auto const getRule = [&](ItemTemplate const* proto) -> ItemKeepRule const&
+    {
+        auto const itr = rules.find(proto->ItemId);
+        if (itr != rules.end())
+            return itr->second;
+
+        ItemUsage const usage =
+            botAI->GetAiObjectContext()->GetValue<ItemUsage>("item usage", proto->ItemId)->Get();
+        return rules.emplace(proto->ItemId, GetItemKeepRule(botAI, proto, usage)).first->second;
+    };
+
+    auto const collectGroups = [&]()
+    {
+        std::unordered_map<uint32, InventoryItemGroup> groups;
+        auto const addItem = [&groups](Item* item)
+        {
+            InventoryItemGroup& group = groups[item->GetEntry()];
+            group.items.push_back(item);
+            group.totalCount += item->GetCount();
+        };
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        {
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                addItem(item);
+        }
+
+        for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+        {
+            if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+                addItem(item);
+        }
+
+        for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        {
+            if (Bag* bag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bagSlot))
+            {
+                for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                {
+                    if (Item* item = bag->GetItemByPos(slot))
+                        addItem(item);
+                }
+            }
+        }
+
+        return groups;
+    };
+
+    uint32 totalDestroyed = 0;
+    auto const destroyExcess = [&](InventoryItemGroup const& group, uint32 keepCount)
+    {
+        if (group.totalCount <= keepCount)
+            return 0u;
+
+        uint32 const requested = group.totalCount - keepCount;
+        uint32 remaining = requested;
+        for (Item* item : group.items)
+        {
+            if (!remaining)
+                break;
+
+            bot->DestroyItemCount(item, remaining, true);
+        }
+
+        return requested - remaining;
+    };
+
+    auto groups = collectGroups();
+
+    // Completed quest source items have no remaining purpose and cannot be vendored.
+    for (auto const& groupPair : groups)
+    {
+        ItemKeepRule const& rule = getRule(groupPair.second.items.front()->GetTemplate());
+        if (rule.completedQuestSource)
+            totalDestroyed += destroyExcess(groupPair.second, 0);
+    }
+
+    groups = collectGroups();
+    for (auto const& groupPair : groups)
+    {
+        InventoryItemGroup const& group = groupPair.second;
+        ItemKeepRule const& rule = getRule(group.items.front()->GetTemplate());
+        if (rule.alwaysKeep)
+            continue;
+
+        totalDestroyed += destroyExcess(group, rule.keepCount);
+    }
+
+    if (GetInventoryBagSpace(bot) >= INVENTORY_CLEANUP_MAX_BAG_SPACE)
+    {
+        std::vector<ItemCleanupCategory> protectedCategories;
+        for (auto const& token : sPlayerbotAIConfig.RandomBotInventoryCleanupProtected)
+        {
+            ItemCleanupCategory category;
+            if (TryParseItemCleanupCategory(token, category))
+                protectedCategories.push_back(category);
+        }
+
+        for (auto const& token : sPlayerbotAIConfig.RandomBotInventoryCleanupPriority)
+        {
+            ItemCleanupCategory category;
+            if (!TryParseItemCleanupCategory(token, category))
+            {
+                LOG_WARN("playerbots", "Unknown inventory cleanup category '{}'", token);
+                continue;
+            }
+
+            if (category == ItemCleanupCategory::Useless || category == ItemCleanupCategory::None)
+                continue;
+
+            if (std::find(protectedCategories.begin(), protectedCategories.end(), category) !=
+                protectedCategories.end())
+                continue;
+
+            groups = collectGroups();
+            for (auto const& groupPair : groups)
+            {
+                InventoryItemGroup const& group = groupPair.second;
+                ItemTemplate const* proto = group.items.front()->GetTemplate();
+                ItemKeepRule const& rule = getRule(proto);
+                if (rule.alwaysKeep || rule.completedQuestSource || rule.category != category)
+                    continue;
+
+                uint32 const limit = GetFallbackKeepCount(category, proto);
+                totalDestroyed += destroyExcess(group, std::min(rule.keepCount, limit));
+            }
+
+            if (GetInventoryBagSpace(bot) < INVENTORY_CLEANUP_MAX_BAG_SPACE)
+                break;
+        }
+    }
+
+    if (totalDestroyed)
+    {
+        LOG_DEBUG("playerbots", "{} inventory cleanup destroyed {} item(s), bag space {}%", bot->GetName(),
+                  totalDestroyed, GetInventoryBagSpace(bot));
+    }
+}
+
+void PlayerbotFactory::ClearBagItems()
 {
     DestroyItemsVisitor visitor(bot);
     IterateItems(&visitor);

@@ -213,6 +213,15 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<std::string>("Playerbots.RandomBotQuestItems",
                                            "5175,5176,5177,5178,6948,11000,12382,13704,16309"),
         RandomBotQuestItems);
+    RandomBotInventoryCleanupPriority.clear();
+    LoadListString<std::vector<std::string>>(
+        sConfigMgr->GetOption<std::string>("Playerbots.RandomBotInventoryCleanupPriority",
+                                           "useless,trade,disenchant,consumable,quest,gear"),
+        RandomBotInventoryCleanupPriority);
+    RandomBotInventoryCleanupProtected.clear();
+    LoadListString<std::vector<std::string>>(
+        sConfigMgr->GetOption<std::string>("Playerbots.RandomBotInventoryCleanupProtected", "quest,gear"),
+        RandomBotInventoryCleanupProtected);
     LoadList<std::vector<uint32>>(sConfigMgr->GetOption<std::string>("Playerbots.RandomBotSpellIds", "54197"),
                                   RandomBotSpellIds);
     LoadList<std::vector<uint32>>(

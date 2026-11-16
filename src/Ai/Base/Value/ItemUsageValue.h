@@ -15,6 +15,17 @@ class Player;
 class PlayerbotAI;
 
 struct ItemTemplate;
+
+// While alive, reagent usefulness is computed without the high-bag-space
+// "all other reagents present" filter, including for crafted outputs.
+class ScopedPermissiveReagentCheck
+{
+public:
+    ScopedPermissiveReagentCheck();
+    ~ScopedPermissiveReagentCheck();
+    ScopedPermissiveReagentCheck(ScopedPermissiveReagentCheck const&) = delete;
+    ScopedPermissiveReagentCheck& operator=(ScopedPermissiveReagentCheck const&) = delete;
+};
 struct ParsedItemUsage
 {
     uint32 itemId = 0;

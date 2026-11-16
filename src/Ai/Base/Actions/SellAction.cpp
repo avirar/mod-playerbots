@@ -6,12 +6,10 @@
 
 #include "SellAction.h"
 
-#include <algorithm>
-
 #include "ChatHelper.h"
 #include "Event.h"
+#include "ItemKeepPolicy.h"
 #include "ItemPackets.h"
-#include "ItemUsageValue.h"
 #include "ItemVisitors.h"
 #include "Playerbots.h"
 
@@ -152,26 +150,6 @@ void SellAction::Sell(FindItemVisitor* visitor)
     }
 }
 
-uint32 SellAction::GetQuestItemRequirement(uint32 itemId)
-{
-    uint32 maxRequirement = 0;
-
-    for (auto const& questPair : botAI->GetCurrentQuestsRequiringItemId(itemId))
-    {
-        Quest const* quest = questPair.first;
-        if (!quest)
-            continue;
-
-        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; i++)
-        {
-            if (quest->RequiredItemId[i] == itemId)
-                maxRequirement = std::max(maxRequirement, quest->RequiredItemCount[i]);
-        }
-    }
-
-    return maxRequirement;
-}
-
 void SellAction::Sell(Item* item, bool force)
 {
     if (!item)
@@ -181,16 +159,13 @@ void SellAction::Sell(Item* item, bool force)
     uint32 itemId = item->GetEntry();
     ItemTemplate const* proto = item->GetTemplate();
 
-    uint32 keepRequirement = force ? 0 : GetQuestItemRequirement(itemId);
-
-    if (!force && (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC ||
-        proto->Class == ITEM_CLASS_REAGENT))
+    uint32 keepRequirement = 0;
+    if (!force)
     {
-        // Needed class reagents (spells in the bot's book consume them): keep exactly 2 full
-        // stacks, so the sell stop point is consistent regardless of bag stack order.
-        bool lowBagSpace = context->GetValue<uint8>("bag space")->Get() > 50;
-        if (ItemUsageValue(botAI).IsItemNeededForUsefullSpell(proto, lowBagSpace))
-            keepRequirement = std::max(keepRequirement, 2u * proto->GetMaxStackSize());
+        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", itemId)->Get();
+        ItemKeepRule const rule = GetItemKeepRule(botAI, proto, usage);
+        if (!rule.alwaysKeep)
+            keepRequirement = rule.keepCount;
     }
 
     uint32 countToSell = item->GetCount();

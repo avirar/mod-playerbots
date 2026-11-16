@@ -24,6 +24,15 @@
 
 static bool IsRoguePoison(ItemTemplate const* proto);
 
+namespace
+{
+thread_local uint32 permissiveReagentCheckDepth = 0;
+}
+
+ScopedPermissiveReagentCheck::ScopedPermissiveReagentCheck() { ++permissiveReagentCheckDepth; }
+
+ScopedPermissiveReagentCheck::~ScopedPermissiveReagentCheck() { --permissiveReagentCheckDepth; }
+
 ItemUsage ItemUsageValue::Calculate()
 {
     ParsedItemUsage const parsed = GetItemIdFromQualifier();
@@ -54,7 +63,7 @@ ItemUsage ItemUsageValue::Calculate()
             needItem = true;
         else
         {
-            bool lowBagSpace = AI_VALUE(uint8, "bag space") > 50;
+            bool lowBagSpace = permissiveReagentCheckDepth == 0 && AI_VALUE(uint8, "bag space") > 50;
 
             if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC ||
                 proto->Class == ITEM_CLASS_REAGENT)
