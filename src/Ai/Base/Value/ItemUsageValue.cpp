@@ -13,7 +13,6 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
-#include "ProfessionStockPolicy.h"
 #include "QuestAction.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
@@ -45,12 +44,6 @@ ItemUsage ItemUsageValue::Calculate()
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
     if (!proto)
         return ITEM_USAGE_NONE;
-
-    if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto) &&
-        !GetProfessionVendorStockTarget(botAI, proto))
-    {
-        return proto->SellPrice > 0 ? ITEM_USAGE_VENDOR : ITEM_USAGE_NONE;
-    }
 
     if (IsRealPlayer(botAI->GetMaster()))
     {

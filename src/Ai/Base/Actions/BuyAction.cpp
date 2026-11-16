@@ -97,7 +97,17 @@ bool BuyAction::Execute(Event event)
                 if (!proto)
                     continue;
 
-                uint32 const stockTarget = GetProfessionVendorStockTarget(botAI, proto);
+                uint32 stockTarget = GetProfessionVendorStockTarget(botAI, proto);
+                if (!stockTarget && IsProfessionVendorStockCandidate(proto) &&
+                    IsKnownProfessionVendorReagent(botAI, proto))
+                {
+                    ScopedPermissiveReagentCheck const permissiveReagentCheck;
+                    if (!ItemUsageValue(botAI).IsItemNeededForUsefullSpell(proto))
+                        continue;  // obsolete profession reagent tier
+
+                    stockTarget = 2 * std::max<uint32>(1, proto->GetMaxStackSize());
+                }
+
                 if (stockTarget)
                 {
                     uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
@@ -128,9 +138,6 @@ bool BuyAction::Execute(Event event)
                             break;
                         continue;
                     }
-
-                    if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
-                        break;  // obsolete profession reagent tier
 
                     ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", tItem->item);
 

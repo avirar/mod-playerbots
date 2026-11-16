@@ -28,6 +28,7 @@ constexpr uint32 KEEP_TRADE_STACKS = 5;
 constexpr uint32 KEEP_DISENCHANT_STACKS = 2;
 constexpr uint32 KEEP_CONSUMABLE_STACKS = 3;
 constexpr uint32 KEEP_GEAR_COPIES = 1;
+constexpr uint32 KEEP_PROFESSION_STOCK_STACKS = 2;
 
 std::array<uint32, 16> const PROFESSION_TOOL_IDS = {
     5956,   // Blacksmith Hammer
@@ -194,12 +195,19 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
-    // Obsolete profession reagent tiers are cleared; unrelated vendor items are left to
-    // the normal trade-good rules.
+    // Older profession reagent tiers are kept only while a useful spell still
+    // consumes them; otherwise they are obsolete stock.
     if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
     {
-        rule.category = ItemCleanupCategory::Useless;
-        rule.keepCount = 0;
+        bool needed = usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP;
+        if (!needed)
+        {
+            ScopedPermissiveReagentCheck const permissiveReagentCheck;
+            needed = ItemUsageValue(botAI).IsItemNeededForUsefullSpell(proto);
+        }
+
+        rule.category = needed ? ItemCleanupCategory::Trade : ItemCleanupCategory::Useless;
+        rule.keepCount = needed ? GetStackCount(proto, KEEP_PROFESSION_STOCK_STACKS) : 0;
         return rule;
     }
 
