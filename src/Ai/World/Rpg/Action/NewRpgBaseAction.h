@@ -57,7 +57,7 @@ protected:
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
-    uint32 SelectProfessionToLevel();
+    std::vector<uint32> SelectProfessionsToLevel();
 
 protected:
     /* FOR MOVE FAR */

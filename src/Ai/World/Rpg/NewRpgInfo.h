@@ -102,6 +102,7 @@ struct NewRpgInfo
         };
 
         uint32 skillLine{0};
+        std::vector<uint32> pendingSkillLines;
         uint32 spellId{0};
         uint32 lastCast{0};
         uint32 lastCampfire{0};
@@ -173,6 +174,7 @@ struct NewRpgInfo
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToDoGather();
     void ChangeToDoProfessions(uint32 skillLine);
+    void ChangeToDoProfessions(uint32 skillLine, std::vector<uint32> pendingSkillLines);
     void ChangeToRest();
     void ChangeToIdle();
     bool CanChangeTo(NewRpgStatus status);

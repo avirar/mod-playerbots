@@ -4334,7 +4334,8 @@ void PlayerbotFactory::ClearInventory()
     for (auto const& groupPair : groups)
     {
         ItemKeepRule const& rule = getRule(groupPair.second.items.front()->GetTemplate());
-        if (rule.completedQuestSource)
+        if (rule.completedQuestSource && std::find(protectedCategories.begin(), protectedCategories.end(),
+                                                   rule.category) == protectedCategories.end())
             totalDestroyed += destroyExcess(groupPair.second, 0);
     }
 
@@ -4344,7 +4345,7 @@ void PlayerbotFactory::ClearInventory()
         InventoryItemGroup const& group = groupPair.second;
         ItemKeepRule const& rule = getRule(group.items.front()->GetTemplate());
         if (rule.alwaysKeep || std::find(protectedCategories.begin(), protectedCategories.end(), rule.category) !=
-                                    protectedCategories.end())
+                                   protectedCategories.end())
             continue;
 
         totalDestroyed += destroyExcess(group, rule.keepCount);

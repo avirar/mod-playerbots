@@ -1198,11 +1198,14 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_DO_PROFESSIONS:
         {
-            uint32 const skillLine = SelectProfessionToLevel();
-            if (!skillLine)
+            std::vector<uint32> skillLines = SelectProfessionsToLevel();
+            if (skillLines.empty())
                 return false;
 
-            botAI->rpgInfo.ChangeToDoProfessions(skillLine);
+            size_t const start = urand(0, skillLines.size() - 1);
+            std::rotate(skillLines.begin(), skillLines.begin() + start, skillLines.end());
+            botAI->rpgInfo.ChangeToDoProfessions(skillLines.front(),
+                                                 std::vector<uint32>(skillLines.begin() + 1, skillLines.end()));
             return true;
         }
         case RPG_IDLE:
@@ -1231,7 +1234,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
     return false;
 }
 
-uint32 NewRpgBaseAction::SelectProfessionToLevel()
+std::vector<uint32> NewRpgBaseAction::SelectProfessionsToLevel()
 {
     static uint32 const craftProfessions[] = {
         SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
@@ -1249,10 +1252,7 @@ uint32 NewRpgBaseAction::SelectProfessionToLevel()
         available.push_back(skillLine);
     }
 
-    if (available.empty())
-        return 0;
-
-    return available[urand(0, available.size() - 1)];
+    return available;
 }
 
 bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
@@ -1312,7 +1312,7 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return sGatherNodeMgr.HasUsableNodes(bot);
         }
         case RPG_DO_PROFESSIONS:
-            return SelectProfessionToLevel() != 0;
+            return !SelectProfessionsToLevel().empty();
         case RPG_TRAVEL_FLIGHT:
         {
             uint32 flightMasterEntry = 0;

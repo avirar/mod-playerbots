@@ -7,6 +7,7 @@
 #include "NewRpgInfo.h"
 #include "Timer.h"
 #include <cmath>
+#include <utility>
 
 void NewRpgInfo::ChangeToGoGrind(WorldPosition pos)
 {
@@ -66,11 +67,14 @@ void NewRpgInfo::ChangeToDoGather()
     data = DoGather{};
 }
 
-void NewRpgInfo::ChangeToDoProfessions(uint32 skillLine)
+void NewRpgInfo::ChangeToDoProfessions(uint32 skillLine) { ChangeToDoProfessions(skillLine, {}); }
+
+void NewRpgInfo::ChangeToDoProfessions(uint32 skillLine, std::vector<uint32> pendingSkillLines)
 {
     startT = getMSTime();
     DoProfessions data;
     data.skillLine = skillLine;
+    data.pendingSkillLines = std::move(pendingSkillLines);
     this->data = data;
 }
 
@@ -231,11 +235,12 @@ std::string NewRpgInfo::ToString()
         {
             out << "DO_PROFESSIONS";
             out << "\nskillLine: " << arg.skillLine;
+            out << "\npendingProfessions: " << arg.pendingSkillLines.size();
             out << "\nspellId: " << arg.spellId;
             out << "\nlastCampfire: " << (arg.lastCampfire ? GetMSTimeDiffToNow(arg.lastCampfire) : 0);
             if (!arg.trainerGuid.IsEmpty())
-                out << "\ntrainer: " << arg.trainerGuid.ToString() << " skill " << arg.lastTrainerSkill
-                    << " (" << (arg.lastTrainer ? GetMSTimeDiffToNow(arg.lastTrainer) : 0) << " ms ago)";
+                out << "\ntrainer: " << arg.trainerGuid.ToString() << " skill " << arg.lastTrainerSkill << " ("
+                    << (arg.lastTrainer ? GetMSTimeDiffToNow(arg.lastTrainer) : 0) << " ms ago)";
             out << "\ncasts: " << arg.casts;
             out << "\npendingCrafts: " << arg.pendingCrafts.size();
             for (size_t i = 0; i < arg.pendingCrafts.size() && i < 5; ++i)

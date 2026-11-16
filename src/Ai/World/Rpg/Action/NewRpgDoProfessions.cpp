@@ -12,6 +12,7 @@
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "Bag.h"
@@ -675,6 +676,21 @@ bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& rec
 }
 }  // namespace
 
+void NewRpgDoProfessionsAction::FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data)
+{
+    if (!data.pendingSkillLines.empty())
+    {
+        uint32 const next = data.pendingSkillLines.front();
+        std::vector<uint32> pending(data.pendingSkillLines.begin() + 1, data.pendingSkillLines.end());
+        LOG_DEBUG("playerbots", "[New RPG] {} professions switching from {} to {} ({} remaining)", bot->GetName(),
+                  data.skillLine, next, pending.size());
+        info.ChangeToDoProfessions(next, std::move(pending));
+        return;
+    }
+
+    info.ChangeToIdle();
+}
+
 bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data)
 {
     Creature* trainer = nullptr;
@@ -1108,7 +1124,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (!data.skillLine || !botAI->HasSkill(SkillType(data.skillLine)))
     {
-        info.ChangeToIdle();
+        FinishProfession(info, data);
         return true;
     }
 
@@ -1130,7 +1146,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (!data.pendingCrafts.empty())
     {
         if (!RunPendingCrafts(data))
-            info.ChangeToIdle();
+            FinishProfession(info, data);
         return true;
     }
 
@@ -1345,7 +1361,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
                       bot->GetName(), data.skillLine);
-            info.ChangeToIdle();
+            FinishProfession(info, data);
             return true;
         }
 
@@ -1376,7 +1392,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
                       bot->GetName(), data.skillLine);
-            info.ChangeToIdle();
+            FinishProfession(info, data);
             return true;
         }
     }
@@ -1387,12 +1403,12 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus", bot->GetName(),
                   bagSpace, chosen->spellId);
-        info.ChangeToIdle();
+        FinishProfession(info, data);
         return true;
     }
     if (chosen->useful && bagSpace >= 100)
     {
-        info.ChangeToIdle();
+        FinishProfession(info, data);
         return true;
     }
 
@@ -1406,7 +1422,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         case SpellFocusState::Waiting:
             return true;
         case SpellFocusState::Unavailable:
-            info.ChangeToIdle();
+            FinishProfession(info, data);
             return true;
     }
 
@@ -1452,7 +1468,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
                           chosen->spellId);
-                info.ChangeToIdle();
+                FinishProfession(info, data);
                 return true;
             }
             LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),

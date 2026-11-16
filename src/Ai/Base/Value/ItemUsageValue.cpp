@@ -825,6 +825,18 @@ bool ItemUsageValue::IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool
         if (SpellGivesSkillUp(spellId, bot))
             return true;
 
+        // Enchanting scrolls/vellums are treated as marketable by the profession
+        // action even at max skill, so their reagents remain useful.
+        for (uint8 effect = 0; effect < MAX_SPELL_EFFECTS; ++effect)
+        {
+            SpellEffectInfo const& effectInfo = spellInfo->Effects[effect];
+            if ((effectInfo.Effect == SPELL_EFFECT_ENCHANT_ITEM ||
+                 effectInfo.Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
+                 effectInfo.Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC) &&
+                effectInfo.ItemType)
+                return true;
+        }
+
         uint32 newItemId = spellInfo->Effects[EFFECT_0].ItemType;
         if (newItemId && newItemId != proto->ItemId)
         {
