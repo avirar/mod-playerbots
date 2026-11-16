@@ -130,6 +130,9 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
     uint32 const skillValue = bot->GetPureSkillValue(skillLine);
     bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(skillLine);
 
+    bool hasConversion = false;
+    bool hasKnownCraft = false;
+
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
     {
         if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
@@ -138,6 +141,18 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
         if (!spellInfo)
             continue;
+
+        // Conversion spells (milling, prospecting, disenchanting) have no SkillLineAbility rows,
+        // so they cannot use the normal skill-line lookup below.
+        if (NewRpgHelpers::IsProfessionConversionSpell(spellId))
+        {
+            if (NewRpgHelpers::GetProfessionConversionSkillLine(spellId) != skillLine)
+                continue;
+
+            if (!bot->HasSpellCooldown(spellId) && NewRpgHelpers::HasProfessionConversionInput(botAI, spellId))
+                hasConversion = true;
+            continue;
+        }
 
         bool hasRecipeOutput = false;
         for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
@@ -171,6 +186,11 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
         if (!matchedSkillLine || (!skillMaxed && chance <= 0))
             continue;
 
+        // The recipe is known for this profession even when its reagents are missing. A conversion
+        // such as prospecting, milling or disenchanting can supply them, so remember it before the
+        // reagent check rejects the recipe.
+        hasKnownCraft = true;
+
         bool hasAnyReagent = false;
         bool hasReagents = true;
         bool vendorReagents = true;
@@ -200,6 +220,11 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
                 hasTools = false;
                 break;
             }
+            if (spellInfo->Totem[t] && !bot->HasItemCount(spellInfo->Totem[t], 1, false))
+            {
+                hasTools = false;
+                break;
+            }
         }
         if (!hasTools || bot->HasSpellCooldown(spellId))
             continue;
@@ -207,7 +232,7 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
         return true;
     }
 
-    return false;
+    return hasConversion && hasKnownCraft;
 }
 }  // namespace
 

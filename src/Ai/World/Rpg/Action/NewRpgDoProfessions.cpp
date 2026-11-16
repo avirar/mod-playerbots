@@ -5,6 +5,7 @@
  */
 
 #include "NewRpgDoProfessions.h"
+#include "NewRpgHelpers.h"
 
 #include <algorithm>
 #include <array>
@@ -106,11 +107,6 @@ constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
 
-constexpr uint32 MILLING_SPELL = 51005;
-constexpr uint32 PROSPECTING_SPELL = 31252;
-constexpr uint32 DISENCHANT_SPELL = 13262;
-constexpr uint32 CONVERSION_INPUT_COUNT = 5;
-constexpr uint32 DISENCHANT_INPUT_COUNT = 1;
 constexpr uint32 CONVERSION_LOOT_TIMEOUT_MS = 15 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_GRACE_MS = 6 * IN_MILLISECONDS;
@@ -296,8 +292,6 @@ Item* FindLargestBagItemByEntry(Player* bot, uint32 entry)
     return best;
 }
 
-bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage);
-
 void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::unordered_set<uint64_t>& seen)
 {
     ItemTemplate const* proto = item->GetTemplate();
@@ -327,16 +321,10 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
     };
 
     Player* bot = botAI->GetBot();
-    bool const millable = bot->HasSpell(MILLING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_MILLABLE) &&
-                          item->GetCount() >= CONVERSION_INPUT_COUNT &&
-                          proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_INSCRIPTION);
-    bool const prospectable = bot->HasSpell(PROSPECTING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE) &&
-                              item->GetCount() >= CONVERSION_INPUT_COUNT &&
-                              proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_JEWELCRAFTING);
-    bool const disenchantable = bot->HasSpell(DISENCHANT_SPELL) && proto->DisenchantID &&
-                                (proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
-                                proto->Quality >= ITEM_QUALITY_UNCOMMON && proto->Quality <= ITEM_QUALITY_EPIC;
-    if (!millable && !prospectable && !disenchantable)
+    bool const millable = NewRpgHelpers::IsMillingInput(bot, proto, item->GetCount());
+    bool const prospectable = NewRpgHelpers::IsProspectingInput(bot, proto, item->GetCount());
+    bool const disenchantCandidate = NewRpgHelpers::IsDisenchantCandidate(bot, proto);
+    if (!millable && !prospectable && !disenchantCandidate)
         return;
 
     ItemUsage const usage = botAI->GetAiObjectContext()->GetValue<ItemUsage>("item usage", proto->ItemId)->Get();
@@ -344,15 +332,18 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
         return;
 
     if (millable)
-        addConversion(MILLING_SPELL, proto->ItemId, CONVERSION_INPUT_COUNT,
+        addConversion(NewRpgHelpers::PROFESSION_MILLING_SPELL, proto->ItemId,
+                      NewRpgHelpers::PROFESSION_CONVERSION_INPUT_COUNT,
                       LootTemplates_Milling.GetLootFor(proto->ItemId));
 
     if (prospectable)
-        addConversion(PROSPECTING_SPELL, proto->ItemId, CONVERSION_INPUT_COUNT,
+        addConversion(NewRpgHelpers::PROFESSION_PROSPECTING_SPELL, proto->ItemId,
+                      NewRpgHelpers::PROFESSION_CONVERSION_INPUT_COUNT,
                       LootTemplates_Prospecting.GetLootFor(proto->ItemId));
 
-    if (disenchantable && IsDisenchantableItem(bot, proto, usage))
-        addConversion(DISENCHANT_SPELL, proto->ItemId, DISENCHANT_INPUT_COUNT,
+    if (disenchantCandidate && NewRpgHelpers::IsDisenchantableItem(bot, proto, usage))
+        addConversion(NewRpgHelpers::PROFESSION_DISENCHANT_SPELL, proto->ItemId,
+                      NewRpgHelpers::PROFESSION_DISENCHANT_INPUT_COUNT,
                       LootTemplates_Disenchant.GetLootFor(proto->DisenchantID));
 }
 
@@ -435,27 +426,6 @@ void SeedPlanItem(CraftPlanContext& ctx, uint32 itemId)
         ctx.plan.available[itemId] += it->second;
     if (auto const it = ctx.bags->stacks.find(itemId); it != ctx.bags->stacks.end())
         ctx.plan.stacks[itemId] = it->second;
-}
-
-bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage)
-{
-    if (!proto || !proto->DisenchantID)
-        return false;
-    if (proto->Class != ITEM_CLASS_ARMOR && proto->Class != ITEM_CLASS_WEAPON)
-        return false;
-    if (proto->Quality < ITEM_QUALITY_UNCOMMON || proto->Quality > ITEM_QUALITY_EPIC)
-        return false;
-    if (!bot->HasSkill(SKILL_ENCHANTING) || bot->GetSkillValue(SKILL_ENCHANTING) < proto->RequiredDisenchantSkill)
-        return false;
-    if (usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_GUILD_TASK || usage == ITEM_USAGE_EQUIP ||
-        usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_USE || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP)
-        return false;
-
-    // Off-class greens are NONE (BoE ones may be AH/VENDOR); those are safe to
-    // destroy for materials. BAD_EQUIP is deliberately excluded: it marks a
-    // stopgap upgrade the equip path may still wear.
-    return usage == ITEM_USAGE_DISENCHANT || usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR ||
-           usage == ITEM_USAGE_AH;
 }
 
 bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& recipe, uint8 depth);
@@ -973,14 +943,16 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             return false;
         }
 
-        if (step.spellId == MILLING_SPELL && proto->RequiredSkillRank > bot->GetSkillValue(SKILL_INSCRIPTION))
+        if (step.spellId == NewRpgHelpers::PROFESSION_MILLING_SPELL &&
+            proto->RequiredSkillRank > bot->GetSkillValue(SKILL_INSCRIPTION))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: inscription skill too low to mill {}",
                       bot->GetName(), step.inputItemId);
             data.pendingCrafts.clear();
             return false;
         }
-        if (step.spellId == PROSPECTING_SPELL && proto->RequiredSkillRank > bot->GetSkillValue(SKILL_JEWELCRAFTING))
+        if (step.spellId == NewRpgHelpers::PROFESSION_PROSPECTING_SPELL &&
+            proto->RequiredSkillRank > bot->GetSkillValue(SKILL_JEWELCRAFTING))
         {
             LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: jewelcrafting skill too low to prospect {}",
                       bot->GetName(), step.inputItemId);
@@ -988,10 +960,10 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             return false;
         }
 
-        if (step.spellId == DISENCHANT_SPELL)
+        if (step.spellId == NewRpgHelpers::PROFESSION_DISENCHANT_SPELL)
         {
             ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", step.inputItemId);
-            if (!IsDisenchantableItem(bot, proto, usage))
+            if (!NewRpgHelpers::IsDisenchantableItem(bot, proto, usage))
             {
                 LOG_DEBUG("playerbots", "[New RPG] {} clearing pending: input item {} no longer disenchantable",
                           bot->GetName(), step.inputItemId);

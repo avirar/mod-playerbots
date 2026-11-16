@@ -6,15 +6,20 @@
 
 #include "NewRpgHelpers.h"
 #include "QuestLevelRules.h"
+#include "Bag.h"
 #include "Creature.h"
 #include "GameObject.h"
 #include "GossipDef.h"
+#include "Item.h"
+#include "ItemTemplate.h"
+#include "ItemUsageValue.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "QuestDef.h"
+#include "SharedDefines.h"
 #include "World.h"
 
 namespace NewRpgHelpers
@@ -200,5 +205,112 @@ ObjectGuid FindQuestGiver(PlayerbotAI* botAI, float distanceLimit)
     }
 
     return nearestObject ? nearestObject->GetGUID() : ObjectGuid();
+}
+
+bool IsProfessionConversionSpell(uint32 spellId)
+{
+    return spellId == PROFESSION_MILLING_SPELL || spellId == PROFESSION_PROSPECTING_SPELL ||
+           spellId == PROFESSION_DISENCHANT_SPELL;
+}
+
+uint32 GetProfessionConversionSkillLine(uint32 spellId)
+{
+    switch (spellId)
+    {
+        case PROFESSION_MILLING_SPELL:
+            return SKILL_INSCRIPTION;
+        case PROFESSION_PROSPECTING_SPELL:
+            return SKILL_JEWELCRAFTING;
+        case PROFESSION_DISENCHANT_SPELL:
+            return SKILL_ENCHANTING;
+        default:
+            return 0;
+    }
+}
+
+bool IsMillingInput(Player* bot, ItemTemplate const* proto, uint32 count)
+{
+    return bot && proto && bot->HasSpell(PROFESSION_MILLING_SPELL) &&
+           proto->HasFlag(ITEM_FLAG_IS_MILLABLE) && count >= PROFESSION_CONVERSION_INPUT_COUNT &&
+           proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_INSCRIPTION);
+}
+
+bool IsProspectingInput(Player* bot, ItemTemplate const* proto, uint32 count)
+{
+    return bot && proto && bot->HasSpell(PROFESSION_PROSPECTING_SPELL) &&
+           proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE) && count >= PROFESSION_CONVERSION_INPUT_COUNT &&
+           proto->RequiredSkillRank <= bot->GetSkillValue(SKILL_JEWELCRAFTING);
+}
+
+bool IsDisenchantCandidate(Player* bot, ItemTemplate const* proto)
+{
+    return bot && proto && bot->HasSpell(PROFESSION_DISENCHANT_SPELL) && proto->DisenchantID &&
+           (proto->Class == ITEM_CLASS_ARMOR || proto->Class == ITEM_CLASS_WEAPON) &&
+           proto->Quality >= ITEM_QUALITY_UNCOMMON && proto->Quality <= ITEM_QUALITY_EPIC &&
+           bot->HasSkill(SKILL_ENCHANTING) &&
+           bot->GetSkillValue(SKILL_ENCHANTING) >= proto->RequiredDisenchantSkill;
+}
+
+bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage)
+{
+    if (!IsDisenchantCandidate(bot, proto))
+        return false;
+
+    // Off-class greens are NONE (BoE ones may be AH/VENDOR); those are safe to
+    // destroy for materials. BAD_EQUIP is deliberately excluded: it marks a
+    // stopgap upgrade the equip path may still wear.
+    if (usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_GUILD_TASK || usage == ITEM_USAGE_EQUIP ||
+        usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_USE || usage == ITEM_USAGE_SKILL ||
+        usage == ITEM_USAGE_KEEP)
+        return false;
+
+    return usage == ITEM_USAGE_DISENCHANT || usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR ||
+           usage == ITEM_USAGE_AH;
+}
+
+bool HasProfessionConversionInput(PlayerbotAI* botAI, uint32 spellId)
+{
+    if (!botAI)
+        return false;
+
+    Player* bot = botAI->GetBot();
+    if (!bot || !IsProfessionConversionSpell(spellId))
+        return false;
+
+    auto matches = [&](ItemTemplate const* proto, uint32 count) -> bool
+    {
+        switch (spellId)
+        {
+            case PROFESSION_MILLING_SPELL:
+                return IsMillingInput(bot, proto, count);
+            case PROFESSION_PROSPECTING_SPELL:
+                return IsProspectingInput(bot, proto, count);
+            case PROFESSION_DISENCHANT_SPELL:
+            {
+                if (!IsDisenchantCandidate(bot, proto))
+                    return false;
+
+                ItemUsage const usage =
+                    botAI->GetAiObjectContext()->GetValue<ItemUsage>("item usage", proto->ItemId)->Get();
+                return IsDisenchantableItem(bot, proto, usage);
+            }
+            default:
+                return false;
+        }
+    };
+
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            if (matches(item->GetTemplate(), item->GetCount()))
+                return true;
+
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                if (Item* item = bot->GetItemByPos(bagSlot, slot))
+                    if (matches(item->GetTemplate(), item->GetCount()))
+                        return true;
+
+    return false;
 }
 }  // namespace NewRpgHelpers
