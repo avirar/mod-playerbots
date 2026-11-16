@@ -6,6 +6,14 @@
 
 #include "ProfessionStockPolicy.h"
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include "DBCStores.h"
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
@@ -16,14 +24,6 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
 namespace
 {
 constexpr uint32 VENDOR_STOCK_STACKS = 2;
@@ -31,21 +31,9 @@ constexpr uint32 TRADE_GOODS_COAL = 3857;
 constexpr int32 STOCK_TIER_WINDOW = 25;
 
 std::array<uint16, 14> const PROFESSION_SKILLS = {
-    SKILL_ALCHEMY,
-    SKILL_BLACKSMITHING,
-    SKILL_ENCHANTING,
-    SKILL_ENGINEERING,
-    SKILL_HERBALISM,
-    SKILL_INSCRIPTION,
-    SKILL_JEWELCRAFTING,
-    SKILL_LEATHERWORKING,
-    SKILL_MINING,
-    SKILL_SKINNING,
-    SKILL_TAILORING,
-    SKILL_COOKING,
-    SKILL_FIRST_AID,
-    SKILL_FISHING
-};
+    SKILL_ALCHEMY,     SKILL_BLACKSMITHING, SKILL_ENCHANTING,     SKILL_ENGINEERING, SKILL_HERBALISM,
+    SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,      SKILL_SKINNING,
+    SKILL_TAILORING,   SKILL_COOKING,       SKILL_FIRST_AID,      SKILL_FISHING};
 
 struct SpellCandidate
 {
@@ -131,8 +119,7 @@ std::vector<uint32> ScanProfessionStockItems(Player* bot, std::unordered_set<uin
             if (!ability || !IsProfessionSkill(ability->SkillLine))
                 continue;
 
-            bySkill[ability->SkillLine].push_back(
-                {int32(ability->TrivialSkillLineRankLow), skillUp, reagents});
+            bySkill[ability->SkillLine].push_back({int32(ability->TrivialSkillLineRankLow), skillUp, reagents});
             knownReagents.insert(reagents.begin(), reagents.end());
         }
     }
@@ -182,7 +169,7 @@ CacheEntry const& GetCachedEntry(Player* bot)
     }
     return entry;
 }
-}
+}  // namespace
 
 bool IsProfessionVendorStockCandidate(ItemTemplate const* proto)
 {

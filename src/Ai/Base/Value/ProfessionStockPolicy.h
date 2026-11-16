@@ -7,10 +7,10 @@
 #ifndef PLAYERBOTS_PROFESSIONSTOCKPOLICY_H
 #define PLAYERBOTS_PROFESSIONSTOCKPOLICY_H
 
-#include "Common.h"
-
 #include <cstdint>
 #include <vector>
+
+#include "Common.h"
 
 class PlayerbotAI;
 

@@ -164,8 +164,10 @@ void SellAction::Sell(Item* item, bool force)
     {
         ItemUsage const usage = context->GetValue<ItemUsage>("item usage", itemId)->Get();
         ItemKeepRule const rule = GetItemKeepRule(botAI, proto, usage);
-        if (!rule.alwaysKeep)
-            keepRequirement = rule.keepCount;
+        if (rule.alwaysKeep)
+            return;
+
+        keepRequirement = rule.keepCount;
     }
 
     uint32 countToSell = item->GetCount();

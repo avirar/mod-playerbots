@@ -482,8 +482,8 @@ bool PlanVendorPurchase(CraftPlanContext& ctx, uint32 itemId, uint32 missing)
 
         ctx.plan.moneyBudget -= uint32(cost);
         ctx.plan.steps.push_back({0, 0, 0, missing, itemId, offer.guid});
-        LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each",
-                  ctx.bot->GetName(), itemId, missing, offer.price);
+        LOG_DEBUG("playerbots", "[New RPG] {} plans vendor purchase {} x{} at {} copper each", ctx.bot->GetName(),
+                  itemId, missing, offer.price);
         return true;
     }
 
@@ -722,8 +722,7 @@ bool NewRpgDoProfessionsAction::LearnFromTrainer(NewRpgInfo::DoProfessions& data
         // A skill-up can unlock a new rank before the retry window expires. Only the
         // unchanged-skill case is rate-limited, so unaffordable spells do not cause a
         // trainer visit on every tick.
-        bool const recentlyVisited = data.trainerGuid == creature->GetGUID() && data.lastTrainer &&
-                                     !teachesNewSkill &&
+        bool const recentlyVisited = data.trainerGuid == creature->GetGUID() && data.lastTrainer && !teachesNewSkill &&
                                      GetMSTimeDiffToNow(data.lastTrainer) < 5 * 60 * IN_MILLISECONDS;
         if (recentlyVisited)
             continue;

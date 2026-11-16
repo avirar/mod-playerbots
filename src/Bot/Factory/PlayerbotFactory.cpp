@@ -4322,6 +4322,14 @@ void PlayerbotFactory::ClearInventory()
 
     auto groups = collectGroups();
 
+    std::vector<ItemCleanupCategory> protectedCategories;
+    for (auto const& token : sPlayerbotAIConfig.RandomBotInventoryCleanupProtected)
+    {
+        ItemCleanupCategory category;
+        if (TryParseItemCleanupCategory(token, category))
+            protectedCategories.push_back(category);
+    }
+
     // Completed quest source items have no remaining purpose and cannot be vendored.
     for (auto const& groupPair : groups)
     {
@@ -4335,7 +4343,8 @@ void PlayerbotFactory::ClearInventory()
     {
         InventoryItemGroup const& group = groupPair.second;
         ItemKeepRule const& rule = getRule(group.items.front()->GetTemplate());
-        if (rule.alwaysKeep)
+        if (rule.alwaysKeep || std::find(protectedCategories.begin(), protectedCategories.end(), rule.category) !=
+                                    protectedCategories.end())
             continue;
 
         totalDestroyed += destroyExcess(group, rule.keepCount);
@@ -4343,14 +4352,6 @@ void PlayerbotFactory::ClearInventory()
 
     if (GetInventoryBagSpace(bot) >= INVENTORY_CLEANUP_MAX_BAG_SPACE)
     {
-        std::vector<ItemCleanupCategory> protectedCategories;
-        for (auto const& token : sPlayerbotAIConfig.RandomBotInventoryCleanupProtected)
-        {
-            ItemCleanupCategory category;
-            if (TryParseItemCleanupCategory(token, category))
-                protectedCategories.push_back(category);
-        }
-
         for (auto const& token : sPlayerbotAIConfig.RandomBotInventoryCleanupPriority)
         {
             ItemCleanupCategory category;

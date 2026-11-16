@@ -156,20 +156,22 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
     if (!botAI || !proto)
         return rule;
 
+    // Explicitly configured keeps and tools/containers win over the quest-source
+    // cleanup, so an owner can preserve an item through RandomBotQuestItems.
+    if (sPlayerbotAIConfig.IsInRandomQuestItemList(proto->ItemId) || IsProfessionTool(proto) ||
+        IsAlwaysKeptContainer(proto))
+    {
+        rule.alwaysKeep = true;
+        rule.keepCount = std::numeric_limits<uint32>::max();
+        return rule;
+    }
+
     // A source item whose quests are all rewarded has no remaining purpose. The usage and
     // sell-price guards keep it from matching reagents or items that can still be sold.
     if (usage == ITEM_USAGE_NONE && proto->SellPrice == 0 && HasCompletedEveryAssociatedQuest(botAI, proto))
     {
         rule.completedQuestSource = true;
         rule.category = ItemCleanupCategory::Useless;
-        return rule;
-    }
-
-    if (sPlayerbotAIConfig.IsInRandomQuestItemList(proto->ItemId) || IsProfessionTool(proto) ||
-        IsAlwaysKeptContainer(proto))
-    {
-        rule.alwaysKeep = true;
-        rule.keepCount = std::numeric_limits<uint32>::max();
         return rule;
     }
 

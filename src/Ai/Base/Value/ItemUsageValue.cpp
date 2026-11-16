@@ -1031,10 +1031,27 @@ std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
         if (bot->CanNoReagentCast(spellInfo))
             continue;
 
-        // Profession spells are generic-family; only their crafting spells (CREATE_ITEM) count.
-        // Class spells (poisons, oils, water walking, ...) consume reagents without creating items.
-        if (spellInfo->Effects[EFFECT_0].Effect != SPELL_EFFECT_CREATE_ITEM &&
-            spellInfo->SpellFamilyName == SPELLFAMILY_GENERIC)
+        // Profession spells are generic-family; count the crafting and enchanting
+        // spells that actually consume reagents. Class spells (poisons, oils,
+        // water walking, ...) consume reagents without creating items.
+        bool consumesReagents = false;
+        for (uint8 effect = 0; effect < MAX_SPELL_EFFECTS; ++effect)
+        {
+            switch (spellInfo->Effects[effect].Effect)
+            {
+                case SPELL_EFFECT_CREATE_ITEM:
+                case SPELL_EFFECT_CREATE_ITEM_2:
+                case SPELL_EFFECT_ENCHANT_ITEM:
+                case SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY:
+                case SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC:
+                    consumesReagents = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (!consumesReagents && spellInfo->SpellFamilyName == SPELLFAMILY_GENERIC)
             continue;
 
         for (uint8 i = 0; i < MAX_SPELL_REAGENTS; i++)
@@ -1043,20 +1060,6 @@ std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
     }
 
     return retSpells;
-}
-
-inline int32 SkillGainChance(uint32 SkillValue, uint32 GrayLevel, uint32 GreenLevel, uint32 YellowLevel)
-{
-    if (SkillValue >= GrayLevel)
-        return sWorld->getIntConfig(CONFIG_SKILL_CHANCE_GREY) * 10;
-
-    if (SkillValue >= GreenLevel)
-        return sWorld->getIntConfig(CONFIG_SKILL_CHANCE_GREEN) * 10;
-
-    if (SkillValue >= YellowLevel)
-        return sWorld->getIntConfig(CONFIG_SKILL_CHANCE_YELLOW) * 10;
-
-    return sWorld->getIntConfig(CONFIG_SKILL_CHANCE_ORANGE) * 10;
 }
 
 int32 ItemUsageValue::CraftSkillGainChance(uint32 skillValue, uint32 grayLevel, uint32 yellowLevel)
