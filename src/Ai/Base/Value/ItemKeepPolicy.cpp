@@ -19,6 +19,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "ProfessionStockPolicy.h"
 #include "QuestDef.h"
 
 namespace
@@ -182,6 +183,23 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
     {
         rule.category = ItemCleanupCategory::Quest;
         rule.keepCount = std::max<uint32>(1, GetQuestItemRequirement(botAI, proto->ItemId));
+        return rule;
+    }
+
+    uint32 const professionStockTarget = GetProfessionVendorStockTarget(botAI, proto);
+    if (professionStockTarget)
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.keepCount = professionStockTarget;
+        return rule;
+    }
+
+    // Obsolete profession reagent tiers are cleared; unrelated vendor items are left to
+    // the normal trade-good rules.
+    if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
+    {
+        rule.category = ItemCleanupCategory::Useless;
+        rule.keepCount = 0;
         return rule;
     }
 

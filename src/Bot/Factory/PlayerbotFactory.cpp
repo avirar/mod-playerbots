@@ -32,6 +32,7 @@
 #include "PlayerbotRepository.h"
 #include "PlayerbotSpellRepository.h"
 #include "Playerbots.h"
+#include "ProfessionStockPolicy.h"
 #include "QuestDef.h"
 #include "RandomItemMgr.h"
 #include "RandomPlayerbotFactory.h"
@@ -1014,6 +1015,7 @@ void PlayerbotFactory::Randomize(bool incremental)
     pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Spells2");
     LOG_DEBUG("playerbots", "Initializing spells (step 2)...");
     InitAvailableSpells();
+    InitProfessionSupplies();
     if (pmo)
         pmo->finish();
 
@@ -1205,6 +1207,7 @@ void PlayerbotFactory::Refresh()
     InitPetTalents();
     InitSkills();
     InitAvailableSpells();
+    InitProfessionSupplies();
     InitReputation();
     InitSpecialSpells();
     InitMounts();
@@ -3312,6 +3315,32 @@ void PlayerbotFactory::InitTradeSkills()
 
     InitProfessionTools();
     InitTradeSpecializations();
+}
+
+void PlayerbotFactory::InitProfessionSupplies()
+{
+    if (!botAI)
+        return;
+
+    bool const managed = sRandomPlayerbotMgr.IsRandomBot(bot) || IsSelfBot(bot) ||
+                         sRandomPlayerbotMgr.IsAddclassBotCached(bot->GetGUID().GetCounter());
+    if (!managed)
+        return;
+
+    for (uint32 const itemId : GetProfessionVendorStockItems(botAI))
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (!proto)
+            continue;
+
+        uint32 const target = GetProfessionVendorStockTarget(botAI, proto);
+        if (!target)
+            continue;
+
+        uint32 const count = bot->GetItemCount(itemId, false);
+        if (count < target)
+            StoreItem(itemId, target - count);
+    }
 }
 
 void PlayerbotFactory::InitProfessionTools()

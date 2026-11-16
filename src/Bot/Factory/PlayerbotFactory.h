@@ -73,6 +73,7 @@ public:
     static void InitTalentsBySpecNo(Player* bot, int specNo, bool reset);
     static void InitTalentsByParsedSpecLink(Player* bot, std::vector<std::vector<uint32>> parsedSpecLink, bool reset);
     void InitAvailableSpells();
+    void InitProfessionSupplies();
     static bool IsTrainerSpellAllowedForBot(Player* bot, Trainer::Trainer const* trainer,
                                              Trainer::Spell const* trainerSpell);
     void InitClassSpells();

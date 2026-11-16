@@ -229,6 +229,7 @@ bool MaintenanceAction::Execute(Event /*event*/)
         factory.InitSkills();
         factory.InitClassSpells();
         factory.InitAvailableSpells();
+        factory.InitProfessionSupplies();
         factory.InitReputation();
         factory.InitSpecialSpells();
         factory.InitMounts();
@@ -276,7 +277,10 @@ bool MaintenanceAction::Execute(Event /*event*/)
             factory.InitClassSpells();
 
         if (sPlayerbotAIConfig.AltMaintenanceAvailableSpells)
+        {
             factory.InitAvailableSpells();
+            factory.InitProfessionSupplies();
+        }
 
         if (sPlayerbotAIConfig.AltMaintenanceReputation)
             factory.InitReputation();

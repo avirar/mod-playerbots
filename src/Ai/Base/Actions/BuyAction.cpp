@@ -12,6 +12,7 @@
 #include "ItemUsageValue.h"
 #include "ItemVisitors.h"
 #include "Playerbots.h"
+#include "ProfessionStockPolicy.h"
 #include "StatsWeightCalculator.h"
 
 bool BuyAction::Execute(Event event)
@@ -96,7 +97,13 @@ bool BuyAction::Execute(Event event)
                 if (!proto)
                     continue;
 
-                if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_PROJECTILE)
+                uint32 const stockTarget = GetProfessionVendorStockTarget(botAI, proto);
+                if (stockTarget)
+                {
+                    uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
+                    maxPurchases = std::max<uint32>(1, (stockTarget + buyCount - 1) / buyCount);
+                }
+                else if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_PROJECTILE)
                 {
                     maxPurchases = 10;  // Allow up to 10 purchases if it's a consumable or projectile
                 }
@@ -106,6 +113,24 @@ bool BuyAction::Execute(Event event)
                     // Stock and currency costs change between purchases; recheck each time.
                     if (!CanAfford(tItem, proto, pCreature))
                         break;
+
+                    if (stockTarget)
+                    {
+                        if (bot->GetItemCount(proto->ItemId, false) >= stockTarget)
+                            break;
+
+                        uint32 const stockPrice =
+                            uint32(floor(float(proto->BuyPrice) * bot->GetReputationPriceDiscount(pCreature)));
+                        if (AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::tradeskill)) < stockPrice)
+                            break;
+
+                        if (!BuyItem(tItems, vendorguid, proto))
+                            break;
+                        continue;
+                    }
+
+                    if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
+                        break;  // obsolete profession reagent tier
 
                     ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", tItem->item);
 
