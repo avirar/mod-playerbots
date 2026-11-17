@@ -21,6 +21,12 @@ struct ItemTemplate;
 uint32 GetProfessionVendorStockTarget(PlayerbotAI* botAI, ItemTemplate const* proto);
 std::vector<uint32> GetProfessionVendorStockItems(PlayerbotAI* botAI);
 
+// Crafted consumables that a profession uses in bulk but vendors do not sell
+// (enchanting vellums). The policy keeps the current tier at two stacks so a
+// scroll recipe always has a target item in the bags.
+uint32 GetProfessionCraftedStockTarget(PlayerbotAI* botAI, ItemTemplate const* proto);
+std::vector<uint32> GetProfessionCraftedStockItems(PlayerbotAI* botAI);
+
 // True when the item is a reagent of any known profession spell, including an
 // obsolete tier. Used to sell old vials/thread without touching unrelated
 // vendor consumables.

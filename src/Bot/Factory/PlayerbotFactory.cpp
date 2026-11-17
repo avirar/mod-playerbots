@@ -3327,6 +3327,13 @@ void PlayerbotFactory::InitProfessionSupplies()
     if (!managed)
         return;
 
+    auto topUp = [this](uint32 itemId, uint32 target)
+    {
+        uint32 const count = bot->GetItemCount(itemId, false);
+        if (count < target)
+            StoreItem(itemId, target - count);
+    };
+
     for (uint32 const itemId : GetProfessionVendorStockItems(botAI))
     {
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -3334,12 +3341,21 @@ void PlayerbotFactory::InitProfessionSupplies()
             continue;
 
         uint32 const target = GetProfessionVendorStockTarget(botAI, proto);
-        if (!target)
+        if (target)
+            topUp(itemId, target);
+    }
+
+    // Enchanting scroll recipes need a vellum target that vendors do not sell.
+    // Keep the level-appropriate pair stocked so a scroll plan always has one.
+    for (uint32 const itemId : GetProfessionCraftedStockItems(botAI))
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (!proto)
             continue;
 
-        uint32 const count = bot->GetItemCount(itemId, false);
-        if (count < target)
-            StoreItem(itemId, target - count);
+        uint32 const target = GetProfessionCraftedStockTarget(botAI, proto);
+        if (target)
+            topUp(itemId, target);
     }
 }
 

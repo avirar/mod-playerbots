@@ -198,6 +198,14 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
+    uint32 const craftedStockTarget = GetProfessionCraftedStockTarget(botAI, proto);
+    if (craftedStockTarget)
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.keepCount = craftedStockTarget;
+        return rule;
+    }
+
     // Older profession reagent tiers are kept only while a useful spell still
     // consumes them; otherwise they are obsolete stock.
     if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))

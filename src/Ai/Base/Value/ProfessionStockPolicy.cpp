@@ -30,6 +30,18 @@ constexpr uint32 VENDOR_STOCK_STACKS = 2;
 constexpr uint32 TRADE_GOODS_COAL = 3857;
 constexpr int32 STOCK_TIER_WINDOW = 25;
 
+// Enchanting scroll recipes target a vellum instead of listing it as a reagent.
+// The vellum tiers follow the scroll levels and are crafted by Inscription, so
+// the factory supplies the level-appropriate pair directly.
+constexpr uint32 VELLUM_ARMOR_I = 38682;
+constexpr uint32 VELLUM_WEAPON_I = 39349;
+constexpr uint32 VELLUM_ARMOR_II = 37602;
+constexpr uint32 VELLUM_WEAPON_II = 39350;
+constexpr uint32 VELLUM_ARMOR_III = 43145;
+constexpr uint32 VELLUM_WEAPON_III = 43146;
+constexpr uint32 VELLUM_TIER_II_SKILL = 200;
+constexpr uint32 VELLUM_TIER_III_SKILL = 350;
+
 std::array<uint16, 14> const PROFESSION_SKILLS = {
     SKILL_ALCHEMY,     SKILL_BLACKSMITHING, SKILL_ENCHANTING,     SKILL_ENGINEERING, SKILL_HERBALISM,
     SKILL_INSCRIPTION, SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,      SKILL_SKINNING,
@@ -169,6 +181,30 @@ CacheEntry const& GetCachedEntry(Player* bot)
     }
     return entry;
 }
+
+bool GetVellumStockPair(PlayerbotAI* botAI, uint32& armorVellum, uint32& weaponVellum)
+{
+    if (!botAI || !botAI->GetBot() || !botAI->HasSkill(SKILL_ENCHANTING))
+        return false;
+
+    uint32 const skill = botAI->GetBot()->GetPureSkillValue(SKILL_ENCHANTING);
+    if (skill >= VELLUM_TIER_III_SKILL)
+    {
+        armorVellum = VELLUM_ARMOR_III;
+        weaponVellum = VELLUM_WEAPON_III;
+    }
+    else if (skill >= VELLUM_TIER_II_SKILL)
+    {
+        armorVellum = VELLUM_ARMOR_II;
+        weaponVellum = VELLUM_WEAPON_II;
+    }
+    else
+    {
+        armorVellum = VELLUM_ARMOR_I;
+        weaponVellum = VELLUM_WEAPON_I;
+    }
+    return true;
+}
 }  // namespace
 
 bool IsProfessionVendorStockCandidate(ItemTemplate const* proto)
@@ -213,4 +249,27 @@ std::vector<uint32> GetProfessionVendorStockItems(PlayerbotAI* botAI)
         return {};
 
     return GetCachedEntry(botAI->GetBot()).items;
+}
+
+uint32 GetProfessionCraftedStockTarget(PlayerbotAI* botAI, ItemTemplate const* proto)
+{
+    uint32 armorVellum = 0;
+    uint32 weaponVellum = 0;
+    if (!proto || !GetVellumStockPair(botAI, armorVellum, weaponVellum))
+        return 0;
+
+    if (proto->ItemId != armorVellum && proto->ItemId != weaponVellum)
+        return 0;
+
+    return VENDOR_STOCK_STACKS * std::max<uint32>(1, proto->GetMaxStackSize());
+}
+
+std::vector<uint32> GetProfessionCraftedStockItems(PlayerbotAI* botAI)
+{
+    uint32 armorVellum = 0;
+    uint32 weaponVellum = 0;
+    if (!GetVellumStockPair(botAI, armorVellum, weaponVellum))
+        return {};
+
+    return {armorVellum, weaponVellum};
 }
