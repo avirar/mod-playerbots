@@ -207,7 +207,8 @@ public:
         {
             static uint32 const craftProfessions[] = {
                 SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
-                SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_TAILORING, SKILL_COOKING, SKILL_FIRST_AID};
+                SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING, SKILL_COOKING,
+                SKILL_FIRST_AID};
             for (uint32 skill : craftProfessions)
             {
                 if (botAI->HasSkill(SkillType(skill)))
