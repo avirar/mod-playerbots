@@ -83,7 +83,14 @@ bool IsProfessionTool(ItemTemplate const* proto)
 
 bool IsAlwaysKeptContainer(ItemTemplate const* proto)
 {
-    return proto->Class == ITEM_CLASS_KEY || proto->Class == ITEM_CLASS_CONTAINER || proto->Class == ITEM_CLASS_QUIVER;
+    if (proto->Class == ITEM_CLASS_KEY)
+        return true;
+
+    if (proto->Class != ITEM_CLASS_CONTAINER && proto->Class != ITEM_CLASS_QUIVER)
+        return false;
+
+    // Family bags are hard to re-acquire; keep them even when not equipped.
+    return proto->BagFamily != 0;
 }
 
 bool HasCompletedEveryAssociatedQuest(PlayerbotAI* botAI, ItemTemplate const* proto)

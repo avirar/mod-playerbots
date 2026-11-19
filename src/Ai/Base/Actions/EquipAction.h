@@ -22,11 +22,12 @@ public:
 
     bool Execute(Event event) override;
     void EquipItems(ItemIds ids);
+    void EquipBags();
     ItemIds SelectInventoryItemsToEquip();
 
 private:
     void EquipItem(FindItemVisitor* visitor);
-    uint8 GetSmallestBagSlot();
+    uint8 FindBagSlotForBag(ItemTemplate const* proto);
     void EquipItem(Item* item);
 };
 
