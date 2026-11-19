@@ -125,7 +125,10 @@ uint8 GetUsefulRank(PlayerbotAI* botAI, ItemTemplate const* proto, ItemUsage usa
         return 0;
 
     Player* bot = botAI->GetBot();
-    if (bot && proto->Class == ITEM_CLASS_CONTAINER && BagPolicy::IsBagUpgradeForBot(bot, proto))
+    if (!bot)
+        return 255;
+
+    if (proto->Class == ITEM_CLASS_CONTAINER && BagPolicy::IsBagUpgradeForBot(bot, proto))
         return 2;
 
     switch (usage)
@@ -136,6 +139,11 @@ uint8 GetUsefulRank(PlayerbotAI* botAI, ItemTemplate const* proto, ItemUsage usa
         case ITEM_USAGE_BROKEN_EQUIP:
             return 1;
         case ITEM_USAGE_USE:
+            // Do not spend reagents on food, drink, bandages or potions that
+            // are far below the bot's level; they are not worth a craft slot.
+            if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->ItemLevel + 15 < bot->GetLevel())
+                return 255;
+            return 3;
         case ITEM_USAGE_QUEST:
         case ITEM_USAGE_GUILD_TASK:
         case ITEM_USAGE_AMMO:
