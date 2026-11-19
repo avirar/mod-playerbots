@@ -20,6 +20,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotSpellRepository.h"
 #include "SharedDefines.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -209,8 +210,17 @@ bool GetVellumStockPair(PlayerbotAI* botAI, uint32& armorVellum, uint32& weaponV
 
 bool IsProfessionVendorStockCandidate(ItemTemplate const* proto)
 {
-    if (!proto || proto->Class != ITEM_CLASS_TRADE_GOODS || proto->RequiredSkill || proto->RequiredSkillRank ||
-        !proto->BuyPrice)
+    if (!proto || proto->RequiredSkill || proto->RequiredSkillRank || !proto->BuyPrice)
+        return false;
+
+    // Unlimited-stock vendor items are bought reagents even when they are not
+    // trade goods (e.g. Refreshing Spring Water for Cooking). Limited-stock
+    // listings are often gathered materials, which stay stack-unlimited under
+    // the material rule.
+    if (PlayerbotSpellRepository::Instance().IsItemBuyable(proto->ItemId))
+        return true;
+
+    if (proto->Class != ITEM_CLASS_TRADE_GOODS)
         return false;
 
     std::string const& name = proto->Name1;

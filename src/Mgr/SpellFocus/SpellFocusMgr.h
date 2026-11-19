@@ -14,6 +14,11 @@
 #include "ObjectGuid.h"
 #include "TravelMgr.h"
 
+// Stand this far inside the object's spell focus distance before casting.
+// Pathing, object sizes and grass-level Z can otherwise leave the bot just
+// outside the server's IsWithinDistInMap check.
+constexpr float SPELL_FOCUS_DISTANCE_BUFFER = 1.0f;
+
 struct SpellFocusSpawn
 {
     ObjectGuid::LowType spawnId{0};

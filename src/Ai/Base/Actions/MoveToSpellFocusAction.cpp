@@ -37,7 +37,7 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
         float const dx = cached->pos.GetPositionX() - bot->GetPositionX();
         float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
         float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
-        float const focusDistance = std::max(0.5f, cached->distance - 1.0f);
+        float const focusDistance = std::max(0.5f, cached->distance - SPELL_FOCUS_DISTANCE_BUFFER);
         if (dx * dx + dy * dy + dz * dz <= focusDistance * focusDistance)
         {
             // The grid is loaded at this distance. If the live object is still
@@ -56,7 +56,8 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
                       cached->pos.GetPositionZ());
     }
 
-    float const focusDistance = std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - 1.0f);
+    float const focusDistance =
+        std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - SPELL_FOCUS_DISTANCE_BUFFER);
     if (focus->IsWithinDistInMap(bot, focusDistance))
     {
         LOG_DEBUG("playerbots", "[spell focus] {} reached {} (distance {})", bot->GetName(), focus->GetEntry(),

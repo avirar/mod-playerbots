@@ -107,9 +107,6 @@ struct CraftPlanContext
 constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
-// Pathing stops a little outside the object's spell focus distance. Allow a small
-// slack so the bot can cast instead of looping forever on "moving to spell focus".
-constexpr float SPELL_FOCUS_DISTANCE_SLACK = 2.0f;
 
 constexpr uint32 CONVERSION_LOOT_TIMEOUT_MS = 15 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
@@ -1082,11 +1079,16 @@ NewRpgDoProfessionsAction::SpellFocusState NewRpgDoProfessionsAction::EnsureSpel
 
     float distance = 0.0f;
     float focusDistance = 0.0f;
+    bool inRange = false;
     if (focus)
     {
         distance = bot->GetDistance(focus);
         focusDistance =
-            std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) + SPELL_FOCUS_DISTANCE_SLACK);
+            std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - SPELL_FOCUS_DISTANCE_BUFFER);
+        // Use the same map/transport-aware check as the server and the move
+        // action. GetDistance uses world positions, which are far apart for a
+        // focus on a moving transport.
+        inRange = focus->IsWithinDistInMap(bot, focusDistance);
     }
     else
     {
@@ -1094,13 +1096,15 @@ NewRpgDoProfessionsAction::SpellFocusState NewRpgDoProfessionsAction::EnsureSpel
         float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
         float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
         distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-        focusDistance = std::max(0.5f, cached->distance + SPELL_FOCUS_DISTANCE_SLACK);
+        focusDistance = std::max(0.5f, cached->distance - SPELL_FOCUS_DISTANCE_BUFFER);
+        inRange = distance <= focusDistance;
     }
 
-    if (!focus || distance > focusDistance)
+    if (!focus || !inRange)
     {
         // A campfire is better than walking more than 100 yards to an existing focus.
-        if (distance > 100.0f && TryBasicCampfire(botAI, bot, data, spellFocus))
+        bool const farAway = focus ? !focus->IsWithinDistInMap(bot, 100.0f) : distance > 100.0f;
+        if (farAway && TryBasicCampfire(botAI, bot, data, spellFocus))
             return SpellFocusState::Waiting;
         if (data.lastCampfire && GetMSTimeDiffToNow(data.lastCampfire) < CAMPFIRE_WAIT_MS)
             return SpellFocusState::Waiting;
