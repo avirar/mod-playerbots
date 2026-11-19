@@ -7,12 +7,14 @@
 #include "ItemUsageValue.h"
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "CreatureData.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
 #include "ItemTemplate.h"
 #include "LootObjectStack.h"
+#include "ObjectMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
@@ -23,6 +25,7 @@
 #include "SharedDefines.h"
 #include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
+#include "Trainer.h"
 #include "World.h"
 #include "WorldConfig.h"
 
@@ -89,6 +92,98 @@ bool IsProfessionMaterialClass(ItemTemplate const* proto)
     }
 }
 
+constexpr int32 SPELL_LEARNING_ITEM_1 = 483;
+constexpr int32 SPELL_LEARNING_ITEM_2 = 55884;
+
+uint32 GetRecipeItemSpell(ItemTemplate const* proto)
+{
+    if (!proto || proto->Class != ITEM_CLASS_RECIPE)
+        return 0;
+
+    // Plans, formulas and patterns use the special learning layout: Spells[0]
+    // is the on-use learner and Spells[1] is the actual recipe spell.
+    if (proto->Spells[0].SpellId == SPELL_LEARNING_ITEM_1 || proto->Spells[0].SpellId == SPELL_LEARNING_ITEM_2)
+        return proto->Spells[1].SpellId > 0 ? uint32(proto->Spells[1].SpellId) : 0;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        if (proto->Spells[i].SpellId > 0 && proto->Spells[i].SpellTrigger == ITEM_SPELLTRIGGER_LEARN_SPELL_ID)
+            return uint32(proto->Spells[i].SpellId);
+    }
+
+    return 0;
+}
+
+// Trainer-taught recipes carry the real skill requirement in trainer_spell,
+// not in the DBC min rank (which is 1 for most profession recipes).
+std::unordered_map<uint32, uint32> const& GetTrainerSpellRankIndex()
+{
+    static std::unordered_map<uint32, uint32> const index = []()
+    {
+        std::unordered_map<uint32, uint32> result;
+        CreatureTemplateContainer const* templates = sObjectMgr->GetCreatureTemplates();
+        for (auto const& entry : *templates)
+        {
+            Trainer::Trainer* trainer = sObjectMgr->GetTrainer(entry.first);
+            if (!trainer)
+                continue;
+
+            for (Trainer::Spell const& spell : trainer->GetSpells())
+            {
+                if (!spell.SpellId || !spell.ReqSkillRank)
+                    continue;
+
+                auto inserted = result.emplace(spell.SpellId, spell.ReqSkillRank);
+                if (!inserted.second && spell.ReqSkillRank < inserted.first->second)
+                    inserted.first->second = spell.ReqSkillRank;
+            }
+        }
+        return result;
+    }();
+    return index;
+}
+
+// Plan- and formula-taught recipes carry the real requirement on the item.
+std::unordered_map<uint32, uint32> const& GetRecipeItemRankIndex()
+{
+    static std::unordered_map<uint32, uint32> const index = []()
+    {
+        std::unordered_map<uint32, uint32> result;
+        ItemTemplateContainer const* templates = sObjectMgr->GetItemTemplateStore();
+        for (auto const& entry : *templates)
+        {
+            ItemTemplate const* proto = &entry.second;
+            if (proto->Class != ITEM_CLASS_RECIPE || !proto->RequiredSkill || !proto->RequiredSkillRank)
+                continue;
+
+            uint32 const spellId = GetRecipeItemSpell(proto);
+            if (!spellId)
+                continue;
+
+            auto inserted = result.emplace(spellId, proto->RequiredSkillRank);
+            if (!inserted.second && proto->RequiredSkillRank < inserted.first->second)
+                inserted.first->second = proto->RequiredSkillRank;
+        }
+        return result;
+    }();
+    return index;
+}
+
+uint32 GetProfessionLearnRank(SkillLineAbilityEntry const* ability)
+{
+    auto const& trainerRanks = GetTrainerSpellRankIndex();
+    auto itr = trainerRanks.find(ability->Spell);
+    if (itr != trainerRanks.end())
+        return itr->second;
+
+    auto const& recipeRanks = GetRecipeItemRankIndex();
+    itr = recipeRanks.find(ability->Spell);
+    if (itr != recipeRanks.end())
+        return itr->second;
+
+    return ability->MinSkillLineRank;
+}
+
 // Reagents of all profession recipes, keyed by item id. Skills are matched at
 // use time, so this covers professions the bot does not have without leaking
 // them into the bot's item usage.
@@ -127,7 +222,7 @@ std::unordered_map<uint32, std::vector<ProfessionReagentEntry>> const& GetProfes
                 if (!spellInfo->ReagentCount[reagent] || !itemId)
                     continue;
 
-                result[itemId].push_back({ability->Spell, ability->SkillLine, ability->MinSkillLineRank});
+                result[itemId].push_back({ability->Spell, ability->SkillLine, GetProfessionLearnRank(ability)});
             }
         }
         return result;
