@@ -868,8 +868,7 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         // Clear any stale list-inventory entry so the core uses the vendor we pass.
         bot->GetSession()->SetCurrentVendor(0);
 
-        if (AI_VALUE(uint8, "bag space") > 80)
-            botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+        botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
 
         uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
         uint32 const unitPrice = uint32(std::floor(float(proto->BuyPrice) * bot->GetReputationPriceDiscount(vendor)));

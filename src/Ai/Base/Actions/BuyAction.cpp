@@ -19,8 +19,7 @@ bool BuyAction::Execute(Event event)
 {
     // Make room before buying. The same vendor-sale path used by `s vendor`
     // keeps profession materials and stock, and sells only grey/junk/excess.
-    if (AI_VALUE(uint8, "bag space") > 80)
-        botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+    botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
 
     bool buyUseful = false;
     ItemIds itemIds;
