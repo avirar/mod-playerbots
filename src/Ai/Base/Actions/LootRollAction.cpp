@@ -7,6 +7,7 @@
 #include "LootRollAction.h"
 #include "Event.h"
 #include "Group.h"
+#include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "LootAction.h"
 #include "ObjectMgr.h"
@@ -15,11 +16,26 @@
 
 namespace
 {
+uint32 GetRecipeSpell(ItemTemplate const* proto)
+{
+    if (!proto || proto->Class != ITEM_CLASS_RECIPE)
+        return 0;
+
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+    {
+        if (proto->Spells[i].SpellId > 0 && proto->Spells[i].SpellTrigger == ITEM_SPELLTRIGGER_LEARN_SPELL_ID)
+            return uint32(proto->Spells[i].SpellId);
+    }
+
+    return 0;
+}
+
 bool GroupMemberCanLearnRecipeNow(Group* group, ItemTemplate const* proto, Player* exclude)
 {
     if (!group || !proto || !proto->RequiredSkill || !proto->RequiredSkillRank)
         return false;
 
+    uint32 const recipeSpellId = GetRecipeSpell(proto);
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
@@ -29,7 +45,7 @@ bool GroupMemberCanLearnRecipeNow(Group* group, ItemTemplate const* proto, Playe
             continue;
         if (member->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank)
             continue;
-        if (member->HasSpell(proto->Spells[2].SpellId))
+        if (recipeSpellId && member->HasSpell(recipeSpellId))
             continue;
 
         return true;

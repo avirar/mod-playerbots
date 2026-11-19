@@ -252,7 +252,7 @@ ItemUsage ItemUsageValue::Calculate()
     if (proto->Class == ITEM_CLASS_RECIPE && proto->RequiredSkill && proto->RequiredSkillRank &&
         bot->HasSkill(proto->RequiredSkill) &&
         bot->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank &&
-        !bot->HasSpell(proto->Spells[2].SpellId))
+        !bot->HasSpell(GetRecipeItemSpell(proto)))
         return ITEM_USAGE_FUTURE;
 
     // Vendor-bought reagents and crafted vellums are kept at their stock target.
