@@ -3375,6 +3375,9 @@ void PlayerbotFactory::InitProfessionTools()
     if (bot->HasSkill(SKILL_BLACKSMITHING))
         ensureTool(5956, 162);  // Blacksmith Hammer
 
+    if (bot->HasSkill(SKILL_ALCHEMY))
+        ensureTool(9149, 12);  // Philosopher's Stone (transmute focus)
+
     if (bot->HasSkill(SKILL_ENGINEERING))
     {
         ensureTool(5956, 162);  // Blacksmith Hammer

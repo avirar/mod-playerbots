@@ -6,6 +6,7 @@
 
 #include "ItemUsageValue.h"
 #include "AiFactory.h"
+#include "BagPolicy.h"
 #include "ChatHelper.h"
 #include "CreatureData.h"
 #include "DBCStores.h"
@@ -19,6 +20,7 @@
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
 #include "ProfessionStockPolicy.h"
+#include "ProfessionUsefulPolicy.h"
 #include "QuestAction.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
@@ -270,6 +272,12 @@ ItemUsage ItemUsageValue::Calculate()
             return ITEM_USAGE_KEEP;
     }
 
+    // A missing profession tool is needed before any material/future-reagent
+    // classification: transmute stones, rods and kits can also appear in
+    // those lists, and the bot must acquire them first.
+    if (ProfessionUsefulPolicy::IsMissingToolForBot(botAI, proto))
+        return ITEM_USAGE_SKILL;
+
     if (IsProfessionMaterial(proto))
         return ITEM_USAGE_KEEP;
 
@@ -520,15 +528,7 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemTemplate const* itemProto, 
         return ITEM_USAGE_NONE;
 
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
-    {
-        if (itemProto->SubClass != ITEM_SUBCLASS_CONTAINER)
-            return ITEM_USAGE_NONE;  // Todo add logic for non-bag containers. We want to look at professions/class and
-                                     // only replace if non-bag is larger than bag.
-        if (GetSmallestBagSize() >= itemProto->ContainerSlots)
-            return ITEM_USAGE_NONE;
-
-        return ITEM_USAGE_EQUIP;
-    }
+        return BagPolicy::IsBagUpgradeForBot(bot, itemProto) ? ITEM_USAGE_EQUIP : ITEM_USAGE_NONE;
 
     if (itemProto->Class == ITEM_CLASS_WEAPON && itemProto->SubClass == ITEM_SUBCLASS_WEAPON_MISC)
         return ITEM_USAGE_NONE;
@@ -771,27 +771,6 @@ ParsedItemUsage ItemUsageValue::GetItemIdFromQualifier()
         parsed.itemId = atoi(qualifier.c_str());
     return parsed;
 }
-// Return smaltest bag size equipped
-uint32 ItemUsageValue::GetSmallestBagSize()
-{
-    int8 curSlot = 0;
-    uint32 curSlots = 0;
-    for (uint8 bag = INVENTORY_SLOT_BAG_START + 1; bag < INVENTORY_SLOT_BAG_END; ++bag)
-    {
-        if (Bag const* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
-        {
-            if (curSlot > 0 && curSlots < pBag->GetBagSize())
-                continue;
-
-            curSlot = pBag->GetSlot();
-            curSlots = pBag->GetBagSize();
-        }
-        else
-            return 0;
-    }
-
-    return curSlots;
-}
 
 bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* proto)
 {
@@ -872,6 +851,9 @@ bool ItemUsageValue::IsStartQuestItemUsefulFor(Player* player, ItemTemplate cons
 
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
 {
+    if (ProfessionUsefulPolicy::IsMissingToolForBot(botAI, proto))
+        return true;
+
     switch (proto->ItemId)
     {
         case 756:  // Tunnel Pick

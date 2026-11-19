@@ -27,6 +27,7 @@
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
+#include "ProfessionUsefulPolicy.h"
 #include "LootValues.h"
 #include "ObjectAccessor.h"
 #include "ObjectDefines.h"
@@ -48,8 +49,12 @@ struct ProfessionRecipe
     uint32 spellId = 0;
     uint32 outputItemId = 0;
     uint32 outputCount = 1;
+    uint32 skillLine = 0;
     int32 chance = 0;
     uint32 tier = 0;
+    uint32 reagentItems = 0;
+    float efficiency = 0.0f;
+    uint8 usefulRank = 255;
     uint32 spellFocus = 0;
     bool useful = false;
     bool noItemSpell = false;  // enchanting: target a bag item instead of creating one
@@ -1232,10 +1237,17 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         uint32 tier = 0;
         bool matchedSkillLine = false;
         bool professionSpell = false;
+        uint32 professionSkillLine = 0;
         SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
         for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
             SkillLineAbilityEntry const* skill = itr->second;
+            if (IsProfessionSkill(skill->SkillLine) && bot->HasSkill(SkillType(skill->SkillLine)))
+            {
+                professionSpell = true;
+                if (!professionSkillLine)
+                    professionSkillLine = skill->SkillLine;
+            }
             if (skill->SkillLine == data.skillLine)
             {
                 matchedSkillLine = true;
@@ -1244,14 +1256,13 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                                                                           skill->TrivialSkillLineRankLow));
                 tier = std::max(tier, skill->TrivialSkillLineRankLow);
             }
-            if (IsProfessionSkill(skill->SkillLine))
-                professionSpell = true;
         }
         if (!matchedSkillLine && !professionSpell)
             continue;
 
         bool hasAnyReagent = false;
         bool hasReagents = true;
+        uint32 reagentItems = 0;
         std::array<uint32, MAX_SPELL_REAGENTS> reagents{};
         std::array<uint8, MAX_SPELL_REAGENTS> reagentCounts{};
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
@@ -1262,6 +1273,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             hasAnyReagent = true;
             reagents[r] = uint32(spellInfo->Reagent[r]);
             reagentCounts[r] = uint8(spellInfo->ReagentCount[r]);
+            reagentItems += spellInfo->ReagentCount[r];
             hasReagents = hasReagents && bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
         }
         if (!hasAnyReagent || bot->HasSpellCooldown(spellId))
@@ -1287,41 +1299,38 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         bool useful = false;
         bool marketable = false;
-        if (matchedSkillLine)
+        uint8 usefulRank = 255;
+        if (professionSpell && outputItemId)
         {
-            if (outputItemId)
-            {
-                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
-                if (!proto)
-                    continue;
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
+            if (!proto)
+                continue;
 
-                ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
-                // Reagents are not final goods: treating ITEM_USAGE_SKILL as useful
-                // lets a direct intermediate recipe outrank the finished item that
-                // needs it, so the bot crafts bolts forever instead of the bag.
-                useful = usage == ITEM_USAGE_USE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE ||
-                         usage == ITEM_USAGE_QUEST;
-            }
-            else if (scrollItemId)
-            {
-                // Vellums produce a tradeable scroll and still grant skill. Until
-                // AH pricing exists, treat every scroll as a potential sale and
-                // prefer vellums; AH valuation can gate this per enchant later.
-                marketable = true;
-            }
+            ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
+            usefulRank = ProfessionUsefulPolicy::GetUsefulRank(botAI, proto, usage);
+            useful = usefulRank != 255;
+        }
+        else if (matchedSkillLine && scrollItemId)
+        {
+            // Vellums produce a tradeable scroll and still grant skill. They are
+            // not useful on their own; they are ordinary skill-up recipes.
+            marketable = true;
         }
 
-        // At max skill there is no skill-up to gain; useful outputs (including
-        // marketable enchant scrolls) are still crafted. Gray recipes stay in the
-        // graph because they can still be intermediates for another recipe.
-        bool const worthwhile = useful || marketable;
+        // At max skill there is no skill-up to gain. Useful outputs (including a
+        // needed tool or bag) are still crafted; marketable scrolls are not.
+        bool const worthwhile = useful;
 
         ProfessionRecipe recipe;
         recipe.spellId = spellId;
         recipe.outputItemId = outputItemId;
         recipe.outputCount = outputCount;
+        recipe.skillLine = matchedSkillLine ? data.skillLine : professionSkillLine;
         recipe.chance = chance;
         recipe.tier = tier;
+        recipe.reagentItems = reagentItems;
+        recipe.efficiency = float(std::max(0, chance)) / 1000.0f / float(std::max<uint32>(1, reagentItems));
+        recipe.usefulRank = usefulRank;
         recipe.spellFocus = spellInfo->RequiresSpellFocus;
         recipe.useful = useful;
         recipe.noItemSpell = noItemSpell;
@@ -1340,63 +1349,74 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (IsRecipeFailure(info, spellId))
             continue;
 
-        if (!matchedSkillLine || (!worthwhile && (chance <= 0 || skillMaxed)))
+        if (!matchedSkillLine && !useful)
+            continue;
+
+        if (!worthwhile && (chance <= 0 || skillMaxed))
             continue;
 
         if (hasReagents)
-            (worthwhile ? directUseful : directSkillUp).push_back(recipe);
+            (useful ? directUseful : directSkillUp).push_back(recipe);
         else
-            (worthwhile ? plannedUseful : plannedSkillUp).push_back(recipe);
+            (useful ? plannedUseful : plannedSkillUp).push_back(recipe);
     }
 
-    auto pickBest = [](std::vector<ProfessionRecipe>& recipes) -> ProfessionRecipe*
+    auto sortUseful = [](std::vector<ProfessionRecipe>& recipes)
     {
-        ProfessionRecipe* best = nullptr;
-        for (ProfessionRecipe& recipe : recipes)
-        {
-            if (!best || recipe.chance > best->chance || (recipe.chance == best->chance && recipe.tier > best->tier))
-                best = &recipe;
-        }
-        return best;
+        std::sort(recipes.begin(), recipes.end(),
+                  [](ProfessionRecipe const& left, ProfessionRecipe const& right)
+                  {
+                      if (left.usefulRank != right.usefulRank)
+                          return left.usefulRank < right.usefulRank;
+                      if (left.efficiency != right.efficiency)
+                          return left.efficiency > right.efficiency;
+                      if (left.chance != right.chance)
+                          return left.chance > right.chance;
+                      return left.tier > right.tier;
+                  });
+    };
+    auto sortSkillUp = [](std::vector<ProfessionRecipe>& recipes)
+    {
+        std::sort(recipes.begin(), recipes.end(),
+                  [](ProfessionRecipe const& left, ProfessionRecipe const& right)
+                  {
+                      if (left.efficiency != right.efficiency)
+                          return left.efficiency > right.efficiency;
+                      if (left.chance != right.chance)
+                          return left.chance > right.chance;
+                      if (left.tier != right.tier)
+                          return left.tier > right.tier;
+                      return left.reagentItems < right.reagentItems;
+                  });
     };
 
-    ProfessionRecipe* chosen = pickBest(directUseful);
-    if (!chosen)
-        chosen = pickBest(directSkillUp);
+    sortUseful(directUseful);
+    sortUseful(plannedUseful);
+    sortSkillUp(directSkillUp);
+    sortSkillUp(plannedSkillUp);
 
+    ProfessionRecipe* chosen = directUseful.empty() ? nullptr : &directUseful.front();
     bool planNeeded = false;
     if (!chosen)
     {
-        auto sortByPriority = [](std::vector<ProfessionRecipe>& recipes)
-        {
-            std::sort(recipes.begin(), recipes.end(),
-                      [](ProfessionRecipe const& left, ProfessionRecipe const& right)
-                      {
-                          if (left.chance != right.chance)
-                              return left.chance > right.chance;
-                          return left.tier > right.tier;
-                      });
-        };
-        sortByPriority(plannedUseful);
-        sortByPriority(plannedSkillUp);
-
-        if (plannedUseful.empty() && plannedSkillUp.empty())
-        {
-            LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
-                      bot->GetName(), data.skillLine);
-            FinishProfession(info, data, ProfessionEndReason::NoMaterials);
-            return true;
-        }
-
         BagSnapshot bags;
-        BuildBagSnapshot(botAI, bags);
+        bool bagsBuilt = false;
+        auto ensureBags = [&]()
+        {
+            if (bagsBuilt)
+                return;
+            BuildBagSnapshot(botAI, bags);
+            bagsBuilt = true;
+        };
+
         uint32 const tradeskillBudget = AI_VALUE2(uint32, "free money for", uint32(NeedMoneyFor::tradeskill));
         auto tryPlan = [&](std::vector<ProfessionRecipe>& recipes) -> bool
         {
             for (ProfessionRecipe& recipe : recipes)
             {
-                LOG_TRACE("playerbots", "[New RPG] {} plan candidate {} chance {} useful {}", bot->GetName(),
-                          recipe.spellId, recipe.chance, recipe.useful);
+                LOG_TRACE("playerbots", "[New RPG] {} plan candidate {} chance {} useful {} efficiency {} reagents {}",
+                          bot->GetName(), recipe.spellId, recipe.chance, recipe.useful, recipe.efficiency,
+                          recipe.reagentItems);
                 std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
                 if (!PlanRecipe(bot, info, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps))
                     continue;
@@ -1411,7 +1431,22 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             return false;
         };
 
-        if (!tryPlan(plannedUseful) && !tryPlan(plannedSkillUp))
+        if (!plannedUseful.empty())
+        {
+            ensureBags();
+            tryPlan(plannedUseful);
+        }
+
+        if (!chosen && !directSkillUp.empty())
+            chosen = &directSkillUp.front();
+
+        if (!chosen && !plannedSkillUp.empty())
+        {
+            ensureBags();
+            tryPlan(plannedSkillUp);
+        }
+
+        if (!chosen)
         {
             LOG_DEBUG("playerbots", "[New RPG] {} no professions recipe with skill-up chance and materials (skill {})",
                       bot->GetName(), data.skillLine);
@@ -1468,8 +1503,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     data.spellId = chosen->spellId;
     data.lastCast = getMSTime();
     ++data.casts;
-    LOG_DEBUG("playerbots", "[New RPG] {} professions skill {} recipe {} chance {} useful {} tier {}", bot->GetName(),
-              data.skillLine, chosen->spellId, chosen->chance, chosen->useful, chosen->tier);
+    LOG_DEBUG("playerbots",
+              "[New RPG] {} professions skill {} recipe {} chance {} useful {} tier {} efficiency {:.3f} reagents {} "
+              "recipeSkill {}",
+              bot->GetName(), data.skillLine, chosen->spellId, chosen->chance, chosen->useful, chosen->tier,
+              chosen->efficiency, chosen->reagentItems, chosen->skillLine);
 
     bool cast = false;
     if (chosen->noItemSpell)

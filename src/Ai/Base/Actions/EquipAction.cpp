@@ -5,6 +5,7 @@
  */
 
 #include "EquipAction.h"
+#include "BagPolicy.h"
 #include "Event.h"
 #include "ItemCountValue.h"
 #include "ItemPackets.h"
@@ -63,7 +64,7 @@ void EquipAction::EquipBags()
     for (Item* bag : bags)
     {
         ItemTemplate const* proto = bag->GetTemplate();
-        uint8 const newBagSlot = FindBagSlotForBag(proto);
+        uint8 const newBagSlot = BagPolicy::FindBagSlotForBag(bot, proto);
         if (!newBagSlot)
             continue;
 
@@ -71,72 +72,6 @@ void EquipAction::EquipBags()
         uint16 const dst = ((INVENTORY_SLOT_BAG_0 << 8) | newBagSlot);
         bot->SwapItem(src, dst);
     }
-}
-
-uint8 EquipAction::FindBagSlotForBag(ItemTemplate const* proto)
-{
-    if (!proto || proto->Class != ITEM_CLASS_CONTAINER || !proto->ContainerSlots)
-        return 0;
-
-    uint32 const newSize = proto->ContainerSlots;
-    uint32 const newFamily = proto->BagFamily;
-
-    uint8 emptySlot = 0;
-    uint8 sameFamilySlot = 0;
-    uint32 sameFamilySize = 0;
-    uint8 smallestGenericSlot = 0;
-    uint32 smallestGenericSize = 0;
-    bool hasFamily = false;
-
-    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
-    {
-        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
-        if (!item)
-        {
-            if (!emptySlot)
-                emptySlot = slot;
-            continue;
-        }
-
-        ItemTemplate const* bagProto = item->GetTemplate();
-        if (!bagProto)
-            continue;
-
-        uint32 const bagSize = bagProto->ContainerSlots;
-        uint32 const bagFamily = bagProto->BagFamily;
-
-        if (bagFamily)
-        {
-            hasFamily = true;
-            if (bagFamily == newFamily && (!sameFamilySlot || bagSize < sameFamilySize))
-            {
-                sameFamilySlot = slot;
-                sameFamilySize = bagSize;
-            }
-        }
-        else if (!smallestGenericSlot || bagSize < smallestGenericSize)
-        {
-            smallestGenericSlot = slot;
-            smallestGenericSize = bagSize;
-        }
-    }
-
-    if (newFamily)
-    {
-        // Family bags are hard to re-acquire: only upgrade the same family.
-        // A second family bag is never equipped, even into an empty slot.
-        if (hasFamily)
-            return (sameFamilySlot && newSize > sameFamilySize) ? sameFamilySlot : 0;
-
-        return emptySlot;
-    }
-
-    // Generic bags fill empty slots first, then upgrade the smallest generic
-    // bag. They never displace a family bag.
-    if (emptySlot)
-        return emptySlot;
-
-    return (smallestGenericSlot && newSize > smallestGenericSize) ? smallestGenericSlot : 0;
 }
 
 void EquipAction::EquipItem(FindItemVisitor* visitor)
@@ -168,7 +103,7 @@ void EquipAction::EquipItem(Item* item)
     // Bags are not gear: if no valid bag target exists, do not fall through.
     if (itemProto->Class == ITEM_CLASS_CONTAINER)
     {
-        uint8 newBagSlot = FindBagSlotForBag(itemProto);
+        uint8 newBagSlot = BagPolicy::FindBagSlotForBag(bot, itemProto);
         if (!newBagSlot)
             return;
 

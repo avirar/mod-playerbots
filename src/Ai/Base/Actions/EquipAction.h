@@ -27,7 +27,6 @@ public:
 
 private:
     void EquipItem(FindItemVisitor* visitor);
-    uint8 FindBagSlotForBag(ItemTemplate const* proto);
     void EquipItem(Item* item);
 };
 

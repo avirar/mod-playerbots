@@ -75,9 +75,6 @@ bool IsProfessionTool(ItemTemplate const* proto)
     if (std::find(PROFESSION_TOOL_IDS.begin(), PROFESSION_TOOL_IDS.end(), proto->ItemId) != PROFESSION_TOOL_IDS.end())
         return true;
 
-    if (proto->Class != ITEM_CLASS_WEAPON && proto->Class != ITEM_CLASS_TRADE_GOODS)
-        return false;
-
     return proto->TotemCategory != 0;
 }
 
