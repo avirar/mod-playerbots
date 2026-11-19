@@ -229,6 +229,13 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
+    if (usage == ITEM_USAGE_FUTURE && proto->Class != ITEM_CLASS_RECIPE)
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.alwaysKeep = true;
+        return rule;
+    }
+
     // Older profession reagent tiers are kept only while a useful spell still
     // consumes them; otherwise they are obsolete stock.
     if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
@@ -245,8 +252,8 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
-    bool const isTradeClass =
-        proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC || proto->Class == ITEM_CLASS_REAGENT;
+    bool const isTradeClass = proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC ||
+                              proto->Class == ITEM_CLASS_REAGENT || proto->Class == ITEM_CLASS_GEM;
     bool const isRecipe = proto->Class == ITEM_CLASS_RECIPE;
 
     if (isTradeClass || isRecipe)

@@ -7,8 +7,11 @@
 #include "ItemUsageValue.h"
 #include "AiFactory.h"
 #include "ChatHelper.h"
+#include "DBCStores.h"
+#include "DBCStructure.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
+#include "ItemTemplate.h"
 #include "LootObjectStack.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
@@ -17,10 +20,14 @@
 #include "QuestAction.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
+#include "SharedDefines.h"
+#include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "World.h"
 #include "WorldConfig.h"
 
+#include <cstdlib>
+#include <unordered_map>
 #include <unordered_set>
 
 static bool IsRoguePoison(ItemTemplate const* proto);
@@ -28,7 +35,106 @@ static bool IsRoguePoison(ItemTemplate const* proto);
 namespace
 {
 thread_local uint32 permissiveReagentCheckDepth = 0;
+
+constexpr uint32 PROFESSION_MILLING_SPELL = 51005;
+constexpr uint32 PROFESSION_PROSPECTING_SPELL = 31252;
+constexpr int32 PROFESSION_MATERIAL_SKILL_WINDOW = 50;
+
+struct ProfessionReagentEntry
+{
+    uint32 spellId;
+    uint32 skillLine;
+    uint32 minRank;
+};
+
+bool IsProfessionReagentSkill(uint32 skillLine)
+{
+    switch (skillLine)
+    {
+        case SKILL_ALCHEMY:
+        case SKILL_BLACKSMITHING:
+        case SKILL_ENCHANTING:
+        case SKILL_ENGINEERING:
+        case SKILL_HERBALISM:
+        case SKILL_INSCRIPTION:
+        case SKILL_JEWELCRAFTING:
+        case SKILL_LEATHERWORKING:
+        case SKILL_MINING:
+        case SKILL_SKINNING:
+        case SKILL_TAILORING:
+        case SKILL_COOKING:
+        case SKILL_FIRST_AID:
+        case SKILL_FISHING:
+            return true;
+        default:
+            return false;
+    }
 }
+
+bool IsProfessionMaterialClass(ItemTemplate const* proto)
+{
+    if (!proto)
+        return false;
+
+    switch (proto->Class)
+    {
+        case ITEM_CLASS_TRADE_GOODS:
+        case ITEM_CLASS_REAGENT:
+        case ITEM_CLASS_GEM:
+            return true;
+        case ITEM_CLASS_MISC:
+            return proto->SubClass == ITEM_SUBCLASS_REAGENT;
+        default:
+            return false;
+    }
+}
+
+// Reagents of all profession recipes, keyed by item id. Skills are matched at
+// use time, so this covers professions the bot does not have without leaking
+// them into the bot's item usage.
+std::unordered_map<uint32, std::vector<ProfessionReagentEntry>> const& GetProfessionReagentIndex()
+{
+    static std::unordered_map<uint32, std::vector<ProfessionReagentEntry>> const index = []()
+    {
+        std::unordered_map<uint32, std::vector<ProfessionReagentEntry>> result;
+        for (SkillLineAbilityEntry const* ability : sSkillLineAbilityStore)
+        {
+            if (!ability || !IsProfessionReagentSkill(ability->SkillLine))
+                continue;
+
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(ability->Spell);
+            if (!spellInfo)
+                continue;
+
+            bool createsItem = false;
+            for (uint8 effect = 0; effect < MAX_SPELL_EFFECTS; ++effect)
+            {
+                uint32 const type = spellInfo->Effects[effect].Effect;
+                if (type == SPELL_EFFECT_CREATE_ITEM || type == SPELL_EFFECT_CREATE_ITEM_2 ||
+                    type == SPELL_EFFECT_ENCHANT_ITEM || type == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
+                    type == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
+                {
+                    createsItem = true;
+                    break;
+                }
+            }
+            if (!createsItem)
+                continue;
+
+            for (uint8 reagent = 0; reagent < MAX_SPELL_REAGENTS; ++reagent)
+            {
+                uint32 const itemId = spellInfo->Reagent[reagent];
+                if (!spellInfo->ReagentCount[reagent] || !itemId)
+                    continue;
+
+                result[itemId].push_back({ability->Spell, ability->SkillLine, ability->MinSkillLineRank});
+            }
+        }
+        return result;
+    }();
+    return index;
+}
+}  // namespace
 
 ScopedPermissiveReagentCheck::ScopedPermissiveReagentCheck() { ++permissiveReagentCheckDepth; }
 
@@ -72,9 +178,12 @@ ItemUsage ItemUsageValue::Calculate()
     if (IsProfessionMaterial(proto))
         return ITEM_USAGE_KEEP;
 
+    if (IsFutureProfessionMaterial(proto))
+        return ITEM_USAGE_FUTURE;
+
     if (IsRealPlayer(botAI->GetMaster()))
     {
-        if (IsItemUsefulForSkill(proto) || IsItemNeededForSkill(proto))
+        if (IsItemNeededForSkill(proto))
             return ITEM_USAGE_SKILL;
 
         if ((proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC ||
@@ -726,105 +835,76 @@ bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
     return false;
 }
 
-bool ItemUsageValue::IsItemUsefulForSkill(ItemTemplate const* proto)
-{
-    switch (proto->Class)
-    {
-        case ITEM_CLASS_TRADE_GOODS:
-        case ITEM_CLASS_MISC:
-        case ITEM_CLASS_REAGENT:
-        case ITEM_CLASS_GEM:
-        {
-            if (botAI->HasSkill(SKILL_TAILORING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_TAILORING))
-                return true;
-            if (botAI->HasSkill(SKILL_LEATHERWORKING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_LEATHERWORKING))
-                return true;
-            if (botAI->HasSkill(SKILL_ENGINEERING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_ENGINEERING))
-                return true;
-            if (botAI->HasSkill(SKILL_BLACKSMITHING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_BLACKSMITHING))
-                return true;
-            if (botAI->HasSkill(SKILL_ALCHEMY) && RandomItemMgr::IsUsedBySkill(proto, SKILL_ALCHEMY))
-                return true;
-            if (botAI->HasSkill(SKILL_ENCHANTING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_ENCHANTING))
-                return true;
-            if (botAI->HasSkill(SKILL_FISHING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_FISHING))
-                return true;
-            if (botAI->HasSkill(SKILL_FIRST_AID) && RandomItemMgr::IsUsedBySkill(proto, SKILL_FIRST_AID))
-                return true;
-            if (botAI->HasSkill(SKILL_COOKING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_COOKING))
-                return true;
-            if (botAI->HasSkill(SKILL_JEWELCRAFTING) && RandomItemMgr::IsUsedBySkill(proto, SKILL_JEWELCRAFTING))
-                return true;
-            if (botAI->HasSkill(SKILL_MINING) && (RandomItemMgr::IsUsedBySkill(proto, SKILL_MINING) ||
-                                                  RandomItemMgr::IsUsedBySkill(proto, SKILL_BLACKSMITHING) ||
-                                                  RandomItemMgr::IsUsedBySkill(proto, SKILL_JEWELCRAFTING) ||
-                                                  RandomItemMgr::IsUsedBySkill(proto, SKILL_ENGINEERING)))
-                return true;
-            if (botAI->HasSkill(SKILL_SKINNING) && (RandomItemMgr::IsUsedBySkill(proto, SKILL_SKINNING) ||
-                                                    RandomItemMgr::IsUsedBySkill(proto, SKILL_LEATHERWORKING)))
-                return true;
-            if (botAI->HasSkill(SKILL_HERBALISM) && (RandomItemMgr::IsUsedBySkill(proto, SKILL_HERBALISM) ||
-                                                     RandomItemMgr::IsUsedBySkill(proto, SKILL_ALCHEMY)))
-                return true;
-
-            return false;
-        }
-        case ITEM_CLASS_RECIPE:
-        {
-            if (bot->HasSpell(proto->Spells[2].SpellId))
-                break;
-
-            switch (proto->SubClass)
-            {
-                case ITEM_SUBCLASS_LEATHERWORKING_PATTERN:
-                    return botAI->HasSkill(SKILL_LEATHERWORKING);
-                case ITEM_SUBCLASS_TAILORING_PATTERN:
-                    return botAI->HasSkill(SKILL_TAILORING);
-                case ITEM_SUBCLASS_ENGINEERING_SCHEMATIC:
-                    return botAI->HasSkill(SKILL_ENGINEERING);
-                case ITEM_SUBCLASS_BLACKSMITHING:
-                    return botAI->HasSkill(SKILL_BLACKSMITHING);
-                case ITEM_SUBCLASS_COOKING_RECIPE:
-                    return botAI->HasSkill(SKILL_COOKING);
-                case ITEM_SUBCLASS_ALCHEMY_RECIPE:
-                    return botAI->HasSkill(SKILL_ALCHEMY);
-                case ITEM_SUBCLASS_FIRST_AID_MANUAL:
-                    return botAI->HasSkill(SKILL_FIRST_AID);
-                case ITEM_SUBCLASS_ENCHANTING_FORMULA:
-                    return botAI->HasSkill(SKILL_ENCHANTING);
-                case ITEM_SUBCLASS_FISHING_MANUAL:
-                    return botAI->HasSkill(SKILL_FISHING);
-            }
-        }
-    }
-
-    return false;
-}
-
 bool ItemUsageValue::IsProfessionMaterial(ItemTemplate const* proto)
 {
-    if (!proto)
+    if (!IsProfessionMaterialClass(proto))
         return false;
-
-    switch (proto->Class)
-    {
-        case ITEM_CLASS_TRADE_GOODS:
-        case ITEM_CLASS_REAGENT:
-        case ITEM_CLASS_GEM:
-            break;
-        case ITEM_CLASS_MISC:
-            if (proto->SubClass != ITEM_SUBCLASS_REAGENT)
-                return false;
-            break;
-        default:
-            return false;
-    }
 
     // Vendor stock and crafted supplies have their own two-stack target.
     if (IsProfessionVendorStockCandidate(proto) || GetProfessionCraftedStockTarget(botAI, proto))
         return false;
 
-    return IsItemUsefulForSkill(proto);
+    if (IsItemNeededForUsefullSpell(proto))
+        return true;
+
+    int32 const inscription = int32(bot->GetPureSkillValue(SKILL_INSCRIPTION));
+    if (bot->HasSpell(PROFESSION_MILLING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_MILLABLE) &&
+        std::abs(int32(proto->RequiredSkillRank) - inscription) <= PROFESSION_MATERIAL_SKILL_WINDOW)
+        return true;
+
+    int32 const jewelcrafting = int32(bot->GetPureSkillValue(SKILL_JEWELCRAFTING));
+    if (bot->HasSpell(PROFESSION_PROSPECTING_SPELL) && proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE) &&
+        std::abs(int32(proto->RequiredSkillRank) - jewelcrafting) <= PROFESSION_MATERIAL_SKILL_WINDOW)
+        return true;
+
+    return false;
+}
+
+bool ItemUsageValue::IsFutureProfessionMaterial(ItemTemplate const* proto)
+{
+    if (!IsProfessionMaterialClass(proto))
+        return false;
+
+    // Vendor stock and crafted supplies have their own two-stack target.
+    if (IsProfessionVendorStockCandidate(proto) || GetProfessionCraftedStockTarget(botAI, proto))
+        return false;
+
+    auto const& index = GetProfessionReagentIndex();
+    auto const it = index.find(proto->ItemId);
+    if (it != index.end())
+    {
+        for (ProfessionReagentEntry const& entry : it->second)
+        {
+            if (!bot->HasSkill(entry.skillLine))
+                continue;
+            if (bot->HasSpell(entry.spellId))
+                continue;  // known recipes go through IsItemNeededForUsefullSpell
+
+            int32 const current = int32(bot->GetPureSkillValue(entry.skillLine));
+            if (std::abs(int32(entry.minRank) - current) <= PROFESSION_MATERIAL_SKILL_WINDOW)
+                return true;
+        }
+    }
+
+    // Milling/Prospecting are conversion spells: the input is the target item,
+    // not a Reagent[] entry.
+    if (!bot->HasSpell(PROFESSION_MILLING_SPELL) && bot->HasSkill(SKILL_INSCRIPTION) &&
+        proto->HasFlag(ITEM_FLAG_IS_MILLABLE))
+    {
+        int32 const current = int32(bot->GetPureSkillValue(SKILL_INSCRIPTION));
+        if (std::abs(int32(proto->RequiredSkillRank) - current) <= PROFESSION_MATERIAL_SKILL_WINDOW)
+            return true;
+    }
+
+    if (!bot->HasSpell(PROFESSION_PROSPECTING_SPELL) && bot->HasSkill(SKILL_JEWELCRAFTING) &&
+        proto->HasFlag(ITEM_FLAG_IS_PROSPECTABLE))
+    {
+        int32 const current = int32(bot->GetPureSkillValue(SKILL_JEWELCRAFTING));
+        if (std::abs(int32(proto->RequiredSkillRank) - current) <= PROFESSION_MATERIAL_SKILL_WINDOW)
+            return true;
+    }
+
+    return false;
 }
 
 namespace
@@ -897,12 +977,16 @@ bool ItemUsageValue::IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool
         if (newItemId && newItemId != proto->ItemId)
         {
             ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", newItemId);
+            if (usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_AMMO ||
+                usage == ITEM_USAGE_QUEST || usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_USE)
+                return true;
 
-            if (usage != ITEM_USAGE_REPLACE && usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_AMMO &&
-                usage != ITEM_USAGE_QUEST && usage != ITEM_USAGE_SKILL && usage != ITEM_USAGE_USE)
-                continue;
-
-            return true;
+            // A material-only output is useful only if something further down the
+            // chain consumes it. This avoids keeping an entire smelting chain that
+            // ends in a bar nothing uses.
+            ItemTemplate const* newProto = sObjectMgr->GetItemTemplate(newItemId);
+            if (newProto && (IsItemNeededForUsefullSpell(newProto) || IsFutureProfessionMaterial(newProto)))
+                return true;
         }
     }
 

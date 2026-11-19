@@ -195,8 +195,11 @@ bool BuyAction::Execute(Event event)
                             needMoneyFor = NeedMoneyFor::consumables;
                             break;
                         case ITEM_USAGE_SKILL:
-                        case ITEM_USAGE_FUTURE:
                             needMoneyFor = NeedMoneyFor::tradeskill;
+                            break;
+                        case ITEM_USAGE_FUTURE:
+                            if (proto->Class == ITEM_CLASS_RECIPE)
+                                needMoneyFor = NeedMoneyFor::tradeskill;
                             break;
                         default:
                             break;
