@@ -169,6 +169,15 @@ void SellAction::Sell(Item* item, bool force)
 
         keepRequirement = rule.keepCount;
     }
+    else
+    {
+        // Even an explicit item sell must not destroy profession tools/materials
+        // or a recipe the bot can learn later.
+        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", itemId)->Get();
+        ItemKeepRule const rule = GetItemKeepRule(botAI, proto, usage);
+        if (rule.alwaysKeep || usage == ITEM_USAGE_FUTURE)
+            return;
+    }
 
     uint32 countToSell = item->GetCount();
 

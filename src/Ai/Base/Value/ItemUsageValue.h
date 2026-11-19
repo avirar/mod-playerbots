@@ -46,7 +46,8 @@ enum ItemUsage : uint32
     ITEM_USAGE_AH = 10,
     ITEM_USAGE_KEEP = 11,
     ITEM_USAGE_VENDOR = 12,
-    ITEM_USAGE_AMMO = 13
+    ITEM_USAGE_AMMO = 13,
+    ITEM_USAGE_FUTURE = 14
 };
 
 class ItemUsageValue : public CalculatedValue<ItemUsage>, public Qualified
@@ -79,6 +80,8 @@ private:
 
 public:
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);
+    /** True for gathered or crafted profession materials that should not be limited by stack count. */
+    bool IsProfessionMaterial(ItemTemplate const* proto);
     /** True if this poison is the highest item level of its family (use-spell SpellFamilyFlags). */
     bool IsBestPoison(ItemTemplate const* proto);
 

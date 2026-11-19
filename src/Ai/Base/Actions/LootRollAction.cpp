@@ -13,6 +13,32 @@
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 
+namespace
+{
+bool GroupMemberCanLearnRecipeNow(Group* group, ItemTemplate const* proto, Player* exclude)
+{
+    if (!group || !proto || !proto->RequiredSkill || !proto->RequiredSkillRank)
+        return false;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member || member == exclude)
+            continue;
+        if (!member->HasSkill(proto->RequiredSkill))
+            continue;
+        if (member->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank)
+            continue;
+        if (member->HasSpell(proto->Spells[2].SpellId))
+            continue;
+
+        return true;
+    }
+
+    return false;
+}
+}  // namespace
+
 bool LootRollAction::Execute(Event /*event*/)
 {
     Group* group = bot->GetGroup();
@@ -81,6 +107,8 @@ bool LootRollAction::Execute(Event /*event*/)
                         vote = PASS;
                     else if (usage == ITEM_USAGE_SKILL)
                         vote = NEED;  // Bot can learn this recipe
+                    else if (usage == ITEM_USAGE_FUTURE)
+                        vote = GroupMemberCanLearnRecipeNow(group, proto, bot) ? GREED : NEED;
                     else if (proto->Bonding != BIND_WHEN_PICKED_UP)
                         vote = GREED;  // BoE recipe bot can't learn - GREED for AH/trade
                     break;
@@ -135,6 +163,7 @@ RollVote LootRollAction::CalculateRollVote(ItemTemplate const* proto, ItemUsage 
             needVote = NEED;
             break;
         case ITEM_USAGE_SKILL:
+        case ITEM_USAGE_FUTURE:
         case ITEM_USAGE_USE:
         case ITEM_USAGE_AH:
         case ITEM_USAGE_VENDOR:

@@ -23,6 +23,7 @@
 #include "DBCStructure.h"
 #include "GameObject.h"
 #include "Item.h"
+#include "ItemKeepPolicy.h"
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
@@ -106,6 +107,9 @@ struct CraftPlanContext
 constexpr uint32 BASIC_CAMPFIRE_SPELL = 818;
 constexpr uint32 COOKING_FIRE_FOCUS = 4;
 constexpr uint32 CAMPFIRE_WAIT_MS = 10 * IN_MILLISECONDS;
+// Pathing stops a little outside the object's spell focus distance. Allow a small
+// slack so the bot can cast instead of looping forever on "moving to spell focus".
+constexpr float SPELL_FOCUS_DISTANCE_SLACK = 2.0f;
 
 constexpr uint32 CONVERSION_LOOT_TIMEOUT_MS = 15 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_LOOT_HARD_TIMEOUT_MS = 30 * IN_MILLISECONDS;
@@ -864,6 +868,9 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
         // Clear any stale list-inventory entry so the core uses the vendor we pass.
         bot->GetSession()->SetCurrentVendor(0);
 
+        if (AI_VALUE(uint8, "bag space") > 80)
+            botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+
         uint32 const buyCount = std::max<uint32>(1, proto->BuyCount);
         uint32 const unitPrice = uint32(std::floor(float(proto->BuyPrice) * bot->GetReputationPriceDiscount(vendor)));
         uint32 purchased = 0;
@@ -886,6 +893,10 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
                 return failVendor("core purchase rejected");
             purchased += after - before;
         }
+
+        // Pick up useful vendor recipes/reagents, including odd-currency items that
+        // the exact planner purchase cannot represent.
+        botAI->DoSpecificAction("buy", Event("rpg action", "vendor"), true);
 
         data.pendingCrafts.erase(data.pendingCrafts.begin());
         LOG_DEBUG("playerbots", "[New RPG] {} bought {} x{}", bot->GetName(), step.expectedItemId, purchased);
@@ -1075,7 +1086,8 @@ NewRpgDoProfessionsAction::SpellFocusState NewRpgDoProfessionsAction::EnsureSpel
     if (focus)
     {
         distance = bot->GetDistance(focus);
-        focusDistance = std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) - 1.0f);
+        focusDistance =
+            std::max(0.5f, float(focus->GetGOInfo()->spellFocus.dist) + SPELL_FOCUS_DISTANCE_SLACK);
     }
     else
     {
@@ -1083,7 +1095,7 @@ NewRpgDoProfessionsAction::SpellFocusState NewRpgDoProfessionsAction::EnsureSpel
         float const dy = cached->pos.GetPositionY() - bot->GetPositionY();
         float const dz = cached->pos.GetPositionZ() - bot->GetPositionZ();
         distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-        focusDistance = std::max(0.5f, cached->distance - 1.0f);
+        focusDistance = std::max(0.5f, cached->distance + SPELL_FOCUS_DISTANCE_SLACK);
     }
 
     if (!focus || distance > focusDistance)
@@ -1405,19 +1417,28 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         }
     }
 
-    // Skill-up surplus respects the bag-space rule; actually useful outputs may go up to
-    // their item-usage limit even when the bags are already fairly full.
-    if (!chosen->useful && !chosen->noItemSpell && bagSpace > 80)
+    if (bagSpace >= 100)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus", bot->GetName(),
-                  bagSpace, chosen->spellId);
         FinishProfession(info, data, ProfessionEndReason::BagFull);
         return true;
     }
-    if (chosen->useful && bagSpace >= 100)
+
+    // Skill-up surplus respects the bag-space rule, but profession materials and
+    // stock outputs may still be crafted when the bags are only nearly full.
+    if (!chosen->useful && !chosen->noItemSpell && bagSpace > 80)
     {
-        FinishProfession(info, data, ProfessionEndReason::BagFull);
-        return true;
+        ItemTemplate const* output = sObjectMgr->GetItemTemplate(chosen->outputItemId);
+        ItemKeepRule outputRule;
+        if (output)
+            outputRule = GetItemKeepRule(botAI, output, AI_VALUE2(ItemUsage, "item usage", output->ItemId));
+
+        if (!outputRule.alwaysKeep && outputRule.keepCount == 0)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus",
+                      bot->GetName(), bagSpace, chosen->spellId);
+            FinishProfession(info, data, ProfessionEndReason::BagFull);
+            return true;
+        }
     }
 
     if (planNeeded)

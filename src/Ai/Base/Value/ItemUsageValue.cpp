@@ -13,6 +13,7 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
+#include "ProfessionStockPolicy.h"
 #include "QuestAction.h"
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
@@ -44,6 +45,32 @@ ItemUsage ItemUsageValue::Calculate()
     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
     if (!proto)
         return ITEM_USAGE_NONE;
+
+    // A recipe the bot cannot learn yet, but will be able to once the profession
+    // skill is high enough. Keep it, but do not treat it as an immediate need.
+    if (proto->Class == ITEM_CLASS_RECIPE && proto->RequiredSkill && proto->RequiredSkillRank &&
+        bot->HasSkill(proto->RequiredSkill) &&
+        bot->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank &&
+        !bot->HasSpell(proto->Spells[2].SpellId))
+        return ITEM_USAGE_FUTURE;
+
+    // Vendor-bought reagents and crafted vellums are kept at their stock target.
+    // Gathered/crafted profession materials are not stack-limited.
+    uint32 stockTarget = GetProfessionVendorStockTarget(botAI, proto);
+    if (!stockTarget)
+        stockTarget = GetProfessionCraftedStockTarget(botAI, proto);
+
+    if (stockTarget)
+    {
+        uint32 const count = bot->GetItemCount(itemId, false);
+        if (count < stockTarget)
+            return ITEM_USAGE_SKILL;
+        if (count == stockTarget)
+            return ITEM_USAGE_KEEP;
+    }
+
+    if (IsProfessionMaterial(proto))
+        return ITEM_USAGE_KEEP;
 
     if (IsRealPlayer(botAI->GetMaster()))
     {
@@ -772,6 +799,32 @@ bool ItemUsageValue::IsItemUsefulForSkill(ItemTemplate const* proto)
     }
 
     return false;
+}
+
+bool ItemUsageValue::IsProfessionMaterial(ItemTemplate const* proto)
+{
+    if (!proto)
+        return false;
+
+    switch (proto->Class)
+    {
+        case ITEM_CLASS_TRADE_GOODS:
+        case ITEM_CLASS_REAGENT:
+        case ITEM_CLASS_GEM:
+            break;
+        case ITEM_CLASS_MISC:
+            if (proto->SubClass != ITEM_SUBCLASS_REAGENT)
+                return false;
+            break;
+        default:
+            return false;
+    }
+
+    // Vendor stock and crafted supplies have their own two-stack target.
+    if (IsProfessionVendorStockCandidate(proto) || GetProfessionCraftedStockTarget(botAI, proto))
+        return false;
+
+    return IsItemUsefulForSkill(proto);
 }
 
 namespace

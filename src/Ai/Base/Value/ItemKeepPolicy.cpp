@@ -176,6 +176,13 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
+    if (proto->Class == ITEM_CLASS_RECIPE && usage == ITEM_USAGE_FUTURE)
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.keepCount = 1;
+        return rule;
+    }
+
     if (usage == ITEM_USAGE_GUILD_TASK)
     {
         rule.category = ItemCleanupCategory::Quest;
@@ -206,11 +213,20 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
+    // Gathered ore/herbs, bars, dust, cloth, leather and crafted intermediates are
+    // limited by gathering/bag space, not by an artificial stack count.
+    if (ItemUsageValue(botAI).IsProfessionMaterial(proto))
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.alwaysKeep = true;
+        return rule;
+    }
+
     // Older profession reagent tiers are kept only while a useful spell still
     // consumes them; otherwise they are obsolete stock.
     if (IsProfessionVendorStockCandidate(proto) && IsKnownProfessionVendorReagent(botAI, proto))
     {
-        bool needed = usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP;
+        bool needed = usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP || usage == ITEM_USAGE_FUTURE;
         if (!needed)
         {
             ScopedPermissiveReagentCheck const permissiveReagentCheck;
@@ -232,7 +248,7 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         // usefulness directly instead of trusting the usage bucket. Always use the permissive
         // check: the bag-space fallback decides how many stacks to keep, not whether the
         // reagent matters at all.
-        bool needed = usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP;
+        bool needed = usage == ITEM_USAGE_SKILL || usage == ITEM_USAGE_KEEP || usage == ITEM_USAGE_FUTURE;
         if (!needed && isTradeClass)
         {
             ScopedPermissiveReagentCheck const permissiveReagentCheck;
