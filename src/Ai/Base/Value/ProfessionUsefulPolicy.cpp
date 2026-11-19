@@ -143,6 +143,9 @@ uint8 GetUsefulRank(PlayerbotAI* botAI, ItemTemplate const* proto, ItemUsage usa
             // are far below the bot's level; they are not worth a craft slot.
             if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->ItemLevel + 15 < bot->GetLevel())
                 return 255;
+            // Keys have no stack target in ItemUsage; one is enough.
+            if (proto->Class == ITEM_CLASS_KEY && bot->HasItemCount(proto->ItemId, 1, false))
+                return 255;
             return 3;
         case ITEM_USAGE_QUEST:
         case ITEM_USAGE_GUILD_TASK:
