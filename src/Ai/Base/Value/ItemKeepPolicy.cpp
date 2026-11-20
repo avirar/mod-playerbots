@@ -180,10 +180,26 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         return rule;
     }
 
-    if (proto->Class == ITEM_CLASS_RECIPE && usage == ITEM_USAGE_FUTURE)
+    if (proto->Class == ITEM_CLASS_RECIPE)
     {
-        rule.category = ItemCleanupCategory::Trade;
-        rule.keepCount = 1;
+        Player* bot = botAI->GetBot();
+        if (!bot)
+            return rule;
+
+        bool const hasProfession = !proto->RequiredSkill || bot->HasSkill(proto->RequiredSkill);
+        uint32 const recipeSpell = ItemUsageValue::GetRecipeSpell(proto);
+        bool const known = recipeSpell && bot->HasSpell(recipeSpell);
+
+        if (!hasProfession || known)
+        {
+            rule.category = ItemCleanupCategory::Useless;
+            rule.keepCount = 0;
+        }
+        else
+        {
+            rule.category = ItemCleanupCategory::Trade;
+            rule.keepCount = 1;
+        }
         return rule;
     }
 

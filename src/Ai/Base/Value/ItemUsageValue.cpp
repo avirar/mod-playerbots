@@ -233,6 +233,8 @@ std::unordered_map<uint32, std::vector<ProfessionReagentEntry>> const& GetProfes
 }
 }  // namespace
 
+uint32 ItemUsageValue::GetRecipeSpell(ItemTemplate const* proto) { return GetRecipeItemSpell(proto); }
+
 ScopedPermissiveReagentCheck::ScopedPermissiveReagentCheck() { ++permissiveReagentCheckDepth; }
 
 ScopedPermissiveReagentCheck::~ScopedPermissiveReagentCheck() { --permissiveReagentCheckDepth; }
@@ -249,13 +251,27 @@ ItemUsage ItemUsageValue::Calculate()
     if (!proto)
         return ITEM_USAGE_NONE;
 
-    // A recipe the bot cannot learn yet, but will be able to once the profession
-    // skill is high enough. Keep it, but do not treat it as an immediate need.
-    if (proto->Class == ITEM_CLASS_RECIPE && proto->RequiredSkill && proto->RequiredSkillRank &&
-        bot->HasSkill(proto->RequiredSkill) &&
-        bot->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank &&
-        !bot->HasSpell(GetRecipeItemSpell(proto)))
-        return ITEM_USAGE_FUTURE;
+    // Recipes have a single decision path: known and duplicate copies are not
+    // needed, an owned copy is kept without buying another, and only a missing
+    // future/learnable recipe is bought.
+    if (proto->Class == ITEM_CLASS_RECIPE)
+    {
+        if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
+            return ITEM_USAGE_AH;
+
+        uint32 const recipeSpell = GetRecipeItemSpell(proto);
+        if (recipeSpell && bot->HasSpell(recipeSpell))
+            return ITEM_USAGE_AH;
+
+        if (bot->GetItemCount(proto->ItemId, false) > 0)
+            return ITEM_USAGE_KEEP;
+
+        if (proto->RequiredSkill && proto->RequiredSkillRank &&
+            bot->GetPureSkillValue(proto->RequiredSkill) < proto->RequiredSkillRank)
+            return ITEM_USAGE_FUTURE;
+
+        return ITEM_USAGE_SKILL;
+    }
 
     // Vendor-bought reagents and crafted vellums are kept at their stock target.
     // Gathered/crafted profession materials are not stack-limited.
@@ -307,13 +323,6 @@ ItemUsage ItemUsageValue::Calculate()
             if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_MISC ||
                 proto->Class == ITEM_CLASS_REAGENT)
                 needItem = IsItemNeededForUsefullSpell(proto, lowBagSpace);
-            else if (proto->Class == ITEM_CLASS_RECIPE)
-            {
-                if (bot->HasSpell(proto->Spells[2].SpellId))
-                    needItem = false;
-                else
-                    needItem = bot->CanUseItem(proto) == EQUIP_ERR_OK;
-            }
         }
 
         if (needItem)

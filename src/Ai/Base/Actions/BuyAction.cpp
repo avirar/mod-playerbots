@@ -15,6 +15,24 @@
 #include "ProfessionStockPolicy.h"
 #include "StatsWeightCalculator.h"
 
+namespace
+{
+bool CanBuyRecipe(Player* bot, ItemTemplate const* proto)
+{
+    if (!bot || !proto || proto->Class != ITEM_CLASS_RECIPE)
+        return true;
+
+    if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
+        return false;
+
+    uint32 const recipeSpell = ItemUsageValue::GetRecipeSpell(proto);
+    if (recipeSpell && bot->HasSpell(recipeSpell))
+        return false;
+
+    return bot->HasItemCount(proto->ItemId, 1, false) == 0;
+}
+}  // namespace
+
 bool BuyAction::Execute(Event event)
 {
     bool buyUseful = false;
@@ -288,6 +306,9 @@ bool BuyAction::CanAfford(VendorItem const* tItem, ItemTemplate const* proto, Cr
 bool BuyAction::BuyItem(VendorItemData const* tItems, ObjectGuid vendorguid, ItemTemplate const* proto)
 {
     if (!tItems || !proto)
+        return false;
+
+    if (!CanBuyRecipe(bot, proto))
         return false;
 
     uint32 itemId = proto->ItemId;

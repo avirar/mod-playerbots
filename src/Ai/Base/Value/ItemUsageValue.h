@@ -86,6 +86,8 @@ public:
 
     static std::vector<uint32> SpellsUsingItem(uint32 itemId, Player* bot);
     static bool SpellGivesSkillUp(uint32 spellId, Player* bot);
+    // The spell taught by a recipe item (Spells[1], learn-spell trigger).
+    static uint32 GetRecipeSpell(ItemTemplate const* proto);
     // Exact core crafting chance (PlayerUpdates.cpp): orange at TrivialSkillLineRankLow,
     // grey at TrivialSkillLineRankHigh, linearly interpolated in between. The value is in
     // the same tenths-of-percent units as UpdateSkillPro.
