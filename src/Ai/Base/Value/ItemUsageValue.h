@@ -74,6 +74,7 @@ private:
     Item* CurrentItem(ItemTemplate const* proto);
     float CurrentStacks(ItemTemplate const* proto);
     float BetterStacks(ItemTemplate const* proto, std::string const usageType = "");
+    bool HasStrictlyBetterConsumable(ItemTemplate const* proto, std::string const usageType);
 
 public:
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);

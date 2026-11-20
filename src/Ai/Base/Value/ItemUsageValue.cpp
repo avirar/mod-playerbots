@@ -347,6 +347,12 @@ ItemUsage ItemUsageValue::Calculate()
 
         if (!foodType.empty() && bot->CanUseItem(proto) == EQUIP_ERR_OK)
         {
+            // A better food/drink/potion/bandage already in the bags makes the
+            // inferior item not worth crafting. Keep any owned copy, but do not
+            // ask for more of the lower tier.
+            if (HasStrictlyBetterConsumable(proto, foodType))
+                return CurrentStacks(proto) > 0.0f ? ITEM_USAGE_KEEP : ITEM_USAGE_AH;
+
             float stacks = BetterStacks(proto, foodType);
             if (stacks < 2)
             {
@@ -1245,6 +1251,32 @@ float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const 
     }
 
     return stacks;
+}
+
+bool ItemUsageValue::HasStrictlyBetterConsumable(ItemTemplate const* proto, std::string const itemType)
+{
+    std::vector<Item*> items = AI_VALUE2(std::vector<Item*>, "inventory items", itemType);
+
+    for (auto& otherItem : items)
+    {
+        ItemTemplate const* otherProto = otherItem->GetTemplate();
+
+        if (otherProto->Class != proto->Class || otherProto->SubClass != proto->SubClass)
+            continue;
+
+        if (otherProto->ItemId == proto->ItemId)
+            continue;
+
+        if (otherProto->ItemLevel <= proto->ItemLevel)
+            continue;
+
+        if (bot->CanUseItem(otherProto) != EQUIP_ERR_OK)
+            continue;
+
+        return true;
+    }
+
+    return false;
 }
 
 std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
