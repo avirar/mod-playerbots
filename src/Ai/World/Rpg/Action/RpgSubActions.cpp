@@ -247,6 +247,14 @@ Event RpgEndQuestAction::ActionEvent(Event /*event*/)
     return Event("rpg action", p);
 }
 
+bool RpgBuyAction::Execute(Event event)
+{
+    // Automatic RPG vendor visits sell surplus before buying, but the manual
+    // `b vendor` command stays a pure buy.
+    botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+    return RpgSubAction::Execute(event);
+}
+
 std::string const RpgBuyAction::ActionName() { return "buy"; }
 
 Event RpgBuyAction::ActionEvent(Event /*event*/) { return Event("rpg action", "vendor"); }

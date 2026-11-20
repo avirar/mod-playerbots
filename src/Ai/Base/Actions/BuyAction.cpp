@@ -17,10 +17,6 @@
 
 bool BuyAction::Execute(Event event)
 {
-    // Make room before buying. The same vendor-sale path used by `s vendor`
-    // keeps profession materials and stock, and sells only grey/junk/excess.
-    botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
-
     bool buyUseful = false;
     ItemIds itemIds;
     std::string const link = event.getParam();

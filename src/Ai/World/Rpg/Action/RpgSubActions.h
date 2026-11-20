@@ -136,6 +136,7 @@ class RpgBuyAction : public RpgSubAction
 {
 public:
     RpgBuyAction(PlayerbotAI* botAI, std::string const name = "rpg buy") : RpgSubAction(botAI, name) {}
+    bool Execute(Event event) override;
 
 private:
     std::string const ActionName() override;
