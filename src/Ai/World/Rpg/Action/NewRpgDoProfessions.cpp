@@ -248,6 +248,8 @@ bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions
         bot->HasSpellCooldown(BASIC_CAMPFIRE_SPELL))
         return false;
 
+    if (bot->IsMounted())
+        bot->Dismount();
     if (bot->isMoving())
         bot->StopMoving();
     if (!bot->IsStandState())
@@ -1010,6 +1012,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             return false;
     }
 
+    if (bot->IsMounted())
+        bot->Dismount();
     if (bot->isMoving())
         bot->StopMoving();
     if (!bot->IsStandState())
@@ -1159,8 +1163,6 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         LOG_DEBUG("playerbots", "[New RPG] {} professions waiting: in flight", bot->GetName());
         return true;
     }
-    if (bot->IsMounted())
-        bot->Dismount();
 
     if (HandleLootWait(data))
         return true;
@@ -1495,6 +1497,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     // A player stops and stands to craft; do both in the same tick so the sparse
     // random-bot schedule is not spent waiting for the next one.
+    if (bot->IsMounted())
+        bot->Dismount();
     if (bot->isMoving())
         bot->StopMoving();
     if (!bot->IsStandState())
