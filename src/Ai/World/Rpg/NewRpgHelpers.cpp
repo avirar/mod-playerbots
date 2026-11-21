@@ -6,7 +6,14 @@
 
 #include "NewRpgHelpers.h"
 #include "QuestLevelRules.h"
+
+#include <algorithm>
+#include <cctype>
+#include <map>
+#include <sstream>
+
 #include "Bag.h"
+#include "DBCStores.h"
 #include "Creature.h"
 #include "GameObject.h"
 #include "GossipDef.h"
@@ -312,5 +319,184 @@ bool HasProfessionConversionInput(PlayerbotAI* botAI, uint32 spellId)
                         return true;
 
     return false;
+}
+
+namespace
+{
+std::string Lowercase(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char character) { return char(std::tolower(character)); });
+    return value;
+}
+
+std::string Trim(std::string value)
+{
+    auto const notSpace = [](unsigned char character) { return !std::isspace(character); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), notSpace));
+    value.erase(std::find_if(value.rbegin(), value.rend(), notSpace).base(), value.end());
+    return value;
+}
+
+bool IsGatheringProfession(uint32 skill)
+{
+    return skill == SKILL_HERBALISM || skill == SKILL_SKINNING || skill == SKILL_FISHING;
+}
+}  // namespace
+
+uint32 ParseProfessionName(std::string const& name)
+{
+    std::string const lower = Lowercase(Trim(name));
+
+    static std::map<std::string, uint32> const names = {
+        {"alchemy", SKILL_ALCHEMY},           {"blacksmithing", SKILL_BLACKSMITHING},
+        {"blacksmith", SKILL_BLACKSMITHING},  {"bs", SKILL_BLACKSMITHING},
+        {"enchanting", SKILL_ENCHANTING},     {"enchanter", SKILL_ENCHANTING},
+        {"engineering", SKILL_ENGINEERING},   {"engineer", SKILL_ENGINEERING},
+        {"inscription", SKILL_INSCRIPTION},   {"jewelcrafting", SKILL_JEWELCRAFTING},
+        {"jc", SKILL_JEWELCRAFTING},          {"leatherworking", SKILL_LEATHERWORKING},
+        {"lw", SKILL_LEATHERWORKING},         {"mining", SKILL_MINING},
+        {"tailoring", SKILL_TAILORING},       {"tailor", SKILL_TAILORING},
+        {"cooking", SKILL_COOKING},           {"cook", SKILL_COOKING},
+        {"first aid", SKILL_FIRST_AID},       {"firstaid", SKILL_FIRST_AID},
+        {"first-aid", SKILL_FIRST_AID},       {"herbalism", SKILL_HERBALISM},
+        {"skinning", SKILL_SKINNING},         {"fishing", SKILL_FISHING}};
+
+    auto const it = names.find(lower);
+    return it == names.end() ? 0 : it->second;
+}
+
+ProfessionCommand ParseProfessionCommand(std::string const& text)
+{
+    static std::string const doProfessions = "do professions";
+    static std::string const doProfession = "do profession";
+
+    ProfessionCommand result;
+    if (text == doProfessions || text.rfind(doProfessions + " ", 0) == 0)
+    {
+        result.recognized = true;
+        result.plural = true;
+        if (text.size() > doProfessions.size())
+            result.names = text.substr(doProfessions.size() + 1);
+        return result;
+    }
+
+    if (text == doProfession || text.rfind(doProfession + " ", 0) == 0)
+    {
+        result.recognized = true;
+        result.plural = false;
+        if (text.size() > doProfession.size())
+            result.names = text.substr(doProfession.size() + 1);
+        return result;
+    }
+
+    std::string const candidate = text.rfind("do ", 0) == 0 ? text.substr(3) : text;
+    if (!candidate.empty() && ParseProfessionName(candidate) != 0)
+    {
+        result.recognized = true;
+        result.plural = false;
+        result.names = candidate;
+    }
+
+    return result;
+}
+
+std::vector<uint32> GetKnownCraftProfessions(PlayerbotAI* botAI)
+{
+    static uint32 const craftProfessions[] = {
+        SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
+        SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,     SKILL_TAILORING,   SKILL_COOKING,
+        SKILL_FIRST_AID};
+
+    std::vector<uint32> result;
+    if (!botAI)
+        return result;
+
+    for (uint32 skill : craftProfessions)
+        if (botAI->HasSkill(SkillType(skill)))
+            result.push_back(skill);
+
+    return result;
+}
+
+ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string const& text)
+{
+    ProfessionSelection result;
+    if (!botAI)
+    {
+        result.error = ProfessionParseError::NoProfessions;
+        return result;
+    }
+
+    bool const allProfessions = Trim(text).empty();
+    std::string normalized = Lowercase(text);
+    std::replace(normalized.begin(), normalized.end(), ',', ' ');
+    std::replace(normalized.begin(), normalized.end(), ';', ' ');
+
+    std::istringstream stream(normalized);
+    std::string token;
+    while (stream >> token)
+    {
+        if (token == "first")
+        {
+            std::string next;
+            if (!(stream >> next) || (next != "aid" && next != "firstaid"))
+            {
+                result.error = ProfessionParseError::Unknown;
+                result.detail = token;
+                return result;
+            }
+            token = "first aid";
+        }
+
+        uint32 const skill = ParseProfessionName(token);
+        if (!skill)
+        {
+            result.error = ProfessionParseError::Unknown;
+            result.detail = token;
+            return result;
+        }
+
+        if (IsGatheringProfession(skill))
+        {
+            result.error = ProfessionParseError::Gathering;
+            result.detail = GetProfessionName(skill);
+            return result;
+        }
+
+        if (!botAI->HasSkill(SkillType(skill)))
+        {
+            result.error = ProfessionParseError::NotLearned;
+            result.detail = GetProfessionName(skill);
+            return result;
+        }
+
+        if (std::find(result.skills.begin(), result.skills.end(), skill) == result.skills.end())
+            result.skills.push_back(skill);
+    }
+
+    if (result.skills.empty())
+    {
+        if (!allProfessions)
+        {
+            result.error = ProfessionParseError::NoProfessions;
+            return result;
+        }
+
+        result.skills = GetKnownCraftProfessions(botAI);
+        if (result.skills.empty())
+        {
+            result.error = ProfessionParseError::NoProfessions;
+            return result;
+        }
+    }
+
+    return result;
+}
+
+std::string GetProfessionName(uint32 skill)
+{
+    SkillLineEntry const* entry = sSkillLineStore.LookupEntry(skill);
+    return entry ? entry->name[0] : std::to_string(skill);
 }
 }  // namespace NewRpgHelpers

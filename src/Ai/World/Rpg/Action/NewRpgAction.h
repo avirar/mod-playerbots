@@ -44,6 +44,20 @@ public:
     bool Execute(Event event) override;
 };
 
+class StartRpgDoProfessionsAction : public Action
+{
+public:
+    StartRpgDoProfessionsAction(PlayerbotAI* botAI, bool plural)
+        : Action(botAI, plural ? "rpg do professions" : "rpg do profession"), plural(plural)
+    {
+    }
+
+    bool Execute(Event event) override;
+
+private:
+    bool plural;
+};
+
 class NewRpgStatusUpdateAction : public NewRpgBaseAction
 {
 public:

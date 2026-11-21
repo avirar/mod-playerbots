@@ -39,6 +39,88 @@
 #include "TravelMgr.h"
 #include "WaypointMovementGenerator.h"
 
+namespace
+{
+std::string ProfessionErrorText(NewRpgHelpers::ProfessionSelection const& selection)
+{
+    switch (selection.error)
+    {
+        case NewRpgHelpers::ProfessionParseError::Unknown:
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_unknown_error", "I don't know the profession '%profession'.",
+                {{"%profession", selection.detail}});
+        case NewRpgHelpers::ProfessionParseError::NotLearned:
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_not_learned_name", "I have not learned %profession.",
+                {{"%profession", selection.detail}});
+        case NewRpgHelpers::ProfessionParseError::Gathering:
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_gathering_error", "%profession is a gathering profession; use 'do gather'.",
+                {{"%profession", selection.detail}});
+        case NewRpgHelpers::ProfessionParseError::NoProfessions:
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_none_error", "I have no craft profession to work on.", {});
+        case NewRpgHelpers::ProfessionParseError::None:
+        default:
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                "rpg_professions_usage_error", "Usage: rpg do profession <name> or rpg do professions [name ...].",
+                {});
+    }
+}
+
+bool StartProfessionRpg(PlayerbotAI* botAI, Player* owner, std::string const& text, bool plural)
+{
+    if (!botAI || !botAI->GetBot())
+        return false;
+
+    if (!plural && text.empty())
+    {
+        botAI->GetBot()->Whisper(ProfessionErrorText({}), LANG_UNIVERSAL, owner);
+        return false;
+    }
+
+    NewRpgHelpers::ProfessionSelection selection = NewRpgHelpers::ParseProfessionSelection(botAI, text);
+    if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+    {
+        botAI->GetBot()->Whisper(ProfessionErrorText(selection), LANG_UNIVERSAL, owner);
+        return false;
+    }
+
+    if (!plural && selection.skills.size() != 1)
+    {
+        botAI->GetBot()->Whisper(ProfessionErrorText({}), LANG_UNIVERSAL, owner);
+        return false;
+    }
+
+    if (selection.skills.empty())
+        return false;
+
+    if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
+        botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
+
+    std::vector<uint32> pending(selection.skills.begin() + 1, selection.skills.end());
+    botAI->rpgInfo.ChangeToDoProfessions(selection.skills.front(), std::move(pending));
+
+    if (owner)
+    {
+        std::string names;
+        for (uint32 skill : selection.skills)
+        {
+            if (!names.empty())
+                names += ", ";
+            names += NewRpgHelpers::GetProfessionName(skill);
+        }
+
+        botAI->GetBot()->Whisper(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+                                     "rpg_professions_started", "Professions: %professions.",
+                                     {{"%professions", names}}),
+                                 LANG_UNIVERSAL, owner);
+    }
+
+    return true;
+}
+}  // namespace
+
 void TellRpgStatusAction::WhisperStatusChange(Player* owner, std::string const& statusName)
 {
     std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
@@ -78,43 +160,18 @@ bool TellRpgStatusAction::Execute(Event event)
     if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
         botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
 
+    NewRpgHelpers::ProfessionCommand const professionCommand =
+        NewRpgHelpers::ParseProfessionCommand(text);
+    if (professionCommand.recognized)
+    {
+        if (!StartProfessionRpg(botAI, owner, professionCommand.names, professionCommand.plural))
+            return false;
+
+        WhisperStatusChange(owner, "DO_PROFESSIONS");
+        return true;
+    }
+
     std::string name = text;
-    uint32 professionSkill = 0;
-    {
-        static std::map<std::string, uint32> const professionCommands = {
-            {"first aid", SKILL_FIRST_AID},     {"cooking", SKILL_COOKING},       {"alchemy", SKILL_ALCHEMY},
-            {"blacksmithing", SKILL_BLACKSMITHING}, {"enchanting", SKILL_ENCHANTING}, {"engineering", SKILL_ENGINEERING},
-            {"herbalism", SKILL_HERBALISM},     {"inscription", SKILL_INSCRIPTION}, {"jewelcrafting", SKILL_JEWELCRAFTING},
-            {"leatherworking", SKILL_LEATHERWORKING}, {"mining", SKILL_MINING},    {"skinning", SKILL_SKINNING},
-            {"tailoring", SKILL_TAILORING},     {"fishing", SKILL_FISHING}};
-
-        std::string professionName = name;
-        if (professionName.rfind("do ", 0) == 0)
-            professionName = professionName.substr(3);
-
-        auto const it = professionCommands.find(professionName);
-        if (it != professionCommands.end())
-        {
-            name = "do professions";
-            professionSkill = it->second;
-        }
-    }
-
-    if (name == "do professions" && !professionSkill)
-    {
-        static uint32 const craftProfessions[] = {
-            SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
-            SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING, SKILL_COOKING,
-            SKILL_FIRST_AID};
-        for (uint32 skill : craftProfessions)
-        {
-            if (botAI->HasSkill(SkillType(skill)))
-            {
-                professionSkill = skill;
-                break;
-            }
-        }
-    }
     uint32 questId = 0;
     static std::string const doQuestPrefix = "do quest ";
     size_t doQuestPos = text.find(doQuestPrefix);
@@ -225,21 +282,9 @@ bool TellRpgStatusAction::Execute(Event event)
     }
     else if (status == RPG_DO_PROFESSIONS)
     {
-        if (!professionSkill)
-        {
-            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_none_error", "I have no craft profession to work on.", {});
-            bot->Whisper(msg, LANG_UNIVERSAL, owner);
+        if (!StartProfessionRpg(botAI, owner, "", true))
             return false;
-        }
-        if (!botAI->HasSkill(SkillType(professionSkill)))
-        {
-            std::string msg = PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_not_learned", "I have not learned that profession.", {});
-            bot->Whisper(msg, LANG_UNIVERSAL, owner);
-            return false;
-        }
-        info.ChangeToDoProfessions(professionSkill);
+
         WhisperStatusChange(owner, "DO_PROFESSIONS");
         return true;
     }
@@ -308,6 +353,15 @@ bool StartRpgDoQuestAction::Execute(Event event)
     }
     bot->Whisper("Invalid quest " + text, LANG_UNIVERSAL, owner);
     return false;
+}
+
+bool StartRpgDoProfessionsAction::Execute(Event event)
+{
+    Player* owner = event.getOwner();
+    if (!owner)
+        return false;
+
+    return StartProfessionRpg(botAI, owner, event.getParam(), plural);
 }
 
 bool NewRpgStatusUpdateAction::Execute(Event /*event*/)

@@ -9,6 +9,9 @@
 
 #include "ObjectGuid.h"
 
+#include <string>
+#include <vector>
+
 class Object;
 class Player;
 class PlayerbotAI;
@@ -51,6 +54,43 @@ bool IsProspectingInput(Player* bot, ItemTemplate const* proto, uint32 count);
 bool IsDisenchantCandidate(Player* bot, ItemTemplate const* proto);
 bool IsDisenchantableItem(Player* bot, ItemTemplate const* proto, ItemUsage usage);
 bool HasProfessionConversionInput(PlayerbotAI* botAI, uint32 spellId);
+
+enum class ProfessionParseError : uint8
+{
+    None = 0,
+    NoProfessions,
+    Unknown,
+    NotLearned,
+    Gathering
+};
+
+struct ProfessionSelection
+{
+    std::vector<uint32> skills;
+    ProfessionParseError error = ProfessionParseError::None;
+    std::string detail;
+};
+
+struct ProfessionCommand
+{
+    bool recognized = false;
+    bool plural = true;
+    std::string names;
+};
+
+// Canonical profession/alias name to skill id. Returns 0 for unknown names.
+uint32 ParseProfessionName(std::string const& name);
+// Splits "do professions [names]", "do profession <names>", "do <name>", or "<name>"
+// into the name list the selection parser expects.
+ProfessionCommand ParseProfessionCommand(std::string const& text);
+// Known craft professions in the same order the RPG status uses. Gathering-only
+// professions are not included because DoProfessions cannot level them.
+std::vector<uint32> GetKnownCraftProfessions(PlayerbotAI* botAI);
+// Empty text selects all known craft professions. Otherwise parses an ordered,
+// whitespace/comma separated list. Errors are returned instead of partially
+// applying the list.
+ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string const& text);
+std::string GetProfessionName(uint32 skill);
 }  // namespace NewRpgHelpers
 
 #endif

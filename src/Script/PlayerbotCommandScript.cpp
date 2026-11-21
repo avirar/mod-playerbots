@@ -8,6 +8,7 @@
 #include "Chat.h"
 #include "ChatCommandTags.h"
 #include "GuildTaskMgr.h"
+#include "NewRpgHelpers.h"
 #include "PerfMonitor.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
@@ -178,6 +179,24 @@ public:
         return true;
     }
 
+    static std::string ProfessionErrorText(NewRpgHelpers::ProfessionSelection const& selection)
+    {
+        switch (selection.error)
+        {
+            case NewRpgHelpers::ProfessionParseError::Unknown:
+                return "Unknown profession: " + selection.detail;
+            case NewRpgHelpers::ProfessionParseError::NotLearned:
+                return "Not learned: " + selection.detail;
+            case NewRpgHelpers::ProfessionParseError::Gathering:
+                return selection.detail + " is a gathering profession; use 'do gather'";
+            case NewRpgHelpers::ProfessionParseError::NoProfessions:
+                return "No craft profession to work on";
+            case NewRpgHelpers::ProfessionParseError::None:
+            default:
+                return "Invalid profession selection";
+        }
+    }
+
     static bool HandleDebugRpgCommand(ChatHandler* handler, PlayerIdentifier target, Tail command)
     {
         PlayerbotAI* botAI = GetOnlineBotAI(handler, target);
@@ -188,43 +207,6 @@ public:
         if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
             botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
 
-        std::string professionName = text;
-        if (professionName.rfind("do ", 0) == 0)
-            professionName = professionName.substr(3);
-
-        static std::map<std::string, uint32> const professionCommands = {
-            {"first aid", SKILL_FIRST_AID},     {"cooking", SKILL_COOKING},       {"alchemy", SKILL_ALCHEMY},
-            {"blacksmithing", SKILL_BLACKSMITHING}, {"enchanting", SKILL_ENCHANTING}, {"engineering", SKILL_ENGINEERING},
-            {"herbalism", SKILL_HERBALISM},     {"inscription", SKILL_INSCRIPTION}, {"jewelcrafting", SKILL_JEWELCRAFTING},
-            {"leatherworking", SKILL_LEATHERWORKING}, {"mining", SKILL_MINING},    {"skinning", SKILL_SKINNING},
-            {"tailoring", SKILL_TAILORING},     {"fishing", SKILL_FISHING}};
-
-        uint32 professionSkill = 0;
-        auto const it = professionCommands.find(professionName);
-        if (it != professionCommands.end())
-            professionSkill = it->second;
-        else if (professionName == "professions")
-        {
-            static uint32 const craftProfessions[] = {
-                SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
-                SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING, SKILL_TAILORING, SKILL_COOKING,
-                SKILL_FIRST_AID};
-            for (uint32 skill : craftProfessions)
-            {
-                if (botAI->HasSkill(SkillType(skill)))
-                {
-                    professionSkill = skill;
-                    break;
-                }
-            }
-        }
-
-        if (professionSkill)
-        {
-            botAI->rpgInfo.ChangeToDoProfessions(professionSkill);
-            handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (skill {})", target.GetName(), professionSkill);
-            return true;
-        }
         if (text == "idle")
         {
             botAI->rpgInfo.ChangeToIdle();
@@ -232,8 +214,34 @@ public:
             return true;
         }
 
-        handler->SendErrorMessage("Usage: .playerbots debug rpg <bot> do first aid|do cooking|do professions|idle");
-        return false;
+        NewRpgHelpers::ProfessionCommand const professionCommand =
+            NewRpgHelpers::ParseProfessionCommand(text);
+        if (!professionCommand.recognized)
+        {
+            handler->SendErrorMessage(
+                "Usage: .playerbots debug rpg <bot> do profession <name>|do professions [name ...]|idle");
+            return false;
+        }
+
+        NewRpgHelpers::ProfessionSelection const selection =
+            NewRpgHelpers::ParseProfessionSelection(botAI, professionCommand.names);
+        if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+        {
+            handler->SendErrorMessage("{}: {}", target.GetName(), ProfessionErrorText(selection));
+            return false;
+        }
+
+        if (!professionCommand.plural && selection.skills.size() != 1)
+        {
+            handler->SendErrorMessage("{}: 'do profession' takes exactly one profession", target.GetName());
+            return false;
+        }
+
+        std::vector<uint32> pending(selection.skills.begin() + 1, selection.skills.end());
+        botAI->rpgInfo.ChangeToDoProfessions(selection.skills.front(), std::move(pending));
+        handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (skill {})", target.GetName(),
+                                 selection.skills.front());
+        return true;
     }
 
     static bool HandleDebugBGCommand(ChatHandler* handler, char const* args)
