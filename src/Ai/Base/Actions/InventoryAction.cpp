@@ -18,9 +18,10 @@ namespace
 {
 bool isReservedQualifier(std::string const& text)
 {
-    static std::array<std::string_view, 19> const exactQualifiers = {
+    static std::array<std::string_view, 20> const exactQualifiers = {
         "ammo",
         "battle elixir",
+        "buff consumables",
         "conjured drink",
         "conjured food",
         "conjured water",
@@ -308,6 +309,18 @@ std::vector<Item*> InventoryAction::parseItems(std::string const text, IterateIt
     if (text == "scroll")
     {
         FindConsumableVisitor visitor(bot, [](ItemTemplate const* p) { return ConsumableUsePolicy::IsScroll(p); });
+        IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+    }
+
+    if (text == "buff consumables")
+    {
+        FindConsumableVisitor visitor(bot,
+                                      [](ItemTemplate const* p)
+                                      {
+                                          return ConsumableUsePolicy::IsFlask(p) ||
+                                              ConsumableUsePolicy::IsElixir(p) || ConsumableUsePolicy::IsScroll(p);
+                                      });
         IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
         found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
     }

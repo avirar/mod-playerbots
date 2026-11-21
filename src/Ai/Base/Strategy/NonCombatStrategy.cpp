@@ -9,7 +9,7 @@
 void NonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(new TriggerNode("random", { NextAction("clean quest log", 1.0f) }));
-    triggers.push_back(new TriggerNode("timer", { NextAction("check mount state", 1.0f), NextAction("consume buff", 0.5f) }));
+    triggers.push_back(new TriggerNode("timer", { NextAction("check mount state", 1.0f), NextAction("consume buff", 4.05f) }));
 }
 
 void CollisionStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)

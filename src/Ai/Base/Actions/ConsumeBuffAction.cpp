@@ -34,41 +34,38 @@ Item* ConsumeBuffAction::PickBuffItem()
 {
     bool const inRaid = bot->GetMap() && bot->GetMap()->IsRaid();
     bool const flaskActive = ConsumableUsePolicy::HasFlaskBuff(bot);
+    std::vector<Item*> const items = AI_VALUE2(std::vector<Item*>, "inventory items", "buff consumables");
 
     if (!flaskActive)
     {
-        if (Item* flask = BestFlask(inRaid))
+        if (Item* flask = BestFlask(items, inRaid))
             return flask;
 
         if (!ConsumableUsePolicy::HasElixirBuff(bot, true))
-            if (Item* elixir = BestElixir(true))
+            if (Item* elixir = BestElixir(items, true))
                 return elixir;
 
         if (!ConsumableUsePolicy::HasElixirBuff(bot, false))
-            if (Item* elixir = BestElixir(false))
+            if (Item* elixir = BestElixir(items, false))
                 return elixir;
     }
 
     if (!ConsumableUsePolicy::HasScrollBuff(bot))
-        if (Item* scroll = BestScroll())
+        if (Item* scroll = BestScroll(items))
             return scroll;
 
     return nullptr;
 }
 
-Item* ConsumeBuffAction::BestFlask(bool allowNormalFlasks)
+Item* ConsumeBuffAction::BestFlask(std::vector<Item*> const& items, bool allowNormalFlasks)
 {
-    std::vector<Item*> const flasks = AI_VALUE2(std::vector<Item*>, "inventory items", "flask");
-
     Item* best = nullptr;
     float bestScore = -1.0f;
-    for (Item* item : flasks)
+    for (Item* item : items)
     {
-        if (!item || (!allowNormalFlasks && item->GetEntry() != ConsumableUsePolicy::FLASK_OF_THE_NORTH))
-            continue;
-
-        ItemTemplate const* proto = item->GetTemplate();
-        if (!proto)
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (!proto || !ConsumableUsePolicy::IsFlask(proto) ||
+            (!allowNormalFlasks && item->GetEntry() != ConsumableUsePolicy::FLASK_OF_THE_NORTH))
             continue;
 
         float const score = ConsumableUsePolicy::Score(bot, proto);
@@ -83,17 +80,15 @@ Item* ConsumeBuffAction::BestFlask(bool allowNormalFlasks)
     return best;
 }
 
-Item* ConsumeBuffAction::BestElixir(bool battle)
+Item* ConsumeBuffAction::BestElixir(std::vector<Item*> const& items, bool battle)
 {
-    std::vector<Item*> const elixirs =
-        AI_VALUE2(std::vector<Item*>, "inventory items", battle ? "battle elixir" : "guardian elixir");
-
     Item* best = nullptr;
     float bestScore = -1.0f;
-    for (Item* item : elixirs)
+    for (Item* item : items)
     {
         ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
-        if (!proto)
+        if (!proto || !(battle ? ConsumableUsePolicy::IsBattleElixir(proto)
+                               : ConsumableUsePolicy::IsGuardianElixir(proto)))
             continue;
 
         float const score = ConsumableUsePolicy::Score(bot, proto);
@@ -108,16 +103,15 @@ Item* ConsumeBuffAction::BestElixir(bool battle)
     return best;
 }
 
-Item* ConsumeBuffAction::BestScroll()
+Item* ConsumeBuffAction::BestScroll(std::vector<Item*> const& items)
 {
-    std::vector<Item*> const scrolls = AI_VALUE2(std::vector<Item*>, "inventory items", "scroll");
-
     Item* best = nullptr;
     float bestScore = -1.0f;
-    for (Item* item : scrolls)
+    for (Item* item : items)
     {
         ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
-        if (!proto || ConsumableUsePolicy::ScrollCategoryCovered(bot, proto))
+        if (!proto || !ConsumableUsePolicy::IsScroll(proto) ||
+            ConsumableUsePolicy::ScrollCategoryCovered(bot, proto))
             continue;
 
         float const score = ConsumableUsePolicy::Score(bot, proto);

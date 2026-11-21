@@ -7,6 +7,8 @@
 #ifndef PLAYERBOTS_CONSUMEBUFFACTION_H
 #define PLAYERBOTS_CONSUMEBUFFACTION_H
 
+#include <vector>
+
 #include "UseItemAction.h"
 
 class ConsumeBuffAction : public UseItemAction
@@ -20,9 +22,9 @@ public:
 
 private:
     Item* PickBuffItem();
-    Item* BestFlask(bool allowNormalFlasks);
-    Item* BestElixir(bool battle);
-    Item* BestScroll();
+    Item* BestFlask(std::vector<Item*> const& items, bool allowNormalFlasks);
+    Item* BestElixir(std::vector<Item*> const& items, bool battle);
+    Item* BestScroll(std::vector<Item*> const& items);
 };
 
 #endif
