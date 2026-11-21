@@ -3372,6 +3372,15 @@ void PlayerbotFactory::InitProfessionTools()
             LOG_DEBUG("playerbots", "{} could not store profession tool {}", bot->GetName(), itemId);
     };
 
+    auto ensureUsableTool = [this, &ensureTool](uint32 itemId, uint32 totemCategory)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (!proto || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            return;
+
+        ensureTool(itemId, totemCategory);
+    };
+
     if (bot->HasSkill(SKILL_BLACKSMITHING))
         ensureTool(5956, 162);  // Blacksmith Hammer
 
@@ -3396,29 +3405,30 @@ void PlayerbotFactory::InitProfessionTools()
 
     if (bot->HasSkill(SKILL_ENCHANTING))
     {
-        // Each enchant rank names a specific rod category; a higher rod does not
-        // satisfy a lower requirement, so keep every rod up to the level cap.
+        // Rod masks are cumulative: a higher usable rod satisfies every lower
+        // requirement. The keeper policy keeps the highest usable rod and sells
+        // the lower ranks, so only add rods the bot can use now.
         uint16 const value = bot->GetMaxSkillValue(SKILL_ENCHANTING);
-        ensureTool(6218, 6);  // Runed Copper Rod
+        ensureUsableTool(6218, 6);  // Runed Copper Rod
         if (value >= 50)
-            ensureTool(6339, 7);  // Runed Silver Rod
+            ensureUsableTool(6339, 7);  // Runed Silver Rod
         if (value >= 125)
-            ensureTool(11130, 8);  // Runed Golden Rod
+            ensureUsableTool(11130, 8);  // Runed Golden Rod
         if (value >= 200)
-            ensureTool(11145, 9);  // Runed Truesilver Rod
+            ensureUsableTool(11145, 9);  // Runed Truesilver Rod
         if (value >= 275)
-            ensureTool(16207, 10);  // Runed Arcanite Rod
+            ensureUsableTool(16207, 10);  // Runed Arcanite Rod
         if (value >= 300)
-            ensureTool(22461, 41);  // Runed Fel Iron Rod
+            ensureUsableTool(22461, 41);  // Runed Fel Iron Rod
         if (value >= 350)
-            ensureTool(22462, 62);  // Runed Adamantite Rod
+            ensureUsableTool(22462, 62);  // Runed Adamantite Rod
         if (value >= 375)
         {
-            ensureTool(22463, 63);   // Runed Eternium Rod
-            ensureTool(44451, 189);  // Runed Cobalt Rod
+            ensureUsableTool(22463, 63);   // Runed Eternium Rod
+            ensureUsableTool(44451, 189);  // Runed Cobalt Rod
         }
         if (value >= 425)
-            ensureTool(44452, 190);  // Runed Titanium Rod
+            ensureUsableTool(44452, 190);  // Runed Titanium Rod
     }
 
     if (bot->HasSkill(SKILL_MINING))

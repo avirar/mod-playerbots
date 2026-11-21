@@ -20,6 +20,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "ProfessionStockPolicy.h"
+#include "ProfessionUsefulPolicy.h"
 #include "QuestDef.h"
 
 namespace
@@ -27,6 +28,7 @@ namespace
 constexpr uint32 KEEP_TRADE_STACKS = 5;
 constexpr uint32 KEEP_DISENCHANT_STACKS = 2;
 constexpr uint32 KEEP_CONSUMABLE_STACKS = 3;
+constexpr uint32 KEEP_FOOD_STACKS = 2;
 constexpr uint32 KEEP_GEAR_COPIES = 1;
 constexpr uint32 KEEP_PROFESSION_STOCK_STACKS = 2;
 
@@ -75,7 +77,19 @@ bool IsProfessionTool(ItemTemplate const* proto)
     if (std::find(PROFESSION_TOOL_IDS.begin(), PROFESSION_TOOL_IDS.end(), proto->ItemId) != PROFESSION_TOOL_IDS.end())
         return true;
 
-    return proto->TotemCategory != 0;
+    return ProfessionUsefulPolicy::IsToolItem(proto);
+}
+
+bool IsFood(ItemTemplate const* proto)
+{
+    return proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_FOOD;
+}
+
+bool IsLegacyTotemItem(ItemTemplate const* proto)
+{
+    // Preserve the old always-keep behavior for non-tool TotemCategory items
+    // such as Drums; only actual profession tools use the family cleanup.
+    return proto->TotemCategory != 0 && !ProfessionUsefulPolicy::IsToolItem(proto);
 }
 
 bool IsAlwaysKeptContainer(ItemTemplate const* proto)
@@ -161,13 +175,31 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
     if (!botAI || !proto)
         return rule;
 
-    // Explicitly configured keeps and tools/containers win over the quest-source
+    // Explicitly configured keeps and containers win over the quest-source
     // cleanup, so an owner can preserve an item through RandomBotQuestItems.
-    if (sPlayerbotAIConfig.IsInRandomQuestItemList(proto->ItemId) || IsProfessionTool(proto) ||
-        IsAlwaysKeptContainer(proto))
+    if (sPlayerbotAIConfig.IsInRandomQuestItemList(proto->ItemId) || IsAlwaysKeptContainer(proto) ||
+        IsLegacyTotemItem(proto))
     {
         rule.alwaysKeep = true;
         rule.keepCount = std::numeric_limits<uint32>::max();
+        return rule;
+    }
+
+    bool const professionTool = IsProfessionTool(proto);
+    if (professionTool && ProfessionUsefulPolicy::IsSelectedTool(botAI, proto))
+    {
+        rule.category = ItemCleanupCategory::Trade;
+        rule.keepCount = 1;
+        return rule;
+    }
+
+    // Non-selected profession tools are duplicates of a better family member
+    // (or tools for a profession the bot does not need). A genuine weapon
+    // upgrade still falls through to the gear keep rule below.
+    if (professionTool && usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_REPLACE)
+    {
+        rule.category = ItemCleanupCategory::Useless;
+        rule.keepCount = 0;
         return rule;
     }
 
@@ -212,9 +244,17 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
 
     if (usage == ITEM_USAGE_QUEST || proto->Class == ITEM_CLASS_QUEST)
     {
-        rule.category = ItemCleanupCategory::Quest;
-        rule.keepCount = std::max<uint32>(1, GetQuestItemRequirement(botAI, proto->ItemId));
-        return rule;
+        uint32 const requirement = GetQuestItemRequirement(botAI, proto->ItemId);
+
+        // A quest-class item with no active objective and no usable source is
+        // ordinary sellable loot. Forcing one copy kept it out of "s vendor"
+        // forever even though item usage called it AH.
+        if (usage == ITEM_USAGE_QUEST || requirement > 0)
+        {
+            rule.category = ItemCleanupCategory::Quest;
+            rule.keepCount = std::max<uint32>(1, requirement);
+            return rule;
+        }
     }
 
     uint32 const professionStockTarget = GetProfessionVendorStockTarget(botAI, proto);
@@ -306,14 +346,14 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         case ITEM_USAGE_USE:
         case ITEM_USAGE_AMMO:
             rule.category = ItemCleanupCategory::Consumable;
-            rule.keepCount = GetStackCount(proto, KEEP_CONSUMABLE_STACKS);
+            rule.keepCount = GetStackCount(proto, IsFood(proto) ? KEEP_FOOD_STACKS : KEEP_CONSUMABLE_STACKS);
             return rule;
         case ITEM_USAGE_SKILL:
         case ITEM_USAGE_KEEP:
             if (proto->Class == ITEM_CLASS_CONSUMABLE || proto->Class == ITEM_CLASS_PROJECTILE)
             {
                 rule.category = ItemCleanupCategory::Consumable;
-                rule.keepCount = GetStackCount(proto, KEEP_CONSUMABLE_STACKS);
+                rule.keepCount = GetStackCount(proto, IsFood(proto) ? KEEP_FOOD_STACKS : KEEP_CONSUMABLE_STACKS);
             }
             else
             {

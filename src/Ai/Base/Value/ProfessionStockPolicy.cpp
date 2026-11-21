@@ -12,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "DBCStores.h"
@@ -90,6 +91,7 @@ uint64_t BuildFingerprint(Player* bot)
 std::vector<uint32> ScanProfessionStockItems(Player* bot, std::unordered_set<uint32>& knownReagents)
 {
     std::unordered_map<uint32, std::vector<SpellCandidate>> bySkill;
+    std::unordered_set<uint32> skillUpSkillLines;
     std::unordered_set<uint32> craftable;
 
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
@@ -101,15 +103,24 @@ std::vector<uint32> ScanProfessionStockItems(Player* bot, std::unordered_set<uin
         if (!spellInfo)
             continue;
 
+        bool professionRecipe = false;
         for (uint8 effect = 0; effect < MAX_SPELL_EFFECTS; ++effect)
         {
-            if ((spellInfo->Effects[effect].Effect == SPELL_EFFECT_CREATE_ITEM ||
-                 spellInfo->Effects[effect].Effect == SPELL_EFFECT_CREATE_ITEM_2) &&
+            uint32 const type = spellInfo->Effects[effect].Effect;
+            if ((type == SPELL_EFFECT_CREATE_ITEM || type == SPELL_EFFECT_CREATE_ITEM_2) &&
                 spellInfo->Effects[effect].ItemType)
             {
                 craftable.insert(spellInfo->Effects[effect].ItemType);
+                professionRecipe = true;
+            }
+            else if (type == SPELL_EFFECT_ENCHANT_ITEM || type == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
+                     type == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
+            {
+                professionRecipe = true;
             }
         }
+        if (!professionRecipe)
+            continue;
 
         std::vector<uint32> reagents;
         for (uint8 reagent = 0; reagent < MAX_SPELL_REAGENTS; ++reagent)
@@ -121,20 +132,32 @@ std::vector<uint32> ScanProfessionStockItems(Player* bot, std::unordered_set<uin
             if (IsProfessionVendorStockCandidate(sObjectMgr->GetItemTemplate(itemId)))
                 reagents.push_back(itemId);
         }
-        if (reagents.empty())
-            continue;
 
+        // Skill-up availability is a property of the whole profession, not of
+        // the subset that happens to use vendor-bought reagents. Recipes like
+        // Murloc Fin Soup consume fish/meat, so they never enter bySkill; without
+        // this set a grey vendor-reagent recipe (Boiled Clams) would keep stocking
+        // water forever.
         bool const skillUp = ItemUsageValue::CraftSkillGainChance(spellId, bot) > 0;
         SkillLineAbilityMapBounds const bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        std::vector<std::pair<uint32, int32>> recipeSkills;
         for (auto itr = bounds.first; itr != bounds.second; ++itr)
         {
             SkillLineAbilityEntry const* ability = itr->second;
             if (!ability || !IsProfessionSkill(ability->SkillLine))
                 continue;
 
-            bySkill[ability->SkillLine].push_back({int32(ability->TrivialSkillLineRankLow), skillUp, reagents});
-            knownReagents.insert(reagents.begin(), reagents.end());
+            recipeSkills.emplace_back(ability->SkillLine, int32(ability->TrivialSkillLineRankLow));
+            if (skillUp)
+                skillUpSkillLines.insert(ability->SkillLine);
         }
+
+        if (reagents.empty() || recipeSkills.empty())
+            continue;
+
+        knownReagents.insert(reagents.begin(), reagents.end());
+        for (auto const& [skillLine, trivialLow] : recipeSkills)
+            bySkill[skillLine].push_back({trivialLow, skillUp, reagents});
     }
 
     std::unordered_set<uint32> result;
@@ -143,13 +166,10 @@ std::vector<uint32> ScanProfessionStockItems(Player* bot, std::unordered_set<uin
         if (!bot->HasSkill(skillLine) || spells.empty())
             continue;
 
-        bool hasSkillUp = false;
+        bool const hasSkillUp = skillUpSkillLines.count(skillLine) != 0;
         int32 highestTrivial = 0;
         for (SpellCandidate const& spell : spells)
-        {
-            hasSkillUp = hasSkillUp || spell.skillUp;
             highestTrivial = std::max(highestTrivial, spell.trivialLow);
-        }
 
         for (SpellCandidate const& spell : spells)
         {

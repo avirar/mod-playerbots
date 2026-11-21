@@ -45,6 +45,7 @@ thread_local uint32 permissiveReagentCheckDepth = 0;
 constexpr uint32 PROFESSION_MILLING_SPELL = 51005;
 constexpr uint32 PROFESSION_PROSPECTING_SPELL = 31252;
 constexpr int32 PROFESSION_MATERIAL_SKILL_WINDOW = 50;
+constexpr float FOOD_FALLBACK_BETTER_STACKS = 1.0f;
 
 struct ProfessionReagentEntry
 {
@@ -284,6 +285,15 @@ ItemUsage ItemUsageValue::Calculate()
         return ITEM_USAGE_SKILL;
     }
 
+    // A tool that is also a weapon can still be a gear upgrade; evaluate that
+    // before treating it as a replaceable profession tool.
+    if (ProfessionUsefulPolicy::IsToolItem(proto) && proto->Class == ITEM_CLASS_WEAPON)
+    {
+        ItemUsage const equip = QueryItemUsageForEquip(proto, randomPropertyId);
+        if (equip == ITEM_USAGE_EQUIP || equip == ITEM_USAGE_REPLACE)
+            return equip;
+    }
+
     // Vendor-bought reagents and crafted vellums are kept at their stock target.
     // Gathered/crafted profession materials are not stack-limited.
     uint32 stockTarget = GetProfessionVendorStockTarget(botAI, proto);
@@ -359,10 +369,16 @@ ItemUsage ItemUsageValue::Calculate()
         if (!foodType.empty() && bot->CanUseItem(proto) == EQUIP_ERR_OK)
         {
             // A better food/drink/potion/bandage already in the bags makes the
-            // inferior item not worth crafting. Keep any owned copy, but do not
-            // ask for more of the lower tier.
+            // inferior item not worth crafting. Keep any owned copy as a fallback
+            // until a full stack of better food exists; after that it is surplus
+            // and can be sold by "s vendor".
             if (HasStrictlyBetterConsumable(proto, foodType))
+            {
+                if (foodType == "food" && BetterStacks(proto, foodType) >= FOOD_FALLBACK_BETTER_STACKS)
+                    return ITEM_USAGE_AH;
+
                 return CurrentStacks(proto) > 0.0f ? ITEM_USAGE_KEEP : ITEM_USAGE_AH;
+            }
 
             bool const buffStock = foodType == "flask" || foodType == "battle elixir" ||
                 foodType == "guardian elixir" || foodType == "scroll";
@@ -885,63 +901,11 @@ bool ItemUsageValue::IsStartQuestItemUsefulFor(Player* player, ItemTemplate cons
 
 bool ItemUsageValue::IsItemNeededForSkill(ItemTemplate const* proto)
 {
+    if (ProfessionUsefulPolicy::IsToolItem(proto))
+        return ProfessionUsefulPolicy::IsToolNeededByBot(botAI, proto);
+
     if (ProfessionUsefulPolicy::IsMissingToolForBot(botAI, proto))
         return true;
-
-    switch (proto->ItemId)
-    {
-        case 756:  // Tunnel Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 778:  // Kobold Excavation Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 1819:  // Gouging Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 1893:  // Miner's Revenge
-            return botAI->HasSkill(SKILL_MINING);
-        case 1959:  // Cold Iron Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 2901:  // Mining Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 9465:  // Digmaster 5000
-            return botAI->HasSkill(SKILL_MINING);
-        case 20723:  // Brann's Trusty Pick
-            return botAI->HasSkill(SKILL_MINING);
-        case 40772:  // Gnomish Army Knife
-            return botAI->HasSkill(SKILL_MINING) || botAI->HasSkill(SKILL_ENGINEERING) || botAI->HasSkill(SKILL_BLACKSMITHING) || botAI->HasSkill(SKILL_COOKING) || botAI->HasSkill(SKILL_SKINNING);
-        case 40892:  // Hammer Pick
-            return botAI->HasSkill(SKILL_MINING) || botAI->HasSkill(SKILL_BLACKSMITHING);
-        case 40893:  // Bladed Pickaxe
-            return botAI->HasSkill(SKILL_MINING) || botAI->HasSkill(SKILL_SKINNING);
-        case 5956:  // Blacksmith Hammer
-            return botAI->HasSkill(SKILL_BLACKSMITHING) || botAI->HasSkill(SKILL_ENGINEERING);
-        case 6219:  // Arclight Spanner
-            return botAI->HasSkill(SKILL_ENGINEERING);
-        case 6218:  // Runed copper rod
-            return botAI->HasSkill(SKILL_ENCHANTING);
-        case 6339:  // Runed silver rod
-            return botAI->HasSkill(SKILL_ENCHANTING);
-        case 11130:  // Runed golden rod
-            return botAI->HasSkill(SKILL_ENCHANTING);
-        case 11145:  // Runed truesilver rod
-            return botAI->HasSkill(SKILL_ENCHANTING);
-        case 16207:  // Runed Arcanite Rod
-            return botAI->HasSkill(SKILL_ENCHANTING);
-        case 7005:  // Skinning Knife
-            return botAI->HasSkill(SKILL_SKINNING);
-        case 20815:  // Jeweler's Kit
-        case 20824:  // Simple Grinder
-            return botAI->HasSkill(SKILL_JEWELCRAFTING);
-        case 12709:
-            return botAI->HasSkill(SKILL_SKINNING);
-        case 19901:
-            return botAI->HasSkill(SKILL_SKINNING);
-        case 4471:  // Flint and Tinder
-            return botAI->HasSkill(SKILL_COOKING);
-        case 4470:  // Simple Wood
-            return botAI->HasSkill(SKILL_COOKING);
-        case 6256:  // Fishing Rod
-            return botAI->HasSkill(SKILL_FISHING);
-    }
 
     return false;
 }

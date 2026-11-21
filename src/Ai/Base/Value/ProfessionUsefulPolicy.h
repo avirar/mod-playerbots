@@ -24,6 +24,13 @@ namespace ProfessionUsefulPolicy
     // useful pre-pass and for buying/crafting missing tools.
     bool IsMissingToolForBot(PlayerbotAI* botAI, ItemTemplate const* proto);
 
+    // Tool families are matched through TotemCategory masks (mining picks,
+    // hammers, skinning knives, rods, ...), with a hardcoded fallback for the
+    // Jewelcrafting tools that carry no TotemCategory.
+    bool IsToolItem(ItemTemplate const* proto);
+    bool IsSelectedTool(PlayerbotAI* botAI, ItemTemplate const* proto);
+    bool IsToolNeededByBot(PlayerbotAI* botAI, ItemTemplate const* proto);
+
     // Lower is more important. 255 means not useful.
     uint8 GetUsefulRank(PlayerbotAI* botAI, ItemTemplate const* proto, ItemUsage usage);
 }  // namespace ProfessionUsefulPolicy
