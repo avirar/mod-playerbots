@@ -252,6 +252,16 @@ ItemUsage ItemUsageValue::Calculate()
     if (!proto)
         return ITEM_USAGE_NONE;
 
+    // Flask of the North is reusable, BoP and Alchemy-only. Keep one copy;
+    // do not craft or buy more.
+    if (proto->ItemId == ConsumableUsePolicy::FLASK_OF_THE_NORTH)
+    {
+        if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            return ITEM_USAGE_VENDOR;
+
+        return bot->GetItemCount(proto->ItemId, false) > 0 ? ITEM_USAGE_KEEP : ITEM_USAGE_USE;
+    }
+
     // Recipes have a single decision path: known and duplicate copies are not
     // needed, an owned copy is kept without buying another, and only a missing
     // future/learnable recipe is bought.
@@ -353,6 +363,14 @@ ItemUsage ItemUsageValue::Calculate()
             // ask for more of the lower tier.
             if (HasStrictlyBetterConsumable(proto, foodType))
                 return CurrentStacks(proto) > 0.0f ? ITEM_USAGE_KEEP : ITEM_USAGE_AH;
+
+            bool const buffStock = foodType == "flask" || foodType == "battle elixir" ||
+                foodType == "guardian elixir" || foodType == "scroll";
+            if (buffStock)
+            {
+                uint32 const target = foodType == "flask" ? 2 : (foodType == "scroll" ? 5 : 4);
+                return bot->GetItemCount(proto->ItemId, false) < target ? ITEM_USAGE_USE : ITEM_USAGE_KEEP;
+            }
 
             float stacks = BetterStacks(proto, foodType);
             if (stacks < 2)
@@ -1274,9 +1292,21 @@ bool ItemUsageValue::HasStrictlyBetterConsumable(ItemTemplate const* proto, std:
         if (bot->CanUseItem(otherProto) != EQUIP_ERR_OK)
             continue;
 
-        bool const strictlyBetter = itemType == "food"
-            ? ConsumableUsePolicy::IsStrictlyBetterFood(bot, otherProto, proto)
-            : otherProto->ItemLevel > proto->ItemLevel;
+        bool strictlyBetter = false;
+        if (itemType == "food")
+            strictlyBetter = ConsumableUsePolicy::IsStrictlyBetterFood(bot, otherProto, proto);
+        else if (itemType == "flask" || itemType == "battle elixir" || itemType == "guardian elixir" ||
+                 itemType == "scroll")
+        {
+            if (itemType == "scroll" &&
+                ConsumableUsePolicy::ScrollCategory(otherProto) != ConsumableUsePolicy::ScrollCategory(proto))
+                continue;
+
+            strictlyBetter = ConsumableUsePolicy::IsStrictlyBetterBuffItem(bot, otherProto, proto);
+        }
+        else
+            strictlyBetter = otherProto->ItemLevel > proto->ItemLevel;
+
         if (strictlyBetter)
             return true;
     }
@@ -1385,6 +1415,13 @@ bool ItemUsageValue::SpellGivesSkillUp(uint32 spellId, Player* bot)
 std::string const ItemUsageValue::GetConsumableType(ItemTemplate const* proto, bool hasMana)
 {
     std::string const foodType = "";
+
+    if (proto->SubClass == ITEM_SUBCLASS_FLASK)
+        return "flask";
+    if (proto->SubClass == ITEM_SUBCLASS_ELIXIR)
+        return ConsumableUsePolicy::IsGuardianElixir(proto) ? "guardian elixir" : "battle elixir";
+    if (proto->SubClass == ITEM_SUBCLASS_SCROLL)
+        return "scroll";
 
     if ((proto->SubClass == ITEM_SUBCLASS_CONSUMABLE || proto->SubClass == ITEM_SUBCLASS_FOOD))
     {

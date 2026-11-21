@@ -29,6 +29,7 @@
 #include "EmoteAction.h"
 #include "FishingAction.h"
 #include "FollowActions.h"
+#include "ConsumeBuffAction.h"
 #include "FoodActions.h"
 #include "GenericSpellActions.h"
 #include "GiveItemAction.h"
@@ -123,6 +124,7 @@ public:
         creators["mana potion"] = &ActionContext::mana_potion;
         creators["eat"] = &ActionContext::eat;
         creators["drink"] = &ActionContext::drink;
+        creators["consume buff"] = &ActionContext::consume_buff;
         creators["tank assist"] = &ActionContext::tank_assist;
         creators["dps assist"] = &ActionContext::dps_assist;
         creators["dps aoe"] = &ActionContext::dps_aoe;
@@ -372,6 +374,7 @@ private:
     static Action* tank_assist(PlayerbotAI* botAI) { return new TankAssistAction(botAI); }
     static Action* drink(PlayerbotAI* botAI) { return new DrinkAction(botAI); }
     static Action* eat(PlayerbotAI* botAI) { return new EatAction(botAI); }
+    static Action* consume_buff(PlayerbotAI* botAI) { return new ConsumeBuffAction(botAI); }
     static Action* mana_potion(PlayerbotAI* botAI) { return new UseManaPotion(botAI); }
     static Action* healing_potion(PlayerbotAI* botAI) { return new UseHealingPotion(botAI); }
     static Action* healthstone(PlayerbotAI* botAI) { return new UseItemAction(botAI, "healthstone"); }

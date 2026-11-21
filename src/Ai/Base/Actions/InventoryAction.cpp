@@ -5,22 +5,29 @@
  */
 
 #include "InventoryAction.h"
+#include "ConsumableUsePolicy.h"
 #include "Event.h"
 #include "ItemCountValue.h"
 #include "ItemVisitors.h"
 #include "Playerbots.h"
 
+#include <functional>
+#include <utility>
+
 namespace
 {
 bool isReservedQualifier(std::string const& text)
 {
-    static std::array<std::string_view, 15> const exactQualifiers = {
+    static std::array<std::string_view, 19> const exactQualifiers = {
         "ammo",
+        "battle elixir",
         "conjured drink",
         "conjured food",
         "conjured water",
         "drink",
+        "flask",
         "food",
+        "guardian elixir",
         "healing potion",
         "materials",
         "mount",
@@ -28,6 +35,7 @@ bool isReservedQualifier(std::string const& text)
         "pet",
         "quest",
         "recipe",
+        "scroll",
         "start quest",
         "water"
     };
@@ -35,6 +43,20 @@ bool isReservedQualifier(std::string const& text)
     return std::find(exactQualifiers.begin(), exactQualifiers.end(), text) != exactQualifiers.end() ||
         text.rfind("usage ", 0) == 0;
 }
+
+class FindConsumableVisitor : public FindUsableItemVisitor
+{
+public:
+    FindConsumableVisitor(Player* bot, std::function<bool(ItemTemplate const*)> filter)
+        : FindUsableItemVisitor(bot), filter(std::move(filter))
+    {
+    }
+
+    bool Accept(ItemTemplate const* proto) override { return filter(proto); }
+
+private:
+    std::function<bool(ItemTemplate const*)> filter;
+};
 }
 
 void InventoryAction::IterateItems(IterateItemsVisitor* visitor, IterateItemsMask mask)
@@ -258,6 +280,36 @@ std::vector<Item*> InventoryAction::parseItems(std::string const text, IterateIt
             IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
             found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
         }
+    }
+
+    if (text == "flask")
+    {
+        FindConsumableVisitor visitor(bot, [](ItemTemplate const* p) { return ConsumableUsePolicy::IsFlask(p); });
+        IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+    }
+
+    if (text == "battle elixir")
+    {
+        FindConsumableVisitor visitor(bot,
+                                      [](ItemTemplate const* p) { return ConsumableUsePolicy::IsBattleElixir(p); });
+        IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+    }
+
+    if (text == "guardian elixir")
+    {
+        FindConsumableVisitor visitor(bot,
+                                      [](ItemTemplate const* p) { return ConsumableUsePolicy::IsGuardianElixir(p); });
+        IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+    }
+
+    if (text == "scroll")
+    {
+        FindConsumableVisitor visitor(bot, [](ItemTemplate const* p) { return ConsumableUsePolicy::IsScroll(p); });
+        IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
+        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
     }
 
     if (text == "mana potion")

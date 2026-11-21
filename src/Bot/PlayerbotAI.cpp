@@ -5890,12 +5890,37 @@ Item* PlayerbotAI::FindConsumable(uint32 itemId) const
         });
 }
 
-// Find Bandage
+// Find the best usable bandage: the highest item level the bot can use.
 Item* PlayerbotAI::FindBandage() const
 {
-    return FindItemInInventory(
-        [](ItemTemplate const* pItemProto) -> bool
-        { return pItemProto->Class == ITEM_CLASS_CONSUMABLE && pItemProto->SubClass == ITEM_SUBCLASS_BANDAGE; });
+    Item* best = nullptr;
+    auto consider = [this, &best](Item* item)
+    {
+        if (!item)
+            return;
+
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE || proto->SubClass != ITEM_SUBCLASS_BANDAGE)
+            return;
+
+        if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            return;
+
+        ItemTemplate const* bestProto = best ? best->GetTemplate() : nullptr;
+        if (!bestProto || proto->ItemLevel > bestProto->ItemLevel ||
+            (proto->ItemLevel == bestProto->ItemLevel && proto->RequiredLevel > bestProto->RequiredLevel))
+            best = item;
+    };
+
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        consider(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                consider(bot->GetItemByPos(bagSlot, slot));
+
+    return best;
 }
 
 Item* PlayerbotAI::FindOpenableItem() const

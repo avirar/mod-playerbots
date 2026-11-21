@@ -141,7 +141,10 @@ uint8 GetUsefulRank(PlayerbotAI* botAI, ItemTemplate const* proto, ItemUsage usa
         case ITEM_USAGE_USE:
             // Do not spend reagents on food, drink, bandages or potions that
             // are far below the bot's level; they are not worth a craft slot.
-            if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->ItemLevel + 15 < bot->GetLevel())
+            // Scroll item levels reflect rank, not the strength of the buff;
+            // a low-level scroll can still be useful at max level.
+            if (proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass != ITEM_SUBCLASS_SCROLL &&
+                proto->ItemLevel + 15 < bot->GetLevel())
                 return 255;
             // Keys have no stack target in ItemUsage; one is enough.
             if (proto->Class == ITEM_CLASS_KEY && bot->HasItemCount(proto->ItemId, 1, false))

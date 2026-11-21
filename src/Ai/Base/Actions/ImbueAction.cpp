@@ -5,6 +5,7 @@
  */
 
 #include "ImbueAction.h"
+#include "ConsumableUsePolicy.h"
 #include "Event.h"
 #include "Playerbots.h"
 
@@ -207,13 +208,18 @@ bool TryEmergencyAction::Execute(Event /*event*/)
     if ((PlayerbotAI::IsHeal(bot)) && (bot->GetPowerPct(POWER_MANA) > 20))
         return false;
 
-    // If bot does not have aggro: use bandage instead of potion/stone/crystal
-    if ((!AI_VALUE(uint8, "my attacker count")) && !bot->HasAura(11196))  // Recently bandaged
+    // A bandage channel is cancelled by any damage. Use it in combat only when
+    // no attacker and no fast DoT will interrupt it before half the channel.
+    if (!bot->HasAura(11196))  // Recently bandaged
     {
         if (Item* bandage = botAI->FindBandage())
         {
-            botAI->ImbueItem(bandage, bot);
-            botAI->SetNextCheckDelay(8);
+            if (!bot->IsInCombat() || ConsumableUsePolicy::CanUseBandageInCombat(bot, bandage->GetTemplate()))
+            {
+                botAI->ImbueItem(bandage, bot);
+                botAI->SetNextCheckDelay(ConsumableUsePolicy::BandageChannelMs(bandage->GetTemplate()));
+                return true;
+            }
         }
     }
 
