@@ -8,6 +8,7 @@
 #include "AiFactory.h"
 #include "BagPolicy.h"
 #include "ChatHelper.h"
+#include "ConsumableUsePolicy.h"
 #include "CreatureData.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
@@ -1241,10 +1242,13 @@ float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const 
         if (otherProto->Class != proto->Class || otherProto->SubClass != proto->SubClass)
             continue;
 
-        if (otherProto->ItemLevel < proto->ItemLevel)
+        if (otherProto->ItemId == proto->ItemId)
             continue;
 
-        if (otherProto->ItemId == proto->ItemId)
+        bool const atLeastAsGood = itemType == "food"
+            ? ConsumableUsePolicy::IsAtLeastAsGoodFood(bot, otherProto, proto)
+            : otherProto->ItemLevel >= proto->ItemLevel;
+        if (!atLeastAsGood)
             continue;
 
         stacks += CurrentStacks(otherProto);
@@ -1267,13 +1271,14 @@ bool ItemUsageValue::HasStrictlyBetterConsumable(ItemTemplate const* proto, std:
         if (otherProto->ItemId == proto->ItemId)
             continue;
 
-        if (otherProto->ItemLevel <= proto->ItemLevel)
-            continue;
-
         if (bot->CanUseItem(otherProto) != EQUIP_ERR_OK)
             continue;
 
-        return true;
+        bool const strictlyBetter = itemType == "food"
+            ? ConsumableUsePolicy::IsStrictlyBetterFood(bot, otherProto, proto)
+            : otherProto->ItemLevel > proto->ItemLevel;
+        if (strictlyBetter)
+            return true;
     }
 
     return false;

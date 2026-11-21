@@ -5,6 +5,7 @@
  */
 
 #include "FoodActions.h"
+#include "ConsumableUsePolicy.h"
 #include "Event.h"
 #include "Playerbots.h"
 #include <algorithm>
@@ -92,7 +93,15 @@ bool DrinkAction::Execute(Event event)
         return true;
     }
 
-    return UseItemAction::Execute(event);
+    // An explicit "drink <item>" keeps the named item.
+    if (!event.getParam().empty())
+        return UseItemAction::Execute(event);
+
+    std::vector<Item*> const drinks = AI_VALUE2(std::vector<Item*>, "inventory items", "drink");
+    if (Item* drink = ConsumableUsePolicy::ChooseDrink(bot, drinks))
+        return UseItemAuto(drink);
+
+    return false;
 }
 
 bool DrinkAction::isUseful()
@@ -127,6 +136,14 @@ bool EatAction::Execute(Event event)
         SetDuration(StartFoodCheatRecovery(bot));
         return true;
     }
+
+    // An explicit "eat <item>" keeps the named item.
+    if (!event.getParam().empty())
+        return UseItemAction::Execute(event);
+
+    std::vector<Item*> const foods = AI_VALUE2(std::vector<Item*>, "inventory items", "food");
+    if (Item* food = ConsumableUsePolicy::ChooseFood(bot, foods))
+        return UseItemAuto(food);
 
     return UseItemAction::Execute(event);
 }
