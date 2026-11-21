@@ -179,7 +179,14 @@ bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplat
 
 bool IsFlask(ItemTemplate const* proto) { return proto && proto->SubClass == ITEM_SUBCLASS_FLASK; }
 bool IsElixir(ItemTemplate const* proto) { return proto && proto->SubClass == ITEM_SUBCLASS_ELIXIR; }
-bool IsScroll(ItemTemplate const* proto) { return proto && proto->SubClass == ITEM_SUBCLASS_SCROLL; }
+bool IsScroll(ItemTemplate const* proto)
+{
+    if (!proto || proto->SubClass != ITEM_SUBCLASS_SCROLL)
+        return false;
+
+    SpellInfo const* spell = GetItemSpell(proto);
+    return spell && spell->GetSpellSpecific() == SPELL_SPECIFIC_SCROLL;
+}
 
 bool IsGuardianElixir(ItemTemplate const* proto)
 {
@@ -192,8 +199,11 @@ bool IsGuardianElixir(ItemTemplate const* proto)
 
 bool IsBattleElixir(ItemTemplate const* proto)
 {
-    // Elixirs without a group entry fall back to the battle category.
-    return IsElixir(proto) && !IsGuardianElixir(proto);
+    if (!IsElixir(proto) || IsGuardianElixir(proto))
+        return false;
+
+    SpellInfo const* spell = GetItemSpell(proto);
+    return spell && sSpellMgr->IsSpellMemberOfSpellGroup(spell->Id, SPELL_GROUP_ELIXIR_BATTLE);
 }
 
 bool IsStrictlyBetterBuffItem(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline)

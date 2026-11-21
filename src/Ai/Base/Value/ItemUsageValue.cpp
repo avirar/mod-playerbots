@@ -1419,8 +1419,14 @@ std::string const ItemUsageValue::GetConsumableType(ItemTemplate const* proto, b
     if (proto->SubClass == ITEM_SUBCLASS_FLASK)
         return "flask";
     if (proto->SubClass == ITEM_SUBCLASS_ELIXIR)
-        return ConsumableUsePolicy::IsGuardianElixir(proto) ? "guardian elixir" : "battle elixir";
-    if (proto->SubClass == ITEM_SUBCLASS_SCROLL)
+    {
+        if (ConsumableUsePolicy::IsGuardianElixir(proto))
+            return "guardian elixir";
+        if (ConsumableUsePolicy::IsBattleElixir(proto))
+            return "battle elixir";
+        return "";
+    }
+    if (ConsumableUsePolicy::IsScroll(proto))
         return "scroll";
 
     if ((proto->SubClass == ITEM_SUBCLASS_CONSUMABLE || proto->SubClass == ITEM_SUBCLASS_FOOD))
