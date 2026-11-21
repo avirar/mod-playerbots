@@ -1077,8 +1077,19 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
                                 attempt);
     if (!cast)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast failed for recipe {} (reason {})",
-                  bot->GetName(), step.spellId, static_cast<uint32>(attempt.block));
+        // A GCD (or an in-progress cast) is transient; keep the plan and retry.
+        if (attempt.block == PlayerbotCastBlock::None &&
+            (attempt.result == SPELL_FAILED_NOT_READY || attempt.result == SPELL_FAILED_SPELL_IN_PROGRESS))
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast busy for recipe {} (result {})",
+                      bot->GetName(), step.spellId, static_cast<uint32>(attempt.result));
+            botAI->SetNextCheckDelay(1000);
+            return true;
+        }
+
+        LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast failed for recipe {} (block {}, result {})",
+                  bot->GetName(), step.spellId, static_cast<uint32>(attempt.block),
+                  static_cast<uint32>(attempt.result));
         data.pendingCrafts.clear();
         botAI->SetNextCheckDelay(1000);
         return false;
@@ -1591,10 +1602,19 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             Item* itemTarget = spellInfo ? FindEnchantTarget(bot, spellInfo, !skillMaxed, &calculator) : nullptr;
             if (!itemTarget)
             {
+                // A profession perk (fur lining, embroidery, tinker) can have no
+                // eligible item. Skip it instead of ending the whole session.
                 LOG_DEBUG("playerbots", "[New RPG] {} professions no non-equipped item for recipe {}", bot->GetName(),
                           chosen->spellId);
-                FinishProfession(info, data, ProfessionEndReason::NoTarget);
-                return true;
+                info.failedRecipes[chosen->spellId] = getMSTime();
+                ++data.consecutiveCastFailures;
+                if (data.consecutiveCastFailures >= MAX_PROFESSION_CAST_FAILURES)
+                {
+                    FinishProfession(info, data, ProfessionEndReason::NoTarget);
+                    return true;
+                }
+                botAI->SetNextCheckDelay(1000);
+                return false;
             }
             LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
                       itemTarget->GetEntry(), itemTarget->GetGUID().ToString(), chosen->spellId);
