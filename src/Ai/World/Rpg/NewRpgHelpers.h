@@ -83,12 +83,8 @@ uint32 ParseProfessionName(std::string const& name);
 // Splits "do professions [names]", "do profession <names>", "do <name>", or "<name>"
 // into the name list the selection parser expects.
 ProfessionCommand ParseProfessionCommand(std::string const& text);
-// Known craft professions in the same order the RPG status uses. Gathering-only
-// professions are not included because DoProfessions cannot level them.
-std::vector<uint32> GetKnownCraftProfessions(PlayerbotAI* botAI);
-// Empty text selects all known craft professions. Otherwise parses an ordered,
-// whitespace/comma separated list. Errors are returned instead of partially
-// applying the list.
+// Parses an ordered, whitespace/comma separated list of craft professions.
+// Errors are returned instead of partially applying the list.
 ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string const& text);
 std::string GetProfessionName(uint32 skill);
 }  // namespace NewRpgHelpers

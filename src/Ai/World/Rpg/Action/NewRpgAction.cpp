@@ -6,6 +6,7 @@
 
 #include "NewRpgAction.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -79,32 +80,52 @@ bool StartProfessionRpg(PlayerbotAI* botAI, Player* owner, std::string const& te
         return false;
     }
 
-    NewRpgHelpers::ProfessionSelection selection = NewRpgHelpers::ParseProfessionSelection(botAI, text);
-    if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+    std::vector<uint32> skills;
+    if (text.empty())
     {
-        botAI->GetBot()->Whisper(ProfessionErrorText(selection), LANG_UNIVERSAL, owner);
-        return false;
+        skills = NewRpgBaseAction::SelectProfessionsToLevel(botAI);
+        if (skills.empty())
+        {
+            NewRpgHelpers::ProfessionSelection none;
+            none.error = NewRpgHelpers::ProfessionParseError::NoProfessions;
+            botAI->GetBot()->Whisper(ProfessionErrorText(none), LANG_UNIVERSAL, owner);
+            return false;
+        }
+
+        size_t const start = urand(0, skills.size() - 1);
+        std::rotate(skills.begin(), skills.begin() + start, skills.end());
+    }
+    else
+    {
+        NewRpgHelpers::ProfessionSelection selection = NewRpgHelpers::ParseProfessionSelection(botAI, text);
+        if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+        {
+            botAI->GetBot()->Whisper(ProfessionErrorText(selection), LANG_UNIVERSAL, owner);
+            return false;
+        }
+
+        if (!plural && selection.skills.size() != 1)
+        {
+            botAI->GetBot()->Whisper(ProfessionErrorText({}), LANG_UNIVERSAL, owner);
+            return false;
+        }
+
+        skills = std::move(selection.skills);
     }
 
-    if (!plural && selection.skills.size() != 1)
-    {
-        botAI->GetBot()->Whisper(ProfessionErrorText({}), LANG_UNIVERSAL, owner);
-        return false;
-    }
-
-    if (selection.skills.empty())
+    if (skills.empty())
         return false;
 
     if (!botAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
         botAI->ChangeStrategy("+new rpg", BOT_STATE_NON_COMBAT);
 
-    std::vector<uint32> pending(selection.skills.begin() + 1, selection.skills.end());
-    botAI->rpgInfo.ChangeToDoProfessions(selection.skills.front(), std::move(pending));
+    std::vector<uint32> pending(skills.begin() + 1, skills.end());
+    botAI->rpgInfo.ChangeToDoProfessions(skills.front(), std::move(pending));
 
     if (owner)
     {
         std::string names;
-        for (uint32 skill : selection.skills)
+        for (uint32 skill : skills)
         {
             if (!names.empty())
                 names += ", ";

@@ -4,14 +4,18 @@
  * or (at your option) any later version.
  */
 
+#include <algorithm>
+
 #include "BattleGroundTactics.h"
 #include "Chat.h"
 #include "ChatCommandTags.h"
 #include "GuildTaskMgr.h"
+#include "NewRpgBaseAction.h"
 #include "NewRpgHelpers.h"
 #include "PerfMonitor.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+#include "Random.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
 
@@ -223,24 +227,48 @@ public:
             return false;
         }
 
-        NewRpgHelpers::ProfessionSelection const selection =
-            NewRpgHelpers::ParseProfessionSelection(botAI, professionCommand.names);
-        if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+        if (!professionCommand.plural && professionCommand.names.empty())
         {
-            handler->SendErrorMessage("{}: {}", target.GetName(), ProfessionErrorText(selection));
+            handler->SendErrorMessage(
+                "Usage: .playerbots debug rpg <bot> do profession <name>|do professions [name ...]|idle");
             return false;
         }
 
-        if (!professionCommand.plural && selection.skills.size() != 1)
+        std::vector<uint32> skills;
+        if (professionCommand.names.empty())
         {
-            handler->SendErrorMessage("{}: 'do profession' takes exactly one profession", target.GetName());
-            return false;
+            skills = NewRpgBaseAction::SelectProfessionsToLevel(botAI);
+            if (skills.empty())
+            {
+                handler->SendErrorMessage("{}: No profession work available right now", target.GetName());
+                return false;
+            }
+
+            size_t const start = urand(0, skills.size() - 1);
+            std::rotate(skills.begin(), skills.begin() + start, skills.end());
+        }
+        else
+        {
+            NewRpgHelpers::ProfessionSelection const selection =
+                NewRpgHelpers::ParseProfessionSelection(botAI, professionCommand.names);
+            if (selection.error != NewRpgHelpers::ProfessionParseError::None)
+            {
+                handler->SendErrorMessage("{}: {}", target.GetName(), ProfessionErrorText(selection));
+                return false;
+            }
+
+            if (!professionCommand.plural && selection.skills.size() != 1)
+            {
+                handler->SendErrorMessage("{}: 'do profession' takes exactly one profession", target.GetName());
+                return false;
+            }
+
+            skills = selection.skills;
         }
 
-        std::vector<uint32> pending(selection.skills.begin() + 1, selection.skills.end());
-        botAI->rpgInfo.ChangeToDoProfessions(selection.skills.front(), std::move(pending));
-        handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (skill {})", target.GetName(),
-                                 selection.skills.front());
+        std::vector<uint32> pending(skills.begin() + 1, skills.end());
+        botAI->rpgInfo.ChangeToDoProfessions(skills.front(), std::move(pending));
+        handler->PSendSysMessage("{}: rpg status DO_PROFESSIONS (skill {})", target.GetName(), skills.front());
         return true;
     }
 

@@ -32,6 +32,10 @@ class NewRpgBaseAction : public MovementAction
 public:
     NewRpgBaseAction(PlayerbotAI* botAI, std::string name) : MovementAction(botAI, name) {}
 
+    // Learned craft professions that have a usable recipe right now. Callers rotate the
+    // list to pick a random starting profession.
+    static std::vector<uint32> SelectProfessionsToLevel(PlayerbotAI* botAI);
+
 protected:
     /* MOVEMENT RELATED */
     bool MoveFarTo(WorldPosition dest);
@@ -57,7 +61,6 @@ protected:
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
-    std::vector<uint32> SelectProfessionsToLevel();
 
 protected:
     /* FOR MOVE FAR */

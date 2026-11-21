@@ -1223,7 +1223,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_DO_PROFESSIONS:
         {
-            std::vector<uint32> skillLines = SelectProfessionsToLevel();
+            std::vector<uint32> skillLines = SelectProfessionsToLevel(botAI);
             if (skillLines.empty())
                 return false;
 
@@ -1259,7 +1259,7 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
     return false;
 }
 
-std::vector<uint32> NewRpgBaseAction::SelectProfessionsToLevel()
+std::vector<uint32> NewRpgBaseAction::SelectProfessionsToLevel(PlayerbotAI* botAI)
 {
     static uint32 const craftProfessions[] = {
         SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
@@ -1267,6 +1267,9 @@ std::vector<uint32> NewRpgBaseAction::SelectProfessionsToLevel()
         SKILL_COOKING};
 
     std::vector<uint32> available;
+    if (!botAI)
+        return available;
+
     NearbyVendorIndex vendorIndex;
     for (uint32 skillLine : craftProfessions)
     {
@@ -1338,7 +1341,7 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             return sGatherNodeMgr.HasUsableNodes(bot);
         }
         case RPG_DO_PROFESSIONS:
-            return !SelectProfessionsToLevel().empty();
+            return !SelectProfessionsToLevel(botAI).empty();
         case RPG_TRAVEL_FLIGHT:
         {
             uint32 flightMasterEntry = 0;

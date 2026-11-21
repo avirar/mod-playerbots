@@ -401,24 +401,6 @@ ProfessionCommand ParseProfessionCommand(std::string const& text)
     return result;
 }
 
-std::vector<uint32> GetKnownCraftProfessions(PlayerbotAI* botAI)
-{
-    static uint32 const craftProfessions[] = {
-        SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
-        SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,     SKILL_TAILORING,   SKILL_COOKING,
-        SKILL_FIRST_AID};
-
-    std::vector<uint32> result;
-    if (!botAI)
-        return result;
-
-    for (uint32 skill : craftProfessions)
-        if (botAI->HasSkill(SkillType(skill)))
-            result.push_back(skill);
-
-    return result;
-}
-
 ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string const& text)
 {
     ProfessionSelection result;
@@ -428,7 +410,6 @@ ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string con
         return result;
     }
 
-    bool const allProfessions = Trim(text).empty();
     std::string normalized = Lowercase(text);
     std::replace(normalized.begin(), normalized.end(), ',', ' ');
     std::replace(normalized.begin(), normalized.end(), ';', ' ');
@@ -477,18 +458,8 @@ ProfessionSelection ParseProfessionSelection(PlayerbotAI* botAI, std::string con
 
     if (result.skills.empty())
     {
-        if (!allProfessions)
-        {
-            result.error = ProfessionParseError::NoProfessions;
-            return result;
-        }
-
-        result.skills = GetKnownCraftProfessions(botAI);
-        if (result.skills.empty())
-        {
-            result.error = ProfessionParseError::NoProfessions;
-            return result;
-        }
+        result.error = ProfessionParseError::NoProfessions;
+        return result;
     }
 
     return result;
