@@ -316,6 +316,15 @@ bool ScrollCategoryCovered(Player* bot, ItemTemplate const* proto)
             SpellInfo const* auraSpell = aura->GetSpellInfo();
             if (!auraSpell || auraSpell->SpellFamilyName == SPELLFAMILY_GENERIC)
                 continue;
+
+            // Self-armor spells carry dummy stat effects for their scaling
+            // (e.g. Fel Armor's Spirit-to-spell-power effect). They are not
+            // class stat buffs and must not suppress a scroll.
+            SpellSpecificType const specific = auraSpell->GetSpellSpecific();
+            if (specific == SPELL_SPECIFIC_WARLOCK_ARMOR || specific == SPELL_SPECIFIC_MAGE_ARMOR ||
+                specific == SPELL_SPECIFIC_ELEMENTAL_SHIELD || specific == SPELL_SPECIFIC_PRESENCE)
+                continue;
+
             if (misc >= 0 && aura->GetMiscValue() != misc && aura->GetMiscValue() >= 0)
                 continue;
             return true;
