@@ -437,6 +437,10 @@ Item* ChooseFood(Player* bot, std::vector<Item*> const& items)
         if (!proto)
             continue;
 
+        // Drinks share the food subclass and can leak into generic food queries.
+        if (proto->Spells[0].SpellCategory != 11)
+            continue;
+
         if (IsBuffFood(proto))
         {
             wellFed = wellFed || SpellHasActiveBuff(bot, GetItemSpell(proto), 0);

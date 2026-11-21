@@ -397,11 +397,12 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
         // bot->SetStandState(UNIT_STAND_STATE_SIT);
         bot->CastStop();
         float hp = bot->GetHealthPct();
-        float mp = bot->GetPower(POWER_MANA) * 100.0f / bot->GetMaxPower(POWER_MANA);
+        uint32 const maxMana = bot->GetMaxPower(POWER_MANA);
+        float mp = maxMana ? bot->GetPower(POWER_MANA) * 100.0f / maxMana : 0.0f;
         float p = 0.f;
         if (isDrink && isFood)
         {
-            p = std::min(hp, mp);
+            p = maxMana ? std::min(hp, mp) : hp;
             TellConsumableUse(item, "Feasting", p);
         }
         else if (isDrink)
@@ -411,7 +412,7 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
         }
         else if (isFood)
         {
-            p = std::min(hp, mp);
+            p = maxMana ? std::min(hp, mp) : hp;
             TellConsumableUse(item, "Eating", p);
         }
 

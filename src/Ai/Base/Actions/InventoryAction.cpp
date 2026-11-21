@@ -433,7 +433,9 @@ std::vector<Item*> InventoryAction::parseItems(std::string const text, IterateIt
     }
 
     uint32 itemClass = MAX_ITEM_CLASS, itemSubClass = 0;
-    if (chat->parseItemClass(text, &itemClass, &itemSubClass))
+    // A reserved qualifier already built its list. Letting the class filter run too
+    // would widen it: "food" maps to subclass 5, which drinks also use.
+    if (!isReservedQualifier(text) && chat->parseItemClass(text, &itemClass, &itemSubClass))
     {
         FindItemsToTradeByClassVisitor visitor(itemClass, itemSubClass, count);
         IterateItems(&visitor, mask);
