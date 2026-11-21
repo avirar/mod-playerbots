@@ -3700,20 +3700,30 @@ bool PlayerbotAI::CastSpell(std::string const name, Unit* target, Item* itemTarg
     return result;
 }
 
-bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
+bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, PlayerbotCastAttempt* attempt)
 {
-    if (!spellId)
+    if (attempt)
+        *attempt = PlayerbotCastAttempt{};
+
+    auto fail = [attempt](PlayerbotCastBlock block)
+    {
+        if (attempt)
+            attempt->block = block;
         return false;
+    };
+
+    if (!spellId)
+        return fail(PlayerbotCastBlock::NoSpell);
 
     if (!target)
         target = bot;
 
     if (!IsValidUnit(target))
-        return false;
+        return fail(PlayerbotCastBlock::InvalidTarget);
 
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
-        return false;
+        return fail(PlayerbotCastBlock::NoSpell);
 
     Pet* pet = bot->GetPet();
     if (pet && pet->HasSpell(spellId))
@@ -3758,11 +3768,11 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     // aiObjectContext->GetValue<LastMovement&>("last movement")->Get().Set(nullptr);
     // aiObjectContext->GetValue<time_t>("stay time")->Set(0);
 
-    if ((bot->IsFlying() && !bot->HasAura(SPELL_GRAVITY_LAPSE_TK) && !bot->HasAura(SPELL_GRAVITY_LAPSE_MGT)) ||
-        bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
-    {
-        return false;
-    }
+    if (bot->IsFlying() && !bot->HasAura(SPELL_GRAVITY_LAPSE_TK) && !bot->HasAura(SPELL_GRAVITY_LAPSE_MGT))
+        return fail(PlayerbotCastBlock::Flying);
+
+    if (bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
+        return fail(PlayerbotCastBlock::InFlight);
 
     // bot->ClearUnitState(UNIT_STATE_CHASE);
     // bot->ClearUnitState(UNIT_STATE_FOLLOW);
@@ -3786,7 +3796,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     if (failWithDelay)
     {
         SetNextCheckDelay(sPlayerbotAIConfig.ReactDelay);
-        return false;
+        return fail(PlayerbotCastBlock::NotStanding);
     }
 
     Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
@@ -3890,7 +3900,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         // bot->StopMoving();
         SetNextCheckDelay(sPlayerbotAIConfig.ReactDelay);
         delete spell;
-        return false;
+        return fail(PlayerbotCastBlock::Moving);
     }
 
     // spell->m_targets.SetUnitTarget(target);
@@ -3906,6 +3916,12 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
 
     if (result != SPELL_CAST_OK)
     {
+        if (attempt)
+        {
+            attempt->reachedPrepare = true;
+            attempt->result = result;
+        }
+
         // if (!sPlayerbotAIConfig.LogInGroupOnly || (bot->GetGroup() && HasGameClientMaster()))
         //     LOG_DEBUG("playerbots", "Spell cast failed. - target name: {}, spellid: {}, bot name: {}, result: {}",
         //         target->GetName(), spellId, bot->GetName(), result);
@@ -3998,6 +4014,9 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     }
 
     forceRebuff.NoteCast(spellInfo);
+
+    if (attempt)
+        attempt->reachedPrepare = true;
 
     return true;
 }
@@ -5017,6 +5036,19 @@ void PlayerbotAI::RemoveShapeshift()
     RemoveAura("aquatic form");
     RemoveAura("ghost wolf");
     // RemoveAura("tree of life");
+}
+
+void PlayerbotAI::ClearStaleFlightFlags()
+{
+    if (bot->HasIncreaseMountedFlightSpeedAura() || bot->HasFlyAura())
+        return;
+
+    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY))
+    {
+        bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY | MOVEMENTFLAG_CAN_FLY);
+        if (!bot->IsRooted())
+            bot->SendMovementFlagUpdate();
+    }
 }
 
 // Mirrors Blizzard’s GetAverageItemLevel rules :
@@ -7072,24 +7104,46 @@ void PlayerbotAI::RecordProfessionSession(uint32 skillLine)
         ++rpgStatistic.byProfession[skillLine].sessions;
 }
 
-void PlayerbotAI::RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success)
+void PlayerbotAI::RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success, ProfessionCraftPurpose purpose,
+                                       PlayerbotCastAttempt const& attempt)
 {
+    size_t const purposeIndex = static_cast<size_t>(purpose);
+    uint16 const reason =
+        success ? 0
+                : attempt.block != PlayerbotCastBlock::None
+                      ? uint16(PROFESSION_CAST_REASON_BOT_BASE + static_cast<uint16>(attempt.block))
+                      : static_cast<uint16>(attempt.result);
+
     ++rpgStatistic.profession.casts;
+    ++rpgStatistic.profession.castsByPurpose[purposeIndex];
     if (!success)
+    {
         ++rpgStatistic.profession.castFailures;
+        ++rpgStatistic.profession.failuresByPurpose[purposeIndex];
+        ++rpgStatistic.profession.failuresByReason[reason];
+    }
 
     if (!sPlayerbotAIConfig.CollectDetailedProfessionStats)
         return;
 
     NewRpgStatistic::ProfessionCounters& professionCounters = rpgStatistic.byProfession[skillLine];
     ++professionCounters.casts;
+    ++professionCounters.castsByPurpose[purposeIndex];
     if (!success)
+    {
         ++professionCounters.castFailures;
+        ++professionCounters.failuresByPurpose[purposeIndex];
+        ++professionCounters.failuresByReason[reason];
+    }
 
     NewRpgStatistic::ProfessionRecipeCounters& recipeCounters = rpgStatistic.byRecipe[spellId];
     ++recipeCounters.casts;
+    ++recipeCounters.castsByPurpose[purposeIndex];
     if (!success)
+    {
         ++recipeCounters.failures;
+        ++recipeCounters.failuresByPurpose[purposeIndex];
+    }
 }
 
 void PlayerbotAI::RecordProfessionSkillGain(uint32 skillLine, uint32 gain)

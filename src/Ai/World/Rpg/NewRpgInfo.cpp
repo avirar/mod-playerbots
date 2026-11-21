@@ -242,6 +242,7 @@ std::string NewRpgInfo::ToString()
                 out << "\ntrainer: " << arg.trainerGuid.ToString() << " skill " << arg.lastTrainerSkill << " ("
                     << (arg.lastTrainer ? GetMSTimeDiffToNow(arg.lastTrainer) : 0) << " ms ago)";
             out << "\ncasts: " << arg.casts;
+            out << "\nconsecutiveCastFailures: " << uint32(arg.consecutiveCastFailures);
             out << "\npendingCrafts: " << arg.pendingCrafts.size();
             for (size_t i = 0; i < arg.pendingCrafts.size() && i < 5; ++i)
             {

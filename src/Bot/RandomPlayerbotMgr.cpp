@@ -3441,6 +3441,106 @@ void RandomPlayerbotMgr::PrintQuestStats()
     LOG_INFO("playerbots", "=== END QUEST STATISTICS REPORT ===");
 }
 
+namespace
+{
+std::string ProfessionFailureReasonName(uint16 reason)
+{
+    if (reason >= PROFESSION_CAST_REASON_BOT_BASE)
+    {
+        switch (static_cast<PlayerbotCastBlock>(reason - PROFESSION_CAST_REASON_BOT_BASE))
+        {
+            case PlayerbotCastBlock::NoSpell:
+                return "bot_no_spell";
+            case PlayerbotCastBlock::InvalidTarget:
+                return "bot_invalid_target";
+            case PlayerbotCastBlock::Flying:
+                return "bot_flying";
+            case PlayerbotCastBlock::InFlight:
+                return "bot_in_flight";
+            case PlayerbotCastBlock::NotStanding:
+                return "bot_not_standing";
+            case PlayerbotCastBlock::Moving:
+                return "bot_moving";
+            default:
+                return "bot_unknown";
+        }
+    }
+
+    switch (static_cast<SpellCastResult>(reason))
+    {
+        case SPELL_FAILED_SUCCESS:
+            return "ok";
+        case SPELL_FAILED_AFFECTING_COMBAT:
+            return "SPELL_FAILED_AFFECTING_COMBAT";
+        case SPELL_FAILED_BAD_TARGETS:
+            return "SPELL_FAILED_BAD_TARGETS";
+        case SPELL_FAILED_CASTER_DEAD:
+            return "SPELL_FAILED_CASTER_DEAD";
+        case SPELL_FAILED_DONT_REPORT:
+            return "SPELL_FAILED_DONT_REPORT";
+        case SPELL_FAILED_ITEM_NOT_FOUND:
+            return "SPELL_FAILED_ITEM_NOT_FOUND";
+        case SPELL_FAILED_LOW_CASTLEVEL:
+            return "SPELL_FAILED_LOW_CASTLEVEL";
+        case SPELL_FAILED_MOVING:
+            return "SPELL_FAILED_MOVING";
+        case SPELL_FAILED_NOT_HERE:
+            return "SPELL_FAILED_NOT_HERE";
+        case SPELL_FAILED_NOT_KNOWN:
+            return "SPELL_FAILED_NOT_KNOWN";
+        case SPELL_FAILED_NOT_MOUNTED:
+            return "SPELL_FAILED_NOT_MOUNTED";
+        case SPELL_FAILED_NOT_ON_TAXI:
+            return "SPELL_FAILED_NOT_ON_TAXI";
+        case SPELL_FAILED_NOT_READY:
+            return "SPELL_FAILED_NOT_READY";
+        case SPELL_FAILED_ONLY_INDOORS:
+            return "SPELL_FAILED_ONLY_INDOORS";
+        case SPELL_FAILED_ONLY_OUTDOORS:
+            return "SPELL_FAILED_ONLY_OUTDOORS";
+        case SPELL_FAILED_PACIFIED:
+            return "SPELL_FAILED_PACIFIED";
+        case SPELL_FAILED_REAGENTS:
+            return "SPELL_FAILED_REAGENTS";
+        case SPELL_FAILED_SILENCED:
+            return "SPELL_FAILED_SILENCED";
+        case SPELL_FAILED_SPELL_IN_PROGRESS:
+            return "SPELL_FAILED_SPELL_IN_PROGRESS";
+        case SPELL_FAILED_SPELL_UNAVAILABLE:
+            return "SPELL_FAILED_SPELL_UNAVAILABLE";
+        case SPELL_FAILED_STUNNED:
+            return "SPELL_FAILED_STUNNED";
+        case SPELL_FAILED_TOO_MANY_OF_ITEM:
+            return "SPELL_FAILED_TOO_MANY_OF_ITEM";
+        default:
+            return "cast_result_" + std::to_string(reason);
+    }
+}
+
+std::string ProfessionFailureReasonsToString(std::map<uint16, uint32> const& reasons, size_t limit)
+{
+    std::vector<std::pair<uint16, uint32>> sorted(reasons.begin(), reasons.end());
+    std::sort(sorted.begin(), sorted.end(), [](auto const& left, auto const& right)
+    {
+        return left.second > right.second;
+    });
+
+    std::ostringstream out;
+    size_t shown = 0;
+    for (auto const& [reason, count] : sorted)
+    {
+        if (!count)
+            continue;
+        if (shown)
+            out << ", ";
+        out << ProfessionFailureReasonName(reason) << " " << count;
+        if (limit && ++shown >= limit)
+            break;
+    }
+    return out.str();
+}
+}  // namespace
+
 void RandomPlayerbotMgr::PrintProfessionStats()
 {
     if (!sPlayerbotAIConfig.EnableNewRpgStrategy)
@@ -3458,6 +3558,14 @@ void RandomPlayerbotMgr::PrintProfessionStats()
              "Spells learned: {}, Vendor items: {}",
              profession.sessions, profession.casts, profession.castFailures, profession.skillGain,
              profession.trainerVisits, profession.trainerSpellsLearned, profession.vendorPurchases);
+    LOG_INFO("playerbots", "    Purposes: skill-up {}, useful {}, intermediate {}, conversion {}",
+             profession.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::SkillUp)],
+             profession.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Useful)],
+             profession.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Intermediate)],
+             profession.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Conversion)]);
+    if (!profession.failuresByReason.empty())
+        LOG_INFO("playerbots", "    Cast failure reasons: {}",
+                 ProfessionFailureReasonsToString(profession.failuresByReason, 8));
 
     uint32 endTotal = 0;
     for (uint32 count : profession.endReasons)
@@ -3509,6 +3617,14 @@ void RandomPlayerbotMgr::PrintProfessionStats()
                      "    {}: sessions {}, casts {}, failures {}, skill +{}, trainer visits {}, vendor items {}", name,
                      row.counters.sessions, row.counters.casts, row.counters.castFailures, row.counters.skillGain,
                      row.counters.trainerVisits, row.counters.vendorPurchases);
+            LOG_INFO("playerbots", "        purposes: skill-up {}, useful {}, intermediate {}, conversion {}",
+                     row.counters.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::SkillUp)],
+                     row.counters.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Useful)],
+                     row.counters.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Intermediate)],
+                     row.counters.castsByPurpose[static_cast<size_t>(ProfessionCraftPurpose::Conversion)]);
+            if (!row.counters.failuresByReason.empty())
+                LOG_INFO("playerbots", "        reasons: {}",
+                         ProfessionFailureReasonsToString(row.counters.failuresByReason, 5));
         }
     }
 
@@ -3679,6 +3795,7 @@ void RandomPlayerbotMgr::ExportProfessionStatsToJson()
 
     NewRpgStatistic const total = CollectProfessionStats();
     auto endReasonName = [](size_t i) { return ProfessionEndReasonName(static_cast<ProfessionEndReason>(i)); };
+    auto purposeName = [](size_t i) { return ProfessionCraftPurposeName(static_cast<ProfessionCraftPurpose>(i)); };
 
     auto reasonsToJson = [](auto const& counts, auto nameFor)
     {
@@ -3692,6 +3809,24 @@ void RandomPlayerbotMgr::ExportProfessionStatsToJson()
             if (!first)
                 out << ", ";
             out << "\"" << JsonEscape(nameFor(i)) << "\": " << counts[i];
+            first = false;
+        }
+        out << "}";
+        return out.str();
+    };
+
+    auto failureReasonsToJson = [](std::map<uint16, uint32> const& reasons)
+    {
+        std::ostringstream out;
+        out << "{";
+        bool first = true;
+        for (auto const& [reason, count] : reasons)
+        {
+            if (!count)
+                continue;
+            if (!first)
+                out << ", ";
+            out << "\"" << JsonEscape(ProfessionFailureReasonName(reason)) << "\": " << count;
             first = false;
         }
         out << "}";
@@ -3744,7 +3879,10 @@ void RandomPlayerbotMgr::ExportProfessionStatsToJson()
     out << "    \"skillGain\": " << total.profession.skillGain << ",\n";
     out << "    \"trainerVisits\": " << total.profession.trainerVisits << ",\n";
     out << "    \"trainerSpellsLearned\": " << total.profession.trainerSpellsLearned << ",\n";
-    out << "    \"vendorPurchases\": " << total.profession.vendorPurchases << "\n";
+    out << "    \"vendorPurchases\": " << total.profession.vendorPurchases << ",\n";
+    out << "    \"castsByPurpose\": " << reasonsToJson(total.profession.castsByPurpose, purposeName) << ",\n";
+    out << "    \"failuresByPurpose\": " << reasonsToJson(total.profession.failuresByPurpose, purposeName) << ",\n";
+    out << "    \"failureReasons\": " << failureReasonsToJson(total.profession.failuresByReason) << "\n";
     out << "  },\n";
     out << "  \"endReasons\": " << reasonsToJson(total.profession.endReasons, endReasonName) << ",\n";
     out << "  \"professions\": [\n";
@@ -3763,7 +3901,11 @@ void RandomPlayerbotMgr::ExportProfessionStatsToJson()
         out << "      \"trainerVisits\": " << row.counters.trainerVisits << ",\n";
         out << "      \"trainerSpellsLearned\": " << row.counters.trainerSpellsLearned << ",\n";
         out << "      \"vendorPurchases\": " << row.counters.vendorPurchases << ",\n";
-        out << "      \"endReasons\": " << reasonsToJson(row.counters.endReasons, endReasonName) << "\n";
+        out << "      \"endReasons\": " << reasonsToJson(row.counters.endReasons, endReasonName) << ",\n";
+        out << "      \"castsByPurpose\": " << reasonsToJson(row.counters.castsByPurpose, purposeName) << ",\n";
+        out << "      \"failuresByPurpose\": " << reasonsToJson(row.counters.failuresByPurpose, purposeName)
+            << ",\n";
+        out << "      \"failureReasons\": " << failureReasonsToJson(row.counters.failuresByReason) << "\n";
         out << "    }" << (i + 1 < professions.size() ? "," : "") << "\n";
     }
     out << "  ],\n";
@@ -3776,7 +3918,9 @@ void RandomPlayerbotMgr::ExportProfessionStatsToJson()
         out << "      \"id\": " << row.spellId << ",\n";
         out << "      \"name\": \"" << JsonEscape(spellInfo ? spellInfo->SpellName[0] : "Unknown Spell") << "\",\n";
         out << "      \"casts\": " << row.counters.casts << ",\n";
-        out << "      \"failures\": " << row.counters.failures << "\n";
+        out << "      \"failures\": " << row.counters.failures << ",\n";
+        out << "      \"castsByPurpose\": " << reasonsToJson(row.counters.castsByPurpose, purposeName) << ",\n";
+        out << "      \"failuresByPurpose\": " << reasonsToJson(row.counters.failuresByPurpose, purposeName) << "\n";
         out << "    }" << (i + 1 < recipes.size() ? "," : "") << "\n";
     }
     out << "  ]\n";

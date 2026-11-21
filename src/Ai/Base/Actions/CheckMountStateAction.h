@@ -53,7 +53,6 @@ private:
     float CalculateDismountDistance() const;
     float CalculateMountDistance() const;
     void Dismount();
-    void ClearStaleFlightFlags();
     bool ShouldFollowMasterMountState(Player* master, bool noAttackers, bool shouldMount) const;
     bool ShouldDismountForMaster(Player* master) const;
     int32 CalculateMasterMountSpeed(Player* master) const;

@@ -119,11 +119,52 @@ constexpr uint32 CONVERSION_GRACE_MS = 6 * IN_MILLISECONDS;
 constexpr uint32 CONVERSION_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
 constexpr uint32 RECIPE_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
+// A session that cannot cast at all must not retry every recipe forever.
+constexpr uint8 MAX_PROFESSION_CAST_FAILURES = 20;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
 constexpr size_t MAX_PLAN_STEPS = 20;
 // Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
 // outputs do not consume the whole plan budget.
 constexpr float MIN_CONVERSION_EXPECTED = 0.1f;
+
+uint32 GetProfessionSkillLine(uint32 spellId)
+{
+    SkillLineAbilityMapBounds const bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+    for (auto itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        SkillLineAbilityEntry const* ability = itr->second;
+        if (ability && IsProfessionSkill(ability->SkillLine))
+            return ability->SkillLine;
+    }
+    return 0;
+}
+
+// Dismount/shapeshift only once the bot is at the casting spot. Flight Form sets
+// SPELL_AURA_FLY, which keeps IsFlying() true on the ground; CastSpell refuses to
+// cast while flying, so a solo druid would otherwise fail every profession cast.
+bool MakeReadyToCraft(PlayerbotAI* botAI, Player* bot)
+{
+    if (bot->IsInCombat())
+        return false;
+
+    ShapeshiftForm const form = bot->GetShapeshiftForm();
+    if (form == FORM_FLIGHT || form == FORM_FLIGHT_EPIC)
+        botAI->RemoveShapeshift();
+
+    if (bot->IsMounted())
+        bot->Dismount();
+
+    botAI->ClearStaleFlightFlags();
+
+    if (bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
+        return false;
+
+    if (bot->isMoving())
+        bot->StopMoving();
+    if (!bot->IsStandState())
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+    return true;
+}
 
 uint32 GetEnchantId(SpellInfo const* spellInfo)
 {
@@ -248,12 +289,8 @@ bool TryBasicCampfire(PlayerbotAI* botAI, Player* bot, NewRpgInfo::DoProfessions
         bot->HasSpellCooldown(BASIC_CAMPFIRE_SPELL))
         return false;
 
-    if (bot->IsMounted())
-        bot->Dismount();
-    if (bot->isMoving())
-        bot->StopMoving();
-    if (!bot->IsStandState())
-        bot->SetStandState(UNIT_STAND_STATE_STAND);
+    if (!MakeReadyToCraft(botAI, bot))
+        return true;
 
     data.lastCampfire = getMSTime();
     LOG_DEBUG("playerbots", "[New RPG] {} professions casting basic campfire", bot->GetName());
@@ -513,7 +550,12 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
                     continue;
                 }
 
-                trial.plan.steps.push_back({recipe.spellId, recipe.spellFocus, 0, 0, 0});
+                NewRpgInfo::DoProfessions::CraftStep step;
+                step.spellId = recipe.spellId;
+                step.spellFocus = recipe.spellFocus;
+                step.skillLine = recipe.skillLine;
+                step.purpose = ProfessionCraftPurpose::Intermediate;
+                trial.plan.steps.push_back(step);
                 trial.plan.plannedSpells.insert(recipe.spellId);
                 trial.plan.available[itemId] += recipe.outputCount;
                 uint32 const consumed = std::min(recipe.outputCount, remaining);
@@ -576,7 +618,14 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
 
             *stack -= conversion.inputCount;
             inputAvailable -= conversion.inputCount;
-            ctx.plan.steps.push_back({conversion.spellId, 0, conversion.inputItemId, conversion.inputCount, itemId});
+            NewRpgInfo::DoProfessions::CraftStep step;
+            step.spellId = conversion.spellId;
+            step.inputItemId = conversion.inputItemId;
+            step.inputCount = conversion.inputCount;
+            step.expectedItemId = itemId;
+            step.skillLine = GetProfessionSkillLine(conversion.spellId);
+            step.purpose = ProfessionCraftPurpose::Conversion;
+            ctx.plan.steps.push_back(step);
             produced += perCast;
             plannedConversion = true;
             if (output->second.minCount == 0)
@@ -1012,12 +1061,8 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
             return false;
     }
 
-    if (bot->IsMounted())
-        bot->Dismount();
-    if (bot->isMoving())
-        bot->StopMoving();
-    if (!bot->IsStandState())
-        bot->SetStandState(UNIT_STAND_STATE_STAND);
+    if (!MakeReadyToCraft(botAI, bot))
+        return true;
 
     data.spellId = step.spellId;
     data.lastCast = getMSTime();
@@ -1025,17 +1070,21 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
 
     // Sample before the cast: a fast loot store can add the item during CastSpell.
     uint32 const expectedBefore = step.inputItemId ? bot->GetItemCount(step.expectedItemId, false) : 0;
-    bool const cast =
-        step.inputItemId ? botAI->CastSpell(step.spellId, bot, inputItem) : botAI->CastSpell(step.spellId, bot);
-    botAI->RecordProfessionCast(data.skillLine, step.spellId, cast);
+    PlayerbotCastAttempt attempt;
+    bool const cast = step.inputItemId ? botAI->CastSpell(step.spellId, bot, inputItem, &attempt)
+                                       : botAI->CastSpell(step.spellId, bot, nullptr, &attempt);
+    botAI->RecordProfessionCast(step.skillLine ? step.skillLine : data.skillLine, step.spellId, cast, step.purpose,
+                                attempt);
     if (!cast)
     {
-        LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast failed for recipe {}", bot->GetName(),
-                  step.spellId);
+        LOG_DEBUG("playerbots", "[New RPG] {} professions dependency cast failed for recipe {} (reason {})",
+                  bot->GetName(), step.spellId, static_cast<uint32>(attempt.block));
         data.pendingCrafts.clear();
         botAI->SetNextCheckDelay(1000);
         return false;
     }
+
+    data.consecutiveCastFailures = 0;
 
     data.pendingCrafts.erase(data.pendingCrafts.begin());
     if (step.inputItemId)
@@ -1351,7 +1400,9 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (IsRecipeFailure(info, spellId))
             continue;
 
-        if (!matchedSkillLine && !useful)
+        // The final craft must belong to the session's profession. Other
+        // professions' recipes stay in allRecipes as planned dependencies.
+        if (!matchedSkillLine)
             continue;
 
         if (!worthwhile && (chance <= 0 || skillMaxed))
@@ -1497,22 +1548,22 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     // A player stops and stands to craft; do both in the same tick so the sparse
     // random-bot schedule is not spent waiting for the next one.
-    if (bot->IsMounted())
-        bot->Dismount();
-    if (bot->isMoving())
-        bot->StopMoving();
-    if (!bot->IsStandState())
-        bot->SetStandState(UNIT_STAND_STATE_STAND);
+    if (!MakeReadyToCraft(botAI, bot))
+        return true;
+
+    ProfessionCraftPurpose const purpose =
+        chosen->useful ? ProfessionCraftPurpose::Useful : ProfessionCraftPurpose::SkillUp;
 
     data.spellId = chosen->spellId;
     data.lastCast = getMSTime();
     ++data.casts;
     LOG_DEBUG("playerbots",
-              "[New RPG] {} professions skill {} recipe {} chance {} useful {} tier {} efficiency {:.3f} reagents {} "
+              "[New RPG] {} professions skill {} recipe {} chance {} purpose {} tier {} efficiency {:.3f} reagents {} "
               "recipeSkill {}",
-              bot->GetName(), data.skillLine, chosen->spellId, chosen->chance, chosen->useful, chosen->tier,
-              chosen->efficiency, chosen->reagentItems, chosen->skillLine);
+              bot->GetName(), data.skillLine, chosen->spellId, chosen->chance, ProfessionCraftPurposeName(purpose),
+              chosen->tier, chosen->efficiency, chosen->reagentItems, chosen->skillLine);
 
+    PlayerbotCastAttempt attempt;
     bool cast = false;
     if (chosen->noItemSpell)
     {
@@ -1528,7 +1579,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 {
                     LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting equipped slot {} item {} ({})",
                               bot->GetName(), selfSlot, equipped->GetEntry(), equipped->GetGUID().ToString());
-                    cast = botAI->CastSpell(chosen->spellId, bot, equipped);
+                    cast = botAI->CastSpell(chosen->spellId, bot, equipped, &attempt);
                 }
             }
         }
@@ -1547,19 +1598,22 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             }
             LOG_DEBUG("playerbots", "[New RPG] {} professions enchanting item {} ({}) for recipe {}", bot->GetName(),
                       itemTarget->GetEntry(), itemTarget->GetGUID().ToString(), chosen->spellId);
-            cast = botAI->CastSpell(chosen->spellId, bot, itemTarget);
+            cast = botAI->CastSpell(chosen->spellId, bot, itemTarget, &attempt);
         }
     }
     else
-        cast = botAI->CastSpell(chosen->spellId, bot);
+        cast = botAI->CastSpell(chosen->spellId, bot, nullptr, &attempt);
 
-    botAI->RecordProfessionCast(data.skillLine, chosen->spellId, cast);
+    botAI->RecordProfessionCast(chosen->skillLine, chosen->spellId, cast, purpose, attempt);
 
     if (cast)
     {
+        data.consecutiveCastFailures = 0;
         info.failedRecipes.erase(chosen->spellId);
         return true;
     }
+
+    ++data.consecutiveCastFailures;
 
     for (auto it = info.failedRecipes.begin(); it != info.failedRecipes.end();)
     {
@@ -1569,8 +1623,18 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             ++it;
     }
     info.failedRecipes[chosen->spellId] = getMSTime();
-    LOG_DEBUG("playerbots", "[New RPG] {} professions cast failed for recipe {} (skill {})", bot->GetName(),
-              chosen->spellId, data.skillLine);
+    LOG_DEBUG("playerbots", "[New RPG] {} professions cast failed for recipe {} (skill {}, block {}, result {})",
+              bot->GetName(), chosen->spellId, data.skillLine, static_cast<uint32>(attempt.block),
+              static_cast<uint32>(attempt.result));
+
+    if (data.consecutiveCastFailures >= MAX_PROFESSION_CAST_FAILURES)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} professions ending after {} consecutive cast failures", bot->GetName(),
+                  data.consecutiveCastFailures);
+        FinishProfession(info, data, ProfessionEndReason::CraftFailed);
+        return true;
+    }
+
     botAI->SetNextCheckDelay(1000);
     return false;
 }

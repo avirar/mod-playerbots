@@ -50,6 +50,27 @@ struct GameObjectData;
 
 enum StrategyType : uint32;
 
+// Why a bot-level CastSpell call never reached the server. Stored alongside the
+// SpellCastResult so profession statistics can tell a blocked cast from a rejected one.
+enum class PlayerbotCastBlock : uint8
+{
+    None = 0,
+    NoSpell,
+    InvalidTarget,
+    Flying,
+    InFlight,
+    NotStanding,
+    Moving,
+    Count
+};
+
+struct PlayerbotCastAttempt
+{
+    SpellCastResult result{SPELL_CAST_OK};
+    PlayerbotCastBlock block{PlayerbotCastBlock::None};
+    bool reachedPrepare{false};
+};
+
 enum HealingItemId
 {
     HEALTHSTONE = 5512,
@@ -503,6 +524,7 @@ public:
     void RequestSpellInterrupt();
     void RemoveAura(std::string const name);
     void RemoveShapeshift();
+    void ClearStaleFlightFlags();
     void WaitForSpellCast(Spell* spell);
     bool PlaySound(uint32 emote);
     bool PlayEmote(uint32 emote);
@@ -538,7 +560,7 @@ public:
 
     Aura* GetAura(std::string const spellName, Unit* unit, bool checkIsOwner = false, bool checkDuration = false,
                   int checkStack = -1);
-    bool CastSpell(uint32 spellId, Unit* target, Item* itemTarget = nullptr);
+    bool CastSpell(uint32 spellId, Unit* target, Item* itemTarget = nullptr, PlayerbotCastAttempt* attempt = nullptr);
     bool CastSpell(uint32 spellId, float x, float y, float z, Item* itemTarget = nullptr);
     bool canDispel(SpellInfo const* spellInfo, uint32 dispelType);
 
@@ -637,7 +659,8 @@ public:
     void RecordQuestDropped(uint32 questId, QuestDropReason reason);
     void RecordQuestAbandoned(uint32 questId, QuestAbandonReason reason);
     void RecordProfessionSession(uint32 skillLine);
-    void RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success);
+    void RecordProfessionCast(uint32 skillLine, uint32 spellId, bool success, ProfessionCraftPurpose purpose,
+                              PlayerbotCastAttempt const& attempt);
     void RecordProfessionSkillGain(uint32 skillLine, uint32 gain);
     void RecordProfessionTrainerVisit(uint32 skillLine, uint32 spellsLearned);
     void RecordProfessionVendorPurchase(uint32 skillLine, uint32 count);

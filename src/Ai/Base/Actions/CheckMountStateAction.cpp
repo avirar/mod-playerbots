@@ -82,7 +82,7 @@ bool CheckMountStateAction::Execute(Event /*event*/)
             bot->GetPositionZ() - floorZ <= PARACHUTE_LAND_THRESHOLD)
             bot->RemoveAurasByType(SPELL_AURA_FEATHER_FALL);
     }
-    ClearStaleFlightFlags();
+    botAI->ClearStaleFlightFlags();
 
     // Determine if there are no attackers
     bool noAttackers = !AI_VALUE2(bool, "combat", "self target") || !AI_VALUE(uint8, "attacker count");
@@ -262,20 +262,7 @@ void CheckMountStateAction::Dismount()
     WorldPacket emptyPacket;
     bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
 
-    ClearStaleFlightFlags();
-}
-
-void CheckMountStateAction::ClearStaleFlightFlags()
-{
-    if (bot->HasIncreaseMountedFlightSpeedAura() || bot->HasFlyAura())
-        return;
-
-    if (bot->HasUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY))
-    {
-        bot->RemoveUnitMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY | MOVEMENTFLAG_CAN_FLY);
-        if (!bot->IsRooted())
-            bot->SendMovementFlagUpdate();
-    }
+    botAI->ClearStaleFlightFlags();
 }
 
 void CheckMountStateAction::CompleteDismount(Player* bot)

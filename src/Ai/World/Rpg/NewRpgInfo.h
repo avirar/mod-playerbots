@@ -18,11 +18,41 @@
 #include "TravelMgr.h"
 
 #include <array>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 using NewRpgStatusTransitionProb = std::vector<std::vector<int>>;
+
+enum class ProfessionCraftPurpose : uint8
+{
+    SkillUp,       // no useful output, cast for the skill point
+    Useful,        // gear, consumable, quest item, tool or bag the bot will use
+    Intermediate,  // dependency craft that feeds another recipe
+    Conversion,    // milling, prospecting, disenchanting
+    Count
+};
+
+inline char const* ProfessionCraftPurposeName(ProfessionCraftPurpose purpose)
+{
+    switch (purpose)
+    {
+        case ProfessionCraftPurpose::SkillUp:
+            return "skill_up";
+        case ProfessionCraftPurpose::Useful:
+            return "useful";
+        case ProfessionCraftPurpose::Intermediate:
+            return "intermediate";
+        case ProfessionCraftPurpose::Conversion:
+            return "conversion";
+        default:
+            return "unknown";
+    }
+}
+
+// Bot-level cast rejections are stored above the SpellCastResult range.
+constexpr uint16 PROFESSION_CAST_REASON_BOT_BASE = 1000;
 
 struct NewRpgInfo
 {
@@ -99,6 +129,8 @@ struct NewRpgInfo
             uint32 inputCount{0};
             uint32 expectedItemId{0};  // conversion output or bought item
             ObjectGuid vendorGuid{};   // buy steps only
+            uint32 skillLine{0};       // profession of spellId; 0 falls back to the session
+            ProfessionCraftPurpose purpose{ProfessionCraftPurpose::Intermediate};
         };
 
         uint32 skillLine{0};
@@ -112,6 +144,7 @@ struct NewRpgInfo
         uint16 lastTrainerSkill{0};
         ObjectGuid trainerGuid{};
         uint32 casts{0};
+        uint8 consecutiveCastFailures{0};
         std::vector<CraftStep> pendingCrafts;
         // Conversion loot is asynchronous; wait for the window to close before the next step.
         uint32 lootWaitStart{0};
@@ -304,6 +337,9 @@ struct NewRpgStatistic
         uint32 trainerSpellsLearned{0};
         uint32 vendorPurchases{0};
         std::array<uint32, static_cast<size_t>(ProfessionEndReason::Count)> endReasons{};
+        std::array<uint32, static_cast<size_t>(ProfessionCraftPurpose::Count)> castsByPurpose{};
+        std::array<uint32, static_cast<size_t>(ProfessionCraftPurpose::Count)> failuresByPurpose{};
+        std::map<uint16, uint32> failuresByReason;
 
         ProfessionCounters& operator+=(ProfessionCounters const& other)
         {
@@ -316,6 +352,13 @@ struct NewRpgStatistic
             vendorPurchases += other.vendorPurchases;
             for (size_t i = 0; i < endReasons.size(); ++i)
                 endReasons[i] += other.endReasons[i];
+            for (size_t i = 0; i < castsByPurpose.size(); ++i)
+            {
+                castsByPurpose[i] += other.castsByPurpose[i];
+                failuresByPurpose[i] += other.failuresByPurpose[i];
+            }
+            for (auto const& [reason, count] : other.failuresByReason)
+                failuresByReason[reason] += count;
             return *this;
         }
     };
@@ -324,6 +367,8 @@ struct NewRpgStatistic
     {
         uint32 casts{0};
         uint32 failures{0};
+        std::array<uint32, static_cast<size_t>(ProfessionCraftPurpose::Count)> castsByPurpose{};
+        std::array<uint32, static_cast<size_t>(ProfessionCraftPurpose::Count)> failuresByPurpose{};
     };
 
     ProfessionCounters profession;
@@ -359,6 +404,11 @@ struct NewRpgStatistic
             ProfessionRecipeCounters& target = byRecipe[spellId];
             target.casts += counters.casts;
             target.failures += counters.failures;
+            for (size_t i = 0; i < target.castsByPurpose.size(); ++i)
+            {
+                target.castsByPurpose[i] += counters.castsByPurpose[i];
+                target.failuresByPurpose[i] += counters.failuresByPurpose[i];
+            }
         }
         return *this;
     }
