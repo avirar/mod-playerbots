@@ -177,11 +177,18 @@ bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplat
     return candidate->ItemLevel >= baseline->ItemLevel;
 }
 
-bool IsFlask(ItemTemplate const* proto) { return proto && proto->SubClass == ITEM_SUBCLASS_FLASK; }
-bool IsElixir(ItemTemplate const* proto) { return proto && proto->SubClass == ITEM_SUBCLASS_ELIXIR; }
+bool IsFlask(ItemTemplate const* proto)
+{
+    return proto && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_FLASK;
+}
+
+bool IsElixir(ItemTemplate const* proto)
+{
+    return proto && proto->Class == ITEM_CLASS_CONSUMABLE && proto->SubClass == ITEM_SUBCLASS_ELIXIR;
+}
 bool IsScroll(ItemTemplate const* proto)
 {
-    if (!proto || proto->SubClass != ITEM_SUBCLASS_SCROLL)
+    if (!proto || proto->Class != ITEM_CLASS_CONSUMABLE || proto->SubClass != ITEM_SUBCLASS_SCROLL)
         return false;
 
     SpellInfo const* spell = GetItemSpell(proto);
@@ -307,7 +314,7 @@ bool ScrollCategoryCovered(Player* bot, ItemTemplate const* proto)
     if (!bot || !spell)
         return false;
 
-    auto coveredByClassBuff = [bot](AuraType type, int32 misc)
+    auto coveredByClassBuff = [bot](AuraType type, int32 misc, int32 minimumAmount)
     {
         for (AuraEffect* aura : bot->GetAuraEffectsByType(type))
         {
@@ -327,6 +334,15 @@ bool ScrollCategoryCovered(Player* bot, ItemTemplate const* proto)
 
             if (misc >= 0 && aura->GetMiscValue() != misc && aura->GetMiscValue() >= 0)
                 continue;
+
+            // Same-stat modifiers are exclusive by absolute value (see
+            // SPELL_GROUP_STACK_RULE_EXCLUSIVE_SAME_EFFECT), so a weaker class
+            // buff does not block a stronger scroll. Percentage buffs (Kings)
+            // have no comparable flat amount.
+            if (type != SPELL_AURA_MOD_TOTAL_STAT_PERCENTAGE && minimumAmount > 0 &&
+                aura->GetAmount() < minimumAmount)
+                continue;
+
             return true;
         }
         return false;
@@ -337,11 +353,12 @@ bool ScrollCategoryCovered(Player* bot, ItemTemplate const* proto)
         if (effect.Effect != SPELL_EFFECT_APPLY_AURA)
             continue;
 
-        if (coveredByClassBuff(AuraType(effect.ApplyAuraName), effect.MiscValue))
+        int32 const scrollAmount = effect.BasePoints + 1;
+        if (coveredByClassBuff(AuraType(effect.ApplyAuraName), effect.MiscValue, scrollAmount))
             return true;
 
         if (effect.ApplyAuraName == SPELL_AURA_MOD_STAT &&
-            coveredByClassBuff(SPELL_AURA_MOD_TOTAL_STAT_PERCENTAGE, -1))
+            coveredByClassBuff(SPELL_AURA_MOD_TOTAL_STAT_PERCENTAGE, -1, 0))
             return true;
     }
 
