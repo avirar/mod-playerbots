@@ -7,12 +7,12 @@
 #ifndef PLAYERBOTS_MOVETOSPELLFOCUSACTION_H
 #define PLAYERBOTS_MOVETOSPELLFOCUSACTION_H
 
-#include "MovementActions.h"
+#include "NewRpgBaseAction.h"
 
-class MoveToSpellFocusAction : public MovementAction
+class MoveToSpellFocusAction : public NewRpgBaseAction
 {
 public:
-    MoveToSpellFocusAction(PlayerbotAI* botAI) : MovementAction(botAI, "move to spell focus") {}
+    MoveToSpellFocusAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "move to spell focus") {}
 
     bool Execute(Event event) override;
     bool isUseful() override;

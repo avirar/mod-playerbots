@@ -52,8 +52,10 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
 
         LOG_DEBUG("playerbots", "[spell focus] {} moving to cached {} at {:.1f} yd", bot->GetName(), cached->entry,
                   std::sqrt(dx * dx + dy * dy + dz * dz));
-        return MoveTo(cached->pos.GetMapId(), cached->pos.GetPositionX(), cached->pos.GetPositionY(),
-                      cached->pos.GetPositionZ());
+        // MoveFarTo carries the RPG stuck-teleport recovery; plain MoveTo
+        // would retry a failing SearchForBestPath from an unrouteable spot
+        // (e.g. under a WMO) every tick forever.
+        return MoveFarTo(cached->pos);
     }
 
     float const focusDistance =
@@ -68,7 +70,7 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
 
     LOG_DEBUG("playerbots", "[spell focus] {} moving to {} (distance {})", bot->GetName(), focus->GetEntry(),
               bot->GetDistance(focus));
-    return MoveTo(focus, std::max(0.2f, focusDistance - 0.5f));
+    return MoveFarTo(WorldPosition(focus));
 }
 
 bool MoveToSpellFocusAction::isUseful() { return !AI_VALUE(ObjectGuid, "spell focus target").IsEmpty(); }
