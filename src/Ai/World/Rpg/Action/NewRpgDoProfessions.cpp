@@ -121,6 +121,8 @@ constexpr uint32 VENDOR_FAILURE_MEMORY_MS = 5 * MINUTE * IN_MILLISECONDS;
 constexpr uint32 RECIPE_FAILURE_MEMORY_MS = 30 * IN_MILLISECONDS;
 // A session that cannot cast at all must not retry every recipe forever.
 constexpr uint8 MAX_PROFESSION_CAST_FAILURES = 20;
+// A bag-full vendor sell that has not freed space within this window ends the session.
+constexpr uint32 BAG_FULL_SELL_RETRY_MS = 10 * IN_MILLISECONDS;
 constexpr uint8 MAX_CRAFT_DEPTH = 5;
 constexpr size_t MAX_PLAN_STEPS = 20;
 // Spread loot groups (1/6 gems, 25% pigments) stay plannable; 1-3% chase
@@ -147,8 +149,9 @@ bool MakeReadyToCraft(PlayerbotAI* botAI, Player* bot)
     if (bot->IsInCombat())
         return false;
 
-    ShapeshiftForm const form = bot->GetShapeshiftForm();
-    if (form == FORM_FLIGHT || form == FORM_FLIGHT_EPIC)
+    // Any non-humanoid form blocks profession spells (SPELL_FAILED_NOT_SHAPESHIFT);
+    // druids arrive here from bear/aqua/travel forms after combat and travel.
+    if (bot->GetShapeshiftForm())
         botAI->RemoveShapeshift();
 
     if (bot->IsMounted())
@@ -173,6 +176,18 @@ uint32 GetEnchantId(SpellInfo const* spellInfo)
             return spellInfo->Effects[e].MiscValue;
 
     return 0;
+}
+
+// Core rejects the enchant when the target item is below the spell's BaseLevel
+// (SPELL_FAILED_LOWLEVEL); Item::IsFitToSpellRequirements does not check it, so
+// filter targets the same way (Spell.cpp, ENCHANT_ITEM level check).
+bool IsFitToEnchantLevel(SpellInfo const* spellInfo, ItemTemplate const* proto)
+{
+    if (spellInfo->HasAttribute(SPELL_ATTR2_ALLOW_LOW_LEVEL_BUFF))
+        return true;
+
+    uint32 const requiredLevel = proto->RequiredLevel ? proto->RequiredLevel : proto->ItemLevel;
+    return requiredLevel >= spellInfo->BaseLevel;
 }
 
 int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightCalculator& calculator)
@@ -203,7 +218,7 @@ int8 FindUsefulEnchantSlot(Player* bot, SpellInfo const* spellInfo, StatsWeightC
             continue;
 
         ItemTemplate const* proto = item->GetTemplate();
-        if (!proto)
+        if (!proto || !IsFitToEnchantLevel(spellInfo, proto))
             continue;
 
         uint32 const currentId = item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
@@ -230,6 +245,9 @@ Item* FindEnchantTarget(Player* bot, SpellInfo const* spellInfo, bool allowGear,
     auto collect = [spellInfo, &gear, &vellums](Item* item)
     {
         if (!item->IsFitToSpellRequirements(spellInfo))
+            return;
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || !IsFitToEnchantLevel(spellInfo, proto))
             return;
         if (item->IsArmorVellum() || item->IsWeaponVellum())
             vellums.push_back(item);
@@ -860,6 +878,41 @@ bool NewRpgDoProfessionsAction::HandleLootWait(NewRpgInfo::DoProfessions& data)
     return true;
 }
 
+bool NewRpgDoProfessionsAction::SellToNearestVendor(NewRpgInfo::DoProfessions& data)
+{
+    GuidVector const nearest = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
+    Creature* vendor = nullptr;
+    for (ObjectGuid const guid : nearest)
+    {
+        Creature* candidate = botAI->GetCreature(guid);
+        if (candidate && candidate->IsInWorld() && candidate->IsVendor() && !candidate->IsHostileTo(bot) &&
+            bot->GetDistance(candidate) <= 100.0f)
+        {
+            vendor = candidate;
+            break;
+        }
+    }
+
+    if (!vendor)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} bags full and no vendor within 100 yards", bot->GetName());
+        return false;
+    }
+
+    if (bot->GetDistance(vendor) > INTERACTION_DISTANCE)
+    {
+        LOG_DEBUG("playerbots", "[New RPG] {} bags full, moving to vendor {} (distance {})", bot->GetName(),
+                  vendor->GetName(), bot->GetDistance(vendor));
+        MoveWorldObjectTo(vendor->GetGUID(), 2.0f);
+        return true;
+    }
+
+    LOG_DEBUG("playerbots", "[New RPG] {} bags full, selling to vendor {}", bot->GetName(), vendor->GetName());
+    data.bagFullSellAt = getMSTime();
+    botAI->DoSpecificAction("sell", Event("rpg action", "vendor"), true);
+    return true;
+}
+
 bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data)
 {
     NewRpgInfo::DoProfessions::CraftStep const step = data.pendingCrafts.front();
@@ -1230,7 +1283,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     if (!data.pendingCrafts.empty())
     {
         if (!RunPendingCrafts(data))
-            FinishProfession(info, data, ProfessionEndReason::CraftFailed);
+            FinishProfession(info, data, ProfessionEndReason::CraftNotRunnable);
         return true;
     }
 
@@ -1521,6 +1574,10 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (bagSpace >= 100)
     {
+        // Bags are full: free space at the nearest vendor before giving up.
+        bool const recentlySold = data.bagFullSellAt && GetMSTimeDiffToNow(data.bagFullSellAt) < BAG_FULL_SELL_RETRY_MS;
+        if (!recentlySold && SellToNearestVendor(data))
+            return true;
         FinishProfession(info, data, ProfessionEndReason::BagFull);
         return true;
     }
@@ -1536,6 +1593,10 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         if (!outputRule.alwaysKeep && outputRule.keepCount == 0)
         {
+            // The output is surplus, so selling stock can still make room for it.
+            bool const recentlySold = data.bagFullSellAt && GetMSTimeDiffToNow(data.bagFullSellAt) < BAG_FULL_SELL_RETRY_MS;
+            if (!recentlySold && SellToNearestVendor(data))
+                return true;
             LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus",
                       bot->GetName(), bagSpace, chosen->spellId);
             FinishProfession(info, data, ProfessionEndReason::BagFull);

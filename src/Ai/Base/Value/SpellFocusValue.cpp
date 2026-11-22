@@ -63,9 +63,10 @@ ObjectGuid SpellFocusValue::Calculate()
     if (focus)
         return focus->GetGUID();
 
-    constexpr float CACHE_RANGE = 900.0f;
-    if (SpellFocusSpawn const* cached =
-            sSpellFocusMgr.Nearest(focusId, WorldPosition(bot), CACHE_RANGE, bot->GetPhaseMask()))
+    // Long walks into the unknown fail pathing or lead into hostile camps; the cached
+    // fallback only goes as far as the bot can safely walk.
+    constexpr float CACHE_RANGE = 700.0f;
+    if (SpellFocusSpawn const* cached = sSpellFocusMgr.Nearest(focusId, WorldPosition(bot), CACHE_RANGE, bot))
         return ObjectGuid::Create<HighGuid::GameObject>(cached->entry, cached->spawnId);
 
     return ObjectGuid();

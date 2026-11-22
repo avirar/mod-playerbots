@@ -14,6 +14,8 @@
 #include "ObjectGuid.h"
 #include "TravelMgr.h"
 
+class Player;
+
 // Stand this far inside the object's spell focus distance before casting.
 // Pathing, object sizes and grass-level Z can otherwise leave the bot just
 // outside the server's IsWithinDistInMap check.
@@ -27,6 +29,10 @@ struct SpellFocusSpawn
     uint32 phaseMask{0};
     float distance{0.0f};  // GameObjectTemplate::spellFocus.dist
     WorldPosition pos{};
+    uint32 zoneId{0};
+    uint8 maxNearbyLevel{0};  // highest creature level within SAFE_RADIUS, 0 = no creatures
+    // Faction template ids of creatures within SAFE_RADIUS, empty = no hostile risk
+    std::vector<uint32> nearbyFactions;
 };
 
 /// Index of GAMEOBJECT_TYPE_SPELL_FOCUS spawns, built once from object manager
@@ -43,7 +49,9 @@ public:
     void Load();
 
     // Nearest cached spawn for the focus id on the same map and phase, within maxRange.
-    SpellFocusSpawn const* Nearest(uint32 focusId, WorldPosition const& from, float maxRange, uint32 phaseMask) const;
+    // The spawn must also be one the bot can safely walk to: same zone (or no nearby
+    // creatures above the bot's level) and no nearby creature hostile to the bot.
+    SpellFocusSpawn const* Nearest(uint32 focusId, WorldPosition const& from, float maxRange, Player const* bot) const;
 
     // Cached spawn for a gameobject GUID, nullptr for runtime objects (campfires, ...).
     SpellFocusSpawn const* Get(ObjectGuid guid) const;

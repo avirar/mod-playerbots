@@ -146,6 +146,8 @@ struct NewRpgInfo
         uint32 casts{0};
         uint8 consecutiveCastFailures{0};
         std::vector<CraftStep> pendingCrafts;
+        // When the last bag-full vendor sell ran; a sell that freed no space ends the session.
+        uint32 bagFullSellAt{0};
         // Conversion loot is asynchronous; wait for the window to close before the next step.
         uint32 lootWaitStart{0};
         uint32 lootWaitSpell{0};
@@ -245,6 +247,8 @@ enum class ProfessionEndReason : uint8
     NoFocus,
     NoTarget,
     CraftFailed,
+    // A planned craft step could not be run (vendor/budget/tool missing).
+    CraftNotRunnable,
     SkillLost,
     Count
 };
@@ -265,6 +269,8 @@ inline char const* ProfessionEndReasonName(ProfessionEndReason reason)
             return "no_target";
         case ProfessionEndReason::CraftFailed:
             return "craft_failed";
+        case ProfessionEndReason::CraftNotRunnable:
+            return "craft_not_runnable";
         case ProfessionEndReason::SkillLost:
             return "skill_lost";
         default:

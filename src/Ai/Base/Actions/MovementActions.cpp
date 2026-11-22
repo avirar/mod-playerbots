@@ -239,7 +239,11 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool /*idle
         Movement::PointsArray path =
             SearchForBestPath(x, y, z, modifiedZ, sPlayerbotAIConfig.MaxMovementSearchTime, normal_only);
         if (modifiedZ == INVALID_HEIGHT)
+        {
+            LOG_DEBUG("playerbots", "[MoveTo] {} no path to ({:.1f}, {:.1f}, {:.1f}) on map {}, caller will retry",
+                      bot->GetName(), x, y, z, mapId);
             return false;
+        }
         float distance = bot->GetExactDist(x, y, modifiedZ);
         if (distance > 0.01f)
         {
