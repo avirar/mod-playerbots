@@ -206,8 +206,8 @@ bool TellCalculateItemAction::Execute(Event event)
         sum += contribution;
 
         std::ostringstream term;
-        term << std::fixed << std::setprecision(2) << statNames[i] << " " << collector->stats[i] << " * " << weights[i]
-             << " = " << contribution;
+        term << std::fixed << std::setprecision(2) << statNames[i] << " " << collector->stats[i] << " * "
+             << std::setprecision(3) << weights[i] << std::setprecision(2) << " = " << contribution;
 
         // Split into several whispers so no line exceeds the client limit.
         if (!line.empty() && line.size() + 2 + term.str().size() > PlayerbotAI::MAX_CHAT_MESSAGE_BYTES)

@@ -11,6 +11,7 @@
 #include "AiObjectContext.h"
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
+#include "ConsumableUsePolicy.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
 #include "GuildMgr.h"
@@ -4714,7 +4715,7 @@ void PlayerbotFactory::InitPotions()
     {
         uint32 effect = effects[i];
 
-        if (effect == SPELL_EFFECT_ENERGIZE && !bot->GetPower(POWER_MANA))
+        if (effect == SPELL_EFFECT_ENERGIZE && bot->GetMaxPower(POWER_MANA) == 0)
             continue;
 
         FindPotionVisitor visitor(bot, effect);
@@ -4804,7 +4805,8 @@ void PlayerbotFactory::InitFood()
             continue;
 
         if (proto->Class != ITEM_CLASS_CONSUMABLE || proto->SubClass != ITEM_SUBCLASS_FOOD ||
-            (proto->Spells[0].SpellCategory != 11 && proto->Spells[0].SpellCategory != 59) || proto->Bonding != NO_BIND)
+            (proto->Spells[0].SpellCategory != 11 && proto->Spells[0].SpellCategory != 59) ||
+            proto->Bonding != NO_BIND || proto->IsConjuredConsumable())
             continue;
 
         if (proto->RequiredLevel > bot->GetLevel() ||
@@ -4817,6 +4819,9 @@ void PlayerbotFactory::InitFood()
         if (proto->Area || proto->Map || proto->RequiredCityRank || proto->RequiredHonorRank)
             continue;
 
+        if (ConsumableUsePolicy::IsAlcoholic(proto))
+            continue;
+
         items[proto->Spells[0].SpellCategory].push_back(itemId);
     }
 
@@ -4825,30 +4830,48 @@ void PlayerbotFactory::InitFood()
     {
         uint32 category = categories[i];
         std::vector<uint32>& ids = items[category];
-        int tries = 0;
-        for (int j = 0; j < 2; j++)
+        if (ids.empty())
+            continue;
+
+        if (category == 59 && bot->GetMaxPower(POWER_MANA) == 0)
+            continue;
+
+        // One stack per category: top up only what the bot is missing.
+        FindFoodVisitor visitor(bot, category);
+        IterateItems(&visitor);
+        uint32 have = 0;
+        for (Item* item : visitor.GetResult())
+            have += item->GetCount();
+
+        uint32 bestId = 0;
+        uint32 bestItemLevel = 0;
+        float bestScore = -1.0f;
+        for (uint32 itemId : ids)
         {
-            uint32 index = urand(0, ids.size() - 1);
-            if (index >= ids.size())
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+            if (!proto)
                 continue;
 
-            uint32 itemId = ids[index];
-            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
-            // beer / wine ...
-            if (proto->Spells[0].SpellId == 11007 || proto->Spells[0].SpellId == 11008 ||
-                proto->Spells[0].SpellId == 11009 || proto->Spells[0].SpellId == 11629 ||
-                proto->Spells[0].SpellId == 50986)
+            float const score = ConsumableUsePolicy::Score(bot, proto);
+            if (!bestId || score > bestScore ||
+                (score == bestScore && proto->ItemLevel > bestItemLevel) ||
+                (score == bestScore && proto->ItemLevel == bestItemLevel && itemId < bestId))
             {
-                tries++;
-                if (tries > 5)
-                {
-                    continue;
-                }
-                j--;
-                continue;
+                bestId = itemId;
+                bestItemLevel = proto->ItemLevel;
+                bestScore = score;
             }
-            StoreItem(itemId, proto->GetMaxStackSize());
         }
+
+        ItemTemplate const* bestProto = bestId ? sObjectMgr->GetItemTemplate(bestId) : nullptr;
+        if (!bestProto)
+            continue;
+
+        uint32 const maxStack = bestProto->GetMaxStackSize();
+        if (have >= maxStack)
+            continue;
+
+        StoreItem(bestId, maxStack - have);
     }
 }
 

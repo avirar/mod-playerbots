@@ -22,6 +22,9 @@ namespace ConsumableUsePolicy
     // Food whose spell, or a spell it triggers, grants a Well Fed buff.
     bool IsBuffFood(ItemTemplate const* proto);
 
+    // Food or drink whose spell, or a spell it triggers, makes the bot drunk.
+    bool IsAlcoholic(ItemTemplate const* proto);
+
     // Buff food beats heal-only food. Buff food is scored for the bot's spec.
     bool IsStrictlyBetterFood(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);
     bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);

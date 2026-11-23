@@ -114,6 +114,42 @@ bool SpellHasActiveBuff(Player* bot, SpellInfo const* spell, uint8 depth)
     return directBuff && bot->HasAura(spell->Id);
 }
 
+bool SpellAppliesInebriate(SpellInfo const* spell, uint8 depth)
+{
+    if (!spell || depth > MAX_TRIGGER_DEPTH)
+        return false;
+
+    for (SpellEffectInfo const& effect : spell->Effects)
+    {
+        if (effect.Effect == SPELL_EFFECT_INEBRIATE)
+            return true;
+
+        if (effect.Effect == SPELL_EFFECT_TRIGGER_SPELL && effect.TriggerSpell)
+        {
+            if (SpellAppliesInebriate(sSpellMgr->GetSpellInfo(effect.TriggerSpell), depth + 1))
+                return true;
+            continue;
+        }
+
+        if (effect.Effect != SPELL_EFFECT_APPLY_AURA)
+            continue;
+
+        switch (effect.ApplyAuraName)
+        {
+            case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
+            case SPELL_AURA_PROC_TRIGGER_SPELL:
+            case SPELL_AURA_ADD_TARGET_TRIGGER:
+                if (SpellAppliesInebriate(sSpellMgr->GetSpellInfo(effect.TriggerSpell), depth + 1))
+                    return true;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return false;
+}
+
 }  // namespace
 
 namespace ConsumableUsePolicy
@@ -124,6 +160,14 @@ bool IsBuffFood(ItemTemplate const* proto)
         return false;
 
     return SpellGrantsBuff(GetItemSpell(proto), 0);
+}
+
+bool IsAlcoholic(ItemTemplate const* proto)
+{
+    if (!proto)
+        return false;
+
+    return SpellAppliesInebriate(GetItemSpell(proto), 0);
 }
 
 float Score(Player* bot, ItemTemplate const* proto)
@@ -145,9 +189,6 @@ bool IsStrictlyBetterFood(Player* bot, ItemTemplate const* candidate, ItemTempla
     if (candidateBuff != baselineBuff)
         return candidateBuff;
 
-    if (!candidateBuff)
-        return candidate->ItemLevel > baseline->ItemLevel;
-
     float const candidateScore = Score(bot, candidate);
     float const baselineScore = Score(bot, baseline);
     if (candidateScore != baselineScore)
@@ -165,9 +206,6 @@ bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplat
     bool const baselineBuff = IsBuffFood(baseline);
     if (candidateBuff != baselineBuff)
         return candidateBuff;
-
-    if (!candidateBuff)
-        return candidate->ItemLevel >= baseline->ItemLevel;
 
     float const candidateScore = Score(bot, candidate);
     float const baselineScore = Score(bot, baseline);
@@ -429,7 +467,9 @@ Item* ChooseFood(Player* bot, std::vector<Item*> const& items)
     Item* bestBuff = nullptr;
     float bestBuffScore = -1.0f;
     Item* bestConjured = nullptr;
+    float bestConjuredScore = -1.0f;
     Item* bestRegular = nullptr;
+    float bestRegularScore = -1.0f;
 
     for (Item* item : items)
     {
@@ -441,14 +481,15 @@ Item* ChooseFood(Player* bot, std::vector<Item*> const& items)
         if (proto->Spells[0].SpellCategory != 11)
             continue;
 
+        float const score = Score(bot, proto);
+
         if (IsBuffFood(proto))
         {
             wellFed = wellFed || SpellHasActiveBuff(bot, GetItemSpell(proto), 0);
 
-            float const score = Score(bot, proto);
             ItemTemplate const* bestProto = bestBuff ? bestBuff->GetTemplate() : nullptr;
-            if (!bestProto || proto->ItemLevel > bestProto->ItemLevel ||
-                (proto->ItemLevel == bestProto->ItemLevel && score > bestBuffScore))
+            if (!bestProto || score > bestBuffScore ||
+                (score == bestBuffScore && proto->ItemLevel > bestProto->ItemLevel))
             {
                 bestBuff = item;
                 bestBuffScore = score;
@@ -457,14 +498,22 @@ Item* ChooseFood(Player* bot, std::vector<Item*> const& items)
         else if (proto->IsConjuredConsumable())
         {
             ItemTemplate const* bestProto = bestConjured ? bestConjured->GetTemplate() : nullptr;
-            if (!bestProto || proto->ItemLevel > bestProto->ItemLevel)
+            if (!bestProto || score > bestConjuredScore ||
+                (score == bestConjuredScore && proto->ItemLevel > bestProto->ItemLevel))
+            {
                 bestConjured = item;
+                bestConjuredScore = score;
+            }
         }
         else
         {
             ItemTemplate const* bestProto = bestRegular ? bestRegular->GetTemplate() : nullptr;
-            if (!bestProto || proto->ItemLevel > bestProto->ItemLevel)
+            if (!bestProto || score > bestRegularScore ||
+                (score == bestRegularScore && proto->ItemLevel > bestProto->ItemLevel))
+            {
                 bestRegular = item;
+                bestRegularScore = score;
+            }
         }
     }
 
@@ -479,9 +528,10 @@ Item* ChooseFood(Player* bot, std::vector<Item*> const& items)
 
 Item* ChooseDrink(Player* bot, std::vector<Item*> const& items)
 {
-    (void)bot;
     Item* bestConjured = nullptr;
+    float bestConjuredScore = -1.0f;
     Item* bestRegular = nullptr;
+    float bestRegularScore = -1.0f;
 
     for (Item* item : items)
     {
@@ -489,17 +539,27 @@ Item* ChooseDrink(Player* bot, std::vector<Item*> const& items)
         if (!proto || !proto->Spells[0].SpellId || proto->Spells[0].SpellCategory != 59)
             continue;
 
+        float const score = Score(bot, proto);
+
         if (proto->IsConjuredConsumable())
         {
             ItemTemplate const* bestProto = bestConjured ? bestConjured->GetTemplate() : nullptr;
-            if (!bestProto || proto->ItemLevel > bestProto->ItemLevel)
+            if (!bestProto || score > bestConjuredScore ||
+                (score == bestConjuredScore && proto->ItemLevel > bestProto->ItemLevel))
+            {
                 bestConjured = item;
+                bestConjuredScore = score;
+            }
         }
         else
         {
             ItemTemplate const* bestProto = bestRegular ? bestRegular->GetTemplate() : nullptr;
-            if (!bestProto || proto->ItemLevel > bestProto->ItemLevel)
+            if (!bestProto || score > bestRegularScore ||
+                (score == bestRegularScore && proto->ItemLevel > bestProto->ItemLevel))
+            {
                 bestRegular = item;
+                bestRegularScore = score;
+            }
         }
     }
 
