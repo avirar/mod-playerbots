@@ -15,6 +15,7 @@
 #include "PerfMonitor.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotMgr.h"
+#include "Playerbots.h"
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
@@ -171,6 +172,15 @@ public:
             handler->SendErrorMessage("{} is not online.", target.GetName());
             return false;
         }
+
+        if (!GET_PLAYERBOT_AI(bot))
+        {
+            handler->SendErrorMessage("{} is not a bot.", target.GetName());
+            return false;
+        }
+
+        if (handler->HasLowerSecurity(bot))
+            return false;
 
         uint32 const map = mapId ? *mapId : bot->GetMapId();
         if (!bot->TeleportTo(map, x, y, z, bot->GetOrientation()))

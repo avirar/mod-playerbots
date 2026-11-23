@@ -124,6 +124,77 @@ bool CanBuyNearby(PlayerbotAI* botAI, NearbyVendorIndex& index, uint32 itemId, u
     return false;
 }
 
+// A missing reagent is acceptable when another known recipe in the same skill line crafts it.
+bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVendorIndex& vendorIndex, uint8 depth)
+{
+    if (depth > 2)
+        return false;
+
+    Player* bot = botAI->GetBot();
+    for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
+    {
+        if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
+            continue;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+        if (!spellInfo)
+            continue;
+
+        bool createsItem = false;
+        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
+        {
+            if ((spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
+                 spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM_2) &&
+                spellInfo->Effects[e].ItemType == itemId)
+            {
+                createsItem = true;
+                break;
+            }
+        }
+        if (!createsItem)
+            continue;
+
+        bool matchedSkillLine = false;
+        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            if (itr->second->SkillLine == skillLine)
+            {
+                matchedSkillLine = true;
+                break;
+            }
+        }
+        if (!matchedSkillLine)
+            continue;
+
+        bool hasAnyReagent = false;
+        bool canCraft = true;
+        for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
+        {
+            if (spellInfo->ReagentCount[r] == 0)
+                continue;
+
+            hasAnyReagent = true;
+            uint32 const needed = spellInfo->ReagentCount[r];
+            uint32 const have = std::min<uint32>(bot->GetItemCount(spellInfo->Reagent[r], false), needed);
+            if (have >= needed)
+                continue;
+            if (CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], needed - have))
+                continue;
+            if (depth < 2 && CanCraftItem(botAI, skillLine, spellInfo->Reagent[r], vendorIndex, depth + 1))
+                continue;
+
+            canCraft = false;
+            break;
+        }
+
+        if (canCraft && hasAnyReagent)
+            return true;
+    }
+
+    return false;
+}
+
 bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVendorIndex& vendorIndex)
 {
     Player* bot = botAI->GetBot();
@@ -158,6 +229,7 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
         for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
         {
             if (spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
+                spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM_2 ||
                 spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM ||
                 spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
                 spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
@@ -206,7 +278,9 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
                 continue;
 
             hasReagents = false;
-            if (!CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], spellInfo->ReagentCount[r] - have))
+            uint32 const missing = spellInfo->ReagentCount[r] - have;
+            if (!CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], missing) &&
+                !CanCraftItem(botAI, skillLine, spellInfo->Reagent[r], vendorIndex, 0))
                 vendorReagents = false;
         }
         if (!hasAnyReagent || (!hasReagents && !vendorReagents))

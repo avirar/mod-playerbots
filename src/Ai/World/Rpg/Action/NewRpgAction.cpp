@@ -55,9 +55,16 @@ std::string ProfessionErrorText(NewRpgHelpers::ProfessionSelection const& select
                 "rpg_professions_not_learned_name", "I have not learned %profession.",
                 {{"%profession", selection.detail}});
         case NewRpgHelpers::ProfessionParseError::Gathering:
+        {
+            // Only herbalism and mining are handled by the "do gather" status.
+            uint32 const skill = NewRpgHelpers::ParseProfessionName(selection.detail);
+            bool const gatherStatus = skill == SKILL_HERBALISM || skill == SKILL_MINING;
             return PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "rpg_professions_gathering_error", "%profession is a gathering profession; use 'do gather'.",
+                gatherStatus ? "rpg_professions_gathering_error" : "rpg_professions_gathering_passive_error",
+                gatherStatus ? "%profession is a gathering profession; use 'do gather'."
+                             : "%profession is a gathering profession; it is trained automatically.",
                 {{"%profession", selection.detail}});
+        }
         case NewRpgHelpers::ProfessionParseError::NoProfessions:
             return PlayerbotTextMgr::instance().GetBotTextOrDefault(
                 "rpg_professions_none_error", "I have no craft profession to work on.", {});
@@ -878,8 +885,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     std::vector<uint32> nodes = data.path;
 
     botAI->RemoveShapeshift();
-    if (bot->IsMounted())
-        bot->Dismount();
+    botAI->Dismount();
 
     bot->GetSession()->SendLearnNewTaxiNode(flightMaster);
 

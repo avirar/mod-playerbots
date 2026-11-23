@@ -178,59 +178,33 @@ bool ImbueWithOilAction::Execute(Event /*event*/)
     return true;
 }
 
-static const uint32 uPrioritizedHealingItemIds[19] = {
-    HEALTHSTONE,
-    FEL_REGENERATION_POTION,
-    SUPER_HEALING_POTION,
-    CRYSTAL_HEALING_POTION,
-    MAJOR_DREAMLESS_SLEEP_POTION,
-    VOLATILE_HEALING_POTION,
-    MAJOR_HEALING_POTION,
-    WHIPPER_ROOT_TUBER,
-    NIGHT_DRAGON_BREATH,
-    LIMITED_INVULNERABILITY_POTION,
-    GREATER_DREAMLESS_SLEEP_POTION,
-    SUPERIOR_HEALING_POTION,
-    CRYSTAL_RESTORE,
-    DREAMLESS_SLEEP_POTION,
-    GREATER_HEALING_POTION,
-    HEALING_POTION,
-    LESSER_HEALING_POTION,
-    DISCOLORED_HEALING_POTION,
-    MINOR_HEALING_POTION,
-};
-
 TryEmergencyAction::TryEmergencyAction(PlayerbotAI* botAI) : Action(botAI, "try emergency") {}
 
-bool TryEmergencyAction::Execute(Event /*event*/)
+bool TryEmergencyAction::isUseful()
 {
-    // Do not use consumable if bot can heal self
-    if ((PlayerbotAI::IsHeal(bot)) && (bot->GetPowerPct(POWER_MANA) > 20))
+    // Do not use a bandage if the bot can heal itself.
+    if (PlayerbotAI::IsHeal(bot) && bot->GetPowerPct(POWER_MANA) > 20)
+        return false;
+
+    if (bot->HasAura(11196))  // Recently bandaged
+        return false;
+
+    Item* bandage = botAI->FindBandage();
+    if (!bandage)
         return false;
 
     // A bandage channel is cancelled by any damage. Use it in combat only when
     // no attacker and no fast DoT will interrupt it before half the channel.
-    if (!bot->HasAura(11196))  // Recently bandaged
-    {
-        if (Item* bandage = botAI->FindBandage())
-        {
-            if (!bot->IsInCombat() || ConsumableUsePolicy::CanUseBandageInCombat(bot, bandage->GetTemplate()))
-            {
-                botAI->ImbueItem(bandage, bot);
-                botAI->SetNextCheckDelay(ConsumableUsePolicy::BandageChannelMs(bandage->GetTemplate()));
-                return true;
-            }
-        }
-    }
+    return !bot->IsInCombat() || ConsumableUsePolicy::CanUseBandageInCombat(bot, bandage->GetTemplate());
+}
 
-    // Else loop over the list of health consumable to pick one
-    for (uint8 i = 0; i < std::size(uPrioritizedHealingItemIds); ++i)
-    {
-        if (Item* healthItem = botAI->FindConsumable(uPrioritizedHealingItemIds[i]))
-        {
-            botAI->ImbueItem(healthItem);
-        }
-    }
+bool TryEmergencyAction::Execute(Event /*event*/)
+{
+    if (!isUseful())
+        return false;
 
+    Item* bandage = botAI->FindBandage();
+    botAI->ImbueItem(bandage, bot);
+    botAI->SetNextCheckDelay(ConsumableUsePolicy::BandageChannelMs(bandage->GetTemplate()));
     return true;
 }

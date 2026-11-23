@@ -16,11 +16,16 @@ bool ConsumeBuffAction::isPossible()
     return bot->IsAlive() && !bot->IsInCombat() && !bot->IsInFlight() && !botAI->IsInVehicle();
 }
 
-bool ConsumeBuffAction::isUseful() { return PickBuffItem() != nullptr; }
+bool ConsumeBuffAction::isUseful()
+{
+    _pendingBuffItem = PickBuffItem();
+    return _pendingBuffItem != nullptr;
+}
 
 bool ConsumeBuffAction::Execute(Event /*event*/)
 {
-    Item* item = PickBuffItem();
+    Item* item = _pendingBuffItem ? _pendingBuffItem : PickBuffItem();
+    _pendingBuffItem = nullptr;
     if (!item)
         return false;
 

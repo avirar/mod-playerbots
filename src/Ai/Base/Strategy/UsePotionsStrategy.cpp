@@ -9,9 +9,22 @@
 class UsePotionsStrategyActionNodeFactory : public NamedObjectFactory<ActionNode>
 {
 public:
-    UsePotionsStrategyActionNodeFactory() { creators["healthstone"] = &healthstone; }
+    UsePotionsStrategyActionNodeFactory()
+    {
+        creators["bandage"] = &bandage;
+        creators["healthstone"] = &healthstone;
+    }
 
 private:
+    // Bandage first, then the one-shot potion; class and racial heals run at higher relevance.
+    static ActionNode* bandage(PlayerbotAI* /*botAI*/)
+    {
+        return new ActionNode("try emergency",
+                              /*P*/ {},
+                              /*A*/ { NextAction("healthstone"), NextAction("healing potion") },
+                              /*C*/ {});
+    }
+
     static ActionNode* healthstone(PlayerbotAI* /*botAI*/)
     {
         return new ActionNode("healthstone",
@@ -30,8 +43,9 @@ void UsePotionsStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     Strategy::InitTriggers(triggers);
 
+    // Below class heals, racials and Lifeblood (ACTION_LIGHT_HEAL and up): bandage, then potions.
     triggers.push_back(new TriggerNode(
-        "critical health", { NextAction("healthstone", ACTION_MEDIUM_HEAL + 1) }));
+        "critical health", { NextAction("bandage", ACTION_LIGHT_HEAL - 1) }));
     triggers.push_back(
         new TriggerNode("medium mana", { NextAction("mana potion", ACTION_EMERGENCY) }));
 }

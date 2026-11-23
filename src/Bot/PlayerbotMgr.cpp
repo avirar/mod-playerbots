@@ -514,6 +514,12 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
     PlayerbotsMgr::instance().AddPlayerbotData(bot, true);
     playerBots[bot->GetGUID()] = bot;
 
+    // The factory reads the profession assignment from this cache, including from map-thread
+    // maintenance; load it here on the world thread.
+    sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
+    sRandomPlayerbotMgr.GetValue(bot, "secondSkill");
+    sRandomPlayerbotMgr.GetValue(bot, "professionRollType");
+
     OnBotLoginInternal(bot);
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);

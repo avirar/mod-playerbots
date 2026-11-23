@@ -41,6 +41,7 @@ public:
     TryEmergencyAction(PlayerbotAI* botAI);
 
     bool Execute(Event event) override;
+    bool isUseful() override;
 };
 
 #endif

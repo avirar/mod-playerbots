@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -91,6 +92,7 @@ struct BagSnapshot
 struct CraftPlan
 {
     std::unordered_map<uint32, uint32> available;
+    std::unordered_map<uint32, uint32> required;
     std::unordered_map<uint32, std::vector<uint32>> stacks;
     std::unordered_set<uint32> seeded;
     std::unordered_set<uint32> visiting;
@@ -154,10 +156,7 @@ bool MakeReadyToCraft(PlayerbotAI* botAI, Player* bot)
     if (bot->GetShapeshiftForm())
         botAI->RemoveShapeshift();
 
-    if (bot->IsMounted())
-        bot->Dismount();
-
-    botAI->ClearStaleFlightFlags();
+    botAI->Dismount();
 
     if (bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
         return false;
@@ -410,6 +409,27 @@ void InspectBagItem(PlayerbotAI* botAI, Item* item, BagSnapshot& snapshot, std::
                       LootTemplates_Disenchant.GetLootFor(proto->DisenchantID));
 }
 
+// Items an incomplete quest still needs; crafting must not consume them.
+std::unordered_map<uint32, uint32> GetQuestReservedItems(Player* bot)
+{
+    std::unordered_map<uint32, uint32> reserved;
+    for (auto const& [questId, status] : bot->getQuestStatusMap())
+    {
+        if (status.Status != QUEST_STATUS_INCOMPLETE)
+            continue;
+
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+            if (quest->RequiredItemId[i])
+                reserved[quest->RequiredItemId[i]] += quest->RequiredItemCount[i];
+    }
+
+    return reserved;
+}
+
 void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
 {
     Player* bot = botAI->GetBot();
@@ -427,6 +447,13 @@ void BuildBagSnapshot(PlayerbotAI* botAI, BagSnapshot& snapshot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
                 inspect(bot->GetItemByPos(bagSlot, slot));
+
+    for (auto const& [itemId, reserved] : GetQuestReservedItems(bot))
+    {
+        auto const it = snapshot.counts.find(itemId);
+        if (it != snapshot.counts.end())
+            it->second = it->second > reserved ? it->second - reserved : 0;
+    }
 
     GuidVector const vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();
     for (ObjectGuid const guid : vendors)
@@ -528,6 +555,10 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
 {
     if (!itemId || count == 0)
         return false;
+
+    // Remember the full need, including items already in the bags, so execution can stop
+    // converting once lucky rolls cover it.
+    ctx.plan.required[itemId] += count;
 
     SeedPlanItem(ctx, itemId);
     uint32& available = ctx.plan.available[itemId];
@@ -687,7 +718,8 @@ bool EnsureRecipeIngredients(CraftPlanContext& ctx, ProfessionRecipe const& reci
 bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& recipe,
                 std::vector<ProfessionRecipe> const& recipes,
                 std::unordered_map<uint32, std::vector<size_t>> const& craftIndex, BagSnapshot const& bags,
-                uint32 moneyBudget, std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps)
+                uint32 moneyBudget, std::vector<NewRpgInfo::DoProfessions::CraftStep>& steps,
+                std::unordered_map<uint32, uint32>& required)
 {
     CraftPlanContext ctx;
     ctx.bot = bot;
@@ -717,6 +749,7 @@ bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& rec
         return false;
 
     steps = std::move(ctx.plan.steps);
+    required = std::move(ctx.plan.required);
     return true;
 }
 }  // namespace
@@ -920,6 +953,20 @@ bool NewRpgDoProfessionsAction::RunPendingCrafts(NewRpgInfo::DoProfessions& data
     LOG_TRACE("playerbots", "[New RPG] {} pending step {}/{} spell {} focus {} input {}x{} expect {}", bot->GetName(),
               1, data.pendingCrafts.size(), step.spellId, step.spellFocus, step.inputItemId, step.inputCount,
               step.expectedItemId);
+
+    // Earlier conversions can roll above the minimum yield; skip the rest once the plan's need is met.
+    if (step.purpose == ProfessionCraftPurpose::Conversion)
+    {
+        auto const required = data.planRequired.find(step.expectedItemId);
+        if (required != data.planRequired.end() &&
+            bot->GetItemCount(step.expectedItemId, false) >= required->second)
+        {
+            LOG_DEBUG("playerbots", "[New RPG] {} conversion {} no longer needed: {} has {}", bot->GetName(),
+                      step.spellId, step.expectedItemId, bot->GetItemCount(step.expectedItemId, false));
+            data.pendingCrafts.erase(data.pendingCrafts.begin());
+            return true;
+        }
+    }
 
     auto failVendor = [this, &data, step](char const* reason)
     {
@@ -1282,6 +1329,18 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (!data.pendingCrafts.empty())
     {
+        // A planned step may need a free slot; empty the bags before running it.
+        if (AI_VALUE(uint8, "bag space") >= 80)
+        {
+            bool const recentlySold =
+                data.bagFullSellAt && GetMSTimeDiffToNow(data.bagFullSellAt) < BAG_FULL_SELL_RETRY_MS;
+            if (!recentlySold && SellToNearestVendor(data))
+                return true;
+
+            FinishProfession(info, data, ProfessionEndReason::BagFull);
+            return true;
+        }
+
         if (!RunPendingCrafts(data))
             FinishProfession(info, data, ProfessionEndReason::CraftNotRunnable);
         return true;
@@ -1298,12 +1357,17 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
     uint32 const skillValue = bot->GetPureSkillValue(data.skillLine);
     bool const skillMaxed = skillValue >= bot->GetMaxSkillValue(data.skillLine);
 
+    std::unordered_map<uint32, uint32> const questReserved = GetQuestReservedItems(bot);
+
     std::vector<ProfessionRecipe> allRecipes;
     std::unordered_map<uint32, std::vector<size_t>> craftIndex;
     std::vector<ProfessionRecipe> directUseful;
     std::vector<ProfessionRecipe> directSkillUp;
     std::vector<ProfessionRecipe> plannedUseful;
     std::vector<ProfessionRecipe> plannedSkillUp;
+
+    // One calculator serves the whole scan; CalculateEnchant resets per call.
+    std::optional<StatsWeightCalculator> enchantCalculator;
 
     for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
     {
@@ -1389,7 +1453,13 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             reagents[r] = uint32(spellInfo->Reagent[r]);
             reagentCounts[r] = uint8(spellInfo->ReagentCount[r]);
             reagentItems += spellInfo->ReagentCount[r];
-            hasReagents = hasReagents && bot->HasItemCount(spellInfo->Reagent[r], spellInfo->ReagentCount[r], false);
+
+            uint32 reserved = 0;
+            if (auto const it = questReserved.find(spellInfo->Reagent[r]); it != questReserved.end())
+                reserved = it->second;
+
+            hasReagents = hasReagents && bot->GetItemCount(spellInfo->Reagent[r], false) >=
+                                              uint32(spellInfo->ReagentCount[r]) + reserved;
         }
         if (!hasAnyReagent || bot->HasSpellCooldown(spellId))
             continue;
@@ -1424,6 +1494,18 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
             usefulRank = ProfessionUsefulPolicy::GetUsefulRank(botAI, proto, usage);
             useful = usefulRank != 255;
+        }
+        else if (matchedSkillLine && noItemSpell && data.skillLine == SKILL_ENCHANTING)
+        {
+            // An equipped-enchant upgrade is useful even when the skill is maxed.
+            if (!enchantCalculator)
+                enchantCalculator.emplace(bot);
+
+            if (FindUsefulEnchantSlot(bot, spellInfo, *enchantCalculator) >= 0)
+            {
+                useful = true;
+                usefulRank = 0;
+            }
         }
         else if (matchedSkillLine && scrollItemId)
         {
@@ -1535,12 +1617,14 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                           bot->GetName(), recipe.spellId, recipe.chance, recipe.useful, recipe.efficiency,
                           recipe.reagentItems);
                 std::vector<NewRpgInfo::DoProfessions::CraftStep> steps;
-                if (!PlanRecipe(bot, info, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps))
+                std::unordered_map<uint32, uint32> required;
+                if (!PlanRecipe(bot, info, recipe, allRecipes, craftIndex, bags, tradeskillBudget, steps, required))
                     continue;
 
                 chosen = &recipe;
                 planNeeded = true;
                 data.pendingCrafts = std::move(steps);
+                data.planRequired = std::move(required);
                 LOG_DEBUG("playerbots", "[New RPG] {} professions planned {} steps for recipe {} (skill {})",
                           bot->GetName(), data.pendingCrafts.size(), recipe.spellId, data.skillLine);
                 return true;

@@ -19,6 +19,7 @@
 
 #include <array>
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -146,6 +147,8 @@ struct NewRpgInfo
         uint32 casts{0};
         uint8 consecutiveCastFailures{0};
         std::vector<CraftStep> pendingCrafts;
+        // Total amount of each item the pending plan needs; conversions stop once it is met.
+        std::unordered_map<uint32, uint32> planRequired;
         // When the last bag-full vendor sell ran; a sell that freed no space ends the session.
         uint32 bagFullSellAt{0};
         // Conversion loot is asynchronous; wait for the window to close before the next step.

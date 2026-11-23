@@ -10,6 +10,7 @@
 
 #include "GameObject.h"
 #include "Log.h"
+#include "Map.h"
 #include "Playerbots.h"
 #include "SpellFocusMgr.h"
 #include "Timer.h"
@@ -40,6 +41,19 @@ bool MoveToSpellFocusAction::Execute(Event /*event*/)
         float const focusDistance = std::max(0.5f, cached->distance - SPELL_FOCUS_DISTANCE_BUFFER);
         if (dx * dx + dy * dy + dz * dz <= focusDistance * focusDistance)
         {
+            // The target is a cache sentinel, not a live GUID; resolve the live object by
+            // spawn id before treating the spot as empty.
+            auto const range = bot->GetMap()->GetGameObjectBySpawnIdStore().equal_range(cached->spawnId);
+            for (auto itr = range.first; itr != range.second; ++itr)
+            {
+                GameObject* live = itr->second;
+                if (live && live->isSpawned() && live->GetGOInfo()->type == GAMEOBJECT_TYPE_SPELL_FOCUS)
+                {
+                    context->GetValue<ObjectGuid>("spell focus target")->Set(live->GetGUID());
+                    return true;
+                }
+            }
+
             // The grid is loaded at this distance. If the live object is still
             // missing, the spawn is phase-restricted or despawned; skip it for a
             // while instead of returning to the same empty spot.

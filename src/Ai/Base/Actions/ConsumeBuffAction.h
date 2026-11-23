@@ -21,6 +21,7 @@ public:
     bool isPossible() override;
 
 private:
+    Item* _pendingBuffItem = nullptr;
     Item* PickBuffItem();
     Item* BestFlask(std::vector<Item*> const& items, bool allowNormalFlasks);
     Item* BestElixir(std::vector<Item*> const& items, bool battle);

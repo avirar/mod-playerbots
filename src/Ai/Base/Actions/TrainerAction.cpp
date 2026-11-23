@@ -36,10 +36,12 @@ bool TrainerAction::Execute(Event event)
     // spells as parameters, check SkipSpellsListAction::parseIds as an example.
     uint32 spellId = chat->parseSpell(param);
 
-    bool learnSpells = param.find("learn") != std::string::npos || sRandomPlayerbotMgr.IsRandomBot(bot) ||
+    // A "learn" request from the RPG status still obeys the config for non-random bots.
+    bool const learnRequested = param.find("learn") != std::string::npos;
+    bool learnSpells = sRandomPlayerbotMgr.IsRandomBot(bot) ||
                        (sPlayerbotAIConfig.AllowLearnTrainerSpells &&
-                        // TODO: Rewrite to only exclude start primary profession skills and make config dependent.
-                        (trainer->GetTrainerType() != Trainer::Type::Tradeskill || !IsRealPlayer(botAI->GetMaster())));
+                        (learnRequested || trainer->GetTrainerType() != Trainer::Type::Tradeskill ||
+                         !IsRealPlayer(botAI->GetMaster())));
 
     Iterate(target, learnSpells, spellId);
 
@@ -89,9 +91,19 @@ bool TrainerAction::isPossible()
 
 Unit* TrainerAction::GetTarget()
 {
-    // There are just two scenarios: the bot has a master or it doesn't. If the
-    // bot has a master, the master should target a unit; otherwise, the bot
-    // should target the unit itself.
+    // The RPG status selects its own trainer; a master's trainer selection still wins.
+    if (Unit* selected = bot->GetSelectedUnit())
+    {
+        Creature* botTrainer = selected->ToCreature();
+        if (botTrainer && botTrainer->IsTrainer())
+        {
+            Unit* masterTarget = GetMaster() ? GetMaster()->GetSelectedUnit() : nullptr;
+            Creature* masterTrainer = masterTarget ? masterTarget->ToCreature() : nullptr;
+            if (!masterTrainer || !masterTrainer->IsTrainer())
+                return botTrainer;
+        }
+    }
+
     if (Player* master = GetMaster())
         return master->GetSelectedUnit();
 

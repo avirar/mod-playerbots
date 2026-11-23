@@ -10,6 +10,7 @@
 #include "GameObject.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "Map.h"
 #include "Player.h"
 #include "Playerbots.h"
 #include "SpellFocusMgr.h"
@@ -67,7 +68,18 @@ ObjectGuid SpellFocusValue::Calculate()
     // fallback only goes as far as the bot can safely walk.
     constexpr float CACHE_RANGE = 700.0f;
     if (SpellFocusSpawn const* cached = sSpellFocusMgr.Nearest(focusId, WorldPosition(bot), CACHE_RANGE, bot))
+    {
+        // The cached spawn id is not a live GUID; use the live object when its grid is loaded.
+        auto const range = bot->GetMap()->GetGameObjectBySpawnIdStore().equal_range(cached->spawnId);
+        for (auto itr = range.first; itr != range.second; ++itr)
+        {
+            GameObject* live = itr->second;
+            if (live && live->isSpawned() && live->GetGOInfo()->type == GAMEOBJECT_TYPE_SPELL_FOCUS)
+                return live->GetGUID();
+        }
+
         return ObjectGuid::Create<HighGuid::GameObject>(cached->entry, cached->spawnId);
+    }
 
     return ObjectGuid();
 }
