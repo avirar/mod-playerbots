@@ -8,6 +8,7 @@
 #include "ChatHelper.h"
 #include "Event.h"
 #include "ItemUsageValue.h"
+#include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 
 bool QueryItemUsageAction::Execute(Event event)
@@ -108,11 +109,11 @@ std::string const QueryItemUsageAction::QueryItemUsage(ItemTemplate const* item)
         case ITEM_USAGE_AH:
             return "Auctionhouse";
         case ITEM_USAGE_KEEP:
-            return "Keep";
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault("item_usage_keep", "Keep", {});
         case ITEM_USAGE_AMMO:
             return "Ammunition";
         case ITEM_USAGE_FUTURE:
-            return "Future";
+            return PlayerbotTextMgr::instance().GetBotTextOrDefault("item_usage_future", "Future", {});
         default:
             break;
     }

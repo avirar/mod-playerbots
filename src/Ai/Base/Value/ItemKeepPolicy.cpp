@@ -26,6 +26,7 @@
 namespace
 {
 constexpr uint32 KEEP_TRADE_STACKS = 5;
+constexpr uint32 KEEP_CLASS_REAGENT_STACKS = 2;
 constexpr uint32 KEEP_DISENCHANT_STACKS = 2;
 constexpr uint32 KEEP_CONSUMABLE_STACKS = 3;
 constexpr uint32 KEEP_FOOD_STACKS = 2;
@@ -325,7 +326,11 @@ ItemKeepRule GetItemKeepRule(PlayerbotAI* botAI, ItemTemplate const* proto, Item
         if (needed)
         {
             rule.category = ItemCleanupCategory::Trade;
-            rule.keepCount = isRecipe ? 1 : GetStackCount(proto, KEEP_TRADE_STACKS);
+            // Class reagents keep the documented two-stack cap; profession chains may hold more.
+            uint32 const stacks = isTradeClass && ItemUsageValue(botAI).IsItemNeededForClassSpell(proto)
+                                      ? KEEP_CLASS_REAGENT_STACKS
+                                      : KEEP_TRADE_STACKS;
+            rule.keepCount = isRecipe ? 1 : GetStackCount(proto, stacks);
             return rule;
         }
     }

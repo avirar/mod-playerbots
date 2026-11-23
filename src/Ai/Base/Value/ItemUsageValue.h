@@ -68,7 +68,6 @@ private:
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
     bool IsStartQuestItemUsefulFor(Player* player, ItemTemplate const* proto);
     bool IsItemNeededForSkill(ItemTemplate const* proto);
-    bool IsItemNeededForClassSpell(ItemTemplate const* proto);
     bool IsFutureProfessionMaterial(ItemTemplate const* proto);
     bool HasItemsNeededForSpell(uint32 spellId, ItemTemplate const* proto);
     Item* CurrentItem(ItemTemplate const* proto);
@@ -78,6 +77,8 @@ private:
 
 public:
     bool IsItemNeededForUsefullSpell(ItemTemplate const* proto, bool checkAllReagents = false);
+    /** True when a class spell (non-generic family) consumes the item as a reagent. */
+    bool IsItemNeededForClassSpell(ItemTemplate const* proto);
     /** True for gathered or crafted profession materials that should not be limited by stack count. */
     bool IsProfessionMaterial(ItemTemplate const* proto);
     /** True if this poison is the highest item level of its family (use-spell SpellFamilyFlags). */

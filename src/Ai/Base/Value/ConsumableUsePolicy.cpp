@@ -40,6 +40,10 @@ bool SpellGrantsBuff(SpellInfo const* spell, uint8 depth)
 
     for (SpellEffectInfo const& effect : spell->Effects)
     {
+        // Pet-only effects (pet treats) are not food for the bot.
+        if (effect.TargetA.GetTarget() == TARGET_UNIT_PET)
+            continue;
+
         if (effect.Effect == SPELL_EFFECT_APPLY_AURA)
         {
             switch (effect.ApplyAuraName)
@@ -80,6 +84,10 @@ bool SpellHasActiveBuff(Player* bot, SpellInfo const* spell, uint8 depth)
     bool directBuff = false;
     for (SpellEffectInfo const& effect : spell->Effects)
     {
+        // Pet-only effects (pet treats) are not food for the bot.
+        if (effect.TargetA.GetTarget() == TARGET_UNIT_PET)
+            continue;
+
         if (effect.Effect == SPELL_EFFECT_APPLY_AURA)
         {
             switch (effect.ApplyAuraName)

@@ -67,6 +67,7 @@
 #include "Unit.h"
 #include "UpdateTime.h"
 #include "Vehicle.h"
+#include "WorldSession.h"
 #include "WsgRouteState.h"
 
 namespace
@@ -2079,6 +2080,7 @@ bool PlayerbotAI::IsManaClass(Player* player)
     switch (player->getClass())
     {
         case CLASS_DRUID:
+        case CLASS_HUNTER:
         case CLASS_MAGE:
         case CLASS_PALADIN:
         case CLASS_PRIEST:
@@ -5068,6 +5070,20 @@ void PlayerbotAI::ClearStaleFlightFlags()
         if (!bot->IsRooted())
             bot->SendMovementFlagUpdate();
     }
+}
+
+void PlayerbotAI::Dismount()
+{
+    if (bot->isMoving())
+        bot->StopMoving();
+
+    if (bot->IsMounted())
+    {
+        WorldPacket emptyPacket;
+        bot->GetSession()->HandleCancelMountAuraOpcode(emptyPacket);
+    }
+
+    ClearStaleFlightFlags();
 }
 
 // Mirrors Blizzard’s GetAverageItemLevel rules :

@@ -527,6 +527,8 @@ public:
     void RemoveAura(std::string const name);
     void RemoveShapeshift();
     void ClearStaleFlightFlags();
+    // Cancel the mount aura and stale flight flags; Player::Dismount() leaves flying mounts in flight.
+    void Dismount();
     void WaitForSpellCast(Spell* spell);
     bool PlaySound(uint32 emote);
     bool PlayEmote(uint32 emote);

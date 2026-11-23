@@ -22,6 +22,9 @@ bool CanBuyRecipe(Player* bot, ItemTemplate const* proto)
     if (!bot || !proto || proto->Class != ITEM_CLASS_RECIPE)
         return true;
 
+    if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+
     if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
         return false;
 
@@ -159,33 +162,37 @@ bool BuyAction::Execute(Event event)
 
                     ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", tItem->item);
 
-                    uint32 invType = proto->InventoryType;
+                    uint32 const invType = proto->InventoryType;
+                    bool const equippable = invType != INVTYPE_NON_EQUIP;
 
                     // Reuse the score computed for the sort.
-                    float newScore = itemScores.at(proto->ItemId).first;
+                    float const newScore = itemScores.at(proto->ItemId).first;
 
-                    // Skip if we already bought a better item for this slot
-                    if (bestPurchasedItemScore.find(invType) != bestPurchasedItemScore.end() &&
-                        bestPurchasedItemScore[invType] > newScore)
+                    if (equippable)
                     {
-                        break;  // Skip lower-scoring items
+                        // Skip if we already bought a better item for this slot
+                        if (bestPurchasedItemScore.find(invType) != bestPurchasedItemScore.end() &&
+                            bestPurchasedItemScore[invType] > newScore)
+                        {
+                            break;  // Skip lower-scoring items
+                        }
+
+                        // Check the bot's currently equipped item for this slot
+                        uint8 dstSlot = botAI->FindEquipSlot(proto, NULL_SLOT, true);
+                        Item* oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot);
+
+                        float oldScore = 0.0f;
+                        if (oldItem)
+                        {
+                            ItemTemplate const* oldItemProto = oldItem->GetTemplate();
+                            if (oldItemProto)
+                                oldScore = calculator.CalculateItem(oldItemProto->ItemId);
+                        }
+
+                        // Skip if the bot already has a better or equal item equipped
+                        if (oldScore > newScore)
+                            break;
                     }
-
-                    // Check the bot's currently equipped item for this slot
-                    uint8 dstSlot = botAI->FindEquipSlot(proto, NULL_SLOT, true);
-                    Item* oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot);
-
-                    float oldScore = 0.0f;
-                    if (oldItem)
-                    {
-                        ItemTemplate const* oldItemProto = oldItem->GetTemplate();
-                        if (oldItemProto)
-                            oldScore = calculator.CalculateItem(oldItemProto->ItemId);
-                    }
-
-                    // Skip if the bot already has a better or equal item equipped
-                    if (oldScore > newScore)
-                        break;
 
                     uint32 price = proto->BuyPrice;
                     price = uint32(floor(price * bot->GetReputationPriceDiscount(pCreature)));
@@ -228,8 +235,9 @@ bool BuyAction::Execute(Event event)
                     if (!BuyItem(tItems, vendorguid, proto))
                         break;
 
-                    // Store the best item score per InventoryType
-                    bestPurchasedItemScore[invType] = newScore;
+                    // Store the best item score per InventoryType (equipment only; consumables stack by purpose)
+                    if (equippable)
+                        bestPurchasedItemScore[invType] = newScore;
 
                     if (needMoneyFor == NeedMoneyFor::gear)
                     {

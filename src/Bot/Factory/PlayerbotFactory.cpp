@@ -938,6 +938,7 @@ void PlayerbotFactory::Randomize(bool incremental)
         bot->resetTalents(true);
     }
 
+    bool clearedAllItems = false;
     if (!incremental)
     {
         ClearSkills();
@@ -948,6 +949,7 @@ void PlayerbotFactory::Randomize(bool incremental)
             level < uint32(sPlayerbotAIConfig.EquipAndSpecPersistenceLevel) || level < oldLevel)
         {
             ClearAllItems();
+            clearedAllItems = true;
         }
     }
     ClearInventory();
@@ -967,21 +969,13 @@ void PlayerbotFactory::Randomize(bool incremental)
     // if (pmo)
     //     pmo->finish();
 
-    if (sPlayerbotAIConfig.RandomBotPreQuests)
-    {
-        pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Quests");
+    pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Quests");
+    // InitInstanceQuests clears the bags; an incremental run keeps the inventory it just preserved.
+    if (sPlayerbotAIConfig.RandomBotPreQuests && !incremental)
         InitInstanceQuests();
-        InitAttunementQuests();
-        if (pmo)
-            pmo->finish();
-    }
-    else
-    {
-        pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Quests");
-        InitAttunementQuests();
-        if (pmo)
-            pmo->finish();
-    }
+    InitAttunementQuests();
+    if (pmo)
+        pmo->finish();
 
     LOG_DEBUG("playerbots", "Initializing class spells...");
     pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Spells1");
@@ -1067,7 +1061,8 @@ void PlayerbotFactory::Randomize(bool incremental)
 
     pmo = sPerfMonitor.start(PERF_MON_RNDBOT, "PlayerbotFactory_Bags");
     LOG_DEBUG("playerbots", "Initializing bags...");
-    InitBags();
+    // Only replace bags when the inventory was cleared first; kept bag contents must survive.
+    InitBags(clearedAllItems);
     // bot->SaveToDB(false, false);
     if (pmo)
         pmo->finish();
@@ -3015,11 +3010,13 @@ void PlayerbotFactory::InitBags(bool destroyOld)
         if (!CanEquipUnseenItem(slot, dest, newItemId))
             continue;
 
-        if (old_bag && destroyOld)
-            bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
-
         if (old_bag)
-            continue;
+        {
+            if (!destroyOld)
+                continue;
+
+            bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        }
 
         bot->EquipNewItem(dest, newItemId, true);
         // if (newItem)

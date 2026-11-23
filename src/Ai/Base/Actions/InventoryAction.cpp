@@ -273,8 +273,11 @@ std::vector<Item*> InventoryAction::parseItems(std::string const text, IterateIt
     {
         FindFoodVisitor visitor(bot, 59, text == "conjured drink" || text == "conjured water");
         IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
-        found.insert(visitor.GetResult().begin(), visitor.GetResult().end());
+        for (Item* item : visitor.GetResult())
+            if (!ConsumableUsePolicy::IsAlcoholic(item->GetTemplate()))
+                found.insert(item);
 
+        // Mana-restoring food is a valid fallback; ChooseDrink applies the filter.
         if (found.empty())
         {
             FindFoodVisitor visitor(bot, 11);

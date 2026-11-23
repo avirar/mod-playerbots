@@ -269,6 +269,10 @@ ItemUsage ItemUsageValue::Calculate()
     // future/learnable recipe is bought.
     if (proto->Class == ITEM_CLASS_RECIPE)
     {
+        // Class, race and required-spell restrictions are not a missing profession rank.
+        if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            return ITEM_USAGE_AH;
+
         if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
             return ITEM_USAGE_AH;
 
