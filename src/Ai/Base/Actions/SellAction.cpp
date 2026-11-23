@@ -24,7 +24,7 @@ public:
         return true;
     }
 
-private:
+protected:
     SellAction* action;
 };
 
@@ -81,11 +81,12 @@ public:
 
     bool Visit(Item* item) override
     {
-        ItemUsage usage = context->GetValue<ItemUsage>("item usage", item->GetEntry())->Get();
+        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", item->GetEntry())->Get();
         if (usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
             return true;
 
-        return SellItemsVisitor::Visit(item);
+        action->Sell(item, usage);
+        return true;
     }
 };
 
@@ -155,14 +156,21 @@ void SellAction::Sell(Item* item, bool force)
     if (!item)
         return;
 
-    std::ostringstream out;
+    Sell(item, context->GetValue<ItemUsage>("item usage", item->GetEntry())->Get(), force);
+}
+
+void SellAction::Sell(Item* item, ItemUsage usage, bool force)
+{
+    if (!item)
+        return;
+
     uint32 itemId = item->GetEntry();
     ItemTemplate const* proto = item->GetTemplate();
 
+    std::ostringstream out;
     uint32 keepRequirement = 0;
     if (!force)
     {
-        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", itemId)->Get();
         ItemKeepRule const rule = GetItemKeepRule(botAI, proto, usage);
         if (rule.alwaysKeep)
             return;
@@ -173,7 +181,6 @@ void SellAction::Sell(Item* item, bool force)
     {
         // Even an explicit item sell must not destroy profession tools/materials
         // or a recipe the bot can learn later.
-        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", itemId)->Get();
         ItemKeepRule const rule = GetItemKeepRule(botAI, proto, usage);
         if (rule.alwaysKeep || usage == ITEM_USAGE_FUTURE)
             return;

@@ -30,6 +30,7 @@
 #include "ScriptMgr.h"
 #include "ServerScript.h"
 #include "SessionScript.h"
+#include "SpellCraftCatalog.h"
 #include "WorldScript.h"
 #include "cmath"
 
@@ -535,6 +536,11 @@ public:
         LOG_INFO("server.loading", " ");
 
         PlayerbotSpellRepository::Instance().Initialize();
+
+        LOG_INFO("server.loading", "Loading spell craft catalog...");
+        SpellCraftCatalog::Instance().Warm();
+        LOG_INFO("server.loading", "Spell craft catalog loaded");
+
         CheckMountStateAction::LoadPreferredMounts();
 
         LOG_INFO("server.loading", "Loading gather node index...");

@@ -65,6 +65,7 @@ protected:
     ParsedItemUsage GetItemIdFromQualifier();
 
 private:
+    ItemUsage CalculateInternal(ParsedItemUsage const& parsed);
     bool IsItemUsefulForQuest(Player* player, ItemTemplate const* proto);
     bool IsStartQuestItemUsefulFor(Player* player, ItemTemplate const* proto);
     bool IsItemNeededForSkill(ItemTemplate const* proto);
@@ -102,9 +103,7 @@ public:
 class ItemUpgradeValue : public ItemUsageValue
 {
 public:
-    ItemUpgradeValue(PlayerbotAI* botAI, std::string const name = "item upgrade") : ItemUsageValue(botAI, name)
-    {
-    }
+    ItemUpgradeValue(PlayerbotAI* botAI, std::string const name = "item upgrade") : ItemUsageValue(botAI, name) {}
 
     ItemUsage Calculate() override;
 };

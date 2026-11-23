@@ -44,6 +44,7 @@
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
+#include "SpellCraftCatalog.h"
 #include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
@@ -136,29 +137,17 @@ bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVen
         if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED || !playerSpell->Active)
             continue;
 
-        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
-        if (!spellInfo)
-            continue;
-
-        bool createsItem = false;
-        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
-        {
-            if ((spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
-                 spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM_2) &&
-                spellInfo->Effects[e].ItemType == itemId)
+        SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(spellId);
+        if (!craft ||
+            std::find(craft->outputItemIds.begin(), craft->outputItemIds.end(), itemId) == craft->outputItemIds.end())
             {
-                createsItem = true;
-                break;
-            }
-        }
-        if (!createsItem)
             continue;
+        }
 
         bool matchedSkillLine = false;
-        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
-        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        for (SpellCraftAbility const& ability : craft->abilities)
         {
-            if (itr->second->SkillLine == skillLine)
+            if (ability.skillLine == skillLine)
             {
                 matchedSkillLine = true;
                 break;
@@ -171,17 +160,17 @@ bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVen
         bool canCraft = true;
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
         {
-            if (spellInfo->ReagentCount[r] == 0)
+            if (!craft->reagentCounts[r])
                 continue;
 
             hasAnyReagent = true;
-            uint32 const needed = spellInfo->ReagentCount[r];
-            uint32 const have = std::min<uint32>(bot->GetItemCount(spellInfo->Reagent[r], false), needed);
+            uint32 const needed = craft->reagentCounts[r];
+            uint32 const have = std::min<uint32>(bot->GetItemCount(craft->reagents[r], false), needed);
             if (have >= needed)
                 continue;
-            if (CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], needed - have))
+            if (CanBuyNearby(botAI, vendorIndex, craft->reagents[r], needed - have))
                 continue;
-            if (depth < 2 && CanCraftItem(botAI, skillLine, spellInfo->Reagent[r], vendorIndex, depth + 1))
+            if (depth < 2 && CanCraftItem(botAI, skillLine, craft->reagents[r], vendorIndex, depth + 1))
                 continue;
 
             canCraft = false;
@@ -225,35 +214,20 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
             continue;
         }
 
-        bool hasRecipeOutput = false;
-        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
-        {
-            if (spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM_2 ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
-            {
-                hasRecipeOutput = true;
-                break;
-            }
-        }
-        if (!hasRecipeOutput)
+        SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(spellId);
+        if (!craft || !craft->hasCraftEffect)
             continue;
 
         bool matchedSkillLine = false;
         int32 chance = 0;
-        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
-        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        for (SpellCraftAbility const& ability : craft->abilities)
         {
-            SkillLineAbilityEntry const* ability = itr->second;
-            if (ability->SkillLine != skillLine)
+            if (ability.skillLine != skillLine)
                 continue;
 
             matchedSkillLine = true;
-            chance =
-                std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, ability->TrivialSkillLineRankHigh,
-                                                                      ability->TrivialSkillLineRankLow));
+            chance = std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, ability.trivialSkillLineRankHigh,
+                                                                           ability.trivialSkillLineRankLow));
         }
         if (!matchedSkillLine || (!skillMaxed && chance <= 0))
             continue;
@@ -268,19 +242,18 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
         bool vendorReagents = true;
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
         {
-            if (spellInfo->ReagentCount[r] == 0)
+            if (!craft->reagentCounts[r])
                 continue;
 
             hasAnyReagent = true;
-            uint32 const have =
-                std::min<uint32>(bot->GetItemCount(spellInfo->Reagent[r], false), spellInfo->ReagentCount[r]);
-            if (have >= spellInfo->ReagentCount[r])
+            uint32 const have = std::min<uint32>(bot->GetItemCount(craft->reagents[r], false), craft->reagentCounts[r]);
+            if (have >= craft->reagentCounts[r])
                 continue;
 
             hasReagents = false;
-            uint32 const missing = spellInfo->ReagentCount[r] - have;
-            if (!CanBuyNearby(botAI, vendorIndex, spellInfo->Reagent[r], missing) &&
-                !CanCraftItem(botAI, skillLine, spellInfo->Reagent[r], vendorIndex, 0))
+            uint32 const missing = craft->reagentCounts[r] - have;
+            if (!CanBuyNearby(botAI, vendorIndex, craft->reagents[r], missing) &&
+                !CanCraftItem(botAI, skillLine, craft->reagents[r], vendorIndex, 0))
                 vendorReagents = false;
         }
         if (!hasAnyReagent || (!hasReagents && !vendorReagents))
@@ -613,9 +586,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             AcceptQuest(quest, guid);
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "new_rpg_quest_accepted",
-                    "Quest accepted %quest",
-                    {{"%quest", ChatHelper::FormatQuest(quest)}}));
+                    "new_rpg_quest_accepted", "Quest accepted %quest", {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestAccepted(botAI, bot, quest);
             botAI->RecordQuestAccepted(quest->GetQuestId());
             LOG_DEBUG("playerbots", "[New RPG] {} accept quest {}", bot->GetName(), quest->GetQuestId());
@@ -625,9 +596,7 @@ bool NewRpgBaseAction::InteractWithNpcOrGameObjectForQuest(ObjectGuid guid)
             TurnInQuest(quest, guid);
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "new_rpg_quest_rewarded",
-                    "Quest rewarded %quest",
-                    {{"%quest", ChatHelper::FormatQuest(quest)}}));
+                    "new_rpg_quest_rewarded", "Quest rewarded %quest", {{"%quest", ChatHelper::FormatQuest(quest)}}));
             BroadcastHelper::BroadcastQuestTurnedIn(botAI, bot, quest);
             botAI->RecordQuestRewarded(quest->GetQuestId());
             LOG_DEBUG("playerbots", "[New RPG] {} turned in quest {}", bot->GetName(), quest->GetQuestId());
@@ -808,9 +777,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "new_rpg_quest_dropped",
-                    "Quest dropped %quest",
-                    {{"%quest", ChatHelper::FormatQuest(quest)}}));
+                    "new_rpg_quest_dropped", "Quest dropped %quest", {{"%quest", ChatHelper::FormatQuest(quest)}}));
             botAI->RecordQuestDropped(questId, reason);
             dropped++;
         }
@@ -833,8 +800,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         int32 const zoneOrSort = quest->GetZoneOrSort();
         if (zoneOrSort < 0 || (zoneOrSort > 0 && zoneOrSort != botZoneId))
         {
-            QuestDropReason const reason = zoneOrSort < 0 ? QuestDropReason::ClassOrHoliday
-                                                          : QuestDropReason::OtherZone;
+            QuestDropReason const reason =
+                zoneOrSort < 0 ? QuestDropReason::ClassOrHoliday : QuestDropReason::OtherZone;
             LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
@@ -843,9 +810,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
             if (botAI->GetMaster())
                 botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                    "new_rpg_quest_dropped",
-                    "Quest dropped %quest",
-                    {{"%quest", ChatHelper::FormatQuest(quest)}}));
+                    "new_rpg_quest_dropped", "Quest dropped %quest", {{"%quest", ChatHelper::FormatQuest(quest)}}));
             botAI->RecordQuestDropped(questId, reason);
             dropped++;
         }
@@ -870,9 +835,7 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
         if (botAI->GetMaster())
             botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-                "new_rpg_quest_dropped",
-                "Quest dropped %quest",
-                {{"%quest", ChatHelper::FormatQuest(quest)}}));
+                "new_rpg_quest_dropped", "Quest dropped %quest", {{"%quest", ChatHelper::FormatQuest(quest)}}));
         botAI->RecordQuestDropped(questId, QuestDropReason::LogFull);
     }
 
@@ -1166,7 +1129,8 @@ WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
     return dest;
 }
 
-bool NewRpgBaseAction::SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path)
+bool NewRpgBaseAction::SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos,
+                                                  std::vector<uint32>& path)
 {
     TravelMgr::FlightMasterInfo const* info = sTravelMgr.GetNearestFlightMasterInfo(bot);
     if (!info)
@@ -1335,10 +1299,10 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
 
 std::vector<uint32> NewRpgBaseAction::SelectProfessionsToLevel(PlayerbotAI* botAI)
 {
-    static uint32 const craftProfessions[] = {
-        SKILL_ALCHEMY,       SKILL_BLACKSMITHING,  SKILL_ENCHANTING, SKILL_ENGINEERING, SKILL_INSCRIPTION,
-        SKILL_JEWELCRAFTING, SKILL_LEATHERWORKING, SKILL_MINING,     SKILL_TAILORING,   SKILL_FIRST_AID,
-        SKILL_COOKING};
+    static uint32 const craftProfessions[] = {SKILL_ALCHEMY,        SKILL_BLACKSMITHING, SKILL_ENCHANTING,
+                                              SKILL_ENGINEERING,    SKILL_INSCRIPTION,   SKILL_JEWELCRAFTING,
+                                              SKILL_LEATHERWORKING, SKILL_MINING,        SKILL_TAILORING,
+                                              SKILL_FIRST_AID,      SKILL_COOKING};
 
     std::vector<uint32> available;
     if (!botAI)

@@ -36,6 +36,7 @@
 #include "Player.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
+#include "SpellCraftCatalog.h"
 #include "SpellFocusMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -1359,6 +1360,20 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     std::unordered_map<uint32, uint32> const questReserved = GetQuestReservedItems(bot);
 
+    // The scan only reads the bags; one count per item id is enough for the
+    // whole pass instead of a bag walk for every recipe reagent.
+    std::unordered_map<uint32, uint32> bagCounts;
+    auto const bagCount = [&bagCounts, this](uint32 itemId) -> uint32
+    {
+        auto const itr = bagCounts.find(itemId);
+        if (itr != bagCounts.end())
+            return itr->second;
+
+        uint32 const count = bot->GetItemCount(itemId, false);
+        bagCounts.emplace(itemId, count);
+        return count;
+    };
+
     std::vector<ProfessionRecipe> allRecipes;
     std::unordered_map<uint32, std::vector<size_t>> craftIndex;
     std::vector<ProfessionRecipe> directUseful;
@@ -1378,38 +1393,20 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (!spellInfo)
             continue;
 
-        uint32 outputItemId = 0;
-        uint32 outputCount = 1;
-        uint32 scrollItemId = 0;
-        bool noItemSpell = false;
-        for (uint8 e = 0; e < MAX_SPELL_EFFECTS; ++e)
-        {
-            if (spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_CREATE_ITEM_2)
-            {
-                outputItemId = spellInfo->Effects[e].ItemType;
-                if (outputItemId)
-                {
-                    outputCount = uint32(std::max(1, spellInfo->Effects[e].BasePoints + 1));
-                    break;
-                }
+        SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(spellId);
+        if (!craft)
                 continue;
-            }
-            if (spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY ||
-                spellInfo->Effects[e].Effect == SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC)
-            {
-                noItemSpell = true;
-                scrollItemId = spellInfo->Effects[e].ItemType;
-                break;
-            }
-        }
+
+        uint32 const outputItemId = craft->outputItemId;
+        uint32 const outputCount = craft->outputCount;
+        uint32 const scrollItemId = craft->scrollItemId;
+        bool const noItemSpell = craft->isEnchant;
         if (!outputItemId && !noItemSpell)
             continue;
 
         // CREATE_ITEM_2 loot crafts replace the listed item with random loot; they are not
         // deterministic intermediates.
-        if (outputItemId && spellInfo->IsLootCrafting())
+        if (outputItemId && craft->isLootCrafting)
             continue;
 
         int32 chance = 0;
@@ -1417,23 +1414,21 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         bool matchedSkillLine = false;
         bool professionSpell = false;
         uint32 professionSkillLine = 0;
-        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
-        for (SkillLineAbilityMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        for (SpellCraftAbility const& ability : craft->abilities)
         {
-            SkillLineAbilityEntry const* skill = itr->second;
-            if (IsProfessionSkill(skill->SkillLine) && bot->HasSkill(SkillType(skill->SkillLine)))
+            if (IsProfessionSkill(ability.skillLine) && bot->HasSkill(SkillType(ability.skillLine)))
             {
                 professionSpell = true;
                 if (!professionSkillLine)
-                    professionSkillLine = skill->SkillLine;
+                    professionSkillLine = ability.skillLine;
             }
-            if (skill->SkillLine == data.skillLine)
+            if (ability.skillLine == data.skillLine)
             {
                 matchedSkillLine = true;
                 chance =
-                    std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, skill->TrivialSkillLineRankHigh,
-                                                                          skill->TrivialSkillLineRankLow));
-                tier = std::max(tier, skill->TrivialSkillLineRankLow);
+                    std::max(chance, ItemUsageValue::CraftSkillGainChance(skillValue, ability.trivialSkillLineRankHigh,
+                                                                          ability.trivialSkillLineRankLow));
+                tier = std::max(tier, ability.trivialSkillLineRankLow);
             }
         }
         if (!matchedSkillLine && !professionSpell)
@@ -1446,20 +1441,19 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         std::array<uint8, MAX_SPELL_REAGENTS> reagentCounts{};
         for (uint8 r = 0; r < MAX_SPELL_REAGENTS; ++r)
         {
-            if (spellInfo->ReagentCount[r] == 0)
+            if (!craft->reagentCounts[r])
                 continue;
 
             hasAnyReagent = true;
-            reagents[r] = uint32(spellInfo->Reagent[r]);
-            reagentCounts[r] = uint8(spellInfo->ReagentCount[r]);
-            reagentItems += spellInfo->ReagentCount[r];
+            reagents[r] = craft->reagents[r];
+            reagentCounts[r] = craft->reagentCounts[r];
+            reagentItems += craft->reagentCounts[r];
 
             uint32 reserved = 0;
-            if (auto const it = questReserved.find(spellInfo->Reagent[r]); it != questReserved.end())
+            if (auto const it = questReserved.find(craft->reagents[r]); it != questReserved.end())
                 reserved = it->second;
 
-            hasReagents = hasReagents && bot->GetItemCount(spellInfo->Reagent[r], false) >=
-                                              uint32(spellInfo->ReagentCount[r]) + reserved;
+            hasReagents = hasReagents && bagCount(craft->reagents[r]) >= uint32(craft->reagentCounts[r]) + reserved;
         }
         if (!hasAnyReagent || bot->HasSpellCooldown(spellId))
             continue;
@@ -1485,7 +1479,9 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         bool useful = false;
         bool marketable = false;
         uint8 usefulRank = 255;
-        if (professionSpell && outputItemId)
+        // Only the session's profession can be the final craft; other professions'
+        // recipes stay available as planned dependencies without an item usage scan.
+        if (matchedSkillLine && outputItemId)
         {
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(outputItemId);
             if (!proto)
@@ -1528,11 +1524,11 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         recipe.reagentItems = reagentItems;
         recipe.efficiency = float(std::max(0, chance)) / 1000.0f / float(std::max<uint32>(1, reagentItems));
         recipe.usefulRank = usefulRank;
-        recipe.spellFocus = spellInfo->RequiresSpellFocus;
+        recipe.spellFocus = craft->requiresSpellFocus;
         recipe.useful = useful;
         recipe.noItemSpell = noItemSpell;
         recipe.marketable = marketable;
-        recipe.hasCooldown = spellInfo->RecoveryTime || spellInfo->CategoryRecoveryTime;
+        recipe.hasCooldown = craft->recoveryTime || craft->categoryRecoveryTime;
         recipe.reagents = reagents;
         recipe.reagentCounts = reagentCounts;
 
@@ -1678,7 +1674,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         if (!outputRule.alwaysKeep && outputRule.keepCount == 0)
         {
             // The output is surplus, so selling stock can still make room for it.
-            bool const recentlySold = data.bagFullSellAt && GetMSTimeDiffToNow(data.bagFullSellAt) < BAG_FULL_SELL_RETRY_MS;
+            bool const recentlySold =
+                data.bagFullSellAt && GetMSTimeDiffToNow(data.bagFullSellAt) < BAG_FULL_SELL_RETRY_MS;
             if (!recentlySold && SellToNearestVendor(data))
                 return true;
             LOG_DEBUG("playerbots", "[New RPG] {} stopping professions: bags {}% and recipe {} is surplus",

@@ -8,6 +8,7 @@
 #define PLAYERBOTS_SELLACTION_H
 
 #include "InventoryAction.h"
+#include "ItemUsageValue.h"
 
 class FindItemVisitor;
 class Item;
@@ -21,6 +22,8 @@ public:
     bool Execute(Event event) override;
     void Sell(FindItemVisitor* visitor);
     void Sell(Item* item, bool force = false);
+    // Callers that already evaluated the item pass the result instead of asking again.
+    void Sell(Item* item, ItemUsage usage, bool force = false);
 };
 
 #endif

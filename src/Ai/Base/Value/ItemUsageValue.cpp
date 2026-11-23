@@ -27,6 +27,7 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
+#include "SpellCraftCatalog.h"
 #include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
 #include "Trainer.h"
@@ -42,6 +43,23 @@ static bool IsRoguePoison(ItemTemplate const* proto);
 namespace
 {
 thread_local uint32 permissiveReagentCheckDepth = 0;
+
+// Nested item usage asks (a material needs a crafted output, which needs another
+// material) are evaluated once per top-level item. The cache lives only for the
+// duration of that evaluation, so it cannot serve stale inventory or loot data.
+thread_local uint32 itemUsageEvaluationDepth = 0;
+thread_local std::unordered_map<uint64_t, ItemUsage> itemUsageEvaluationCache;
+
+uint64_t MakeItemUsageKey(uint32 itemId, int32 randomPropertyId)
+{
+    return (uint64_t(itemId) << 32) | uint64_t(uint32(randomPropertyId));
+}
+
+struct ItemUsageEvaluationScope
+{
+    ItemUsageEvaluationScope() { ++itemUsageEvaluationDepth; }
+    ~ItemUsageEvaluationScope() { --itemUsageEvaluationDepth; }
+};
 
 constexpr uint32 PROFESSION_MILLING_SPELL = 51005;
 constexpr uint32 PROFESSION_PROSPECTING_SPELL = 31252;
@@ -245,6 +263,31 @@ ScopedPermissiveReagentCheck::~ScopedPermissiveReagentCheck() { --permissiveReag
 ItemUsage ItemUsageValue::Calculate()
 {
     ParsedItemUsage const parsed = GetItemIdFromQualifier();
+    if (!parsed.itemId)
+        return ITEM_USAGE_NONE;
+
+    uint64 const key = MakeItemUsageKey(parsed.itemId, parsed.randomPropertyId);
+    if (itemUsageEvaluationDepth == 0)
+        itemUsageEvaluationCache.clear();
+    else
+    {
+        auto const cached = itemUsageEvaluationCache.find(key);
+        if (cached != itemUsageEvaluationCache.end())
+            return cached->second;
+    }
+
+    ItemUsage usage;
+    {
+        ItemUsageEvaluationScope scope;
+        usage = CalculateInternal(parsed);
+    }
+
+    itemUsageEvaluationCache[key] = usage;
+    return usage;
+}
+
+ItemUsage ItemUsageValue::CalculateInternal(ParsedItemUsage const& parsed)
+{
     uint32 itemId = parsed.itemId;
     uint32 randomPropertyId = parsed.randomPropertyId;
     if (!itemId)
@@ -1293,13 +1336,15 @@ std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
 {
     std::vector<uint32> retSpells;
 
-    PlayerSpellMap const& spellMap = bot->GetSpellMap();
+    if (!bot || !itemId)
+        return retSpells;
 
-    for (auto& spell : spellMap)
+    // The item-to-spell relation is immutable; the catalog filters out generic
+    // profession spells that do not create or enchant anything, matching the
+    // old spellbook walk.
+    for (uint32 spellId : SpellCraftCatalog::Instance().SpellsUsingItem(itemId))
     {
-        uint32 spellId = spell.first;
-
-        if (spell.second->State == PLAYERSPELL_REMOVED || !spell.second->Active)
+        if (!bot->HasActiveSpell(spellId))
             continue;
 
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
@@ -1311,32 +1356,7 @@ std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
         if (bot->CanNoReagentCast(spellInfo))
             continue;
 
-        // Profession spells are generic-family; count the crafting and enchanting
-        // spells that actually consume reagents. Class spells (poisons, oils,
-        // water walking, ...) consume reagents without creating items.
-        bool consumesReagents = false;
-        for (uint8 effect = 0; effect < MAX_SPELL_EFFECTS; ++effect)
-        {
-            switch (spellInfo->Effects[effect].Effect)
-            {
-                case SPELL_EFFECT_CREATE_ITEM:
-                case SPELL_EFFECT_CREATE_ITEM_2:
-                case SPELL_EFFECT_ENCHANT_ITEM:
-                case SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY:
-                case SPELL_EFFECT_ENCHANT_ITEM_PRISMATIC:
-                    consumesReagents = true;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        if (!consumesReagents && spellInfo->SpellFamilyName == SPELLFAMILY_GENERIC)
-            continue;
-
-        for (uint8 i = 0; i < MAX_SPELL_REAGENTS; i++)
-            if (spellInfo->ReagentCount[i] > 0 && uint32(spellInfo->Reagent[i]) == itemId)
-                retSpells.push_back(spellId);
+        retSpells.push_back(spellId);
     }
 
     return retSpells;
