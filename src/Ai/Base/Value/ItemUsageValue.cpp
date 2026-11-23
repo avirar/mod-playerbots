@@ -1341,10 +1341,13 @@ std::vector<uint32> ItemUsageValue::SpellsUsingItem(uint32 itemId, Player* bot)
 
     // The item-to-spell relation is immutable; the catalog filters out generic
     // profession spells that do not create or enchant anything, matching the
-    // old spellbook walk.
+    // old spellbook walk. Keep the old active-rank check (not HasActiveSpell)
+    // so off-spec reagents are treated exactly as before.
+    PlayerSpellMap const& spellMap = bot->GetSpellMap();
     for (uint32 spellId : SpellCraftCatalog::Instance().SpellsUsingItem(itemId))
     {
-        if (!bot->HasActiveSpell(spellId))
+        auto const spell = spellMap.find(spellId);
+        if (spell == spellMap.end() || spell->second->State == PLAYERSPELL_REMOVED || !spell->second->Active)
             continue;
 
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
