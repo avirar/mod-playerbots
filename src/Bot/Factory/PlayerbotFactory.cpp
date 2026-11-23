@@ -4715,7 +4715,7 @@ void PlayerbotFactory::InitPotions()
     {
         uint32 effect = effects[i];
 
-        if (effect == SPELL_EFFECT_ENERGIZE && bot->GetMaxPower(POWER_MANA) == 0)
+        if (effect == SPELL_EFFECT_ENERGIZE && !PlayerbotAI::IsManaClass(bot))
             continue;
 
         FindPotionVisitor visitor(bot, effect);
@@ -4794,6 +4794,14 @@ void PlayerbotFactory::InitFood()
     {
         return;
     }
+    // CanUseItem(ItemTemplate) checks class, race, level and skill but not reputation.
+    auto const canUse = [&](ItemTemplate const* proto)
+    {
+        return proto && bot->CanUseItem(proto) == EQUIP_ERR_OK &&
+               (!proto->RequiredReputationFaction ||
+                uint32(bot->GetReputationRank(proto->RequiredReputationFaction)) >= proto->RequiredReputationRank);
+    };
+
     std::unordered_map<uint32, std::vector<uint32>> items;
     ItemTemplateContainer const* itemTemplateContainer = sObjectMgr->GetItemTemplateStore();
     for (ItemTemplateContainer::const_iterator i = itemTemplateContainer->begin(); i != itemTemplateContainer->end();
@@ -4809,8 +4817,7 @@ void PlayerbotFactory::InitFood()
             proto->Bonding != NO_BIND || proto->IsConjuredConsumable())
             continue;
 
-        if (proto->RequiredLevel > bot->GetLevel() ||
-            static_cast<int32>(proto->RequiredLevel) < static_cast<int32>(bot->GetLevel()) - 9)
+        if (proto->RequiredLevel > bot->GetLevel())
             continue;
 
         if (proto->RequiredSkill && !bot->HasSkill(proto->RequiredSkill))
@@ -4819,7 +4826,7 @@ void PlayerbotFactory::InitFood()
         if (proto->Area || proto->Map || proto->RequiredCityRank || proto->RequiredHonorRank)
             continue;
 
-        if (ConsumableUsePolicy::IsAlcoholic(proto))
+        if (!canUse(proto) || ConsumableUsePolicy::IsAlcoholic(proto))
             continue;
 
         items[proto->Spells[0].SpellCategory].push_back(itemId);
@@ -4833,7 +4840,7 @@ void PlayerbotFactory::InitFood()
         if (ids.empty())
             continue;
 
-        if (category == 59 && bot->GetMaxPower(POWER_MANA) == 0)
+        if (category == 59 && !PlayerbotAI::IsManaClass(bot))
             continue;
 
         // One stack per category: top up only what the bot is missing.
@@ -4841,7 +4848,11 @@ void PlayerbotFactory::InitFood()
         IterateItems(&visitor);
         uint32 have = 0;
         for (Item* item : visitor.GetResult())
-            have += item->GetCount();
+        {
+            ItemTemplate const* proto = item->GetTemplate();
+            if (canUse(proto) && !ConsumableUsePolicy::IsAlcoholic(proto))
+                have += item->GetCount();
+        }
 
         uint32 bestId = 0;
         uint32 bestItemLevel = 0;

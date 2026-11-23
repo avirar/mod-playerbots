@@ -49,6 +49,9 @@ bool SpellGrantsBuff(SpellInfo const* spell, uint8 depth)
                 case SPELL_AURA_MOD_POWER_REGEN:
                 case SPELL_AURA_OBS_MOD_POWER:
                 case SPELL_AURA_PERIODIC_DUMMY:
+                    // Seated recovery is the meal; without the seated interrupt it is a lasting buff.
+                    if (!(spell->AuraInterruptFlags & AURA_INTERRUPT_FLAG_NOT_SEATED))
+                        return true;
                     break;
                 case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
                 case SPELL_AURA_PROC_TRIGGER_SPELL:
@@ -86,6 +89,9 @@ bool SpellHasActiveBuff(Player* bot, SpellInfo const* spell, uint8 depth)
                 case SPELL_AURA_MOD_POWER_REGEN:
                 case SPELL_AURA_OBS_MOD_POWER:
                 case SPELL_AURA_PERIODIC_DUMMY:
+                    // Seated recovery is the meal; without the seated interrupt it is a lasting buff.
+                    if (!(spell->AuraInterruptFlags & AURA_INTERRUPT_FLAG_NOT_SEATED))
+                        directBuff = true;
                     break;
                 case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
                 case SPELL_AURA_PROC_TRIGGER_SPELL:
@@ -150,6 +156,46 @@ bool SpellAppliesInebriate(SpellInfo const* spell, uint8 depth)
     return false;
 }
 
+bool SpellRestoresMana(SpellInfo const* spell, uint8 depth)
+{
+    if (!spell || depth > MAX_TRIGGER_DEPTH)
+        return false;
+
+    for (SpellEffectInfo const& effect : spell->Effects)
+    {
+        if (effect.Effect == SPELL_EFFECT_APPLY_AURA)
+        {
+            switch (effect.ApplyAuraName)
+            {
+                case SPELL_AURA_MOD_POWER_REGEN:
+                case SPELL_AURA_OBS_MOD_POWER:
+                    if (effect.MiscValue == POWER_MANA)
+                        return true;
+                    break;
+                case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
+                case SPELL_AURA_PROC_TRIGGER_SPELL:
+                case SPELL_AURA_ADD_TARGET_TRIGGER:
+                    if (SpellRestoresMana(sSpellMgr->GetSpellInfo(effect.TriggerSpell), depth + 1))
+                        return true;
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (effect.Effect == SPELL_EFFECT_ENERGIZE && effect.MiscValue == POWER_MANA)
+        {
+            return true;
+        }
+        else if (effect.Effect == SPELL_EFFECT_TRIGGER_SPELL && effect.TriggerSpell)
+        {
+            if (SpellRestoresMana(sSpellMgr->GetSpellInfo(effect.TriggerSpell), depth + 1))
+                return true;
+        }
+    }
+
+    return false;
+}
+
 }  // namespace
 
 namespace ConsumableUsePolicy
@@ -206,6 +252,32 @@ bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplat
     bool const baselineBuff = IsBuffFood(baseline);
     if (candidateBuff != baselineBuff)
         return candidateBuff;
+
+    float const candidateScore = Score(bot, candidate);
+    float const baselineScore = Score(bot, baseline);
+    if (candidateScore != baselineScore)
+        return candidateScore > baselineScore;
+
+    return candidate->ItemLevel >= baseline->ItemLevel;
+}
+
+bool IsStrictlyBetterDrink(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline)
+{
+    if (!candidate || !baseline)
+        return false;
+
+    float const candidateScore = Score(bot, candidate);
+    float const baselineScore = Score(bot, baseline);
+    if (candidateScore != baselineScore)
+        return candidateScore > baselineScore;
+
+    return candidate->ItemLevel > baseline->ItemLevel;
+}
+
+bool IsAtLeastAsGoodDrink(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline)
+{
+    if (!candidate || !baseline)
+        return false;
 
     float const candidateScore = Score(bot, candidate);
     float const baselineScore = Score(bot, baseline);
@@ -536,7 +608,11 @@ Item* ChooseDrink(Player* bot, std::vector<Item*> const& items)
     for (Item* item : items)
     {
         ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
-        if (!proto || !proto->Spells[0].SpellId || proto->Spells[0].SpellCategory != 59)
+        if (!proto || !proto->Spells[0].SpellId || IsAlcoholic(proto))
+            continue;
+
+        // "drink" falls back to food when no drink exists; accept the fallback only when it restores mana.
+        if (proto->Spells[0].SpellCategory != 59 && !SpellRestoresMana(GetItemSpell(proto), 0))
             continue;
 
         float const score = Score(bot, proto);

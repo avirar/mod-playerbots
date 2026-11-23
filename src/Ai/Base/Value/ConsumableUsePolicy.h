@@ -29,6 +29,10 @@ namespace ConsumableUsePolicy
     bool IsStrictlyBetterFood(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);
     bool IsAtLeastAsGoodFood(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);
 
+    // Drinks are scored for the bot's spec; item level breaks ties.
+    bool IsStrictlyBetterDrink(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);
+    bool IsAtLeastAsGoodDrink(Player* bot, ItemTemplate const* candidate, ItemTemplate const* baseline);
+
     // Missing Well Fed: best buff food, then conjured, then regular.
     // Well Fed: conjured, then regular, then buff food.
     Item* ChooseFood(Player* bot, std::vector<Item*> const& items);

@@ -17,6 +17,7 @@
 #include "ItemTemplate.h"
 #include "LootObjectStack.h"
 #include "ObjectMgr.h"
+#include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
@@ -364,7 +365,7 @@ ItemUsage ItemUsageValue::Calculate()
     if (proto->Class == ITEM_CLASS_CONSUMABLE &&
         (maxCount == 0 || bot->GetItemCount(itemId, false) < maxCount))
     {
-        std::string const foodType = GetConsumableType(proto, bot->GetPower(POWER_MANA));
+        std::string const foodType = GetConsumableType(proto, PlayerbotAI::IsManaClass(bot));
 
         if (!foodType.empty() && bot->CanUseItem(proto) == EQUIP_ERR_OK)
         {
@@ -1227,9 +1228,13 @@ float ItemUsageValue::BetterStacks(ItemTemplate const* proto, std::string const 
         if (otherProto->ItemId == proto->ItemId)
             continue;
 
-        bool const atLeastAsGood = itemType == "food"
-            ? ConsumableUsePolicy::IsAtLeastAsGoodFood(bot, otherProto, proto)
-            : otherProto->ItemLevel >= proto->ItemLevel;
+        bool atLeastAsGood;
+        if (itemType == "food")
+            atLeastAsGood = ConsumableUsePolicy::IsAtLeastAsGoodFood(bot, otherProto, proto);
+        else if (itemType == "drink")
+            atLeastAsGood = ConsumableUsePolicy::IsAtLeastAsGoodDrink(bot, otherProto, proto);
+        else
+            atLeastAsGood = otherProto->ItemLevel >= proto->ItemLevel;
         if (!atLeastAsGood)
             continue;
 
@@ -1259,6 +1264,8 @@ bool ItemUsageValue::HasStrictlyBetterConsumable(ItemTemplate const* proto, std:
         bool strictlyBetter = false;
         if (itemType == "food")
             strictlyBetter = ConsumableUsePolicy::IsStrictlyBetterFood(bot, otherProto, proto);
+        else if (itemType == "drink")
+            strictlyBetter = ConsumableUsePolicy::IsStrictlyBetterDrink(bot, otherProto, proto);
         else if (itemType == "flask" || itemType == "battle elixir" || itemType == "guardian elixir" ||
                  itemType == "scroll")
         {
