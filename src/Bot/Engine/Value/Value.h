@@ -15,8 +15,12 @@
 #include <time.h>
 #include <unordered_map>
 
+class AiObjectContext;
 class PlayerbotAI;
 class Unit;
+
+// Defined in Value.cpp where AiObjectContext is complete.
+PerfMonitorOperation* StartValuePerfMonitor(AiObjectContext* context, std::string const& name);
 
 class FleeInfo
 {
@@ -73,7 +77,7 @@ public:
     {
         if (checkInterval < 2)
         {
-            PerfMonitorScope scope(GetPerfData());
+            PerfMonitorOperationGuard guard(StartPerfMonitor());
             value = Calculate();
         }
         else
@@ -82,7 +86,7 @@ public:
             if (!lastCheckTime || now - lastCheckTime >= checkInterval)
             {
                 lastCheckTime = now;
-                PerfMonitorScope scope(GetPerfData());
+                PerfMonitorOperationGuard guard(StartPerfMonitor());
                 value = Calculate();
             }
         }
@@ -100,7 +104,7 @@ public:
     {
         if (checkInterval < 2)
         {
-            PerfMonitorScope scope(GetPerfData());
+            PerfMonitorOperationGuard guard(StartPerfMonitor());
             value = Calculate();
         }
         else
@@ -109,7 +113,7 @@ public:
             if (!lastCheckTime || now - lastCheckTime >= checkInterval)
             {
                 lastCheckTime = now;
-                PerfMonitorScope scope(GetPerfData());
+                PerfMonitorOperationGuard guard(StartPerfMonitor());
                 value = Calculate();
             }
         }
@@ -122,21 +126,11 @@ public:
 protected:
     virtual T Calculate() = 0;
 
-    PerformanceData* GetPerfData()
-    {
-        if (!PerfMonitor::IsEnabled())
-            return nullptr;
-
-        if (!perfData)
-            perfData = sPerfMonitor.acquire(PERF_MON_VALUE, getName());
-
-        return perfData;
-    }
+    PerfMonitorOperation* StartPerfMonitor() { return StartValuePerfMonitor(context, getName()); }
 
     uint32 checkInterval;
     uint32 lastCheckTime;
     T value;
-    PerformanceData* perfData = nullptr;
 };
 
 template <class T>
@@ -154,7 +148,7 @@ public:
         if (!this->lastCheckTime)
         {
             this->lastCheckTime = now;
-            PerfMonitorScope scope(this->GetPerfData());
+            PerfMonitorOperationGuard guard(this->StartPerfMonitor());
             this->value = this->Calculate();
         }
 

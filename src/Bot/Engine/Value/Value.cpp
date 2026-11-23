@@ -5,9 +5,15 @@
  */
 
 #include "Value.h"
+#include "AiObjectContext.h"
 #include "PerfMonitor.h"
 #include "Playerbots.h"
 #include "Timer.h"
+
+PerfMonitorOperation* StartValuePerfMonitor(AiObjectContext* context, std::string const& name)
+{
+    return sPerfMonitor.start(PERF_MON_VALUE, name, context ? &context->performanceStack : nullptr);
+}
 
 UnitCalculatedValue::UnitCalculatedValue(PlayerbotAI* botAI, std::string const name, int32 checkInterval)
     : CalculatedValue<Unit*>(botAI, name, checkInterval)

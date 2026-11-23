@@ -15,6 +15,7 @@
 #include "PerfMonitor.h"
 #include "JsonUtils.h"
 #include "Playerbots.h"
+#include <algorithm>
 #include <ctime>
 #include <sstream>
 
@@ -111,8 +112,13 @@ PerfMonitorOperation* PerfMonitor::start(PerformanceMetric metric, std::string c
         return nullptr;
 
     std::string stackName = name;
+    bool pushed = false;
 
-    if (stack)
+    // Recursive value evaluation (item usage asks item usage for a crafted
+    // output) must not grow the stack or create one entry per recursion path.
+    // Such calls are sampled under the plain name instead; the outer call is
+    // still attributed to its caller.
+    if (stack && std::find(stack->begin(), stack->end(), name) == stack->end())
     {
         if (!stack->empty())
         {
@@ -124,13 +130,14 @@ PerfMonitorOperation* PerfMonitor::start(PerformanceMetric metric, std::string c
 
             out << "]";
 
-            stackName = out.str().c_str();
+            stackName = out.str();
         }
 
         stack->push_back(name);
+        pushed = true;
     }
 
-    return new PerfMonitorOperation(GetOrCreate(metric, stackName), name, stack);
+    return new PerfMonitorOperation(GetOrCreate(metric, stackName), name, stack, pushed);
 }
 
 void PerfMonitor::PrintStats(bool perTick, bool fullStack)
@@ -497,8 +504,9 @@ void PerfMonitor::Reset()
 }
 
 PerfMonitorOperation::PerfMonitorOperation(PerformanceData* data, std::string const name,
-                                                         PerformanceStack* stack)
-    : data(data), name(name), stack(stack), started(Now())
+                                                         PerformanceStack* stack, bool pushed)
+    : data(data), name(name), stack(stack), stackSize(stack && pushed ? stack->size() - 1 : 0), pushed(pushed),
+      started(Now())
 {
 }
 
@@ -506,10 +514,9 @@ void PerfMonitorOperation::finish()
 {
     RecordSample(data, (Now() - started).count());
 
-    if (stack)
-    {
-        stack->erase(std::remove(stack->begin(), stack->end(), name), stack->end());
-    }
+    // The stack is LIFO; remove exactly this frame and any leaked nested ones.
+    if (pushed && stack && stack->size() >= stackSize)
+        stack->resize(stackSize);
 
     delete this;
 }

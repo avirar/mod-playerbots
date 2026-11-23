@@ -48,14 +48,35 @@ enum PerformanceMetric
 class PerfMonitorOperation
 {
 public:
-    PerfMonitorOperation(PerformanceData* data, std::string const name, PerformanceStack* stack);
+    PerfMonitorOperation(PerformanceData* data, std::string const name, PerformanceStack* stack, bool pushed);
     void finish();
 
 private:
     PerformanceData* data;
     std::string const name;
     PerformanceStack* stack;
+    std::size_t stackSize;
+    bool pushed;
     std::chrono::microseconds started;
+};
+
+// Keeps a sampled operation alive for the enclosing scope. `finish()` records
+// the sample and deletes the operation.
+class PerfMonitorOperationGuard
+{
+public:
+    explicit PerfMonitorOperationGuard(PerfMonitorOperation* operation = nullptr) : operation(operation) {}
+    ~PerfMonitorOperationGuard()
+    {
+        if (operation)
+            operation->finish();
+    }
+
+    PerfMonitorOperationGuard(PerfMonitorOperationGuard const&) = delete;
+    PerfMonitorOperationGuard& operator=(PerfMonitorOperationGuard const&) = delete;
+
+private:
+    PerfMonitorOperation* operation;
 };
 
 class PerfMonitorScope
@@ -84,8 +105,7 @@ public:
 
     static bool IsEnabled();
 
-    PerfMonitorOperation* start(PerformanceMetric metric, std::string const name,
-                                       PerformanceStack* stack = nullptr);
+    PerfMonitorOperation* start(PerformanceMetric metric, std::string const name, PerformanceStack* stack = nullptr);
     PerformanceData* acquire(PerformanceMetric metric, std::string const& name);
     static void CountBlock(PerformanceData* data);
     void PrintStats(bool perTick = false, bool fullStack = false);
