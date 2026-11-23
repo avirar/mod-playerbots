@@ -48,6 +48,11 @@ constexpr float HEALER_RESISTANCE_WEIGHT = 1.0f;
 constexpr float CASTER_THREAT_REDUCTION_WEIGHT = 4.0f;
 constexpr float CASTER_RESISTANCE_WEIGHT = 0.5f;
 constexpr float TANK_THREAT_REDUCTION_WEIGHT = -4.0f;
+
+// 1 HP5 = 0.05 stamina: downtime regeneration only, as food auras break when not seated.
+constexpr float HEALTH_REGENERATION_WEIGHT = 0.005f;
+// Mana regeneration floor for every mana class; healer/shaman spec weights stay higher.
+constexpr float MANA_REGENERATION_WEIGHT_FLOOR = 0.5f;
 }
 
 template <size_t Size>
@@ -301,6 +306,7 @@ void StatsWeightCalculator::GenerateBasicWeights(Player* player)
 {
     // Basic weights
     stats_weights_[STATS_TYPE_STAMINA] += 0.1f;
+    stats_weights_[STATS_TYPE_HEALTH_REGENERATION] += HEALTH_REGENERATION_WEIGHT;
     stats_weights_[STATS_TYPE_ARMOR] += 0.001f;
     stats_weights_[STATS_TYPE_BONUS] += 1.0f;
     stats_weights_[STATS_TYPE_MELEE_DPS] += 0.01f;
@@ -555,6 +561,13 @@ void StatsWeightCalculator::GenerateBasicWeights(Player* player)
         stats_weights_[STATS_TYPE_HASTE] += 2.3f;
         stats_weights_[STATS_TYPE_EXPERTISE] += 3.7f;
         // Weapon DPS is taken into account as part of Attack Power for Bear Druids.
+    }
+
+    // Every mana class values mana regeneration; healer and shaman weights above stay higher.
+    if (player->GetMaxPower(POWER_MANA) > 0 &&
+        stats_weights_[STATS_TYPE_MANA_REGENERATION] < MANA_REGENERATION_WEIGHT_FLOOR)
+    {
+        stats_weights_[STATS_TYPE_MANA_REGENERATION] = MANA_REGENERATION_WEIGHT_FLOOR;
     }
 }
 

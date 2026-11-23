@@ -72,7 +72,8 @@ public:
     StatsCollector(StatsCollector& stats) = default;
     void Reset();
     void CollectItemStats(ItemTemplate const* proto);
-    void CollectSpellStats(uint32 spellId, float multiplier = 1.0f, Milliseconds spellCooldown = -1ms);
+    void CollectSpellStats(uint32 spellId, float multiplier = 1.0f, Milliseconds spellCooldown = -1ms,
+                           uint8 depth = 0);
     void CollectEnchantStats(SpellItemEnchantmentEntry const* enchant, uint32 default_enchant_amount = 0, uint32 weaponDelay = 0, bool isRanged = false);
     bool CanBeTriggeredByType(SpellInfo const* spellInfo, uint32 procFlags, bool strict = true);
     bool CheckSpellValidation(uint32 spellFamilyName, flag96 spelFalimyFlags, bool strict = true);
@@ -90,7 +91,7 @@ private:
     bool SpecialEnchantFilter(uint32 enchantSpellId);
 
     void HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInfo const* spellInfo, float multiplier,
-                         bool canNextTrigger, Milliseconds triggerCooldown, bool permanent);
+                         bool canNextTrigger, Milliseconds triggerCooldown, bool permanent, uint8 depth);
     float AverageValue(SpellEffectInfo const& effectInfo, SpellInfo const* spellInfo);
 
 private:

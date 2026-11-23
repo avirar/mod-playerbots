@@ -19,6 +19,8 @@ namespace
 {
 // The magic schools resistance is counted for: fire, nature, frost, shadow and arcane
 constexpr uint32 MAGIC_RESISTANCE_SCHOOLS = MAX_SPELL_SCHOOL - SPELL_SCHOOL_FIRE;
+// Trigger chains longer than this are data loops; ConsumableUsePolicy uses the same limit.
+constexpr uint8 MAX_TRIGGER_DEPTH = 3;
 }
 
 StatsCollector::StatsCollector(CollectorType type, int32 cls, int32 lvl) : type_(type), cls_(cls), lvl_(lvl)
@@ -173,11 +175,11 @@ void StatsCollector::CollectItemStatValues(ItemTemplate const* proto, ScalingSta
     }
 }
 
-void StatsCollector::CollectSpellStats(uint32 spellId, float multiplier, Milliseconds spellCooldown)
+void StatsCollector::CollectSpellStats(uint32 spellId, float multiplier, Milliseconds spellCooldown, uint8 depth)
 {
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
 
-    if (!spellInfo)
+    if (!spellInfo || depth > MAX_TRIGGER_DEPTH)
         return;
 
     if (SpecialSpellFilter(spellId))
@@ -233,7 +235,8 @@ void StatsCollector::CollectSpellStats(uint32 spellId, float multiplier, Millise
         {
             case SPELL_EFFECT_APPLY_AURA:
             {
-                if (spellInfo->SpellFamilyName && /*effectInfo.ApplyAuraName != SPELL_AURA_DUMMY &&*/
+                // Potion-family spells (food, elixirs, scrolls) are class-neutral.
+                if (spellInfo->SpellFamilyName && spellInfo->SpellFamilyName != SPELLFAMILY_POTION &&
                     effectInfo.ApplyAuraName != SPELL_AURA_PROC_TRIGGER_SPELL)
                 {
                     if (!CheckSpellValidation(spellInfo->SpellFamilyName, effectInfo.SpellClassMask))
@@ -257,7 +260,7 @@ void StatsCollector::CollectSpellStats(uint32 spellId, float multiplier, Millise
 
                 multiplier *= coverage;
                 HandleApplyAura(effectInfo, spellInfo, multiplier, canNextTrigger, triggerCooldown,
-                                spellCooldown.count() <= 0);
+                                spellCooldown.count() <= 0, depth);
                 break;
             }
             case SPELL_EFFECT_HEAL:
@@ -303,6 +306,10 @@ void StatsCollector::CollectSpellStats(uint32 spellId, float multiplier, Millise
                 }
                 break;
             }
+            case SPELL_EFFECT_TRIGGER_SPELL:
+                if (effectInfo.TriggerSpell)
+                    CollectSpellStats(effectInfo.TriggerSpell, multiplier, spellCooldown, depth + 1);
+                break;
             default:
                 break;
         }
@@ -700,7 +707,7 @@ void StatsCollector::CollectMagicResistance(uint32 schoolMask, float val)
 }
 
 void StatsCollector::HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInfo const* spellInfo, float multiplier,
-                                     bool canNextTrigger, Milliseconds triggerCooldown, bool permanent)
+                                     bool canNextTrigger, Milliseconds triggerCooldown, bool permanent, uint8 depth)
 {
     if (effectInfo.Effect != SPELL_EFFECT_APPLY_AURA)
         return;
@@ -886,17 +893,29 @@ void StatsCollector::HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInf
         }
         case SPELL_AURA_MOD_POWER_REGEN:
         {
-            int32 powerType = effectInfo.MiscValue;
-            switch (powerType)
+            if (effectInfo.MiscValue != POWER_MANA)
+                break;
+
+            // Classic drinks encode the restore in a sibling PERIODIC_DUMMY; the core copies that
+            // amount onto this aura on the first tick (AuraEffect::UpdatePeriodic).
+            if (effectInfo.BasePoints == -1)
             {
-                case POWER_MANA:
-                    stats[STATS_TYPE_MANA_REGENERATION] += val * multiplier;
-                    break;
-                default:
-                    break;
+                for (SpellEffectInfo const& other : spellInfo->Effects)
+                {
+                    if (other.Effect == SPELL_EFFECT_APPLY_AURA && other.ApplyAuraName == SPELL_AURA_PERIODIC_DUMMY)
+                    {
+                        val = int32(AverageValue(other, spellInfo));
+                        break;
+                    }
+                }
             }
+
+            stats[STATS_TYPE_MANA_REGENERATION] += val * multiplier;
             break;
         }
+        case SPELL_AURA_MOD_REGEN:
+            stats[STATS_TYPE_HEALTH_REGENERATION] += val * multiplier;
+            break;
         case SPELL_AURA_MOD_INCREASE_HEALTH_2:
             // Same as SPELL_AURA_MOD_INCREASE_HEALTH: flat max health -> stamina (15 hp per stamina)
             stats[STATS_TYPE_STAMINA] += val * multiplier / 15;
@@ -904,19 +923,19 @@ void StatsCollector::HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInf
         case SPELL_AURA_PROC_TRIGGER_SPELL:
         {
             if (canNextTrigger)
-                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown);
+                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown, depth + 1);
             break;
         }
         case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
         {
             if (canNextTrigger)
-                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown);
+                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown, depth + 1);
             break;
         }
         case SPELL_AURA_ADD_TARGET_TRIGGER:
         {
             if (canNextTrigger)
-                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown);
+                CollectSpellStats(effectInfo.TriggerSpell, multiplier, triggerCooldown, depth + 1);
             break;
         }
         case SPELL_AURA_MOD_CRIT_DAMAGE_BONUS:
