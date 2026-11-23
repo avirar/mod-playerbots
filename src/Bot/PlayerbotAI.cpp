@@ -2071,6 +2071,25 @@ bool PlayerbotAI::IsCaster(Player* player, bool bySpec)
     return IsRanged(player, bySpec) && player->getClass() != CLASS_HUNTER;
 }
 
+bool PlayerbotAI::IsManaClass(Player* player)
+{
+    if (!player)
+        return false;
+
+    switch (player->getClass())
+    {
+        case CLASS_DRUID:
+        case CLASS_MAGE:
+        case CLASS_PALADIN:
+        case CLASS_PRIEST:
+        case CLASS_SHAMAN:
+        case CLASS_WARLOCK:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool PlayerbotAI::IsCombo(Player* player)
 {
     // int tab = AiFactory::GetPlayerSpecTab(player);

@@ -468,6 +468,8 @@ public:
     static bool IsRanged(Player* player, bool bySpec = false);
     static bool IsMelee(Player* player, bool bySpec = false);
     static bool IsCaster(Player* player, bool bySpec = false);
+    // Class uses mana at all, independent of gear, current power and shapeshift form.
+    static bool IsManaClass(Player* player);
     static bool IsRangedDps(Player* player, bool bySpec = false);
     static bool IsCombo(Player* player);
     static ObjectGuid GetMainTankGuid(Group* group);

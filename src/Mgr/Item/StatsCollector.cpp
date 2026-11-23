@@ -712,6 +712,10 @@ void StatsCollector::HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInf
     if (effectInfo.Effect != SPELL_EFFECT_APPLY_AURA)
         return;
 
+    // Items are scored for the bot itself; pet-only buffs (pet treats) do not apply to it.
+    if (effectInfo.TargetA.GetTarget() == TARGET_UNIT_PET)
+        return;
+
     int32 val = AverageValue(effectInfo, spellInfo);
 
     switch (effectInfo.ApplyAuraName)

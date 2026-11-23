@@ -564,7 +564,7 @@ void StatsWeightCalculator::GenerateBasicWeights(Player* player)
     }
 
     // Every mana class values mana regeneration; healer and shaman weights above stay higher.
-    if (player->GetMaxPower(POWER_MANA) > 0 &&
+    if (PlayerbotAI::IsManaClass(player) &&
         stats_weights_[STATS_TYPE_MANA_REGENERATION] < MANA_REGENERATION_WEIGHT_FLOOR)
     {
         stats_weights_[STATS_TYPE_MANA_REGENERATION] = MANA_REGENERATION_WEIGHT_FLOOR;
