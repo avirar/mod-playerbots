@@ -66,6 +66,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "StatsWeightCalculator.h"
 #include "Transport.h"
 #include "Unit.h"
 #include "UpdateTime.h"
@@ -5648,7 +5649,8 @@ bool PlayerbotAI::IsMapThreadQuery(std::string const& command)
 {
     return command == "inventory" || command.rfind("inventory ", 0) == 0 || command == "spells" ||
            command.rfind("spells ", 0) == 0 || command == "professions" ||
-           command.rfind("professions ", 0) == 0 || command.rfind("item usage ", 0) == 0;
+           command.rfind("professions ", 0) == 0 || command.rfind("item usage ", 0) == 0 ||
+           command.rfind("calc ", 0) == 0;
 }
 
 std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
@@ -5845,6 +5847,17 @@ std::string const PlayerbotAI::HandleRemoteCommandDirect(std::string const comma
 
         ItemUsage const usage = GetAiObjectContext()->GetValue<ItemUsage>("item usage", itemId)->Get();
         return std::to_string(itemId) + " " + proto->Name1 + " usage " + std::to_string(uint32(usage));
+    }
+    else if (command.rfind("calc ", 0) == 0)
+    {
+        uint32 const itemId = uint32(atoi(command.substr(5).c_str()));
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
+        if (!proto)
+            return "unknown item";
+
+        StatsWeightCalculator calculator(bot);
+        return std::to_string(itemId) + " " + proto->Name1 + " score " +
+               std::to_string(calculator.CalculateItem(itemId));
     }
     else if (command == "budget")
     {
