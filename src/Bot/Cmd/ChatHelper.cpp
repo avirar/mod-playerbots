@@ -432,6 +432,37 @@ std::string const ChatHelper::FormatSpell(SpellInfo const* spellInfo)
     return out.str();
 }
 
+// Recipes link with |Henchant: and the client renders them as "<Profession>: <Recipe>".
+std::string const ChatHelper::FormatRecipeLink(SpellInfo const* spellInfo, uint32 skillLine)
+{
+    if (!spellInfo)
+        return "";
+
+    LocaleConstant const locale = sWorld->GetDefaultDbcLocale();
+    std::string spellName;
+    if (spellInfo->SpellName[locale] && spellInfo->SpellName[locale][0])
+        spellName = spellInfo->SpellName[locale];
+    else if (spellInfo->SpellName[LOCALE_enUS])
+        spellName = spellInfo->SpellName[LOCALE_enUS];
+
+    std::string display = spellName;
+    if (SkillLineEntry const* skill = sSkillLineStore.LookupEntry(skillLine))
+    {
+        std::string profession;
+        if (skill->name[locale] && skill->name[locale][0])
+            profession = skill->name[locale];
+        else if (skill->name[LOCALE_enUS])
+            profession = skill->name[LOCALE_enUS];
+
+        if (!profession.empty() && !spellName.empty())
+            display = profession + ": " + spellName;
+    }
+
+    std::ostringstream out;
+    out << "|cffffd000|Henchant:" << spellInfo->Id << "|h[" << display << "]|h|r";
+    return out.str();
+}
+
 // The recipe field of a |Htrade: link: one bit per skill line entry, six per character, least significant bit first,
 // in standard base64 without padding.
 std::string ChatHelper::EncodeRecipeBits(std::vector<bool> const& known)

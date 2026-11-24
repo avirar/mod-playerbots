@@ -59,6 +59,7 @@ struct ProfessionRecipe
     uint32 reagentItems = 0;
     float efficiency = 0.0f;
     uint8 usefulRank = 255;
+    ItemUsage usage = ITEM_USAGE_NONE;
     uint32 spellFocus = 0;
     bool useful = false;
     bool noItemSpell = false;  // enchanting: target a bag item instead of creating one
@@ -146,47 +147,236 @@ uint32 GetProfessionSkillLine(uint32 spellId)
     return 0;
 }
 
+struct PlanTreeNode
+{
+    uint32 itemId = 0;
+    uint32 count = 0;
+    uint32 spellId = 0;
+    uint32 skillLine = 0;
+    bool buy = false;
+    std::vector<PlanTreeNode> children;
+};
+
+void MergePlanNode(std::vector<PlanTreeNode>& level, PlanTreeNode const& node)
+{
+    for (PlanTreeNode& existing : level)
+    {
+        if (existing.itemId != node.itemId || existing.spellId != node.spellId || existing.buy != node.buy)
+            continue;
+
+        existing.count += node.count;
+        for (PlanTreeNode const& child : node.children)
+            MergePlanNode(existing.children, child);
+        return;
+    }
+
+    level.push_back(node);
+}
+
+// Rebuilds the dependency tree from the flat, post-order pendingCrafts list: every step
+// appears after the steps that produced its reagents, so produced items can be matched
+// to the next consumer that needs them.
+class PlanTreeBuilder
+{
+public:
+    explicit PlanTreeBuilder(std::vector<NewRpgInfo::DoProfessions::CraftStep> const& steps) : _steps(steps) {}
+
+    PlanTreeNode Build(ProfessionRecipe const& recipe)
+    {
+        for (NewRpgInfo::DoProfessions::CraftStep const& step : _steps)
+            AddStep(step);
+
+        PlanTreeNode root;
+        root.spellId = recipe.spellId;
+        root.itemId = recipe.outputItemId;
+        root.count = std::max<uint32>(1, recipe.outputCount);
+        root.skillLine = recipe.skillLine ? recipe.skillLine : GetProfessionSkillLine(recipe.spellId);
+
+        for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
+            if (recipe.reagentCounts[i])
+                Consume(recipe.reagents[i], recipe.reagentCounts[i], root.children);
+
+        return root;
+    }
+
+private:
+    void AddStep(NewRpgInfo::DoProfessions::CraftStep const& step)
+    {
+        SpellCraftInfo const* craft = step.spellId ? SpellCraftCatalog::Instance().Get(step.spellId) : nullptr;
+
+        PlanTreeNode node;
+        node.spellId = step.spellId;
+        node.skillLine = step.skillLine ? step.skillLine : GetProfessionSkillLine(step.spellId);
+        node.buy = step.spellId == 0;
+
+        if (node.buy)
+        {
+            node.itemId = step.expectedItemId;
+            node.count = std::max<uint32>(1, step.inputCount);
+        }
+        else
+        {
+            node.itemId = step.expectedItemId;
+            if (!node.itemId && craft)
+                node.itemId = craft->outputItemId;
+            node.count = craft && craft->outputCount ? craft->outputCount : 1;
+
+            if (step.inputItemId)
+                Consume(step.inputItemId, std::max<uint32>(1, step.inputCount), node.children);
+            else if (craft)
+            {
+                for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
+                    if (craft->reagentCounts[i])
+                        Consume(craft->reagents[i], craft->reagentCounts[i], node.children);
+            }
+        }
+
+        size_t const index = _nodes.size();
+        _nodes.push_back(std::move(node));
+        _remaining.push_back(_nodes.back().count);
+        _attached.push_back(false);
+
+        if (_nodes.back().itemId)
+            _supplies[_nodes.back().itemId].push_back(index);
+    }
+
+    void Consume(uint32 itemId, uint32 count, std::vector<PlanTreeNode>& children)
+    {
+        auto const supply = _supplies.find(itemId);
+        if (supply == _supplies.end() || !count)
+            return;
+
+        std::vector<size_t> used;
+        auto& stack = supply->second;
+        while (count > 0 && !stack.empty())
+        {
+            size_t const index = stack.back();
+            if (!_remaining[index])
+            {
+                stack.pop_back();
+                continue;
+            }
+
+            uint32 const taken = std::min(count, _remaining[index]);
+            _remaining[index] -= taken;
+            count -= taken;
+            used.push_back(index);
+
+            if (!_remaining[index])
+                stack.pop_back();
+        }
+
+        // The stack is consumed newest first; attach in chronological order.
+        for (auto it = used.rbegin(); it != used.rend(); ++it)
+        {
+            if (_attached[*it])
+                continue;
+
+            _attached[*it] = true;
+            MergePlanNode(children, _nodes[*it]);
+        }
+    }
+
+    std::vector<NewRpgInfo::DoProfessions::CraftStep> const& _steps;
+    std::vector<PlanTreeNode> _nodes;
+    std::vector<uint32> _remaining;
+    std::vector<bool> _attached;
+    std::unordered_map<uint32, std::vector<size_t>> _supplies;
+};
+
+std::string FormatPlanNode(PlanTreeNode const& node)
+{
+    std::string text;
+    if (node.spellId)
+    {
+        if (SpellInfo const* spell = sSpellMgr->GetSpellInfo(node.spellId))
+            text = ChatHelper::FormatRecipeLink(spell, node.skillLine);
+        else
+            text = std::to_string(node.spellId);
+    }
+    else if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(node.itemId))
+        text = ChatHelper::FormatItem(proto);
+    else
+        text = std::to_string(node.itemId);
+
+    if (node.count > 1)
+        text += " x" + std::to_string(node.count);
+
+    if (node.buy)
+        text += " (Buy)";
+
+    return text;
+}
+
+void AppendPlanTree(std::vector<std::string>& lines, PlanTreeNode const& node, uint32 level)
+{
+    for (PlanTreeNode const& child : node.children)
+    {
+        lines.push_back(std::string(level, '>') + ' ' + FormatPlanNode(child));
+        AppendPlanTree(lines, child, level + 1);
+    }
+}
+
+std::string GetCraftReason(ProfessionRecipe const& recipe)
+{
+    if (!recipe.useful)
+        return PlayerbotTextMgr::instance().GetBotTextOrDefault("rpg_professions_reason_skillup", "skill up", {});
+
+    char const* key = "rpg_professions_reason_useful";
+    char const* fallback = "needed item";
+    switch (recipe.usage)
+    {
+        case ITEM_USAGE_EQUIP:
+        case ITEM_USAGE_REPLACE:
+        case ITEM_USAGE_BAD_EQUIP:
+        case ITEM_USAGE_BROKEN_EQUIP:
+            key = "rpg_professions_reason_equip";
+            fallback = "equip";
+            break;
+        case ITEM_USAGE_USE:
+            key = "rpg_professions_reason_use";
+            fallback = "consumable";
+            break;
+        case ITEM_USAGE_QUEST:
+            key = "rpg_professions_reason_quest";
+            fallback = "quest item";
+            break;
+        case ITEM_USAGE_GUILD_TASK:
+            key = "rpg_professions_reason_guild_task";
+            fallback = "guild task";
+            break;
+        case ITEM_USAGE_AMMO:
+            key = "rpg_professions_reason_ammo";
+            fallback = "ammo";
+            break;
+        case ITEM_USAGE_KEEP:
+            key = "rpg_professions_reason_weapon_enchant";
+            fallback = "weapon enchant";
+            break;
+        default:
+            break;
+    }
+
+    return PlayerbotTextMgr::instance().GetBotTextOrDefault(key, fallback, {});
+}
+
 void AnnounceProfessionPlan(PlayerbotAI* botAI, ProfessionRecipe const& recipe,
                             NewRpgInfo::DoProfessions const& data)
 {
-    std::string itemText;
-    if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(recipe.outputItemId))
-        itemText = botAI->GetChatHelper()->FormatItem(item);
-    else if (SpellInfo const* spell = sSpellMgr->GetSpellInfo(recipe.spellId))
-        itemText = spell->SpellName[0];
-    else
-        itemText = std::to_string(recipe.spellId);
+    PlanTreeBuilder builder(data.pendingCrafts);
+    PlanTreeNode const root = builder.Build(recipe);
 
-    std::ostringstream steps;
-    bool first = true;
-    for (NewRpgInfo::DoProfessions::CraftStep const& step : data.pendingCrafts)
-    {
-        if (!first)
-            steps << " -> ";
-        first = false;
+    // Each tree line is its own whisper so the chat frame gives every line the
+    // sender prefix and timestamp; an embedded newline would not.
+    if (!botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+            "rpg_professions_plan", "Crafting %item (%reason).",
+            {{"%item", FormatPlanNode(root)}, {"%reason", GetCraftReason(recipe)}, {"%steps", ""}})))
+        return;
 
-        uint32 itemId = step.expectedItemId;
-        if (!itemId && step.spellId)
-        {
-            if (SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(step.spellId))
-                itemId = craft->outputItemId;
-        }
-
-        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId))
-            steps << proto->Name1;
-        else if (SpellInfo const* spell = sSpellMgr->GetSpellInfo(step.spellId))
-            steps << spell->SpellName[0];
-        else
-            steps << "vendor item";
-    }
-
-    std::string stepsText = steps.str();
-    if (stepsText.empty())
-        stepsText = "direct";
-
-    botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
-        "rpg_professions_plan", "Crafting %item. Plan: %steps.",
-        {{"%item", itemText}, {"%steps", stepsText}}));
+    std::vector<std::string> lines;
+    AppendPlanTree(lines, root, 1);
+    for (std::string const& line : lines)
+        botAI->TellMasterNoFacing(line);
 }
 
 // Dismount/shapeshift only once the bot is at the casting spot. Flight Form sets
@@ -1524,6 +1714,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         bool useful = false;
         bool marketable = false;
         uint8 usefulRank = 255;
+        ItemUsage usage = ITEM_USAGE_NONE;
         // Only the session's profession can be the final craft; other professions'
         // recipes stay available as planned dependencies without an item usage scan.
         if (matchedSkillLine && outputItemId)
@@ -1532,7 +1723,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
             if (!proto)
                 continue;
 
-            ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
+            usage = AI_VALUE2(ItemUsage, "item usage", outputItemId);
             usefulRank = ProfessionUsefulPolicy::GetUsefulRank(botAI, proto, usage);
             useful = usefulRank != 255;
         }
@@ -1569,6 +1760,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         recipe.reagentItems = reagentItems;
         recipe.efficiency = float(std::max(0, chance)) / 1000.0f / float(std::max<uint32>(1, reagentItems));
         recipe.usefulRank = usefulRank;
+        recipe.usage = usage;
         recipe.spellFocus = craft->requiresSpellFocus;
         recipe.useful = useful;
         recipe.noItemSpell = noItemSpell;

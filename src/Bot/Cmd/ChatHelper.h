@@ -47,6 +47,7 @@ public:
     static std::string const FormatItem(ItemTemplate const* proto, uint32 count = 0, uint32 total = 0);
     static std::string const FormatQItem(uint32 itemId);
     static std::string const FormatSpell(SpellInfo const* spellInfo);
+    static std::string const FormatRecipeLink(SpellInfo const* spellInfo, uint32 skillLine = 0);
     static std::string const FormatProfessionLink(Player* player, uint32 skill);
     static std::string const FormatGameobject(GameObject* go);
     static std::string const FormatWorldobject(WorldObject* wo);
