@@ -7,6 +7,7 @@
 #include "StatsCollector.h"
 #include "DBCStores.h"
 #include "ItemTemplate.h"
+#include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIAware.h"
 #include "SharedDefines.h"
@@ -23,7 +24,8 @@ constexpr uint32 MAGIC_RESISTANCE_SCHOOLS = MAX_SPELL_SCHOOL - SPELL_SCHOOL_FIRE
 constexpr uint8 MAX_TRIGGER_DEPTH = 3;
 }
 
-StatsCollector::StatsCollector(CollectorType type, int32 cls, int32 lvl) : type_(type), cls_(cls), lvl_(lvl)
+StatsCollector::StatsCollector(CollectorType type, int32 cls, int32 lvl, Player* player)
+    : type_(type), cls_(cls), lvl_(lvl), player_(player)
 {
     Reset();
 }
@@ -920,6 +922,29 @@ void StatsCollector::HandleApplyAura(SpellEffectInfo const& effectInfo, SpellInf
         case SPELL_AURA_MOD_REGEN:
             stats[STATS_TYPE_HEALTH_REGENERATION] += val * multiplier;
             break;
+        case SPELL_AURA_OBS_MOD_HEALTH:
+        case SPELL_AURA_OBS_MOD_POWER:
+        {
+            if (!player_ || val <= 0)
+                break;
+            if (effectInfo.ApplyAuraName == SPELL_AURA_OBS_MOD_POWER && effectInfo.MiscValue != POWER_MANA)
+                break;
+
+            // Percentage-of-pool regeneration is stored as a per-tick amount. Convert it
+            // using the bot's actual pool and the spell's tick count.
+            int32 const duration = spellInfo->GetDuration();
+            uint32 const amplitude = effectInfo.Amplitude ? effectInfo.Amplitude : 1000;
+            float const ticks = duration > 0 ? float(duration) / float(amplitude) : 1.0f;
+            float const pool = effectInfo.ApplyAuraName == SPELL_AURA_OBS_MOD_HEALTH
+                                   ? float(player_->GetMaxHealth())
+                                   : float(player_->GetMaxPower(POWER_MANA));
+            float const amount = pool * float(val) / 100.0f * ticks * multiplier;
+            if (effectInfo.ApplyAuraName == SPELL_AURA_OBS_MOD_HEALTH)
+                stats[STATS_TYPE_HEALTH_REGENERATION] += amount;
+            else
+                stats[STATS_TYPE_MANA_REGENERATION] += amount;
+            break;
+        }
         case SPELL_AURA_MOD_INCREASE_HEALTH_2:
             // Same as SPELL_AURA_MOD_INCREASE_HEALTH: flat max health -> stamina (15 hp per stamina)
             stats[STATS_TYPE_STAMINA] += val * multiplier / 15;
