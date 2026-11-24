@@ -19,6 +19,7 @@
 
 #include "Bag.h"
 #include "BudgetValues.h"
+#include "ChatHelper.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
@@ -34,6 +35,7 @@
 #include "ObjectDefines.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
 #include "SpellCraftCatalog.h"
@@ -142,6 +144,49 @@ uint32 GetProfessionSkillLine(uint32 spellId)
             return ability->SkillLine;
     }
     return 0;
+}
+
+void AnnounceProfessionPlan(PlayerbotAI* botAI, ProfessionRecipe const& recipe,
+                            NewRpgInfo::DoProfessions const& data)
+{
+    std::string itemText;
+    if (ItemTemplate const* item = sObjectMgr->GetItemTemplate(recipe.outputItemId))
+        itemText = botAI->GetChatHelper()->FormatItem(item);
+    else if (SpellInfo const* spell = sSpellMgr->GetSpellInfo(recipe.spellId))
+        itemText = spell->SpellName[0];
+    else
+        itemText = std::to_string(recipe.spellId);
+
+    std::ostringstream steps;
+    bool first = true;
+    for (NewRpgInfo::DoProfessions::CraftStep const& step : data.pendingCrafts)
+    {
+        if (!first)
+            steps << " -> ";
+        first = false;
+
+        uint32 itemId = step.expectedItemId;
+        if (!itemId && step.spellId)
+        {
+            if (SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(step.spellId))
+                itemId = craft->outputItemId;
+        }
+
+        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId))
+            steps << proto->Name1;
+        else if (SpellInfo const* spell = sSpellMgr->GetSpellInfo(step.spellId))
+            steps << spell->SpellName[0];
+        else
+            steps << "vendor item";
+    }
+
+    std::string stepsText = steps.str();
+    if (stepsText.empty())
+        stepsText = "direct";
+
+    botAI->TellMasterNoFacing(PlayerbotTextMgr::instance().GetBotTextOrDefault(
+        "rpg_professions_plan", "Crafting %item. Plan: %steps.",
+        {{"%item", itemText}, {"%steps", stepsText}}));
 }
 
 // Dismount/shapeshift only once the bot is at the casting spot. Flight Form sets
@@ -1621,6 +1666,7 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 planNeeded = true;
                 data.pendingCrafts = std::move(steps);
                 data.planRequired = std::move(required);
+                AnnounceProfessionPlan(botAI, recipe, data);
                 LOG_DEBUG("playerbots", "[New RPG] {} professions planned {} steps for recipe {} (skill {})",
                           bot->GetName(), data.pendingCrafts.size(), recipe.spellId, data.skillLine);
                 return true;
@@ -1687,6 +1733,9 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (planNeeded)
         return true;
+
+    if (chosen->spellId != data.spellId)
+        AnnounceProfessionPlan(botAI, *chosen, data);
 
     switch (EnsureSpellFocus(data, chosen->spellFocus))
     {
