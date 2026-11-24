@@ -5540,6 +5540,8 @@ std::string PlayerbotAI::DescribeInventory(std::string const& filter) const
 
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
         addItem(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+        addItem(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
     for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
         if (Bag* bag = bot->GetBagByPos(bagSlot))
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)

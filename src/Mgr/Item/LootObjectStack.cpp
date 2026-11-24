@@ -10,6 +10,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Playerbots.h"
+#include "SkeletonKey.h"
 #include "Unit.h"
 
 #define MAX_LOOT_OBJECT_COUNT 200
@@ -217,18 +218,34 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
                         _hasUnsupportedLockRequirement = true;
                     break;
                 case LOCK_KEY_SKILL:
+                {
                     if (!lockInfo->Index[i])
                     {
                         _hasUnsupportedLockRequirement = true;
                         break;
                     }
 
+                    uint32 const lockType = lockInfo->Index[i];
+                    uint32 const requiredSkill = std::max(1u, lockInfo->Skill[i]);
                     if (goId == 13891 || goId == 19535)
-                        AddLockRequirement({SKILL_NONE, 0, 0, lockInfo->Index[i]});
-                    else
-                        AddLockRequirement({uint32(SkillByLockType(LockType(lockInfo->Index[i]))),
-                                            std::max(1u, lockInfo->Skill[i]), 0, lockInfo->Index[i]});
+                    {
+                        AddLockRequirement({SKILL_NONE, 0, 0, lockType});
+                        break;
+                    }
+
+                    SkillType const requiredSkillId = SkillByLockType(LockType(lockType));
+                    AddLockRequirement({uint32(requiredSkillId), requiredSkill, 0, lockType});
+
+                    // A skeleton key can stand in for a Lockpicking skill the bot lacks.
+                    // Prefer the lowest-cap key it can actually use.
+                    if (requiredSkillId == SKILL_LOCKPICKING && lockType == LOCKTYPE_PICKLOCK &&
+                        (!botAI->HasSkill(requiredSkillId) || bot->GetSkillValue(requiredSkillId) < requiredSkill))
+                    {
+                        if (Item* key = SkeletonKey::FindForLock(bot, requiredSkill, lockType))
+                            AddLockRequirement({SKILL_NONE, 0, key->GetEntry(), lockType});
+                    }
                     break;
+                }
                 case LOCK_KEY_NONE:
                     break;
                 default:
@@ -352,7 +369,11 @@ bool LootObject::IsLootPossible(Player* bot)
     auto canUseRequirement = [bot, botAI](LootLockRequirement const& requirement)
     {
         if (requirement.ReqItem)
-            return bot->HasItemCount(requirement.ReqItem, 1);
+        {
+            ItemTemplate const* keyProto = sObjectMgr->GetItemTemplate(requirement.ReqItem);
+            return keyProto && bot->HasItemCount(requirement.ReqItem, 1, false) &&
+                   bot->CanUseItem(keyProto) == EQUIP_ERR_OK;
+        }
 
         if (requirement.SkillId == SKILL_NONE)
             return true;

@@ -22,6 +22,7 @@
 #include "ProfessionStockPolicy.h"
 #include "ProfessionUsefulPolicy.h"
 #include "QuestDef.h"
+#include "SkeletonKey.h"
 
 namespace
 {
@@ -95,7 +96,8 @@ bool IsLegacyTotemItem(ItemTemplate const* proto)
 
 bool IsAlwaysKeptContainer(ItemTemplate const* proto)
 {
-    if (proto->Class == ITEM_CLASS_KEY)
+    // Keyring items include skeleton keys, which are class 0 in item_template.
+    if (SkeletonKey::IsKeyItem(proto))
         return true;
 
     if (proto->Class != ITEM_CLASS_CONTAINER && proto->Class != ITEM_CLASS_QUIVER)

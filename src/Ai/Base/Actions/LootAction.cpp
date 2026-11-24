@@ -188,6 +188,8 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
         if (!key)
             return false;
 
+        LOG_DEBUG("playerbots", "[New RPG] {} using key {} on loot object {}", bot->GetName(), key->GetEntry(),
+                  lootObject.guid.ToString());
         UseItemAction useItem(botAI);
         return useItem.UseItemOnGameObject(key, lootObject.guid);
     }

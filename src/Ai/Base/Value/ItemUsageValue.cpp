@@ -27,6 +27,7 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
+#include "SkeletonKey.h"
 #include "SpellCraftCatalog.h"
 #include "SpellMgr.h"
 #include "StatsWeightCalculator.h"
@@ -404,7 +405,7 @@ ItemUsage ItemUsageValue::CalculateInternal(ParsedItemUsage const& parsed)
         }
     }
 
-    if (proto->Class == ITEM_CLASS_KEY)
+    if (SkeletonKey::IsKeyItem(proto))
         return ITEM_USAGE_USE;
 
     const uint32_t maxCount = proto->MaxCount;

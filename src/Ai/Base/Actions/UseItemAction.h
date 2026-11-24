@@ -26,11 +26,11 @@ public:
     bool Execute(Event event) override;
     bool isPossible() override;
     bool UseItemOnGameObject(Item* item, ObjectGuid go);
+    bool UseItemOnItem(Item* item, Item* itemTarget);
 
 protected:
     std::string itemName;
     bool UseItemAuto(Item* item);
-    bool UseItemOnItem(Item* item, Item* itemTarget);
     bool UseItem(Item* item, ObjectGuid go, Item* itemTarget, Unit* unitTarget = nullptr);
     bool UseGameObject(ObjectGuid guid);
     void TellConsumableUse(Item* item, std::string const action, float percent);
