@@ -125,8 +125,11 @@ bool CanBuyNearby(PlayerbotAI* botAI, NearbyVendorIndex& index, uint32 itemId, u
     return false;
 }
 
-// A missing reagent is acceptable when another known recipe in the same skill line crafts it.
-bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVendorIndex& vendorIndex, uint8 depth)
+// A missing reagent is acceptable when any known profession recipe crafts it.
+// The final recipe still has to belong to the skill line being evaluated, but an
+// intermediate may come from another profession (mining smelting for
+// blacksmithing bars, alchemy transmutes, ...).
+bool CanCraftItem(PlayerbotAI* botAI, uint32 itemId, NearbyVendorIndex& vendorIndex, uint8 depth)
 {
     if (depth > 2)
         return false;
@@ -140,20 +143,18 @@ bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVen
         SpellCraftInfo const* craft = SpellCraftCatalog::Instance().Get(spellId);
         if (!craft ||
             std::find(craft->outputItemIds.begin(), craft->outputItemIds.end(), itemId) == craft->outputItemIds.end())
-            {
             continue;
-        }
 
-        bool matchedSkillLine = false;
+        bool hasUsableProfession = false;
         for (SpellCraftAbility const& ability : craft->abilities)
         {
-            if (ability.skillLine == skillLine)
+            if (IsProfessionSkill(ability.skillLine) && bot->HasSkill(SkillType(ability.skillLine)))
             {
-                matchedSkillLine = true;
+                hasUsableProfession = true;
                 break;
             }
         }
-        if (!matchedSkillLine)
+        if (!hasUsableProfession)
             continue;
 
         bool hasAnyReagent = false;
@@ -170,7 +171,7 @@ bool CanCraftItem(PlayerbotAI* botAI, uint32 skillLine, uint32 itemId, NearbyVen
                 continue;
             if (CanBuyNearby(botAI, vendorIndex, craft->reagents[r], needed - have))
                 continue;
-            if (depth < 2 && CanCraftItem(botAI, skillLine, craft->reagents[r], vendorIndex, depth + 1))
+            if (depth < 2 && CanCraftItem(botAI, craft->reagents[r], vendorIndex, depth + 1))
                 continue;
 
             canCraft = false;
@@ -253,7 +254,7 @@ bool HasCraftableProfessionRecipe(PlayerbotAI* botAI, uint32 skillLine, NearbyVe
             hasReagents = false;
             uint32 const missing = craft->reagentCounts[r] - have;
             if (!CanBuyNearby(botAI, vendorIndex, craft->reagents[r], missing) &&
-                !CanCraftItem(botAI, skillLine, craft->reagents[r], vendorIndex, 0))
+                !CanCraftItem(botAI, craft->reagents[r], vendorIndex, 0))
                 vendorReagents = false;
         }
         if (!hasAnyReagent || (!hasReagents && !vendorReagents))
