@@ -132,6 +132,8 @@ struct NewRpgInfo
             ObjectGuid vendorGuid{};   // buy steps only
             uint32 skillLine{0};       // profession of spellId; 0 falls back to the session
             ProfessionCraftPurpose purpose{ProfessionCraftPurpose::Intermediate};
+            float expectedYield{0.0f};  // conversion: probability-weighted items per cast
+            bool variableYield{false};  // conversion: yield is not guaranteed per cast
         };
 
         uint32 skillLine{0};

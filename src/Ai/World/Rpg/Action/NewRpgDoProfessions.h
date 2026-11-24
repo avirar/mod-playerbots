@@ -31,6 +31,10 @@ private:
     bool RunPendingCrafts(NewRpgInfo::DoProfessions& data);
     SpellFocusState EnsureSpellFocus(NewRpgInfo::DoProfessions& data, uint32 spellFocus);
     void FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data, ProfessionEndReason reason);
+
+    // A conversion's loot can unlock a better recipe; re-select before the next pending step.
+    bool _planDirty{false};
+    uint32 _planSpellId{0};
 };
 
 #endif

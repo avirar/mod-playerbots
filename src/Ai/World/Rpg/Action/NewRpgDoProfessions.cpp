@@ -150,7 +150,10 @@ uint32 GetProfessionSkillLine(uint32 spellId)
 struct PlanTreeNode
 {
     uint32 itemId = 0;
-    uint32 count = 0;
+    uint32 casts = 0;
+    uint32 outputCount = 1;  // guaranteed items per cast, used for dependency accounting
+    float expectedYield = 1.0f;
+    bool variableYield = false;
     uint32 spellId = 0;
     uint32 skillLine = 0;
     bool buy = false;
@@ -164,7 +167,8 @@ void MergePlanNode(std::vector<PlanTreeNode>& level, PlanTreeNode const& node)
         if (existing.itemId != node.itemId || existing.spellId != node.spellId || existing.buy != node.buy)
             continue;
 
-        existing.count += node.count;
+        existing.casts += node.casts;
+        existing.variableYield = existing.variableYield || node.variableYield;
         for (PlanTreeNode const& child : node.children)
             MergePlanNode(existing.children, child);
         return;
@@ -189,7 +193,9 @@ public:
         PlanTreeNode root;
         root.spellId = recipe.spellId;
         root.itemId = recipe.outputItemId;
-        root.count = std::max<uint32>(1, recipe.outputCount);
+        root.casts = 1;
+        root.outputCount = std::max<uint32>(1, recipe.outputCount);
+        root.expectedYield = float(root.outputCount);
         root.skillLine = recipe.skillLine ? recipe.skillLine : GetProfessionSkillLine(recipe.spellId);
 
         for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
@@ -212,17 +218,25 @@ private:
         if (node.buy)
         {
             node.itemId = step.expectedItemId;
-            node.count = std::max<uint32>(1, step.inputCount);
+            node.casts = std::max<uint32>(1, step.inputCount);
         }
         else
         {
             node.itemId = step.expectedItemId;
             if (!node.itemId && craft)
                 node.itemId = craft->outputItemId;
-            node.count = craft && craft->outputCount ? craft->outputCount : 1;
+            node.casts = 1;
+            node.outputCount = craft && craft->outputCount ? craft->outputCount : 1;
+            node.expectedYield = float(node.outputCount);
 
             if (step.inputItemId)
+            {
+                node.expectedYield = step.expectedYield > 0.0f ? step.expectedYield : 1.0f;
+                node.variableYield = step.variableYield;
+                // Dependency accounting stays integral; the display shows the float yield.
+                node.outputCount = std::max<uint32>(1, uint32(node.expectedYield));
                 Consume(step.inputItemId, std::max<uint32>(1, step.inputCount), node.children);
+            }
             else if (craft)
             {
                 for (uint8 i = 0; i < MAX_SPELL_REAGENTS; ++i)
@@ -233,7 +247,7 @@ private:
 
         size_t const index = _nodes.size();
         _nodes.push_back(std::move(node));
-        _remaining.push_back(_nodes.back().count);
+        _remaining.push_back(_nodes.back().casts * _nodes.back().outputCount);
         _attached.push_back(false);
 
         if (_nodes.back().itemId)
@@ -284,6 +298,15 @@ private:
     std::unordered_map<uint32, std::vector<size_t>> _supplies;
 };
 
+std::string FormatYield(float yield)
+{
+    uint32 const tenths = uint32(std::round(yield * 10.0f));
+    if (tenths % 10 == 0)
+        return std::to_string(tenths / 10);
+
+    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10);
+}
+
 std::string FormatPlanNode(PlanTreeNode const& node)
 {
     std::string text;
@@ -299,8 +322,25 @@ std::string FormatPlanNode(PlanTreeNode const& node)
     else
         text = std::to_string(node.itemId);
 
-    if (node.count > 1)
-        text += " x" + std::to_string(node.count);
+    if (node.casts > 1)
+    {
+        text += (node.variableYield ? " ~x" : " x");
+        text += std::to_string(node.casts);
+    }
+
+    if (node.variableYield || std::fabs(node.expectedYield - 1.0f) > 0.001f)
+    {
+        std::string itemLink;
+        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(node.itemId))
+            itemLink = ChatHelper::FormatItem(proto);
+        else
+            itemLink = std::to_string(node.itemId);
+
+        text += " (";
+        if (node.variableYield)
+            text += '~';
+        text += "x" + FormatYield(node.expectedYield) + " " + itemLink + ")";
+    }
 
     if (node.buy)
         text += " (Buy)";
@@ -910,6 +950,8 @@ bool EnsureItem(CraftPlanContext& ctx, uint32 itemId, uint32 count, uint8 depth)
             step.expectedItemId = itemId;
             step.skillLine = GetProfessionSkillLine(conversion.spellId);
             step.purpose = ProfessionCraftPurpose::Conversion;
+            step.expectedYield = perCast;
+            step.variableYield = float(output->second.minCount) + 0.01f < output->second.expectedCount;
             ctx.plan.steps.push_back(step);
             produced += perCast;
             plannedConversion = true;
@@ -993,6 +1035,9 @@ bool PlanRecipe(Player* bot, NewRpgInfo const& info, ProfessionRecipe const& rec
 void NewRpgDoProfessionsAction::FinishProfession(NewRpgInfo& info, NewRpgInfo::DoProfessions& data,
                                                  ProfessionEndReason reason)
 {
+    _planDirty = false;
+    _planSpellId = 0;
+
     if (data.started)
     {
         uint16 const currentSkill = bot->GetPureSkillValue(data.skillLine);
@@ -1138,6 +1183,10 @@ bool NewRpgDoProfessionsAction::HandleLootWait(NewRpgInfo::DoProfessions& data)
         botAI->rpgInfo.failedItem = 0;
         botAI->rpgInfo.failedAt = 0;
     }
+
+    // The conversion loot may have unlocked a better recipe; re-select before
+    // running the next pending step.
+    _planDirty = true;
 
     data.lootWaitStart = 0;
     data.lootWaitSpell = 0;
@@ -1548,6 +1597,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
         data.started = true;
         data.startSkill = bot->GetPureSkillValue(data.skillLine);
         botAI->RecordProfessionSession(data.skillLine);
+        _planDirty = false;
+        _planSpellId = 0;
     }
 
     // Let the current cast finish before selecting the next recipe.
@@ -1562,6 +1613,15 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (HandleLootWait(data))
         return true;
+
+    if (_planDirty)
+    {
+        _planDirty = false;
+        data.pendingCrafts.clear();
+        data.planRequired.clear();
+        LOG_DEBUG("playerbots", "[New RPG] {} professions re-selecting recipe after conversion loot",
+                  bot->GetName());
+    }
 
     if (!data.pendingCrafts.empty())
     {
@@ -1579,6 +1639,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
         if (!RunPendingCrafts(data))
             FinishProfession(info, data, ProfessionEndReason::CraftNotRunnable);
+        else if (data.pendingCrafts.empty())
+            _planSpellId = 0;
         return true;
     }
 
@@ -1858,7 +1920,12 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
                 planNeeded = true;
                 data.pendingCrafts = std::move(steps);
                 data.planRequired = std::move(required);
-                AnnounceProfessionPlan(botAI, recipe, data);
+
+                bool const planChanged = recipe.spellId != _planSpellId;
+                _planSpellId = recipe.spellId;
+                if (planChanged)
+                    AnnounceProfessionPlan(botAI, recipe, data);
+
                 LOG_DEBUG("playerbots", "[New RPG] {} professions planned {} steps for recipe {} (skill {})",
                           bot->GetName(), data.pendingCrafts.size(), recipe.spellId, data.skillLine);
                 return true;
@@ -1928,6 +1995,8 @@ bool NewRpgDoProfessionsAction::Execute(Event /*event*/)
 
     if (chosen->spellId != data.spellId)
         AnnounceProfessionPlan(botAI, *chosen, data);
+
+    _planSpellId = 0;
 
     switch (EnsureSpellFocus(data, chosen->spellFocus))
     {
