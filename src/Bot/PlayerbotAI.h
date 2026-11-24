@@ -7,7 +7,12 @@
 #ifndef PLAYERBOTS_PLAYERBOTAI_H
 #define PLAYERBOTS_PLAYERBOTAI_H
 
+#include <deque>
+#include <future>
+#include <memory>
+#include <mutex>
 #include <stack>
+#include <thread>
 #include <unordered_set>
 
 #include "Chat.h"
@@ -434,6 +439,8 @@ public:
     using PlayerbotAIBase::SetActionDuration;
 
     std::string const HandleRemoteCommand(std::string const command);
+    void HandleRemoteCommandAsync(std::string command, std::function<void(std::string)> callback);
+    static bool IsMapThreadQuery(std::string const& command);
     void HandleCommand(uint32 type, std::string const text, Player* fromPlayer);
     void QueueChatResponse(const ChatQueuedReply reply);
     void HandleBotOutgoingPacket(WorldPacket const& packet);
@@ -678,8 +685,18 @@ public:
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
 
 private:
+    struct RemoteQuery
+    {
+        std::string command;
+        std::shared_ptr<std::promise<std::string>> result;
+        std::function<void(std::string)> callback;
+    };
+
     static void _fillGearScoreData(Player* player, Item* item, std::vector<uint32>* gearScore, uint32& twoHandScore,
                                    bool mixed = false);
+    std::string const HandleRemoteCommandDirect(std::string const command);
+    bool IsMapThread() const;
+    void DrainRemoteQueries();
     std::string DescribeProfessions(std::string const& filter = "") const;
     std::string DescribeSpells(std::string const& filter = "") const;
     std::string DescribeInventory(std::string const& filter = "") const;
@@ -725,6 +742,10 @@ protected:
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
     bool spellInterruptRequested = false;
+
+    mutable std::mutex remoteQueryMutex;
+    std::deque<RemoteQuery> remoteQueries;
+    std::thread::id mapThreadId;
 };
 
 #endif

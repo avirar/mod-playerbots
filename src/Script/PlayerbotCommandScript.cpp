@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+#include <fmt/core.h>
+
 #include "BattleGroundTactics.h"
 #include "Chat.h"
 #include "ChatCommandTags.h"
@@ -109,6 +111,19 @@ public:
                 "Usage: .playerbots inspect <bot> <query> (state, position, tpos, "
                 "movement, target, hp, strategy, action, values, travel, budget, rpg, professions, spells, inventory)");
             return false;
+        }
+
+        // Console commands run on the world thread; waiting for the bot's map thread
+        // there stalls world updates. Print the snapshot when the map thread produces it.
+        if (!handler->GetSession() && PlayerbotAI::IsMapThreadQuery(std::string(command)))
+        {
+            std::string const botName = target.GetName();
+            botAI->HandleRemoteCommandAsync(std::string(command), [botName](std::string result)
+                                            {
+                                                fmt::print("{}: {}\n", botName,
+                                                           result.empty() ? "<empty>" : result);
+                                            });
+            return true;
         }
 
         std::string const result = botAI->HandleRemoteCommand(std::string(command));

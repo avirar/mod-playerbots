@@ -6,6 +6,9 @@
 
 #include "PlayerbotAI.h"
 
+#include <chrono>
+#include <exception>
+
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -258,6 +261,12 @@ PlayerbotAI::~PlayerbotAI()
 
 void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 {
+    {
+        std::lock_guard<std::mutex> lock(remoteQueryMutex);
+        mapThreadId = std::this_thread::get_id();
+    }
+    DrainRemoteQueries();
+
     // Handle the AI check delay
     if (nextAICheckDelay > elapsed)
         nextAICheckDelay -= elapsed;
@@ -5440,6 +5449,8 @@ void PlayerbotAI::_fillGearScoreData(Player* player, Item* item, std::vector<uin
 
 namespace
 {
+constexpr uint32 REMOTE_QUERY_TIMEOUT_MS = 2000;
+
 std::string Lowercase(std::string value)
 {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return char(std::tolower(c)); });
@@ -5583,7 +5594,103 @@ std::string PlayerbotAI::DescribeSpells(std::string const& filter) const
     return out.str().empty() ? "No known spells." : out.str();
 }
 
+bool PlayerbotAI::IsMapThread() const
+{
+    std::lock_guard<std::mutex> lock(remoteQueryMutex);
+    return mapThreadId == std::this_thread::get_id();
+}
+
+void PlayerbotAI::DrainRemoteQueries()
+{
+    std::deque<RemoteQuery> pending;
+    {
+        std::lock_guard<std::mutex> lock(remoteQueryMutex);
+        pending.swap(remoteQueries);
+    }
+
+    for (RemoteQuery& query : pending)
+    {
+        try
+        {
+            std::string result = HandleRemoteCommandDirect(std::move(query.command));
+            if (query.callback)
+                query.callback(std::move(result));
+            else if (query.result)
+                query.result->set_value(std::move(result));
+        }
+        catch (...)
+        {
+            if (query.callback)
+            {
+                try
+                {
+                    query.callback("error: bot went away while handling the query");
+                }
+                catch (...)
+                {
+                }
+            }
+            else if (query.result)
+            {
+                try
+                {
+                    query.result->set_exception(std::current_exception());
+                }
+                catch (...)
+                {
+                }
+            }
+        }
+    }
+}
+
+bool PlayerbotAI::IsMapThreadQuery(std::string const& command)
+{
+    return command == "inventory" || command.rfind("inventory ", 0) == 0 || command == "spells" ||
+           command.rfind("spells ", 0) == 0 || command == "professions" ||
+           command.rfind("professions ", 0) == 0 || command.rfind("item usage ", 0) == 0;
+}
+
 std::string const PlayerbotAI::HandleRemoteCommand(std::string const command)
+{
+    if (IsMapThread() || !IsMapThreadQuery(command))
+        return HandleRemoteCommandDirect(command);
+
+    auto result = std::make_shared<std::promise<std::string>>();
+    std::future<std::string> future = result->get_future();
+    {
+        std::lock_guard<std::mutex> lock(remoteQueryMutex);
+        remoteQueries.push_back({command, result});
+    }
+    if (future.wait_for(std::chrono::milliseconds(REMOTE_QUERY_TIMEOUT_MS)) != std::future_status::ready)
+        return "error: bot map thread did not answer within 2000 ms (bot offline or map thread stalled)";
+
+    try
+    {
+        return future.get();
+    }
+    catch (...)
+    {
+        return "error: bot went away while handling the query";
+    }
+}
+
+void PlayerbotAI::HandleRemoteCommandAsync(std::string command, std::function<void(std::string)> callback)
+{
+    if (!callback)
+        return;
+
+    if (IsMapThread() || !IsMapThreadQuery(command))
+    {
+        callback(HandleRemoteCommandDirect(std::move(command)));
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(remoteQueryMutex);
+    remoteQueries.push_back({std::move(command), nullptr, std::move(callback)});
+}
+
+std::string const PlayerbotAI::HandleRemoteCommandDirect(std::string const command)
 {
     if (command == "state")
     {
